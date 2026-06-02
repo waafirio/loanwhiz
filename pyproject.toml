@@ -30,3 +30,6 @@ where = ["src"]
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
+markers = [
+    "integration: tests that require network access or external services (deselect with -m 'not integration')",
+]
