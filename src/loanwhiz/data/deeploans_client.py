@@ -16,7 +16,9 @@ deeploans ETL pipelines. The three integration points are:
 
 - ``list_asset_classes()`` — discover available credit types (e.g. "sme").
 - ``describe_table(asset_class, table_name)`` — get column metadata for a
-  table from deeploans' local schema (no network call required).
+  table by fetching a 1-row sample and inferring column names (the deeploans
+  MCP server reads local schema metadata; our REST client approximates this
+  via a live sample call — see method docstring for details).
 - ``sample_rows(asset_class, table_name, n)`` — fetch preview rows from the
   live API endpoint ``GET /api/v1/{credit_type}/{table_name}?limit=N``.
 

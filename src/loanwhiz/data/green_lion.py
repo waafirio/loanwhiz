@@ -31,14 +31,10 @@ one source of truth for URLs across the project.
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING
 
 import pandas as pd
 
 from loanwhiz.config import GREEN_LION, HF_BASE  # noqa: F401 — re-exported for convenience
-
-if TYPE_CHECKING:
-    pass
 
 logger = logging.getLogger(__name__)
 
