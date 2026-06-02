@@ -115,6 +115,8 @@ The `GCP_LOCATION` should be a region where Gemini 2.5 Flash and Pro are availab
 
 The Green Lion 2026-1 deal is a complete, publicly available Dutch synthetic RMBS package (prospectus PDF, three monthly ESMA Annex 2 tapes, three monthly investor reports). It is the primary demo dataset for this hackathon.
 
+> **Note:** `demo/run_green_lion.py` is in progress and not yet runnable — the primitives it orchestrates are still being implemented. This section documents the intended behaviour of the demo once complete.
+
 Run the end-to-end demo:
 
 ```bash

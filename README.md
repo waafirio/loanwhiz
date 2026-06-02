@@ -60,11 +60,13 @@ pytest tests/test_smoke.py
 
 ### Run against the Green Lion demo
 
+> **Note:** `demo/run_green_lion.py` is in progress and not yet runnable. The primitives it depends on are being implemented; see the Primitives table below. This section documents the intended invocation once the demo is complete.
+
 ```bash
 python demo/run_green_lion.py
 ```
 
-This loads the Green Lion 2026-1 deal package (prospectus, three monthly ESMA tapes, three monthly investor reports), runs the full extraction and execution pipeline, and prints a structured summary.
+This will load the Green Lion 2026-1 deal package (prospectus, three monthly ESMA tapes, three monthly investor reports), run the full extraction and execution pipeline, and print a structured summary.
 
 ---
 
