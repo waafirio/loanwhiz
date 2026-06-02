@@ -184,14 +184,14 @@ def _pct_distribution(series: pd.Series) -> dict[str, float]:
 def _extract_arrears(df: pd.DataFrame) -> dict[str, float]:
     """Compute multi-bucket arrears breakdown as percentages.
 
-    Logic:
-    - ``current_pct``         — ``arrears_bucket == "Performing"`` AND
-                                 ``default_crr_flag != "Y"``
-    - ``arrears_1_2m_pct``    — ``arrears_bucket == "<29d"``
-    - ``arrears_180d_plus_pct`` — ``arrears_bucket == "180+d"``
-    - ``default_pct``         — ``default_crr_flag == "Y"``
+    Buckets are mutually exclusive; priority order is:
 
-    All as a percentage of total loan count.
+    1. ``default_pct``          — ``default_crr_flag == "Y"`` (highest priority)
+    2. ``arrears_180d_plus_pct`` — ``arrears_bucket == "180+d"`` AND not in default
+    3. ``arrears_1_2m_pct``     — ``arrears_bucket == "<29d"`` AND not in default
+    4. ``current_pct``          — all remaining loans
+
+    All as a percentage of total loan count; the four buckets sum to 100.
     """
     n = len(df)
     if n == 0:
@@ -205,21 +205,25 @@ def _extract_arrears(df: pd.DataFrame) -> dict[str, float]:
     has_arrears_col = "arrears_bucket" in df.columns
     has_default_col = "default_crr_flag" in df.columns
 
+    # Priority 1: defaulted (highest)
     default_mask = (
         df["default_crr_flag"].str.upper() == "Y"
         if has_default_col
         else pd.Series([False] * n, index=df.index)
     )
-    arrears_1_2m_mask = (
-        df["arrears_bucket"] == "<29d"
-        if has_arrears_col
-        else pd.Series([False] * n, index=df.index)
-    )
+    # Priority 2: 180+ days arrears (not also flagged as default)
     arrears_180d_mask = (
-        df["arrears_bucket"] == "180+d"
+        (df["arrears_bucket"] == "180+d") & ~default_mask
         if has_arrears_col
         else pd.Series([False] * n, index=df.index)
     )
+    # Priority 3: <29 days arrears (not also flagged as default or 180+d)
+    arrears_1_2m_mask = (
+        (df["arrears_bucket"] == "<29d") & ~default_mask
+        if has_arrears_col
+        else pd.Series([False] * n, index=df.index)
+    )
+    # Priority 4: current (everything else)
     current_mask = ~default_mask & ~arrears_1_2m_mask & ~arrears_180d_mask
 
     def pct(mask: pd.Series) -> float:
