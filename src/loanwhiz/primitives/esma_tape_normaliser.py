@@ -163,15 +163,6 @@ def _detect_annex(columns: set[str]) -> tuple[str, bool]:
     return _UNKNOWN_ANNEX, False
 
 
-def _wtd_avg(df: pd.DataFrame, value_col: str, weight_col: str) -> float | None:
-    """Balance-weighted average of *value_col*, or ``None`` on missing data."""
-    mask = df[weight_col].notna() & df[value_col].notna()
-    sub = df.loc[mask]
-    if sub.empty or sub[weight_col].sum() == 0:
-        return None
-    return float((sub[value_col] * sub[weight_col]).sum() / sub[weight_col].sum())
-
-
 def _pct_distribution(series: pd.Series) -> dict[str, float]:
     """Return a dict mapping each unique value to its percentage (0–100)."""
     total = len(series.dropna())
