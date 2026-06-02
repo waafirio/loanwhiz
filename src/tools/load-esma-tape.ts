@@ -34,26 +34,25 @@ function computeArrearsBreakdown(records: Record<string, string>[]): EsmaTapeOut
   const total = records.length;
   if (total === 0) return { current_pct: 0 };
 
-  const bucket = (b: string) =>
-    Math.round((records.filter(r => r[FIELDS.arrears_bucket] === b).length / total) * 10000) / 100;
+  const pct = (n: number) => Math.round((n / total) * 10000) / 100;
 
-  // Green Lion uses numeric arrears_bucket values
-  const current = records.filter(r => {
-    const b = r[FIELDS.arrears_bucket];
-    return b === "0" || b === "" || !b;
-  }).length;
+  const current = records.filter(r =>
+    r[FIELDS.performing_status] === "Non-defaulted" && r[FIELDS.arrears_bucket] === "Performing"
+  ).length;
+  const arrears29d = records.filter(r => r[FIELDS.arrears_bucket] === "<29d").length;
+  const arrears180d = records.filter(r => r[FIELDS.arrears_bucket] === "180+d").length;
+  const defaulted = records.filter(r =>
+    r[FIELDS.default_flag] === "Y" || r[FIELDS.performing_status] === "Defaulted"
+  ).length;
+  const foreclosed = records.filter(r => r[FIELDS.foreclosure_flag] === "Y").length;
 
   return {
-    current_pct: Math.round((current / total) * 10000) / 100,
-    arrears_1_2m_pct: bucket("1"),
-    arrears_2_3m_pct: bucket("2"),
-    arrears_3m_plus_pct: bucket("3"),
-    default_pct: Math.round(
-      (records.filter(r => r[FIELDS.default_flag] === "1" || r[FIELDS.default_flag]?.toLowerCase() === "true").length / total) * 10000
-    ) / 100,
-    foreclosure_pct: Math.round(
-      (records.filter(r => r[FIELDS.foreclosure_flag] === "1" || r[FIELDS.foreclosure_flag]?.toLowerCase() === "true").length / total) * 10000
-    ) / 100,
+    current_pct: pct(current),
+    arrears_1_2m_pct: pct(arrears29d),   // <29d bucket
+    arrears_2_3m_pct: 0,
+    arrears_3m_plus_pct: pct(arrears180d),
+    default_pct: pct(defaulted),
+    foreclosure_pct: pct(foreclosed),
   };
 }
 
