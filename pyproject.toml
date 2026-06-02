@@ -1,0 +1,32 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "loanwhiz"
+version = "0.1.0"
+description = "Structured finance agent framework — SF-native primitives, deal model extraction, and LangGraph orchestration"
+license = {text = "Apache-2.0"}
+requires-python = ">=3.12"
+dependencies = [
+    "langgraph>=0.2",
+    "google-genai>=1.0",
+    "docling>=2.0",
+    "pandas>=2.2",
+    "pydantic>=2.7",
+    "fastapi>=0.111",
+    "uvicorn>=0.30",
+    "httpx>=0.27",
+    "pytest>=8.2",
+    "pytest-asyncio>=0.23",
+]
+
+[project.urls]
+Repository = "https://github.com/waafirio/loanwhiz"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
