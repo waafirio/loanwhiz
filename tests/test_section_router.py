@@ -20,8 +20,6 @@ from pathlib import Path
 import pytest
 
 from loanwhiz.extraction.section_router import (
-    Section,
-    SectionMap,
     extract_key_sf_sections,
     route_sections,
 )
