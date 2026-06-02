@@ -118,8 +118,11 @@ def _compute_tape_metrics(df: pd.DataFrame, date: str) -> dict:
 def section_esma_analytics() -> dict[str, dict]:
     """Load all 3 ESMA tapes, compute metrics, print comparison table."""
     section("2. ESMA TAPE ANALYTICS (Feb / Mar / Apr 2026)")
+    if _HAS_DATA_MODULE:
+        print("  [data] loanwhiz.data.green_lion module available")
+    else:
+        print("  [data] loanwhiz.data.green_lion not yet on branch — loading directly from HuggingFace")
 
-    tapes: dict[str, pd.DataFrame] = {}
     metrics: dict[str, dict] = {}
 
     for entry in GREEN_LION["tape_urls"]:
@@ -130,7 +133,6 @@ def section_esma_analytics() -> dict[str, dict]:
         df = pd.read_csv(url)
         elapsed = time.time() - t0
         print(f" {len(df):,} loans  ({elapsed:.1f}s)")
-        tapes[date] = df
         metrics[date] = _compute_tape_metrics(df, date)
 
     # Summary table
@@ -157,7 +159,6 @@ def section_esma_analytics() -> dict[str, dict]:
     print("  " + "-" * 72)
 
     # Period-over-period changes
-    m0, m1, m2 = [metrics[d] for d in dates]
     print("\n  Period-over-period changes (Feb→Mar / Mar→Apr):")
     for label, fmt in [
         ("loan_count", lambda x: f"{int(x):+,}"),
