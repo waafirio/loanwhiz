@@ -1,9 +1,10 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { Bot, MessageSquare, Send, User } from "lucide-react";
+import { Bot, MessageSquare, Send, ShieldCheck, User } from "lucide-react";
 
 import { ApiError, postQuery, type QueryResponse } from "@/lib/api";
+import { EvidencePackSheet } from "@/components/evidence-pack-sheet";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -47,6 +48,10 @@ export function ChatPanel() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
+  // Evidence pack currently open in the viewer (null = closed). A single
+  // shared sheet renders whichever answer's pack the user clicked "View
+  // evidence" on, fetching lazily by id.
+  const [evidencePackId, setEvidencePackId] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   function scrollToBottom() {
@@ -89,6 +94,7 @@ export function ChatPanel() {
   }
 
   return (
+    <>
     <Sheet>
       <SheetTrigger
         render={
@@ -125,7 +131,13 @@ export function ChatPanel() {
           {messages.length === 0 && !loading ? (
             <EmptyHint />
           ) : (
-            messages.map((m, i) => <MessageBubble key={i} message={m} />)
+            messages.map((m, i) => (
+              <MessageBubble
+                key={i}
+                message={m}
+                onViewEvidence={setEvidencePackId}
+              />
+            ))
           )}
           {loading ? <ThinkingBubble /> : null}
         </div>
@@ -156,6 +168,19 @@ export function ChatPanel() {
         </div>
       </SheetContent>
     </Sheet>
+
+    {/* Shared evidence-pack viewer for whichever answer the user opened. */}
+    {evidencePackId ? (
+      <EvidencePackSheet
+        key={evidencePackId}
+        packId={evidencePackId}
+        open={evidencePackId !== null}
+        onOpenChange={(open) => {
+          if (!open) setEvidencePackId(null);
+        }}
+      />
+    ) : null}
+    </>
   );
 }
 
@@ -171,7 +196,13 @@ function EmptyHint() {
   );
 }
 
-function MessageBubble({ message }: { message: ChatMessage }) {
+function MessageBubble({
+  message,
+  onViewEvidence,
+}: {
+  message: ChatMessage;
+  onViewEvidence: (packId: string) => void;
+}) {
   if (message.role === "user") {
     return (
       <div className="flex justify-end">
@@ -199,7 +230,7 @@ function MessageBubble({ message }: { message: ChatMessage }) {
 
   return (
     <AssistantShell>
-      <AnswerCard response={message.response} />
+      <AnswerCard response={message.response} onViewEvidence={onViewEvidence} />
     </AssistantShell>
   );
 }
@@ -217,9 +248,20 @@ function AssistantShell({ children }: { children: React.ReactNode }) {
   );
 }
 
-function AnswerCard({ response }: { response: QueryResponse }) {
-  const { answer, reasoning_trace, overall_status, aggregate_confidence } =
-    response;
+function AnswerCard({
+  response,
+  onViewEvidence,
+}: {
+  response: QueryResponse;
+  onViewEvidence: (packId: string) => void;
+}) {
+  const {
+    answer,
+    reasoning_trace,
+    overall_status,
+    aggregate_confidence,
+    evidence_pack_id,
+  } = response;
   return (
     <>
       <div className="rounded-lg bg-muted px-3 py-2 text-sm whitespace-pre-wrap">
@@ -253,6 +295,19 @@ function AnswerCard({ response }: { response: QueryResponse }) {
             ))}
           </ol>
         </div>
+      ) : null}
+
+      {/* Open the full governance evidence pack behind this answer. */}
+      {evidence_pack_id ? (
+        <Button
+          variant="ghost"
+          size="sm"
+          className="h-auto gap-1.5 px-2 py-1 text-xs text-muted-foreground"
+          onClick={() => onViewEvidence(evidence_pack_id)}
+        >
+          <ShieldCheck className="size-3.5" />
+          View evidence
+        </Button>
       ) : null}
     </>
   );

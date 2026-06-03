@@ -4,6 +4,7 @@ import {
   Waves,
   ShieldCheck,
   TrendingUp,
+  Boxes,
   type LucideIcon,
 } from "lucide-react";
 
@@ -24,6 +25,9 @@ export const NAV_ITEMS: NavItem[] = [
   { title: "Waterfall", href: "/waterfall", icon: Waves },
   { title: "Compliance", href: "/compliance", icon: ShieldCheck },
   { title: "Projection", href: "/projection", icon: TrendingUp },
+  // Framework — the primitive registry catalogue (#137): surfaces the typed
+  // primitive contracts that make up the framework the challenge judges.
+  { title: "Framework", href: "/primitives", icon: Boxes },
 ];
 
 /** The single deal the demo serves, shown in the top-bar deal selector. */

@@ -26,6 +26,7 @@ from __future__ import annotations
 import hashlib
 import json
 from pathlib import Path
+from typing import Any
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -38,6 +39,7 @@ from loanwhiz.extraction.assembler import (
     DealModel,
     _slug,
 )
+from loanwhiz.governance import EvidencePackLogger
 from loanwhiz.primitives.collections_aggregator import (
     CollectionsAggregator,
     CollectionsInput,
@@ -47,7 +49,21 @@ from loanwhiz.primitives.esma_tape_normaliser import (
     EsmaTapeInput,
     EsmaTapeNormaliser,
 )
+from loanwhiz.primitives.registry import PRIMITIVE_REGISTRY
 from loanwhiz.primitives.waterfall_runner import WaterfallInput, WaterfallRunner
+
+# Import every primitive module so its @register_primitive decorator runs and the
+# PRIMITIVE_REGISTRY is fully populated for GET /primitives. Primitives register
+# on import; the four imported above (collections_aggregator, covenant_monitor,
+# esma_tape_normaliser, waterfall_runner) are already covered, so this pulls in
+# the rest (audit_logger, cashflow_projector, report_verifier, waterfall_state).
+# Imported for the registration side effect only — hence the noqa.
+from loanwhiz.primitives import (  # noqa: F401  (registration side effects)
+    audit_logger,
+    cashflow_projector,
+    report_verifier,
+    waterfall_state,
+)
 
 app = FastAPI(
     title="LoanWhiz API",
@@ -601,6 +617,94 @@ def deal_tape_analytics(deal_id: str) -> list[TapeAnalyticsPeriod]:
 # --- end tape-analytics (#110) -----------------------------------------------
 
 
+# --- primitive registry catalogue (#135) -------------------------------------
+# Self-contained block (response model + handler) for GET /primitives — the
+# framework's primitive registry catalogue, so the UI (#137) can render every
+# registered primitive: name, version, description, tags, author, and the typed
+# input/output JSON schemas. Kept contiguous to minimise conflicts with the
+# sibling issues editing this module in parallel (#136).
+#
+# Sourcing: PRIMITIVE_REGISTRY.describe() yields the registry metadata
+# (name/version/description/author/tags/class_name); the primitive class's own
+# describe() classmethod yields the Pydantic input/output JSON schemas. The two
+# are merged per entry. All primitive modules are imported at the top of this
+# file so the registry is fully populated (primitives register on import).
+
+
+class PrimitiveCatalogueEntry(BaseModel):
+    """One primitive in the registry catalogue returned by ``GET /primitives``.
+
+    Combines the registry metadata (name, version, description, author, tags,
+    implementing class name) with the primitive's typed I/O contract — the
+    Pydantic JSON schemas for its input and output models — plus a note on the
+    framework's confidence semantics (every primitive returns a
+    ``PrimitiveResult`` with a ``confidence`` score in ``[0.0, 1.0]``: ``1.0``
+    for deterministic/rule-based primitives, lower when model or data-quality
+    uncertainty applies).
+    """
+
+    name: str = Field(..., description="Unique snake_case primitive identifier.")
+    version: str = Field(..., description="Semver version string.")
+    description: str = Field(..., description="One-line human-readable description.")
+    author: str = Field(..., description="Author/team identifier.")
+    tags: list[str] = Field(
+        default_factory=list, description="Tags for grouping/filtering."
+    )
+    class_name: str = Field(..., description="Qualified name of the implementing class.")
+    input_schema: dict[str, Any] = Field(
+        default_factory=dict, description="JSON Schema for the primitive's input model."
+    )
+    output_schema: dict[str, Any] = Field(
+        default_factory=dict,
+        description="JSON Schema for the primitive's output model.",
+    )
+    confidence: str = Field(
+        default=(
+            "Every primitive returns a PrimitiveResult with a confidence score in "
+            "[0.0, 1.0]: 1.0 for deterministic/rule-based computation, lower when "
+            "model or data-quality uncertainty applies."
+        ),
+        description="Framework confidence semantics for the primitive's result.",
+    )
+
+
+@app.get("/primitives", response_model=list[PrimitiveCatalogueEntry])
+def primitives() -> list[PrimitiveCatalogueEntry]:
+    """Return the primitive registry catalogue.
+
+    Lists every registered SF primitive with its registry metadata
+    (name/version/description/author/tags/class_name) and its typed input/output
+    JSON schemas, so the UI can render the framework's primitives. All primitive
+    modules are imported at module load so the registry is complete.
+    """
+    catalogue = PRIMITIVE_REGISTRY.describe()
+    entries: list[PrimitiveCatalogueEntry] = []
+    for name, meta in catalogue.items():
+        registration = PRIMITIVE_REGISTRY.get(name)
+        input_schema: dict[str, Any] = {}
+        output_schema: dict[str, Any] = {}
+        if registration is not None:
+            described = registration.primitive_class.describe()
+            input_schema = described.input_schema
+            output_schema = described.output_schema
+        entries.append(
+            PrimitiveCatalogueEntry(
+                name=meta["name"],
+                version=meta["version"],
+                description=meta["description"],
+                author=meta["author"],
+                tags=meta["tags"],
+                class_name=meta["class_name"],
+                input_schema=input_schema,
+                output_schema=output_schema,
+            )
+        )
+    return entries
+
+
+# --- end primitive registry catalogue (#135) ---------------------------------
+
+
 @app.post("/deal/{deal_id}/project")
 def deal_project(deal_id: str, req: ProjectRequest) -> dict:
     """Project forward payment waterfalls under the requested scenarios.
@@ -672,3 +776,79 @@ def deal_project(deal_id: str, req: ProjectRequest) -> dict:
         "projections": projections,
         "wal": wal,
     }
+
+
+# ---------------------------------------------------------------------------
+# Governance evidence pack (#136)
+#
+# Self-contained block (response models + handler) for the auditable-agents
+# surface: GET /governance/{pack_id} returns a stored GovernanceEvidencePack —
+# the agent's tool-call trace, per-tool/aggregate confidence, deduplicated
+# citation trail, and human-review flag — so the UI (#138) can render the
+# evidence behind a query. Read-only over the EvidencePackLogger the planner
+# already writes to via run_query(..., save_evidence=True). Kept contiguous to
+# minimise additive merge conflicts with siblings editing this module.
+# ---------------------------------------------------------------------------
+
+# Root directory the EvidencePackLogger persists packs under. Mirrors the
+# logger's own default log_dir (loanwhiz.governance.evidence_pack), so this
+# endpoint reads from the same JSONL store the planner writes to. Patchable for
+# tests (same pattern as DEAL_MODEL_CACHE_DIR) so the suite can seed a pack into
+# a temp dir without running an agent query.
+GOVERNANCE_LOG_DIR = "/tmp/loanwhiz_governance"
+
+
+class ToolCallRecordModel(BaseModel):
+    """One agent tool call within a query (mirrors ``ToolCallRecord``)."""
+
+    call_index: int
+    tool_name: str
+    input_summary: str
+    output_summary: str
+    confidence: float
+    citations: list[dict]
+    duration_ms: float
+    timestamp: str
+
+
+class GovernanceEvidencePackResponse(BaseModel):
+    """Response body for ``GET /governance/{pack_id}``.
+
+    Mirrors the serialisable shape of
+    :class:`~loanwhiz.governance.evidence_pack.GovernanceEvidencePack` — the
+    audit trail (query/answer/timestamp + ordered tool-call records), the
+    per-tool and aggregate confidence, the deduplicated citation trail, the
+    human-review flag, and the governance metadata.
+    """
+
+    pack_id: str
+    query: str
+    answer: str
+    timestamp: str
+
+    tool_calls: list[ToolCallRecordModel]
+    aggregate_confidence: float
+    all_citations: list[dict]
+    human_review_required: bool
+
+    model_used: str
+    framework_version: str
+    finos_compliant: bool
+
+
+@app.get("/governance/{pack_id}", response_model=GovernanceEvidencePackResponse)
+def governance_pack(pack_id: str) -> GovernanceEvidencePackResponse:
+    """Return the stored governance evidence pack for ``pack_id``.
+
+    Loads the pack from the on-disk ``EvidencePackLogger`` store (the same
+    store the planner writes to when a query runs with ``save_evidence=True``)
+    and returns its full serialisable shape. Raises 404 when no pack with that
+    id exists.
+    """
+    logger = EvidencePackLogger(log_dir=GOVERNANCE_LOG_DIR)
+    pack = logger.load(pack_id)
+    if pack is None:
+        raise HTTPException(
+            status_code=404, detail=f"Evidence pack {pack_id} not found"
+        )
+    return GovernanceEvidencePackResponse(**pack.model_dump())
