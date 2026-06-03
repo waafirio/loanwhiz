@@ -31,7 +31,11 @@ Usage — LLM-backed primitives::
         response = client.models.generate_content(model=MODEL_PRO, contents=prompt)
         tracker.record(model=MODEL_PRO, prompt=prompt, response=response.text)
 
-    result = PrimitiveResult(output=..., llm_calls=tracker.calls)
+    # Inside ExecutionContext, pass the tracker's calls to log():
+    with ExecutionContext(primitive, log_dir=log_dir, input=inp) as ctx:
+        result = primitive.execute(inp)
+        entry = ctx.log(result, llm_calls=tracker.calls)
+        # entry.is_deterministic == False; entry.llm_calls populated
 
 Usage — replay::
 
@@ -312,8 +316,10 @@ class LLMCallTracker:
             response = client.models.generate_content(model=MODEL_PRO, contents=prompt)
             tracker.record(model=MODEL_PRO, prompt=prompt, response=response.text)
 
-        # Pass tracker.calls to ExecutionContext.log() via the result's llm_calls:
-        result = PrimitiveResult(output=..., llm_calls=tracker.calls)
+        # Pass tracker.calls to ExecutionContext.log():
+        with ExecutionContext(primitive, log_dir=log_dir, input=inp) as ctx:
+            result = primitive.execute(inp)
+            entry = ctx.log(result, llm_calls=tracker.calls)
 
     Attributes:
         calls: Accumulated ``LLMCallRecord`` objects in call order.
