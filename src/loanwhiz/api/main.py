@@ -33,7 +33,11 @@ from pydantic import BaseModel, Field
 
 from loanwhiz.agent.executor import execute_query
 from loanwhiz.config import DEAL_REGISTRY, GREEN_LION
-from loanwhiz.extraction.assembler import DealModel, _slug
+from loanwhiz.extraction.assembler import (
+    DEFAULT_DEAL_CACHE_DIR,
+    DealModel,
+    _slug,
+)
 from loanwhiz.primitives.collections_aggregator import (
     CollectionsAggregator,
     CollectionsInput,
@@ -123,9 +127,10 @@ class ProjectRequest(BaseModel):
 # Directory where ``loanwhiz.extraction.assembler.extract_deal_model`` caches
 # extracted deal models. The ``/deal/{id}/model`` endpoint reads from here but
 # never triggers a cold extraction (that path is ~10min via Docling) — it only
-# serves a cache hit and otherwise degrades gracefully. Mirrors the assembler's
-# default ``cache_dir`` so the two agree on where the artifact lives.
-DEAL_MODEL_CACHE_DIR = "/tmp/loanwhiz_cache/deals"
+# serves a cache hit and otherwise degrades gracefully. Sourced from the
+# assembler's durable default (#132 moved it from /tmp to the committed
+# data/deals/) so the writer and this reader never diverge.
+DEAL_MODEL_CACHE_DIR = str(DEFAULT_DEAL_CACHE_DIR)
 
 
 class DealModelResponse(BaseModel):
