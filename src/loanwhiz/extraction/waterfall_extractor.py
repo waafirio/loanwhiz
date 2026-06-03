@@ -297,7 +297,16 @@ def _build_definitions_block(
 # Cache helpers
 # ---------------------------------------------------------------------------
 
-_CACHE_DIR = Path("/tmp/loanwhiz_cache")
+# Extraction sub-caches live under the repo's managed ``data/`` cache tree
+# (alongside ``data/deals`` and ``data/docling_cache``), not a volatile ``/tmp``
+# path. This keeps the whole cache lifecycle coherent: a cold rebuild that wipes
+# ``data/`` clears these too, so a stale sub-cache can no longer outlive a
+# deal-model rebuild and re-serve an outdated extraction. This was the #152
+# revenue-waterfall=0 regression: a pre-#125 ``waterfall_*_revenue.json`` left
+# in ``/tmp`` survived every ``data/``-only cold rebuild (force_refresh defaults
+# to False), so the corrected section router never got a chance to re-extract.
+_REPO_ROOT = Path(__file__).resolve().parents[3]
+_CACHE_DIR = _REPO_ROOT / "data" / "extraction_cache"
 
 
 def _safe_name(name: str) -> str:

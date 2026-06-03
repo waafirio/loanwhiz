@@ -13,6 +13,7 @@ venv/
 .mypy_cache/
 data/deals/*.json
 data/docling_cache/*.md
+data/extraction_cache/*.json
 node_modules/
 dist/
 .liz/state/

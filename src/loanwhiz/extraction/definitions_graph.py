@@ -284,7 +284,11 @@ def extract_definitions(
 # Cache helpers
 # ---------------------------------------------------------------------------
 
-_CACHE_DIR = Path("/tmp/loanwhiz_cache")
+# Co-located under the repo's managed ``data/`` cache tree so the whole
+# extraction cache lifecycle is coherent (a cold ``data/`` wipe clears it too).
+# See waterfall_extractor for the full #152 rationale.
+_REPO_ROOT = Path(__file__).resolve().parents[3]
+_CACHE_DIR = _REPO_ROOT / "data" / "extraction_cache"
 
 
 def _default_cache_path(prospectus_url: str) -> Path:

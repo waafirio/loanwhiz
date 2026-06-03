@@ -41,7 +41,11 @@ from loanwhiz.extraction.waterfall_extractor import (
 # Constants
 # ---------------------------------------------------------------------------
 
-_CACHE_DIR = Path("/tmp/loanwhiz_cache")
+# Cache dir is owned by the module under test (relocated to data/extraction_cache
+# in #152); import it so these tests track the source-of-truth location rather
+# than a hardcoded /tmp literal.
+from loanwhiz.extraction.waterfall_extractor import _CACHE_DIR
+
 _CACHE_PATH_REVENUE = _CACHE_DIR / "waterfall_Green_Lion_2026_1_B_V__revenue.json"
 _CACHE_PATH_REDEMPTION = _CACHE_DIR / "waterfall_Green_Lion_2026_1_B_V__redemption.json"
 
