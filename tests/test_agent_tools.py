@@ -7,9 +7,7 @@ The SF_TOOLS list and list_available_tools() helper are also verified.
 from __future__ import annotations
 
 import json
-from unittest.mock import MagicMock, patch
-
-import pytest
+from unittest.mock import patch
 
 from loanwhiz.agent import SF_TOOL_NODE, SF_TOOLS, list_available_tools
 from loanwhiz.agent.tools import (
