@@ -1,10 +1,199 @@
-import { PagePlaceholder } from "@/components/page-placeholder";
+"use client";
+
+import { useEffect, useState } from "react";
+import {
+  Bar,
+  BarChart,
+  CartesianGrid,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from "recharts";
+
+import {
+  ApiError,
+  postProjection,
+  type ProjectionResult,
+  type WaterfallProjection,
+} from "@/lib/api";
+import {
+  EmptyState,
+  ErrorState,
+  LoadingState,
+  PageHeader,
+} from "@/components/page-states";
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import { formatCurrency, humanize } from "@/lib/format";
 
 export default function WaterfallPage() {
+  const [data, setData] = useState<ProjectionResult | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    postProjection({ scenarios: ["base"], months: 12 })
+      .then(setData)
+      .catch((e) =>
+        setError(e instanceof ApiError ? e.message : "Failed to load waterfall"),
+      );
+  }, []);
+
   return (
-    <PagePlaceholder
-      title="Waterfall"
-      description="Payment cascade and per-tranche distributions."
-    />
+    <div className="space-y-6">
+      <PageHeader
+        title="Waterfall"
+        description="Revenue priority cascade and per-tranche distributions (base scenario)."
+      />
+      {error ? (
+        <ErrorState title="Could not load waterfall" message={error} />
+      ) : !data ? (
+        <LoadingState />
+      ) : (
+        <WaterfallContent result={data} />
+      )}
+    </div>
+  );
+}
+
+function WaterfallContent({ result }: { result: ProjectionResult }) {
+  const proj: WaterfallProjection | undefined =
+    result.projections.base ??
+    result.projections[result.scenarios[0]] ??
+    Object.values(result.projections)[0];
+
+  if (!proj) {
+    return <EmptyState message="No waterfall projection returned." />;
+  }
+
+  const cascade = proj.revenue_waterfall ?? [];
+  const chartData = cascade.map((step) => ({
+    name: `${step.priority} ${step.recipient}`,
+    distributed: step.amount_distributed,
+  }));
+
+  return (
+    <div className="space-y-6">
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">
+            Revenue cascade — distribution per step
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          {chartData.length === 0 ? (
+            <EmptyState message="No revenue waterfall steps returned." />
+          ) : (
+            <ResponsiveContainer width="100%" height={340}>
+              <BarChart
+                data={chartData}
+                margin={{ top: 8, right: 16, bottom: 64, left: 8 }}
+              >
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis
+                  dataKey="name"
+                  fontSize={11}
+                  angle={-35}
+                  textAnchor="end"
+                  interval={0}
+                  height={72}
+                />
+                <YAxis fontSize={12} width={80} />
+                <Tooltip formatter={(v) => formatCurrency(Number(v))} />
+                <Bar dataKey="distributed" fill="#2563eb" />
+              </BarChart>
+            </ResponsiveContainer>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Revenue waterfall steps</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Priority</TableHead>
+                <TableHead>Recipient</TableHead>
+                <TableHead className="text-right">Available</TableHead>
+                <TableHead className="text-right">Distributed</TableHead>
+                <TableHead className="text-right">Shortfall</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {cascade.map((step, i) => (
+                <TableRow key={`${step.priority}-${i}`}>
+                  <TableCell className="font-medium">{step.priority}</TableCell>
+                  <TableCell>{step.recipient}</TableCell>
+                  <TableCell className="text-right tabular-nums">
+                    {formatCurrency(step.amount_available)}
+                  </TableCell>
+                  <TableCell className="text-right tabular-nums">
+                    {formatCurrency(step.amount_distributed)}
+                  </TableCell>
+                  <TableCell className="text-right tabular-nums">
+                    {formatCurrency(step.shortfall)}
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Tranche distributions</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Tranche</TableHead>
+                <TableHead className="text-right">Interest</TableHead>
+                <TableHead className="text-right">Principal</TableHead>
+                <TableHead className="text-right">Total</TableHead>
+                <TableHead className="text-right">Closing balance</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {proj.tranche_distributions.map((t) => (
+                <TableRow key={t.tranche}>
+                  <TableCell className="font-medium">
+                    {humanize(t.tranche)}
+                  </TableCell>
+                  <TableCell className="text-right tabular-nums">
+                    {formatCurrency(t.interest_received)}
+                  </TableCell>
+                  <TableCell className="text-right tabular-nums">
+                    {formatCurrency(t.principal_received)}
+                  </TableCell>
+                  <TableCell className="text-right tabular-nums">
+                    {formatCurrency(t.total_received)}
+                  </TableCell>
+                  <TableCell className="text-right tabular-nums">
+                    {formatCurrency(t.closing_balance)}
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </CardContent>
+      </Card>
+    </div>
   );
 }
