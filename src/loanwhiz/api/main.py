@@ -24,6 +24,7 @@ request/response so a later swap to a dedicated projector is a drop-in change.
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -41,7 +42,21 @@ from loanwhiz.primitives.esma_tape_normaliser import (
     EsmaTapeInput,
     EsmaTapeNormaliser,
 )
+from loanwhiz.primitives.registry import PRIMITIVE_REGISTRY
 from loanwhiz.primitives.waterfall_runner import WaterfallInput, WaterfallRunner
+
+# Import every primitive module so its @register_primitive decorator runs and the
+# PRIMITIVE_REGISTRY is fully populated for GET /primitives. Primitives register
+# on import; the four imported above (collections_aggregator, covenant_monitor,
+# esma_tape_normaliser, waterfall_runner) are already covered, so this pulls in
+# the rest (audit_logger, cashflow_projector, report_verifier, waterfall_state).
+# Imported for the registration side effect only — hence the noqa.
+from loanwhiz.primitives import (  # noqa: F401  (registration side effects)
+    audit_logger,
+    cashflow_projector,
+    report_verifier,
+    waterfall_state,
+)
 
 app = FastAPI(
     title="LoanWhiz API",
@@ -487,6 +502,94 @@ def deal_tape_analytics(deal_id: str) -> list[TapeAnalyticsPeriod]:
 
 
 # --- end tape-analytics (#110) -----------------------------------------------
+
+
+# --- primitive registry catalogue (#135) -------------------------------------
+# Self-contained block (response model + handler) for GET /primitives — the
+# framework's primitive registry catalogue, so the UI (#137) can render every
+# registered primitive: name, version, description, tags, author, and the typed
+# input/output JSON schemas. Kept contiguous to minimise conflicts with the
+# sibling issues editing this module in parallel (#136).
+#
+# Sourcing: PRIMITIVE_REGISTRY.describe() yields the registry metadata
+# (name/version/description/author/tags/class_name); the primitive class's own
+# describe() classmethod yields the Pydantic input/output JSON schemas. The two
+# are merged per entry. All primitive modules are imported at the top of this
+# file so the registry is fully populated (primitives register on import).
+
+
+class PrimitiveCatalogueEntry(BaseModel):
+    """One primitive in the registry catalogue returned by ``GET /primitives``.
+
+    Combines the registry metadata (name, version, description, author, tags,
+    implementing class name) with the primitive's typed I/O contract — the
+    Pydantic JSON schemas for its input and output models — plus a note on the
+    framework's confidence semantics (every primitive returns a
+    ``PrimitiveResult`` with a ``confidence`` score in ``[0.0, 1.0]``: ``1.0``
+    for deterministic/rule-based primitives, lower when model or data-quality
+    uncertainty applies).
+    """
+
+    name: str = Field(..., description="Unique snake_case primitive identifier.")
+    version: str = Field(..., description="Semver version string.")
+    description: str = Field(..., description="One-line human-readable description.")
+    author: str = Field(..., description="Author/team identifier.")
+    tags: list[str] = Field(
+        default_factory=list, description="Tags for grouping/filtering."
+    )
+    class_name: str = Field(..., description="Qualified name of the implementing class.")
+    input_schema: dict[str, Any] = Field(
+        default_factory=dict, description="JSON Schema for the primitive's input model."
+    )
+    output_schema: dict[str, Any] = Field(
+        default_factory=dict,
+        description="JSON Schema for the primitive's output model.",
+    )
+    confidence: str = Field(
+        default=(
+            "Every primitive returns a PrimitiveResult with a confidence score in "
+            "[0.0, 1.0]: 1.0 for deterministic/rule-based computation, lower when "
+            "model or data-quality uncertainty applies."
+        ),
+        description="Framework confidence semantics for the primitive's result.",
+    )
+
+
+@app.get("/primitives", response_model=list[PrimitiveCatalogueEntry])
+def primitives() -> list[PrimitiveCatalogueEntry]:
+    """Return the primitive registry catalogue.
+
+    Lists every registered SF primitive with its registry metadata
+    (name/version/description/author/tags/class_name) and its typed input/output
+    JSON schemas, so the UI can render the framework's primitives. All primitive
+    modules are imported at module load so the registry is complete.
+    """
+    catalogue = PRIMITIVE_REGISTRY.describe()
+    entries: list[PrimitiveCatalogueEntry] = []
+    for name, meta in catalogue.items():
+        registration = PRIMITIVE_REGISTRY.get(name)
+        input_schema: dict[str, Any] = {}
+        output_schema: dict[str, Any] = {}
+        if registration is not None:
+            described = registration.primitive_class.describe()
+            input_schema = described.input_schema
+            output_schema = described.output_schema
+        entries.append(
+            PrimitiveCatalogueEntry(
+                name=meta["name"],
+                version=meta["version"],
+                description=meta["description"],
+                author=meta["author"],
+                tags=meta["tags"],
+                class_name=meta["class_name"],
+                input_schema=input_schema,
+                output_schema=output_schema,
+            )
+        )
+    return entries
+
+
+# --- end primitive registry catalogue (#135) ---------------------------------
 
 
 @app.post("/deal/{deal_id}/project")

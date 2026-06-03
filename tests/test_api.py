@@ -579,6 +579,74 @@ def test_deal_tape_analytics_unknown_returns_404():
 
 
 # ---------------------------------------------------------------------------
+# Primitives registry catalogue
+# ---------------------------------------------------------------------------
+
+
+def test_primitives_returns_catalogue():
+    """GET /primitives returns a non-empty catalogue with the expected fields."""
+    resp = client.get("/primitives")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert isinstance(body, list)
+    assert len(body) > 0
+    # Every entry carries the catalogue fields.
+    expected_keys = {
+        "name",
+        "version",
+        "description",
+        "author",
+        "tags",
+        "class_name",
+        "input_schema",
+        "output_schema",
+        "confidence",
+    }
+    for entry in body:
+        assert expected_keys <= set(entry)
+        assert isinstance(entry["name"], str) and entry["name"]
+        assert isinstance(entry["version"], str) and entry["version"]
+        assert isinstance(entry["description"], str) and entry["description"]
+        assert isinstance(entry["tags"], list)
+
+
+def test_primitives_includes_known_primitive():
+    """The catalogue includes a known primitive with its registered metadata."""
+    resp = client.get("/primitives")
+    assert resp.status_code == 200
+    by_name = {entry["name"]: entry for entry in resp.json()}
+
+    assert "esma_tape_normaliser" in by_name
+    esma = by_name["esma_tape_normaliser"]
+    assert esma["class_name"] == "EsmaTapeNormaliser"
+    assert "esma" in esma["tags"]
+    # Typed I/O schemas surfaced for the UI.
+    assert esma["input_schema"]
+    assert esma["output_schema"]
+
+
+def test_primitives_registry_fully_populated():
+    """All primitive modules are imported, so non-API-path primitives appear too.
+
+    The deal endpoints only import four primitives; the catalogue must still
+    include the ones registered solely via the /primitives import side effects
+    (e.g. report_verifier, cashflow_projector, audit_logger).
+    """
+    resp = client.get("/primitives")
+    assert resp.status_code == 200
+    names = {entry["name"] for entry in resp.json()}
+    assert {
+        "esma_tape_normaliser",
+        "waterfall_runner",
+        "covenant_monitor",
+        "collections_aggregator",
+        "report_verifier",
+        "cashflow_projector",
+        "audit_logger",
+    } <= names
+
+
+# ---------------------------------------------------------------------------
 # Integration — real primitives (hits network: tape downloads). Deselect with
 # `-m "not integration"`.
 # ---------------------------------------------------------------------------
