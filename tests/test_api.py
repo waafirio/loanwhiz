@@ -39,6 +39,28 @@ def test_health_returns_ok():
 
 
 # ---------------------------------------------------------------------------
+# CORS
+# ---------------------------------------------------------------------------
+
+
+def test_cors_preflight_allows_next_origin():
+    """An OPTIONS preflight from the Next dev origin is allowed by CORS.
+
+    Confirms CORSMiddleware is registered: a browser preflight carrying the
+    Next.js dev origin (http://localhost:3000) gets it echoed back in the
+    access-control-allow-origin header.
+    """
+    resp = client.options(
+        "/query",
+        headers={
+            "Origin": "http://localhost:3000",
+            "Access-Control-Request-Method": "POST",
+        },
+    )
+    assert resp.headers.get("access-control-allow-origin") == "http://localhost:3000"
+
+
+# ---------------------------------------------------------------------------
 # Deal model
 # ---------------------------------------------------------------------------
 
