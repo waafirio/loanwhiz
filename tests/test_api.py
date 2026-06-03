@@ -417,6 +417,80 @@ def test_deal_project_unknown_returns_404():
 
 
 # ---------------------------------------------------------------------------
+# Tape analytics (primitive mocked)
+# ---------------------------------------------------------------------------
+
+
+def _tape_output_dump(reporting_date: str, pool_balance: float) -> dict:
+    """A full EsmaTapeOutput-shaped dict for the tape-analytics endpoint."""
+    return {
+        "reporting_date": reporting_date,
+        "asset_class": "RMBS",
+        "transaction_name": "Green Lion 2026-1 B.V.",
+        "loan_count": 1000,
+        "pool_balance_eur": pool_balance,
+        "pool_stats": {"wtd_ltv": 65.0, "wtd_coupon_pct": 3.6},
+        "arrears_breakdown": {
+            "current_pct": 98.0,
+            "arrears_1_2m_pct": 1.0,
+            "arrears_180d_plus_pct": 0.5,
+            "default_pct": 0.5,
+        },
+        "epc_breakdown": {"A": 40.0, "B": 60.0},
+        "rate_type_breakdown": {"Fixed": 100.0},
+        "property_type_breakdown": {"House": 70.0, "Apartment": 30.0},
+        "geographic_breakdown": {"NL-NH": 50.0, "NL-ZH": 50.0},
+        "annex_detected": "Annex 2 (RMBS)",
+    }
+
+
+def test_deal_tape_analytics_returns_periods():
+    dumps = [
+        _tape_output_dump("2026-02-28", 1_050_000_000.0),
+        _tape_output_dump("2026-03-31", 1_040_000_000.0),
+        _tape_output_dump("2026-04-30", 1_033_412_063.0),
+    ]
+    results = iter(_FakeResult(d) for d in dumps)
+
+    with patch("loanwhiz.api.main.EsmaTapeNormaliser") as MockNorm:
+        MockNorm.return_value.execute.side_effect = lambda _inp: next(results)
+        resp = client.get("/deal/green-lion-2026-1/tape-analytics")
+
+    assert resp.status_code == 200
+    body = resp.json()
+    # One analytics object per tape in the deal context, chronological order.
+    assert len(body) == 3
+    assert MockNorm.return_value.execute.call_count == 3
+    assert [p["tape_date"] for p in body] == ["2026-02-28", "2026-03-31", "2026-04-30"]
+    assert [p["pool_balance_eur"] for p in body] == [
+        1_050_000_000.0,
+        1_040_000_000.0,
+        1_033_412_063.0,
+    ]
+    # Each period carries the expected analytics keys.
+    expected_keys = {
+        "tape_date",
+        "reporting_date",
+        "loan_count",
+        "pool_balance_eur",
+        "pool_stats",
+        "arrears_breakdown",
+        "epc_breakdown",
+        "geographic_breakdown",
+        "property_type_breakdown",
+    }
+    for period in body:
+        assert expected_keys <= set(period)
+    # Weighted LTV surfaces through pool_stats.
+    assert body[0]["pool_stats"]["wtd_ltv"] == 65.0
+
+
+def test_deal_tape_analytics_unknown_returns_404():
+    resp = client.get("/deal/unknown/tape-analytics")
+    assert resp.status_code == 404
+
+
+# ---------------------------------------------------------------------------
 # Integration — real primitives (hits network: tape downloads). Deselect with
 # `-m "not integration"`.
 # ---------------------------------------------------------------------------
@@ -429,3 +503,16 @@ def test_deal_compliance_integration():
     body = resp.json()
     assert "summary" in body
     assert "active_triggers" in body
+
+
+@pytest.mark.integration
+def test_deal_tape_analytics_integration():
+    resp = client.get("/deal/green-lion-2026-1/tape-analytics")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert len(body) == 3
+    for period in body:
+        assert period["loan_count"] > 0
+        assert period["pool_balance_eur"] > 0
+        assert "wtd_ltv" in period["pool_stats"]
+        assert "current_pct" in period["arrears_breakdown"]
