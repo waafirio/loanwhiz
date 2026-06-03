@@ -42,7 +42,7 @@ So you MUST pre-warm the cache before the demo, or the headline tab is empty.
 
 **Cache location:** `/tmp/loanwhiz_cache/deals/` — the deal model is written to
 `/tmp/loanwhiz_cache/deals/<slug(deal_name)>.json` (Green Lion →
-`green-lion-2026-1-b-v.json`). This is also where the live app and the CLI read
+`green-lion-2026-1-bv.json`). This is also where the live app and the CLI read
 from. Note: `/tmp` is cleared on reboot — re-warm after any restart.
 
 Run **either** of the following once (each populates the same cache):
@@ -78,7 +78,7 @@ exists.)
 ls -lh /tmp/loanwhiz_cache/deals/
 ```
 
-You should see `green-lion-2026-1-b-v.json`. After this, `DealState.load_green_lion`
+You should see `green-lion-2026-1-bv.json`. After this, `DealState.load_green_lion`
 reads it instantly and the Deal Overview tab is fully populated.
 
 ---
