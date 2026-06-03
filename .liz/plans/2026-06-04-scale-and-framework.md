@@ -1,10 +1,10 @@
 ---
 id: 2026-06-04-scale-and-framework
 title: Scale-readiness & Framework Surface
-status: draft
+status: filed
 created: 2026-06-04
 updated: 2026-06-04
-epics: []
+epics: [128, 129]
 ---
 
 # Scale-readiness & Framework Surface
@@ -50,7 +50,7 @@ The challenge is a "Structured Finance Agent **Framework**." The v2 UI currently
 
 ## Decomposition
 
-### Epic: Scale-readiness — handle 4-years-monthly, multi-deal data   (umbrella #TBD)
+### Epic: Scale-readiness — handle 4-years-monthly, multi-deal data   (umbrella #128)
 
 Make the backend + UI cope with ~48-period, multi-deal data: cache tape analytics, a config-driven deal registry, durable extraction artifacts, time-series/paginated UI, and bounded agent context.
 
@@ -60,7 +60,7 @@ Make the backend + UI cope with ~48-period, multi-deal data: cache tape analytic
 - **Bound agent context over many periods** — keep `/query` selective (e.g. latest + summary, not all ~48 periods dumped into the prompt) so cost/latency/context stay sane at scale. Sequencing: parallel. Paths: `src/loanwhiz/agent/planner.py`, `src/loanwhiz/agent/tools.py`.
 - **Scale the UI — time-series, pagination, deal selector** — Pool/Projection charts use a real time-axis for ~48 periods; long tables paginate/virtualize; a deal selector (from the registry) drives all pages. Sequencing: sequential. After the multi-deal registry and tape-analytics cache children. Paths: `web/app/**`, `web/components/**`, `web/lib/api.ts`.
 
-### Epic: Framework surface — expose primitives & governance in the UI   (umbrella #TBD)
+### Epic: Framework surface — expose primitives & governance in the UI   (umbrella #129)
 
 Surface the framework itself — the registered primitives and the governance/evidence trail — over the API and in a Framework UI section, aligning the demo with what the challenge judges.
 
@@ -71,4 +71,14 @@ Surface the framework itself — the registered primitives and the governance/ev
 
 ## Filed issues
 
-<Filled in phase 4>
+- Epic "Scale-readiness" → umbrella #128
+  - #130 Cache tape-analytics  (parallel)
+  - #131 Config-driven multi-deal registry  (parallel)
+  - #132 Durable extraction artifacts + Docling-markdown cache + force_refresh busting  (parallel)
+  - #133 Bound agent context over many periods  (parallel)
+  - #134 Scale the UI — time-series, pagination, deal selector  (sequential, after #130 #131)
+- Epic "Framework surface" → umbrella #129
+  - #135 GET /primitives endpoint  (parallel)
+  - #136 GET /governance/{pack_id} endpoint  (parallel)
+  - #137 Primitives catalogue page  (sequential, after #135)
+  - #138 Governance / evidence view  (sequential, after #136)
