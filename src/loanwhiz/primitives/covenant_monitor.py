@@ -186,13 +186,16 @@ def _compute_proximity(
 def _compute_direction(
     current_proximity: float,
     prior_proximity: float | None,
-    trigger_direction: str,
 ) -> str:
     """Determine whether the metric is improving or deteriorating.
 
     "Improving" means moving *away* from a breach; "deteriorating" means
     moving *toward* a breach. "Stable" means no material change (< 1 ppt).
-    "n/a" when there is no prior period to compare to or no threshold.
+    "n/a" when there is no prior period to compare to.
+
+    Because proximity is always expressed as a percentage of the threshold
+    (higher = closer to breach, for both "above" and "below" triggers), the
+    direction logic is symmetric: a rising proximity is always deteriorating.
     """
     if prior_proximity is None:
         return "n/a"
@@ -444,7 +447,7 @@ class CovenantMonitor(Primitive[CovenantInput, CovenantOutput]):
 
                 history = proximity_history[trigger.name]
                 prior_prox = history[-1] if history else None
-                dir_label = _compute_direction(prox, prior_prox, trigger.direction)
+                dir_label = _compute_direction(prox, prior_prox)
 
                 history.append(prox)
 

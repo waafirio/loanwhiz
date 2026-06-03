@@ -488,16 +488,16 @@ class TestDirectionHelpers:
     """Unit tests for _compute_direction helper directly."""
 
     def test_no_prior_returns_na(self) -> None:
-        assert _compute_direction(50.0, None, "above") == "n/a"
+        assert _compute_direction(50.0, None) == "n/a"
 
     def test_higher_proximity_is_deteriorating(self) -> None:
-        assert _compute_direction(60.0, 50.0, "above") == "deteriorating"
+        assert _compute_direction(60.0, 50.0) == "deteriorating"
 
     def test_lower_proximity_is_improving(self) -> None:
-        assert _compute_direction(40.0, 50.0, "above") == "improving"
+        assert _compute_direction(40.0, 50.0) == "improving"
 
     def test_small_delta_is_stable(self) -> None:
-        assert _compute_direction(50.5, 50.0, "above") == "stable"
+        assert _compute_direction(50.5, 50.0) == "stable"
 
 
 # ---------------------------------------------------------------------------
