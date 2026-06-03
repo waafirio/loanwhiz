@@ -1,4 +1,0 @@
-gradio>=4.0
-# loanwhiz primitives are available via editable install from the repo root:
-#   pip install -e ../../
-# or via PYTHONPATH pointing to ../../src (handled by app.py sys.path insert).
