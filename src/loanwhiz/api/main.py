@@ -29,6 +29,10 @@ from pydantic import BaseModel, Field
 
 from loanwhiz.agent.executor import execute_query
 from loanwhiz.config import GREEN_LION
+from loanwhiz.primitives.collections_aggregator import (
+    CollectionsAggregator,
+    CollectionsInput,
+)
 from loanwhiz.primitives.covenant_monitor import CovenantInput, CovenantMonitor
 from loanwhiz.primitives.esma_tape_normaliser import (
     EsmaTapeInput,
@@ -184,6 +188,165 @@ def deal_compliance(deal_id: str) -> dict:
         CovenantInput(periods=periods, triggers=CovenantMonitor.DEFAULT_TRIGGERS)
     )
     return result.output.model_dump()
+
+
+# ---------------------------------------------------------------------------
+# Waterfall endpoint (CollectionsAggregator -> WaterfallRunner, latest period)
+#
+# Self-contained block: the response models + handler for
+# GET /deal/{deal_id}/waterfall live together here so the route can be reviewed
+# (and merged) as one unit. It mirrors the v1 Gradio chain
+# (clients/demo/tabs/waterfall.py) and the demo runner
+# (demo/run_green_lion.py): aggregate the latest reported tape into Available
+# Revenue / Principal Funds, then run the Green Lion Revenue + Redemption
+# Priority of Payments. Deterministic (no LLM), but it fetches the tape CSV.
+# ---------------------------------------------------------------------------
+
+# Green Lion 2026-1 capital structure (prospectus section 5; also the
+# primitives' own defaults). Restated here so the endpoint is explicit about
+# the structure it runs the waterfall against.
+_GREEN_LION_CLASS_A_BALANCE = 1_000_000_000.0
+_GREEN_LION_CLASS_A_RATE_PCT = 3.62
+_GREEN_LION_CLASS_B_BALANCE = 53_100_000.0
+_GREEN_LION_CLASS_C_BALANCE = 10_500_000.0
+
+
+class WaterfallStepModel(BaseModel):
+    """One priority step in the revenue cascade (mirrors ``WaterfallStep``)."""
+
+    priority: str
+    recipient: str
+    amount_available: float
+    amount_distributed: float
+    shortfall: float
+    condition: str | None = None
+
+
+class TrancheDistributionModel(BaseModel):
+    """Per-tranche distribution summary (mirrors ``TrancheDistribution``)."""
+
+    tranche: str
+    interest_received: float
+    principal_received: float
+    total_received: float
+    opening_balance: float
+    closing_balance: float
+
+
+class WaterfallResponse(BaseModel):
+    """Response body for ``GET /deal/{deal_id}/waterfall``.
+
+    Carries the 11-step Revenue Priority of Payments cascade and the
+    per-tranche (Class A / B / C) distributions for the latest reported period,
+    plus the Available Revenue / Principal Funds the waterfall ran on.
+    """
+
+    deal_id: str
+    reporting_period: str
+    available_revenue_funds: float
+    available_principal_funds: float
+    revenue_waterfall: list[WaterfallStepModel]
+    tranche_distributions: list[TrancheDistributionModel]
+    total_distributed: float
+    shortfall: float
+
+
+@app.get("/deal/{deal_id}/waterfall", response_model=WaterfallResponse)
+def deal_waterfall(deal_id: str) -> WaterfallResponse:
+    """Run the revenue waterfall for the deal's latest reported period.
+
+    Aggregates the most recent ESMA tape into Available Revenue / Principal
+    Funds (``CollectionsAggregator``), deriving ``prev_pool_balance`` from the
+    prior period's tape so scheduled principal is the reliable balance-delta
+    path, then runs the Green Lion Revenue + Redemption Priority of Payments
+    (``WaterfallRunner``) on the deal's capital structure. Returns the 11-step
+    revenue cascade and the per-tranche distributions.
+    """
+    _require_deal(deal_id)
+
+    tapes = GREEN_LION["tape_urls"]
+    latest = tapes[-1]
+    period = latest["date"]
+
+    aggregator = CollectionsAggregator()
+
+    # prev_pool_balance from the prior period's tape (reliable balance-delta
+    # path for scheduled principal). None when this is the only period; derived
+    # by aggregating the prior tape's pool balance.
+    prev_pool_balance: float | None = None
+    if len(tapes) >= 2:
+        prev = aggregator.execute(
+            CollectionsInput(
+                tape_file_url=tapes[-2]["url"],
+                reporting_period=tapes[-2]["date"],
+                class_a_rate_pct=_GREEN_LION_CLASS_A_RATE_PCT,
+                class_a_balance=_GREEN_LION_CLASS_A_BALANCE,
+                class_b_balance=_GREEN_LION_CLASS_B_BALANCE,
+                class_c_balance=_GREEN_LION_CLASS_C_BALANCE,
+            )
+        ).output
+        prev_pool_balance = prev.pool_balance_eur
+
+    collections = aggregator.execute(
+        CollectionsInput(
+            tape_file_url=latest["url"],
+            reporting_period=period,
+            prev_pool_balance=prev_pool_balance,
+            class_a_rate_pct=_GREEN_LION_CLASS_A_RATE_PCT,
+            class_a_balance=_GREEN_LION_CLASS_A_BALANCE,
+            class_b_balance=_GREEN_LION_CLASS_B_BALANCE,
+            class_c_balance=_GREEN_LION_CLASS_C_BALANCE,
+        )
+    ).output
+
+    waterfall = WaterfallRunner().execute(
+        WaterfallInput(
+            reporting_period=period,
+            available_revenue_funds=collections.available_revenue_funds,
+            available_principal_funds=collections.available_principal_funds,
+            senior_fees=collections.senior_fees,
+            swap_payment=0.0,
+            class_a_balance=_GREEN_LION_CLASS_A_BALANCE,
+            class_a_rate_pct=_GREEN_LION_CLASS_A_RATE_PCT,
+            class_b_balance=_GREEN_LION_CLASS_B_BALANCE,
+            class_c_balance=_GREEN_LION_CLASS_C_BALANCE,
+            reserve_account_balance=0.0,
+            reserve_account_target=0.0,
+            class_a_pdl_balance=0.0,
+            class_b_pdl_balance=0.0,
+        )
+    ).output
+
+    return WaterfallResponse(
+        deal_id=deal_id,
+        reporting_period=waterfall.reporting_period,
+        available_revenue_funds=collections.available_revenue_funds,
+        available_principal_funds=collections.available_principal_funds,
+        revenue_waterfall=[
+            WaterfallStepModel(
+                priority=step.priority,
+                recipient=step.recipient,
+                amount_available=step.amount_available,
+                amount_distributed=step.amount_distributed,
+                shortfall=step.shortfall,
+                condition=step.condition,
+            )
+            for step in waterfall.revenue_waterfall
+        ],
+        tranche_distributions=[
+            TrancheDistributionModel(
+                tranche=t.tranche,
+                interest_received=t.interest_received,
+                principal_received=t.principal_received,
+                total_received=t.total_received,
+                opening_balance=t.opening_balance,
+                closing_balance=t.closing_balance,
+            )
+            for t in waterfall.tranche_distributions
+        ],
+        total_distributed=waterfall.total_distributed,
+        shortfall=waterfall.shortfall,
+    )
 
 
 @app.post("/deal/{deal_id}/project")

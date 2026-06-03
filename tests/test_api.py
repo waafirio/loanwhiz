@@ -237,6 +237,94 @@ def test_deal_project_unknown_returns_404():
 
 
 # ---------------------------------------------------------------------------
+# Waterfall (primitives mocked)
+# ---------------------------------------------------------------------------
+
+
+class _FakeOutput:
+    """Stand-in for a PrimitiveResult whose ``output`` is a plain object.
+
+    Unlike ``_FakeResult`` (which model_dumps to a dict), the waterfall handler
+    reads typed attributes off ``.output`` (``revenue_waterfall`` etc.), so the
+    fake exposes them as attributes via ``SimpleNamespace``.
+    """
+
+    def __init__(self, output):
+        self._output = output
+
+    @property
+    def output(self):
+        return self._output
+
+
+def test_deal_waterfall_runs_chain():
+    from types import SimpleNamespace
+
+    collections_out = SimpleNamespace(
+        available_revenue_funds=4_000_000.0,
+        available_principal_funds=10_000_000.0,
+        senior_fees=50_000.0,
+        pool_balance_eur=1_000_000_000.0,
+    )
+    step = SimpleNamespace(
+        priority="(d)",
+        recipient="class_a_interest",
+        amount_available=4_000_000.0,
+        amount_distributed=3_000_000.0,
+        shortfall=0.0,
+        condition=None,
+    )
+    tranche = SimpleNamespace(
+        tranche="class_a",
+        interest_received=3_000_000.0,
+        principal_received=10_000_000.0,
+        total_received=13_000_000.0,
+        opening_balance=1_000_000_000.0,
+        closing_balance=990_000_000.0,
+    )
+    waterfall_out = SimpleNamespace(
+        reporting_period="2026-04-30",
+        revenue_waterfall=[step],
+        tranche_distributions=[tranche],
+        total_distributed=13_000_000.0,
+        shortfall=0.0,
+    )
+
+    with patch("loanwhiz.api.main.CollectionsAggregator") as MockAgg, patch(
+        "loanwhiz.api.main.WaterfallRunner"
+    ) as MockRunner:
+        MockAgg.return_value.execute.return_value = _FakeOutput(collections_out)
+        MockRunner.return_value.execute.return_value = _FakeOutput(waterfall_out)
+
+        resp = client.get("/deal/green-lion-2026-1/waterfall")
+
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["deal_id"] == "green-lion-2026-1"
+    assert body["reporting_period"] == "2026-04-30"
+    assert body["available_revenue_funds"] == 4_000_000.0
+    assert body["available_principal_funds"] == 10_000_000.0
+    # Revenue cascade steps surfaced with their amounts.
+    assert len(body["revenue_waterfall"]) == 1
+    assert body["revenue_waterfall"][0]["recipient"] == "class_a_interest"
+    assert body["revenue_waterfall"][0]["amount_distributed"] == 3_000_000.0
+    # Per-tranche distributions surfaced.
+    assert len(body["tranche_distributions"]) == 1
+    assert body["tranche_distributions"][0]["tranche"] == "class_a"
+    assert body["tranche_distributions"][0]["total_received"] == 13_000_000.0
+    assert body["total_distributed"] == 13_000_000.0
+    assert body["shortfall"] == 0.0
+    # Latest tape aggregated, plus the prior tape for prev_pool_balance.
+    assert MockAgg.return_value.execute.call_count == 2
+    MockRunner.return_value.execute.assert_called_once()
+
+
+def test_deal_waterfall_unknown_returns_404():
+    resp = client.get("/deal/unknown/waterfall")
+    assert resp.status_code == 404
+
+
+# ---------------------------------------------------------------------------
 # Integration — real primitives (hits network: tape downloads). Deselect with
 # `-m "not integration"`.
 # ---------------------------------------------------------------------------
@@ -249,3 +337,20 @@ def test_deal_compliance_integration():
     body = resp.json()
     assert "summary" in body
     assert "active_triggers" in body
+
+
+@pytest.mark.integration
+def test_deal_waterfall_integration():
+    """Real CollectionsAggregator -> WaterfallRunner over the live tapes."""
+    resp = client.get("/deal/green-lion-2026-1/waterfall")
+    assert resp.status_code == 200
+    body = resp.json()
+    # The Revenue Priority of Payments has 11 steps (a)-(k).
+    assert len(body["revenue_waterfall"]) == 11
+    # Class A / B / C distributions.
+    assert {t["tranche"] for t in body["tranche_distributions"]} == {
+        "class_a",
+        "class_b",
+        "class_c",
+    }
+    assert body["available_revenue_funds"] > 0
