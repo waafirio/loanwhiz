@@ -366,12 +366,17 @@ def _chat_stub_respond(message: str, history: list[dict]) -> list[dict]:
     ]
 
 
-def _render_chat_panel() -> None:
+def _render_chat_panel(deal_state: gr.State) -> None:
     """Render the docked chat panel (visible from every tab).
 
     Built once, inside the shared right-hand column, so it persists across tab
-    switches. Issue #81 owns the real wiring; everything here is the shell.
+    switches. The real chat handler lives in ``clients/demo/tabs/chat.py``
+    (issue #81): a user message runs through the planner agent grounded in the
+    loaded ``deal_state``, and the answer comes back in messages format with
+    cited documents appended inline. ``deal_state`` is wired as an input so the
+    answer is deal-specific (see ``CONTRACT.md`` §5).
     """
+    from clients.demo.tabs.chat import chat_respond
     gr.Markdown("### 💬 Ask LoanWhiz")
     # This Gradio build's Chatbot is messages-only (value is a list of
     # {"role", "content"} dicts) — see _chat_stub_respond. On Gradio builds
@@ -390,13 +395,15 @@ def _render_chat_panel() -> None:
         send = gr.Button("Send", variant="primary", size="sm")
         clear = gr.Button("Clear", size="sm")
 
-    def _respond(message: str, history: list[dict]) -> tuple[str, list[dict]]:
+    def _respond(
+        message: str, history: list[dict], state: "DealState"
+    ) -> tuple[str, list[dict]]:
         if not message.strip():
             return "", history
-        return "", _chat_stub_respond(message, history)
+        return "", chat_respond(message, history, state)
 
-    send.click(_respond, [msg, chatbot], [msg, chatbot])
-    msg.submit(_respond, [msg, chatbot], [msg, chatbot])
+    send.click(_respond, [msg, chatbot, deal_state], [msg, chatbot])
+    msg.submit(_respond, [msg, chatbot, deal_state], [msg, chatbot])
     clear.click(lambda: [], None, chatbot)
 
 
@@ -442,7 +449,7 @@ def build_app() -> gr.Blocks:
 
             # Right: the docked chat panel — present beside every tab.
             with gr.Column(scale=1, min_width=320):
-                _render_chat_panel()
+                _render_chat_panel(deal_state)
 
         def _load() -> tuple[DealState, str]:
             state = DealState.load_green_lion()
