@@ -150,6 +150,24 @@ class DealModelResponse(BaseModel):
     deal_model: dict | None = None   # full DealModel.model_dump() on cache hit
 
 
+class ScenarioWal(BaseModel):
+    """Class A weighted-average life (WAL) for one projected scenario.
+
+    Surfaced per scenario in the ``POST /deal/{deal_id}/project`` response
+    (additively — the existing waterfall projection fields are left intact).
+
+    Attributes:
+        wal_class_a_months:  Class A weighted-average life in months, computed as
+                             ``sum(t × principal_t) / sum(principal_t)`` over the
+                             projection horizon. ``0.0`` when no Class A principal
+                             is returned.
+        wal_class_a_years:   ``wal_class_a_months / 12`` for convenience.
+    """
+
+    wal_class_a_months: float
+    wal_class_a_years: float
+
+
 # ---------------------------------------------------------------------------
 # Service / health
 # ---------------------------------------------------------------------------
@@ -275,6 +293,7 @@ def deal_project(deal_id: str, req: ProjectRequest) -> dict:
     base_principal = base["current_pool_balance"] * 0.10 * (req.months / 12.0)
 
     projections = {}
+    wal = {}
     for scenario in req.scenarios:
         factor = _SCENARIO_COLLECTION_FACTORS.get(scenario, 1.0)
         result = runner.execute(
@@ -294,11 +313,35 @@ def deal_project(deal_id: str, req: ProjectRequest) -> dict:
                 class_b_pdl_balance=0.0,
             )
         )
-        projections[scenario] = result.output.model_dump()
+        projection = result.output.model_dump()
+
+        # Class A weighted-average life for the scenario. WAL is
+        # sum(t × principal_t) / sum(principal_t); over this single-period
+        # horizon the one Class A principal distribution lands at month
+        # ``req.months``, so a positive Class A principal yields a WAL of the
+        # full horizon and zero principal yields 0.0 (avoids divide-by-zero).
+        class_a_principal = sum(
+            dist.get("principal_received", 0.0)
+            for dist in projection.get("tranche_distributions", [])
+            if dist.get("tranche") == "class_a"
+        )
+        wal_months = float(req.months) if class_a_principal > 0.0 else 0.0
+        scenario_wal = ScenarioWal(
+            wal_class_a_months=wal_months,
+            wal_class_a_years=wal_months / 12.0,
+        )
+
+        # Surface WAL additively on the per-scenario projection (existing
+        # waterfall fields are untouched) and in a top-level per-scenario map.
+        projection["wal_class_a_months"] = scenario_wal.wal_class_a_months
+        projection["wal_class_a_years"] = scenario_wal.wal_class_a_years
+        projections[scenario] = projection
+        wal[scenario] = scenario_wal.model_dump()
 
     return {
         "deal_id": deal_id,
         "months": req.months,
         "scenarios": req.scenarios,
         "projections": projections,
+        "wal": wal,
     }
