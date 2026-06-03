@@ -102,6 +102,7 @@ from loanwhiz.config import GREEN_LION  # noqa: E402
 from loanwhiz.extraction.assembler import DealModel  # noqa: E402
 
 from clients.demo.tabs.overview import render as deal_overview_render  # noqa: E402
+from clients.demo.tabs.projection import render as projection_render  # noqa: E402
 
 # Default on-disk extraction cache — must match ``extract_deal_model``'s
 # default so the cache-aware read finds what the (pre-warm) extraction wrote.
@@ -328,7 +329,7 @@ TAB_REGISTRY: list[TabSpec] = [
     ),
     TabSpec(
         title="Cashflow Projection",
-        render=_stub_render(83, "Cashflow Projection"),
+        render=projection_render,
     ),
 ]
 
