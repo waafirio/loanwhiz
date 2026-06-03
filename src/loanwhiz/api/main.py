@@ -23,6 +23,8 @@ request/response so a later swap to a dedicated projector is a drop-in change.
 
 from __future__ import annotations
 
+import hashlib
+import json
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException
@@ -440,6 +442,74 @@ def deal_waterfall(deal_id: str) -> WaterfallResponse:
 # Self-contained block (response model + handler) for the per-period pool
 # analytics endpoint. Kept contiguous to minimise conflicts with the sibling
 # issues (#109/#111/#112) editing this same module in parallel.
+#
+# Caching (#130, Part of #128 — scale-readiness)
+# ----------------------------------------------
+# Normalising every ESMA tape on every request fetches + parses each CSV anew;
+# with ~48 monthly tapes a single ``/tape-analytics`` call would take 30-90s
+# and pay that cost on every refresh. Each tape's normalised analytics is
+# deterministic and keyed by its (content-stable) URL, so we cache it in two
+# layers:
+#
+#   1. In-process memo (``_TAPE_ANALYTICS_MEMO``) — instant repeat reads within
+#      a running process.
+#   2. On-disk JSON under ``TAPE_ANALYTICS_CACHE_DIR`` — survives restarts.
+#
+# Both are keyed by the tape URL (a new reporting period is a new URL, never a
+# mutated file, so URL-keying never serves stale data). The on-disk dir is
+# deliberately distinct from the assembler's extraction cache
+# (``DEAL_MODEL_CACHE_DIR`` / ``/tmp/loanwhiz_cache/deals``, reworked under
+# #132) so the two cache stories don't collide.
+#
+# Invalidation: delete ``TAPE_ANALYTICS_CACHE_DIR`` (and restart, or clear
+# ``_TAPE_ANALYTICS_MEMO``) — there is no per-tape expiry because the keyed
+# URLs are immutable.
+
+# On-disk cache directory for normalised tape analytics. Distinct from
+# DEAL_MODEL_CACHE_DIR so this cache never collides with the extraction
+# artifact cache (#132). Module-level so tests can patch it at a tmp_path.
+TAPE_ANALYTICS_CACHE_DIR = "/tmp/loanwhiz_cache/tape_analytics"
+
+# In-process memo: tape URL -> EsmaTapeOutput.model_dump() dict. Module-level
+# so it persists across requests within a process; tests clear it for
+# determinism.
+_TAPE_ANALYTICS_MEMO: dict[str, dict] = {}
+
+
+def _tape_cache_path(url: str) -> Path:
+    """On-disk cache path for a tape URL.
+
+    The URL is the cache key; we hash it to a filesystem-safe filename rather
+    than embedding the raw URL.
+    """
+    digest = hashlib.sha256(url.encode("utf-8")).hexdigest()
+    return Path(TAPE_ANALYTICS_CACHE_DIR) / f"{digest}.json"
+
+
+def _normalised_tape_output(url: str) -> dict:
+    """Return the normalised ``EsmaTapeOutput`` dict for a tape URL, cached.
+
+    Checks the in-process memo, then the on-disk JSON cache, and only on a miss
+    runs the (network-fetching, CPU-heavy) :class:`EsmaTapeNormaliser`. A miss
+    populates both layers so the analytics for any given tape is computed at
+    most once. The returned dict is the unchanged ``EsmaTapeOutput.model_dump()``
+    shape — callers spread it into ``TapeAnalyticsPeriod`` as before.
+    """
+    memo_hit = _TAPE_ANALYTICS_MEMO.get(url)
+    if memo_hit is not None:
+        return memo_hit
+
+    cache_path = _tape_cache_path(url)
+    if cache_path.exists():
+        output = json.loads(cache_path.read_text(encoding="utf-8"))
+        _TAPE_ANALYTICS_MEMO[url] = output
+        return output
+
+    output = EsmaTapeNormaliser().execute(EsmaTapeInput(file_url=url)).output.model_dump()
+    cache_path.parent.mkdir(parents=True, exist_ok=True)
+    cache_path.write_text(json.dumps(output), encoding="utf-8")
+    _TAPE_ANALYTICS_MEMO[url] = output
+    return output
 
 
 class TapeAnalyticsPeriod(BaseModel):
@@ -474,13 +544,16 @@ def deal_tape_analytics(deal_id: str) -> list[TapeAnalyticsPeriod]:
     returns one analytics object per reporting period in chronological order —
     pool balance, loan count, arrears, weighted LTV, and the EPC / geographic /
     property-type breakdowns.
+
+    Per-tape analytics is served from a keyed cache (in-process memo + on-disk
+    JSON, keyed by tape URL) so a given tape is normalised at most once; see the
+    caching note at the top of this block.
     """
     deal = _require_deal(deal_id)
-    normaliser = EsmaTapeNormaliser()
     return [
         TapeAnalyticsPeriod(
             tape_date=tape["date"],
-            **normaliser.execute(EsmaTapeInput(file_url=tape["url"])).output.model_dump(),
+            **_normalised_tape_output(tape["url"]),
         )
         for tape in deal["tape_urls"]
     ]
