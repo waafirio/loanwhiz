@@ -123,11 +123,18 @@ function ProjectionContent({ result }: { result: ProjectionResult }) {
                 <TableHead>Period</TableHead>
                 <TableHead className="text-right">Total distributed</TableHead>
                 <TableHead className="text-right">Shortfall</TableHead>
+                <TableHead className="text-right">Class A WAL</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {scenarios.map((s) => {
                 const p = result.projections[s];
+                // WAL is surfaced both on the per-scenario projection and in the
+                // top-level `wal` map; prefer the projection, fall back to the map.
+                const walYears =
+                  p.wal_class_a_years ?? result.wal?.[s]?.wal_class_a_years ?? null;
+                const walMonths =
+                  p.wal_class_a_months ?? result.wal?.[s]?.wal_class_a_months ?? null;
                 return (
                   <TableRow key={s}>
                     <TableCell className="font-medium">{humanize(s)}</TableCell>
@@ -139,6 +146,11 @@ function ProjectionContent({ result }: { result: ProjectionResult }) {
                     </TableCell>
                     <TableCell className="text-right tabular-nums">
                       {formatCurrency(p.shortfall)}
+                    </TableCell>
+                    <TableCell className="text-right tabular-nums">
+                      {walYears != null && walMonths != null
+                        ? `${walYears.toFixed(2)} yr (${walMonths.toFixed(1)} mo)`
+                        : "—"}
                     </TableCell>
                   </TableRow>
                 );

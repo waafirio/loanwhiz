@@ -6,6 +6,7 @@ import {
   ApiError,
   getDealModel,
   type DealModel,
+  type Tranche,
 } from "@/lib/api";
 import {
   EmptyState,
@@ -28,14 +29,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-
-/** Shape of a tranche if the model ever exposes one (forward-compatible). */
-interface Tranche {
-  name?: string;
-  class?: string;
-  balance?: number;
-  rate_pct?: number;
-}
+import { formatCurrency, humanize } from "@/lib/format";
 
 export default function OverviewPage() {
   const [data, setData] = useState<DealModel | null>(null);
@@ -67,11 +61,13 @@ export default function OverviewPage() {
 }
 
 function OverviewContent({ data }: { data: DealModel }) {
-  // The model endpoint may not yet surface extracted structure (known backend
-  // gap: tranches=0). Read these defensively and render an empty state when
-  // absent rather than crashing.
-  const tranches = (data.tranches as Tranche[] | undefined) ?? [];
-  const triggers = (data.triggers as unknown[] | undefined) ?? [];
+  const extracted = data.deal_model;
+  const cached = data.extraction_status === "cached" && extracted != null;
+
+  // Prefer the extracted model's structure; the top-level fields mirror it on a
+  // cache hit and are null otherwise.
+  const tranches: Tranche[] = extracted?.tranche_structure ?? [];
+  const triggers: string[] = data.trigger_names ?? extracted?.trigger_names ?? [];
   const completeness =
     typeof data.completeness_score === "number"
       ? data.completeness_score
@@ -118,9 +114,7 @@ function OverviewContent({ data }: { data: DealModel }) {
           </CardHeader>
           <CardContent>
             {completeness === null ? (
-              <div className="text-sm text-muted-foreground">
-                Not reported
-              </div>
+              <div className="text-sm text-muted-foreground">Not reported</div>
             ) : (
               <div className="text-2xl font-semibold">
                 {Math.round(completeness * 100)}%
@@ -136,26 +130,34 @@ function OverviewContent({ data }: { data: DealModel }) {
           <CardTitle className="text-base">Capital structure</CardTitle>
         </CardHeader>
         <CardContent>
-          {tranches.length === 0 ? (
-            <EmptyState message="No tranches extracted yet — the deal-model extraction does not expose a tranche structure for this deal." />
+          {!cached ? (
+            <EmptyState message="Deal model not yet extracted — the extraction cache is cold for this deal. Capital structure appears once extraction has run." />
+          ) : tranches.length === 0 ? (
+            <EmptyState message="No tranches extracted — the prospectus tranche structure could not be derived for this deal." />
           ) : (
             <Table>
               <TableHeader>
                 <TableRow>
                   <TableHead>Tranche</TableHead>
-                  <TableHead className="text-right">Balance</TableHead>
-                  <TableHead className="text-right">Rate</TableHead>
+                  <TableHead className="text-right">Size</TableHead>
+                  <TableHead>Rating</TableHead>
+                  <TableHead>Rate</TableHead>
+                  <TableHead className="text-right">Seniority</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {tranches.map((t, i) => (
-                  <TableRow key={t.name ?? t.class ?? i}>
-                    <TableCell>{t.name ?? t.class ?? `Tranche ${i + 1}`}</TableCell>
-                    <TableCell className="text-right">
-                      {t.balance != null ? t.balance.toLocaleString() : "—"}
+                  <TableRow key={t.name ?? i}>
+                    <TableCell className="font-medium">
+                      {t.name ? humanize(t.name) : `Tranche ${i + 1}`}
                     </TableCell>
-                    <TableCell className="text-right">
-                      {t.rate_pct != null ? `${t.rate_pct}%` : "—"}
+                    <TableCell className="text-right tabular-nums">
+                      {t.size_eur != null ? formatCurrency(t.size_eur) : "—"}
+                    </TableCell>
+                    <TableCell>{t.rating ?? "—"}</TableCell>
+                    <TableCell>{t.rate ?? "—"}</TableCell>
+                    <TableCell className="text-right tabular-nums">
+                      {t.seniority}
                     </TableCell>
                   </TableRow>
                 ))}
@@ -172,12 +174,18 @@ function OverviewContent({ data }: { data: DealModel }) {
         </CardHeader>
         <CardContent>
           {triggers.length === 0 ? (
-            <EmptyState message="No triggers in the deal model — see the Compliance page for the live covenant monitor." />
+            <EmptyState
+              message={
+                cached
+                  ? "No triggers in the extracted deal model — see the Compliance page for the live covenant monitor."
+                  : "Deal model not yet extracted — trigger names appear once extraction has run. See the Compliance page for the live covenant monitor."
+              }
+            />
           ) : (
             <div className="flex flex-wrap gap-2">
               {triggers.map((t, i) => (
-                <Badge key={i} variant="secondary">
-                  {String((t as { name?: string }).name ?? t)}
+                <Badge key={`${t}-${i}`} variant="secondary">
+                  {humanize(t)}
                 </Badge>
               ))}
             </div>
