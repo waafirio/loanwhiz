@@ -10,6 +10,83 @@ from loanwhiz.primitives.covenant_monitor import CovenantInput, CovenantMonitor
 from loanwhiz.primitives.esma_tape_normaliser import EsmaTapeInput, EsmaTapeNormaliser
 from loanwhiz.primitives.waterfall_runner import WaterfallInput, WaterfallRunner
 
+# ---------------------------------------------------------------------------
+# Context-bounding for multi-period tool output
+# ---------------------------------------------------------------------------
+
+# Above this many distinct reporting periods, multi-period tool output is
+# summarised rather than returned verbatim. The covenant monitor emits one
+# status row per trigger *per period*, so with ~48 monthly periods (4 years,
+# the #128 scale target) and 5 default triggers that is ~240 rows — enough to
+# blow up the agent's context/cost/latency. Below the threshold (the 3-period
+# Green Lion demo) the payload is returned unchanged.
+MAX_VERBATIM_PERIODS = 6
+
+
+def _bound_covenant_output(output: dict) -> dict:
+    """Bound a CovenantOutput dict so it stays context-cheap over many periods.
+
+    ``CovenantMonitor`` returns ``trigger_statuses`` as one row per trigger per
+    period. When the data spans more than :data:`MAX_VERBATIM_PERIODS` distinct
+    periods, this collapses ``trigger_statuses`` to just the latest period's
+    rows and adds a computed ``trend_summary`` (per-trigger first/latest/min/max
+    proximity, worst proximity, ever-triggered flag, net trend direction) so the
+    agent can still answer trend questions without every period in context.
+
+    Below the threshold the dict is returned unchanged — preserving the exact
+    current behaviour for the small Green Lion demo deal.
+
+    The summary is pure Python over data the primitive already produced: no
+    extra LLM call, no retrieval.
+    """
+    statuses = output.get("trigger_statuses", [])
+    periods = list(dict.fromkeys(s["period"] for s in statuses))  # ordered, unique
+    if len(periods) <= MAX_VERBATIM_PERIODS:
+        return output
+
+    latest_period = periods[-1]
+    latest_rows = [s for s in statuses if s["period"] == latest_period]
+
+    # Per-trigger trend aggregates across the full (now-summarised) history.
+    by_trigger: dict[str, list[dict]] = {}
+    for s in statuses:
+        by_trigger.setdefault(s["trigger_name"], []).append(s)
+
+    trend_summary = []
+    for name, rows in by_trigger.items():
+        proximities = [r["proximity_pct"] for r in rows]
+        first, latest = rows[0], rows[-1]
+        delta = latest["proximity_pct"] - first["proximity_pct"]
+        if abs(delta) < 1.0:
+            net_trend = "stable"
+        elif delta > 0:
+            net_trend = "deteriorating"  # higher proximity = closer to breach
+        else:
+            net_trend = "improving"
+        trend_summary.append(
+            {
+                "trigger_name": name,
+                "first_period": first["period"],
+                "latest_period": latest["period"],
+                "first_proximity_pct": first["proximity_pct"],
+                "latest_proximity_pct": latest["proximity_pct"],
+                "min_proximity_pct": min(proximities),
+                "max_proximity_pct": max(proximities),
+                "ever_triggered": any(r["is_triggered"] for r in rows),
+                "net_trend": net_trend,
+            }
+        )
+
+    bounded = dict(output)
+    bounded["trigger_statuses"] = latest_rows
+    bounded["trend_summary"] = trend_summary
+    bounded["periods_summarised"] = (
+        f"{len(periods)} periods analysed ({periods[0]} … {latest_period}); "
+        f"trigger_statuses shows only the latest period. See trend_summary for "
+        f"per-trigger min/max/latest proximity and net trend across all periods."
+    )
+    return bounded
+
 
 @tool
 def load_esma_tape(file_url: str, reporting_date: str | None = None) -> dict:
@@ -80,6 +157,13 @@ def check_covenants(
 
     periods_json: JSON list of EsmaTapeOutput dicts (from load_esma_tape).
     Returns trigger status, proximity to breach, active triggers.
+
+    Over many periods (> 6) the output is bounded to keep context cheap:
+    ``trigger_statuses`` then shows only the latest period, and a
+    ``trend_summary`` carries per-trigger min/max/latest proximity and the net
+    trend across all periods. Answer trend questions from ``trend_summary``;
+    ``active_triggers``/``near_miss_triggers``/``summary`` always reflect the
+    latest period regardless of how many periods were analysed.
     """
     primitive = CovenantMonitor()
     result = primitive.execute(
@@ -93,7 +177,9 @@ def check_covenants(
             original_pool_balance=original_pool_balance,
         )
     )
-    return result.output.model_dump() | {"confidence": result.confidence}
+    return _bound_covenant_output(result.output.model_dump()) | {
+        "confidence": result.confidence
+    }
 
 
 @tool

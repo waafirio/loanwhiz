@@ -279,6 +279,123 @@ def test_check_covenants_deserializes_periods_json():
     assert result["active_triggers"] == []
 
 
+def _make_multi_period_covenant_output(n_periods: int) -> CovenantOutput:
+    """Synthetic covenant output spanning ``n_periods`` periods × 2 triggers.
+
+    Mimics what ``CovenantMonitor`` returns: one ``TriggerStatus`` row per
+    trigger per period. Proximity climbs over time on the loss trigger (a
+    deteriorating trend) and holds flat on the reserve trigger, so the
+    trend_summary has something real to surface.
+    """
+    from loanwhiz.primitives.covenant_monitor import TriggerStatus
+
+    statuses = []
+    for i in range(n_periods):
+        year = 2024 + (i // 12)
+        period = f"{year}-{(i % 12) + 1:02d}-28"
+        # loss trigger: proximity rises 10 -> ~80 across the history
+        loss_prox = 10.0 + (70.0 * i / max(n_periods - 1, 1))
+        statuses.append(
+            TriggerStatus(
+                trigger_name="cumulative_loss_trigger",
+                period=period,
+                metric_value=round(loss_prox / 100.0 * 1.5, 4),
+                threshold=1.5,
+                is_triggered=loss_prox > 100.0,
+                proximity_pct=round(loss_prox, 4),
+                direction="deteriorating" if i else "n/a",
+            )
+        )
+        statuses.append(
+            TriggerStatus(
+                trigger_name="reserve_fund_trigger",
+                period=period,
+                metric_value=100.0,
+                threshold=100.0,
+                is_triggered=False,
+                proximity_pct=100.0,
+                direction="stable" if i else "n/a",
+            )
+        )
+    return CovenantOutput(
+        trigger_statuses=statuses,
+        active_triggers=[],
+        near_miss_triggers=[],
+        summary=f"All triggers within compliance across {n_periods} periods.",
+    )
+
+
+def _covenant_result(output: CovenantOutput) -> PrimitiveResult[CovenantOutput]:
+    return PrimitiveResult[CovenantOutput](
+        output=output,
+        confidence=1.0,
+        citations=[],
+        audit_entry=_FAKE_AUDIT,
+    )
+
+
+def test_check_covenants_bounds_many_periods():
+    """Over many periods the wrapper must NOT return all N×M status rows.
+
+    With 48 periods × 2 triggers the raw primitive output carries 96 rows; the
+    bounded payload must surface only the latest period plus a trend summary.
+    """
+    fake_output = _make_multi_period_covenant_output(48)
+    assert len(fake_output.trigger_statuses) == 96  # sanity: primitive is verbose
+
+    with patch(
+        "loanwhiz.agent.tools.CovenantMonitor.execute",
+        return_value=_covenant_result(fake_output),
+    ):
+        result = check_covenants.invoke({"periods_json": "[]"})
+
+    # Only the latest period's rows survive in trigger_statuses (2 triggers).
+    assert len(result["trigger_statuses"]) == 2
+    latest_periods = {s["period"] for s in result["trigger_statuses"]}
+    assert latest_periods == {"2027-12-28"}  # period index 47 -> 2027-12
+
+    # A computed trend summary is present, one entry per trigger.
+    assert "trend_summary" in result
+    names = {t["trigger_name"] for t in result["trend_summary"]}
+    assert names == {"cumulative_loss_trigger", "reserve_fund_trigger"}
+
+    # The loss trigger's trend is surfaced: min < max and net deteriorating.
+    loss = next(
+        t for t in result["trend_summary"] if t["trigger_name"] == "cumulative_loss_trigger"
+    )
+    assert loss["min_proximity_pct"] < loss["max_proximity_pct"]
+    assert loss["latest_proximity_pct"] > loss["first_proximity_pct"]
+    assert loss["net_trend"] == "deteriorating"
+    assert loss["ever_triggered"] is False
+
+    # An explicit note tells the agent the data was summarised.
+    assert "periods_summarised" in result
+    assert "48 periods" in result["periods_summarised"]
+
+    # Latest-period aggregates and confidence still pass through unchanged.
+    assert result["active_triggers"] == []
+    assert result["near_miss_triggers"] == []
+    assert result["confidence"] == 1.0
+
+
+def test_check_covenants_preserves_small_period_payload():
+    """At/below the threshold the payload is returned verbatim (Green Lion)."""
+    fake_output = _make_multi_period_covenant_output(3)
+    raw_row_count = len(fake_output.trigger_statuses)  # 3 periods × 2 triggers = 6
+
+    with patch(
+        "loanwhiz.agent.tools.CovenantMonitor.execute",
+        return_value=_covenant_result(fake_output),
+    ):
+        result = check_covenants.invoke({"periods_json": "[]"})
+
+    # All rows preserved; no summarisation artefacts added.
+    assert len(result["trigger_statuses"]) == raw_row_count
+    assert "trend_summary" not in result
+    assert "periods_summarised" not in result
+    assert result["confidence"] == 1.0
+
+
 def test_check_covenants_passes_scalar_overrides():
     fake_output = _make_covenant_output()
     fake_result = PrimitiveResult[CovenantOutput](
