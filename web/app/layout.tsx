@@ -3,6 +3,7 @@ import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 
 import { AppSidebar } from "@/components/app-sidebar";
+import { ChatPanel } from "@/components/chat-panel";
 import { TopBar } from "@/components/top-bar";
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 
@@ -38,6 +39,7 @@ export default function RootLayout({
             <TopBar />
             <main className="flex-1 p-6">{children}</main>
           </SidebarInset>
+          <ChatPanel />
         </SidebarProvider>
       </body>
     </html>
