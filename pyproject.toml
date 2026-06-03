@@ -19,6 +19,7 @@ dependencies = [
     "httpx>=0.27",
     "pytest>=8.2",
     "pytest-asyncio>=0.23",
+    "gradio>=4.0",
 ]
 
 [project.urls]
@@ -32,4 +33,5 @@ asyncio_mode = "auto"
 testpaths = ["tests"]
 markers = [
     "slow: marks tests that require network access or external services (deselect with '-m not slow')",
+    "integration: marks tests that require external API access e.g. Gemini (deselect with '-m not integration')",
 ]
