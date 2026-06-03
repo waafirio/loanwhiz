@@ -1,10 +1,10 @@
 ---
 id: 2026-06-03-api-expansion
 title: API Expansion
-status: draft
+status: filed
 created: 2026-06-03
 updated: 2026-06-03
-epics: []
+epics: [107]
 ---
 
 # API Expansion
@@ -51,7 +51,7 @@ Closes the follow-up gap flagged in epic #96's promotion (PR #106). The backend 
 
 ## Decomposition
 
-### Epic: API Expansion — expose the full backend over REST + rich v2 + retire Gradio   (umbrella #TBD)
+### Epic: API Expansion — expose the full backend over REST + rich v2 + retire Gradio   (umbrella #107)
 
 Expand the FastAPI to expose the extracted deal model, tape analytics, and waterfall; add WAL to projection; fix the tranches extraction bug; then rewire the v2 Next.js pages to the rich endpoints and retire the v1 Gradio app.
 
@@ -64,4 +64,10 @@ Expand the FastAPI to expose the extracted deal model, tape analytics, and water
 
 ## Filed issues
 
-<Filled in phase 4>
+- Epic "API Expansion" → umbrella #107
+  - #108 Fix tranches extraction in deal-model assembler  (parallel)
+  - #109 /deal/{id}/model returns the extracted DealModel  (parallel)
+  - #110 GET /deal/{id}/tape-analytics endpoint  (parallel)
+  - #111 GET /deal/{id}/waterfall endpoint  (parallel)
+  - #112 Add WAL to projection response  (parallel)
+  - #113 Rewire v2 frontend to rich endpoints + retire Gradio  (sequential, after #108–#112)
