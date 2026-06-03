@@ -102,6 +102,7 @@ from clients.demo.tabs.waterfall import render as waterfall_render  # noqa: E402
 from loanwhiz.config import GREEN_LION  # noqa: E402
 from loanwhiz.extraction.assembler import DealModel  # noqa: E402
 
+from clients.demo.tabs.compliance import render as compliance_render  # noqa: E402
 from clients.demo.tabs.overview import render as deal_overview_render  # noqa: E402
 from clients.demo.tabs.projection import render as projection_render  # noqa: E402
 
@@ -326,7 +327,7 @@ TAB_REGISTRY: list[TabSpec] = [
     TabSpec(title="Waterfall", render=waterfall_render),
     TabSpec(
         title="Compliance & Covenants",
-        render=_stub_render(82, "Compliance & Covenants"),
+        render=compliance_render,
     ),
     TabSpec(
         title="Cashflow Projection",
