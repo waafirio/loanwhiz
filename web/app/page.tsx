@@ -8,6 +8,7 @@ import {
   type DealModel,
   type Tranche,
 } from "@/lib/api";
+import { useSelectedDeal } from "@/lib/deal-context";
 import {
   EmptyState,
   ErrorState,
@@ -32,22 +33,47 @@ import {
 import { formatCurrency, humanize } from "@/lib/format";
 
 export default function OverviewPage() {
-  const [data, setData] = useState<DealModel | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const { dealId } = useSelectedDeal();
+  // Tag each result/error with the deal it belongs to. When `dealId` changes
+  // the tagged state no longer matches, so the page renders the loading state
+  // again without a synchronous reset inside the effect (which the lint rule
+  // forbids); the async fetch callbacks then publish the fresh result.
+  const [state, setState] = useState<{
+    dealId: string;
+    data: DealModel | null;
+    error: string | null;
+  }>({ dealId, data: null, error: null });
 
   useEffect(() => {
-    getDealModel()
-      .then(setData)
-      .catch((e) =>
-        setError(e instanceof ApiError ? e.message : "Failed to load deal model"),
+    let cancelled = false;
+    getDealModel(dealId)
+      .then(
+        (d) => !cancelled && setState({ dealId, data: d, error: null }),
+      )
+      .catch(
+        (e) =>
+          !cancelled &&
+          setState({
+            dealId,
+            data: null,
+            error:
+              e instanceof ApiError ? e.message : "Failed to load deal model",
+          }),
       );
-  }, []);
+    return () => {
+      cancelled = true;
+    };
+  }, [dealId]);
+
+  const current = state.dealId === dealId ? state : null;
+  const data = current?.data ?? null;
+  const error = current?.error ?? null;
 
   return (
     <div className="space-y-6">
       <PageHeader
         title="Overview"
-        description="Deal model and headline figures for Green Lion 2026-1."
+        description="Deal model and headline figures for the selected deal."
       />
       {error ? (
         <ErrorState title="Could not load deal model" message={error} />
