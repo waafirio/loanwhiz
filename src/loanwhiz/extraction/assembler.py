@@ -312,15 +312,16 @@ def _download_and_convert(prospectus_url: str) -> str:
             f"Failed to download prospectus from {prospectus_url}: {exc}"
         ) from exc
 
-    with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as f:
-        f.write(resp.content)
-        pdf_path = f.name
+    # Use a TemporaryDirectory so the PDF is cleaned up even on exception.
+    with tempfile.TemporaryDirectory() as tmpdir:
+        pdf_path = str(Path(tmpdir) / "prospectus.pdf")
+        Path(pdf_path).write_bytes(resp.content)
 
-    try:
-        converter = DocumentConverter()
-        result = converter.convert(pdf_path)
-        return result.document.export_to_markdown()
-    except Exception as exc:
-        raise RuntimeError(
-            f"Docling conversion failed for PDF downloaded from {prospectus_url}: {exc}"
-        ) from exc
+        try:
+            converter = DocumentConverter()
+            result = converter.convert(pdf_path)
+            return result.document.export_to_markdown()
+        except Exception as exc:
+            raise RuntimeError(
+                f"Docling conversion failed for PDF downloaded from {prospectus_url}: {exc}"
+            ) from exc

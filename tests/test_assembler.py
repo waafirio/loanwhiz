@@ -233,13 +233,19 @@ class TestCompletenessScore:
         assert score == 0.0
 
     def test_all_sections_found(self) -> None:
+        sections_found = [
+            "definitions",
+            "revenue_priority_of_payments",
+            "conditions_of_notes",
+            "available_funds",
+        ]
         expected = [
             "definitions",
             "revenue_priority_of_payments",
             "conditions_of_notes",
             "available_funds",
         ]
-        score = len([s for s in expected if s in expected]) / len(expected)
+        score = len([s for s in expected if s in sections_found]) / len(expected)
         assert score == 1.0
 
     def test_half_sections_found(self) -> None:
