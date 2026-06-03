@@ -33,7 +33,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
 from loanwhiz.agent.executor import execute_query
-from loanwhiz.config import DEAL_REGISTRY, GREEN_LION
+from loanwhiz.config import DEAL_REGISTRY
 from loanwhiz.extraction.assembler import (
     DEFAULT_DEAL_CACHE_DIR,
     DealModel,
@@ -354,6 +354,19 @@ _GREEN_LION_CLASS_A_RATE_PCT = 3.62
 _GREEN_LION_CLASS_B_BALANCE = 53_100_000.0
 _GREEN_LION_CLASS_C_BALANCE = 10_500_000.0
 
+# Default capital structure for a deal whose registry context does not carry its
+# own. The deal-context dict (loanwhiz.config.DEAL_REGISTRY entries) may include
+# an optional ``capital_structure`` key with these four fields; ``deal_waterfall``
+# resolves it from the deal and falls back to this Green Lion default so the
+# route is deal-generic without a registry-schema migration. Green Lion (no
+# ``capital_structure`` key) is unchanged.
+_GREEN_LION_CAPITAL_STRUCTURE = {
+    "class_a_balance": _GREEN_LION_CLASS_A_BALANCE,
+    "class_a_rate_pct": _GREEN_LION_CLASS_A_RATE_PCT,
+    "class_b_balance": _GREEN_LION_CLASS_B_BALANCE,
+    "class_c_balance": _GREEN_LION_CLASS_C_BALANCE,
+}
+
 
 class WaterfallStepModel(BaseModel):
     """One priority step in the revenue cascade (mirrors ``WaterfallStep``)."""
@@ -402,15 +415,24 @@ def deal_waterfall(deal_id: str) -> WaterfallResponse:
     Aggregates the most recent ESMA tape into Available Revenue / Principal
     Funds (``CollectionsAggregator``), deriving ``prev_pool_balance`` from the
     prior period's tape so scheduled principal is the reliable balance-delta
-    path, then runs the Green Lion Revenue + Redemption Priority of Payments
-    (``WaterfallRunner``) on the deal's capital structure. Returns the 11-step
-    revenue cascade and the per-tranche distributions.
+    path, then runs the Revenue + Redemption Priority of Payments
+    (``WaterfallRunner``) on the deal's capital structure. Both the tapes and
+    the capital structure are resolved from the deal context (mirroring
+    ``/compliance`` and ``/tape-analytics``): a deal may carry its own
+    ``capital_structure`` in the registry, otherwise the Green Lion default
+    applies. Returns the 11-step revenue cascade and the per-tranche
+    distributions.
     """
-    _require_deal(deal_id)
+    deal = _require_deal(deal_id)
 
-    tapes = GREEN_LION["tape_urls"]
+    tapes = deal["tape_urls"]
     latest = tapes[-1]
     period = latest["date"]
+
+    # Capital structure from the deal context, defaulting to Green Lion's when
+    # the deal carries none — keeps the route deal-generic without a registry
+    # schema migration.
+    cap = deal.get("capital_structure", _GREEN_LION_CAPITAL_STRUCTURE)
 
     aggregator = CollectionsAggregator()
 
@@ -423,10 +445,10 @@ def deal_waterfall(deal_id: str) -> WaterfallResponse:
             CollectionsInput(
                 tape_file_url=tapes[-2]["url"],
                 reporting_period=tapes[-2]["date"],
-                class_a_rate_pct=_GREEN_LION_CLASS_A_RATE_PCT,
-                class_a_balance=_GREEN_LION_CLASS_A_BALANCE,
-                class_b_balance=_GREEN_LION_CLASS_B_BALANCE,
-                class_c_balance=_GREEN_LION_CLASS_C_BALANCE,
+                class_a_rate_pct=cap["class_a_rate_pct"],
+                class_a_balance=cap["class_a_balance"],
+                class_b_balance=cap["class_b_balance"],
+                class_c_balance=cap["class_c_balance"],
             )
         ).output
         prev_pool_balance = prev.pool_balance_eur
@@ -436,10 +458,10 @@ def deal_waterfall(deal_id: str) -> WaterfallResponse:
             tape_file_url=latest["url"],
             reporting_period=period,
             prev_pool_balance=prev_pool_balance,
-            class_a_rate_pct=_GREEN_LION_CLASS_A_RATE_PCT,
-            class_a_balance=_GREEN_LION_CLASS_A_BALANCE,
-            class_b_balance=_GREEN_LION_CLASS_B_BALANCE,
-            class_c_balance=_GREEN_LION_CLASS_C_BALANCE,
+            class_a_rate_pct=cap["class_a_rate_pct"],
+            class_a_balance=cap["class_a_balance"],
+            class_b_balance=cap["class_b_balance"],
+            class_c_balance=cap["class_c_balance"],
         )
     ).output
 
@@ -450,10 +472,10 @@ def deal_waterfall(deal_id: str) -> WaterfallResponse:
             available_principal_funds=collections.available_principal_funds,
             senior_fees=collections.senior_fees,
             swap_payment=0.0,
-            class_a_balance=_GREEN_LION_CLASS_A_BALANCE,
-            class_a_rate_pct=_GREEN_LION_CLASS_A_RATE_PCT,
-            class_b_balance=_GREEN_LION_CLASS_B_BALANCE,
-            class_c_balance=_GREEN_LION_CLASS_C_BALANCE,
+            class_a_balance=cap["class_a_balance"],
+            class_a_rate_pct=cap["class_a_rate_pct"],
+            class_b_balance=cap["class_b_balance"],
+            class_c_balance=cap["class_c_balance"],
             reserve_account_balance=0.0,
             reserve_account_target=0.0,
             class_a_pdl_balance=0.0,

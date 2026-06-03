@@ -609,6 +609,80 @@ def test_deal_waterfall_unknown_returns_404():
     assert resp.status_code == 404
 
 
+def test_deal_waterfall_uses_resolved_deal_not_green_lion():
+    """The waterfall runs against the *selected* deal's tapes + capital structure.
+
+    Regression for #151: the handler previously read ``GREEN_LION["tape_urls"]``
+    and the hard-coded Green Lion capital-structure constants, so it returned
+    Green Lion's waterfall for any deal. With a second deal registered (its own
+    tapes + an explicit ``capital_structure``), the aggregator and runner must be
+    driven by *that* deal's values — not Green Lion's.
+    """
+    from types import SimpleNamespace
+
+    from loanwhiz.api import main as api_main
+
+    sponsor = {
+        "deal_name": "Sponsor Deal 2025-1 B.V.",
+        "prospectus_url": "https://example.test/sponsor-2025-1-prospectus.pdf",
+        "tape_urls": [
+            {"date": "2025-11-30", "url": "https://example.test/sponsor-202511.csv"},
+            {"date": "2025-12-31", "url": "https://example.test/sponsor-202512.csv"},
+        ],
+        "investor_report_urls": [],
+        "capital_structure": {
+            "class_a_balance": 500_000_000.0,
+            "class_a_rate_pct": 4.10,
+            "class_b_balance": 25_000_000.0,
+            "class_c_balance": 5_000_000.0,
+        },
+    }
+    augmented = {**api_main.DEALS, "sponsor-2025-1": sponsor}
+
+    collections_out = SimpleNamespace(
+        available_revenue_funds=2_000_000.0,
+        available_principal_funds=6_000_000.0,
+        senior_fees=25_000.0,
+        pool_balance_eur=500_000_000.0,
+    )
+    waterfall_out = SimpleNamespace(
+        reporting_period="2025-12-31",
+        revenue_waterfall=[],
+        tranche_distributions=[],
+        total_distributed=0.0,
+        shortfall=0.0,
+    )
+
+    with patch.object(api_main, "DEALS", augmented), patch(
+        "loanwhiz.api.main.CollectionsAggregator"
+    ) as MockAgg, patch("loanwhiz.api.main.WaterfallRunner") as MockRunner:
+        MockAgg.return_value.execute.return_value = _FakeOutput(collections_out)
+        MockRunner.return_value.execute.return_value = _FakeOutput(waterfall_out)
+
+        resp = client.get("/deal/sponsor-2025-1/waterfall")
+
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["deal_id"] == "sponsor-2025-1"
+    assert body["reporting_period"] == "2025-12-31"
+
+    # Tapes resolved from the SELECTED deal, not Green Lion: the latest call
+    # aggregates the sponsor's latest tape URL.
+    agg_calls = MockAgg.return_value.execute.call_args_list
+    latest_input = agg_calls[-1].args[0]
+    assert latest_input.tape_file_url == "https://example.test/sponsor-202512.csv"
+    # Capital structure resolved from the deal context (sponsor's values).
+    assert latest_input.class_a_balance == 500_000_000.0
+    assert latest_input.class_a_rate_pct == 4.10
+
+    # The waterfall ran on the sponsor's capital structure too.
+    wf_input = MockRunner.return_value.execute.call_args.args[0]
+    assert wf_input.class_a_balance == 500_000_000.0
+    assert wf_input.class_b_balance == 25_000_000.0
+    assert wf_input.class_c_balance == 5_000_000.0
+    assert wf_input.class_a_rate_pct == 4.10
+
+
 # ---------------------------------------------------------------------------
 # Tape analytics (primitive mocked)
 # ---------------------------------------------------------------------------
