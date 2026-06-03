@@ -97,6 +97,7 @@ _SRC = Path(__file__).resolve().parent.parent.parent / "src"
 if str(_SRC) not in sys.path:
     sys.path.insert(0, str(_SRC))
 
+from clients.demo.tabs.waterfall import render as waterfall_render  # noqa: E402
 from loanwhiz.config import GREEN_LION  # noqa: E402
 from loanwhiz.extraction.assembler import DealModel  # noqa: E402
 
@@ -318,7 +319,7 @@ def _stub_render(issue_number: int, title: str) -> Callable[[gr.State], None]:
 TAB_REGISTRY: list[TabSpec] = [
     TabSpec(title="Deal Overview", render=_stub_render(78, "Deal Overview")),
     TabSpec(title="Pool & Performance", render=_stub_render(79, "Pool & Performance")),
-    TabSpec(title="Waterfall", render=_stub_render(80, "Waterfall")),
+    TabSpec(title="Waterfall", render=waterfall_render),
     TabSpec(
         title="Compliance & Covenants",
         render=_stub_render(82, "Compliance & Covenants"),
