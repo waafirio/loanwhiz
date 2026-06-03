@@ -224,6 +224,46 @@ class TestToMarkdown:
 
 
 # ---------------------------------------------------------------------------
+# Citation deduplication tests
+# ---------------------------------------------------------------------------
+
+
+class TestCitationDeduplication:
+    def test_duplicate_citations_collapsed(self) -> None:
+        citation = {"source": "green_lion.pdf", "page": 1}
+        tc0 = _make_tool_call(0, 0.9, citations=[citation])
+        tc1 = _make_tool_call(1, 0.8, citations=[citation])  # same citation
+        pack = GovernanceEvidencePack.create(
+            query="q", answer="a", tool_calls=[tc0, tc1]
+        )
+        assert len(pack.all_citations) == 1
+        assert pack.all_citations[0] == citation
+
+    def test_distinct_citations_preserved(self) -> None:
+        c0 = {"source": "prospectus.pdf", "page": 1}
+        c1 = {"source": "tape.csv", "row": 42}
+        tc0 = _make_tool_call(0, 0.9, citations=[c0])
+        tc1 = _make_tool_call(1, 0.8, citations=[c1])
+        pack = GovernanceEvidencePack.create(
+            query="q", answer="a", tool_calls=[tc0, tc1]
+        )
+        assert len(pack.all_citations) == 2
+
+    def test_first_seen_order_preserved(self) -> None:
+        c0 = {"source": "a.pdf"}
+        c1 = {"source": "b.pdf"}
+        c_dup = {"source": "a.pdf"}  # duplicate of c0
+        tc0 = _make_tool_call(0, 0.9, citations=[c0, c1])
+        tc1 = _make_tool_call(1, 0.8, citations=[c_dup])
+        pack = GovernanceEvidencePack.create(
+            query="q", answer="a", tool_calls=[tc0, tc1]
+        )
+        assert len(pack.all_citations) == 2
+        assert pack.all_citations[0]["source"] == "a.pdf"
+        assert pack.all_citations[1]["source"] == "b.pdf"
+
+
+# ---------------------------------------------------------------------------
 # Test 5 — JSONL round-trip via EvidencePackLogger
 # ---------------------------------------------------------------------------
 
