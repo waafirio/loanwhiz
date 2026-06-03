@@ -43,6 +43,7 @@ from typing import Any
 from pydantic import BaseModel, Field
 
 from loanwhiz.primitives.base import (
+    AuditEntry,
     BaseInput,
     Citation,
     Primitive,
@@ -479,8 +480,6 @@ class AuditLogger(Primitive[AuditLoggerInput, AuditLoggerOutput]):
         and those flagged for human review, and returns an
         ``AuditLoggerOutput`` summary.
         """
-        from loanwhiz.primitives.base import AuditEntry, PrimitiveResult
-
         t0 = time.perf_counter()
         input_hash = input.input_hash()
 
@@ -512,8 +511,6 @@ class AuditLogger(Primitive[AuditLoggerInput, AuditLoggerOutput]):
             entries_written=entries_written,
             flagged_for_review=flagged,
         )
-
-        from loanwhiz.primitives.base import Citation as _Citation
 
         audit = AuditEntry.now(
             primitive_name=self.name,
