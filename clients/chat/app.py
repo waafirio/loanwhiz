@@ -13,8 +13,6 @@ from google import genai
 
 from loanwhiz.config import GCP_PROJECT, GCP_LOCATION, MODEL_FLASH, GREEN_LION
 from loanwhiz.primitives.esma_tape_normaliser import EsmaTapeNormaliser, EsmaTapeInput
-from loanwhiz.primitives.covenant_monitor import CovenantMonitor, CovenantInput
-from loanwhiz.primitives.collections_aggregator import CollectionsAggregator, CollectionsInput
 
 # ---------------------------------------------------------------------------
 # Deal context cache
