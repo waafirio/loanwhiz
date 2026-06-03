@@ -8,7 +8,7 @@ Structured finance agent framework — SF-native primitives, deal model extracti
 
 ```
 CLIENTS
-  Chat / Q&A  |  Dashboard  |  Compliance  |  REST API
+  Unified Demo UI (clients/demo) — 5 tabs + docked chat  |  REST API
                          |
                          v
           LANGGRAPH AGENT SERVICE
@@ -67,6 +67,28 @@ python demo/run_green_lion.py
 ```
 
 This will load the Green Lion 2026-1 deal package (prospectus, three monthly ESMA tapes, three monthly investor reports), run the full extraction and execution pipeline, and print a structured summary.
+
+---
+
+## Demo UI
+
+The demo is a single unified Gradio app at `clients/demo/` — one multi-tab interface with a docked chat panel, replacing the earlier standalone chat / dashboard / compliance apps.
+
+```bash
+python clients/demo/app.py
+```
+
+Then open http://localhost:7860. The app shares one loaded deal across five tabs:
+
+1. **Deal Overview** — the extracted deal model (tranche structure, definitions, waterfall, covenants).
+2. **Pool & Performance** — 3-period pool trends and EPC / geo / rate distributions.
+3. **Waterfall** — runs the extracted waterfall live and shows the distribution cascade.
+4. **Compliance & Covenants** — report verification, the covenant grid, and the actual-vs-projected-stress chart.
+5. **Cashflow Projection** — base vs stress projections and WAL.
+
+The docked chat panel (right of every tab) answers ad-hoc deal questions grounded in the loaded deal model and tapes.
+
+> For demo-day operation (cache pre-warm, narrative walkthrough, fallbacks), see [`clients/demo/RUNBOOK.md`](clients/demo/RUNBOOK.md).
 
 ---
 
