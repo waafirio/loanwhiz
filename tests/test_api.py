@@ -7,6 +7,8 @@ mocked so the unit tests run offline. The one real end-to-end test is marked
 
 from __future__ import annotations
 
+import json
+from pathlib import Path
 from unittest.mock import patch
 
 import pytest
@@ -65,13 +67,115 @@ def test_cors_preflight_allows_next_origin():
 # ---------------------------------------------------------------------------
 
 
-def test_deal_model_returns_deal_context():
-    resp = client.get("/deal/green-lion-2026-1/model")
+def _seed_cached_deal_model(cache_dir: str) -> dict:
+    """Write a minimal cached DealModel JSON for Green Lion into ``cache_dir``.
+
+    Returns the dict that was serialised so tests can assert against it. The
+    filename mirrors the assembler's slug for the deal name.
+    """
+    from loanwhiz.api import main as api_main
+    from loanwhiz.config import GREEN_LION
+    from loanwhiz.extraction.assembler import _slug
+
+    model = {
+        "metadata": {
+            "deal_name": GREEN_LION["deal_name"],
+            "prospectus_url": GREEN_LION["prospectus_url"],
+            "extracted_at": "2026-06-03T00:00:00+00:00",
+            "extraction_duration_sec": 1.5,
+            "sections_found": ["definitions", "revenue_priority_of_payments"],
+            "completeness_score": 0.75,
+            "cache_path": "",
+        },
+        "definitions": {
+            "Available Distribution Amount": {
+                "definition": "The amount available for distribution.",
+                "page_or_section": "Section 9.1",
+            }
+        },
+        "waterfalls": {
+            "revenue": {
+                "waterfall_type": "revenue",
+                "deal_name": GREEN_LION["deal_name"],
+                "steps": [],
+            }
+        },
+        "covenants": {
+            "deal_name": GREEN_LION["deal_name"],
+            "triggers": [],
+            "issuer_covenants": [],
+            "extraction_confidence": 0.6,
+        },
+        "tranche_structure": [
+            {
+                "priority": "(a)",
+                "recipient": "security_trustee_fees",
+                "description": "Pay security trustee fees.",
+                "waterfall_type": "revenue",
+            }
+        ],
+        "trigger_names": ["Class A PDL Trigger", "Reserve Account Trigger"],
+    }
+    slug = _slug(GREEN_LION["deal_name"])
+    path = Path(cache_dir) / f"{slug}.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(model), encoding="utf-8")
+    return model
+
+
+def test_deal_model_returns_deal_context_when_cold(tmp_path):
+    """With no cache present the endpoint returns the config and degrades
+    gracefully — config fields intact, deal_model null, status not_cached.
+    It must NOT block on a cold extraction."""
+    with patch("loanwhiz.api.main.DEAL_MODEL_CACHE_DIR", str(tmp_path)):
+        resp = client.get("/deal/green-lion-2026-1/model")
     assert resp.status_code == 200
     body = resp.json()
     assert body["deal_name"] == "Green Lion 2026-1 B.V."
     assert "tape_urls" in body
     assert "prospectus_url" in body
+    assert body["extraction_status"] == "not_cached"
+    assert body["deal_model"] is None
+    assert body["completeness_score"] is None
+    assert body["trigger_names"] is None
+
+
+def test_deal_model_returns_extracted_model_when_cached(tmp_path):
+    """When the extracted DealModel is cached the endpoint returns it —
+    tranches, trigger_names, completeness, metadata — alongside the config."""
+    seeded = _seed_cached_deal_model(str(tmp_path))
+    with patch("loanwhiz.api.main.DEAL_MODEL_CACHE_DIR", str(tmp_path)):
+        resp = client.get("/deal/green-lion-2026-1/model")
+
+    assert resp.status_code == 200
+    body = resp.json()
+    # Config still present (nothing the frontend uses breaks).
+    assert body["deal_name"] == "Green Lion 2026-1 B.V."
+    assert "tape_urls" in body
+    assert "prospectus_url" in body
+    # Extracted model surfaced.
+    assert body["extraction_status"] == "cached"
+    assert body["completeness_score"] == 0.75
+    assert body["trigger_names"] == seeded["trigger_names"]
+    assert body["deal_model"] is not None
+    assert body["deal_model"]["tranche_structure"] == seeded["tranche_structure"]
+    assert body["deal_model"]["trigger_names"] == seeded["trigger_names"]
+    assert body["deal_model"]["waterfalls"] == seeded["waterfalls"]
+    assert (
+        body["deal_model"]["metadata"]["completeness_score"]
+        == seeded["metadata"]["completeness_score"]
+    )
+
+
+def test_deal_model_does_not_trigger_extraction_when_cold(tmp_path):
+    """A cold cache must never invoke the expensive extract_deal_model path."""
+    with patch("loanwhiz.api.main.DEAL_MODEL_CACHE_DIR", str(tmp_path)), patch(
+        "loanwhiz.extraction.assembler.extract_deal_model"
+    ) as mock_extract:
+        resp = client.get("/deal/green-lion-2026-1/model")
+    assert resp.status_code == 200
+    assert resp.json()["extraction_status"] == "not_cached"
+    mock_extract.assert_not_called()
 
 
 def test_deal_model_unknown_returns_404():

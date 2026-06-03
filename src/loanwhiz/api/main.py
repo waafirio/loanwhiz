@@ -23,12 +23,15 @@ request/response so a later swap to a dedicated projector is a drop-in change.
 
 from __future__ import annotations
 
+from pathlib import Path
+
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
 from loanwhiz.agent.executor import execute_query
 from loanwhiz.config import GREEN_LION
+from loanwhiz.extraction.assembler import DealModel, _slug
 from loanwhiz.primitives.covenant_monitor import CovenantInput, CovenantMonitor
 from loanwhiz.primitives.esma_tape_normaliser import (
     EsmaTapeInput,
@@ -109,6 +112,44 @@ class ProjectRequest(BaseModel):
     months: int = 12
 
 
+# Directory where ``loanwhiz.extraction.assembler.extract_deal_model`` caches
+# extracted deal models. The ``/deal/{id}/model`` endpoint reads from here but
+# never triggers a cold extraction (that path is ~10min via Docling) — it only
+# serves a cache hit and otherwise degrades gracefully. Mirrors the assembler's
+# default ``cache_dir`` so the two agree on where the artifact lives.
+DEAL_MODEL_CACHE_DIR = "/tmp/loanwhiz_cache/deals"
+
+
+class DealModelResponse(BaseModel):
+    """Response body for ``GET /deal/{deal_id}/model``.
+
+    Carries the deal *config* (name + document URLs the frontend already uses)
+    alongside the *extracted* :class:`~loanwhiz.extraction.assembler.DealModel`
+    when it has been cached. The extracted model (tranches, triggers,
+    waterfalls, completeness, metadata) is the full ``DealModel.model_dump()``
+    nested under ``deal_model`` — kept as a free-form dict so the assembler's
+    schema is the single source of truth and need not be restated here.
+
+    When the cache is cold/missing the endpoint does **not** block on a cold
+    extraction: it returns the config with ``deal_model=None`` and
+    ``extraction_status="not_cached"`` so the frontend can render what it has
+    and surface the extraction state.
+    """
+
+    # Deal config (unchanged from the GREEN_LION context — what the frontend
+    # already consumes; kept so nothing breaks).
+    deal_name: str
+    prospectus_url: str
+    tape_urls: list[dict]
+    investor_report_urls: list[dict]
+
+    # Extraction state + the cached extracted model (if any).
+    extraction_status: str          # "cached" | "not_cached"
+    completeness_score: float | None = None
+    trigger_names: list[str] | None = None
+    deal_model: dict | None = None   # full DealModel.model_dump() on cache hit
+
+
 # ---------------------------------------------------------------------------
 # Service / health
 # ---------------------------------------------------------------------------
@@ -159,10 +200,39 @@ def _require_deal(deal_id: str) -> dict:
     return deal
 
 
-@app.get("/deal/{deal_id}/model")
-def deal_model(deal_id: str) -> dict:
-    """Return the deal context/model (document URLs, structure)."""
-    return _require_deal(deal_id)
+@app.get("/deal/{deal_id}/model", response_model=DealModelResponse)
+def deal_model(deal_id: str) -> DealModelResponse:
+    """Return the deal config plus the cached extracted DealModel.
+
+    Serves the extracted model (tranches, triggers, waterfalls, completeness,
+    metadata) from the assembler's on-disk cache when present. **Never triggers
+    a cold extraction** — that runs Docling (~10min) — so on a cache miss the
+    endpoint returns the config with ``deal_model=None`` and
+    ``extraction_status="not_cached"`` rather than blocking the request.
+    """
+    deal = _require_deal(deal_id)
+
+    base = DealModelResponse(
+        deal_name=deal["deal_name"],
+        prospectus_url=deal["prospectus_url"],
+        tape_urls=deal["tape_urls"],
+        investor_report_urls=deal["investor_report_urls"],
+        extraction_status="not_cached",
+    )
+
+    # Check the cache file directly (do NOT call extract_deal_model — a cache
+    # miss there would synchronously run the ~10min Docling pipeline). The path
+    # mirrors the assembler's: {cache_dir}/{slug(deal_name)}.json.
+    cache_path = Path(DEAL_MODEL_CACHE_DIR) / f"{_slug(deal['deal_name'])}.json"
+    if not cache_path.exists():
+        return base
+
+    model = DealModel.model_validate_json(cache_path.read_text(encoding="utf-8"))
+    base.extraction_status = "cached"
+    base.completeness_score = model.metadata.completeness_score
+    base.trigger_names = model.trigger_names
+    base.deal_model = model.model_dump()
+    return base
 
 
 @app.get("/deal/{deal_id}/compliance")
