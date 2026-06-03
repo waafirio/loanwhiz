@@ -294,6 +294,27 @@ def test_covenant_monitor_builds_grid():
     assert status  # non-empty summary
 
 
+def test_marker_boundary_semantics():
+    """🟢 at/over-funded, 🟡 only for 80<=prox<100, 🔴 when triggered."""
+
+    class _St:
+        def __init__(self, triggered, threshold, prox):
+            self.is_triggered = triggered
+            self.threshold = threshold
+            self.proximity_pct = prox
+
+    # Triggered → 🔴.
+    assert compliance._marker(_St(True, 1.5, 200.0)) == "🔴"
+    # Near-miss band → 🟡.
+    assert compliance._marker(_St(False, 1.5, 90.0)) == "🟡"
+    # Exactly at threshold (e.g. reserve funded to target) → 🟢, not 🟡.
+    assert compliance._marker(_St(False, 100.0, 100.0)) == "🟢"
+    # Comfortable headroom → 🟢.
+    assert compliance._marker(_St(False, 1.5, 30.0)) == "🟢"
+    # No applicable threshold (PDL) → 🟢 when not triggered.
+    assert compliance._marker(_St(False, None, 0.0)) == "🟢"
+
+
 # ---------------------------------------------------------------------------
 # 5. The differentiator chart helper — actual + base + stress + limit
 # ---------------------------------------------------------------------------

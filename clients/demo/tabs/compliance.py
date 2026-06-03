@@ -309,12 +309,14 @@ def _marker(status: Any) -> str:
     """Map a ``TriggerStatus`` to a 🟢 / 🟡 / 🔴 proximity marker.
 
     🔴 = triggered (breached); 🟡 = near-miss (within 20 % of an applicable
-    threshold, i.e. ``proximity_pct >= 80`` and not yet triggered); 🟢 = in
-    compliance with comfortable headroom.
+    threshold but not at/over it, i.e. ``80 <= proximity_pct < 100`` and not
+    yet triggered — mirrors ``CovenantMonitor``'s own near-miss definition);
+    🟢 = in compliance (including exactly at threshold, e.g. a reserve fund
+    funded right to target).
     """
     if status.is_triggered:
         return "🔴"
-    if status.threshold is not None and status.proximity_pct >= 80.0:
+    if status.threshold is not None and 80.0 <= status.proximity_pct < 100.0:
         return "🟡"
     return "🟢"
 
