@@ -33,7 +33,7 @@ from __future__ import annotations
 
 import time
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 from loanwhiz.primitives.base import (
     AuditEntry,
