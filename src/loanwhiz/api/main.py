@@ -283,11 +283,10 @@ def deal_compliance(deal_id: str) -> dict:
 #
 # Self-contained block: the response models + handler for
 # GET /deal/{deal_id}/waterfall live together here so the route can be reviewed
-# (and merged) as one unit. It mirrors the v1 Gradio chain
-# (clients/demo/tabs/waterfall.py) and the demo runner
-# (demo/run_green_lion.py): aggregate the latest reported tape into Available
-# Revenue / Principal Funds, then run the Green Lion Revenue + Redemption
-# Priority of Payments. Deterministic (no LLM), but it fetches the tape CSV.
+# (and merged) as one unit. It mirrors the demo runner (demo/run_green_lion.py):
+# aggregate the latest reported tape into Available Revenue / Principal Funds,
+# then run the Green Lion Revenue + Redemption Priority of Payments.
+# Deterministic (no LLM), but it fetches the tape CSV.
 # ---------------------------------------------------------------------------
 
 # Green Lion 2026-1 capital structure (prospectus section 5; also the
