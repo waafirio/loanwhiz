@@ -78,8 +78,13 @@ def _make_synthetic_tape(
 
 
 def _tape_url_from_string(csv_str: str) -> str:
-    """Write the CSV to a temp file and return a ``file://`` path."""
-    import tempfile, os
+    """Write the CSV to a temp file and return a local path.
+
+    The file is created with ``delete=False`` so pandas can open it by path
+    after the function returns.  Temp files are small (synthetic tapes) and
+    will be cleaned up by the OS on process exit.
+    """
+    import tempfile
 
     tf = tempfile.NamedTemporaryFile(
         mode="w", suffix=".csv", delete=False, encoding="utf-8"
