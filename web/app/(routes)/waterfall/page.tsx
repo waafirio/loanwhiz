@@ -13,9 +13,8 @@ import {
 
 import {
   ApiError,
-  postProjection,
-  type ProjectionResult,
-  type WaterfallProjection,
+  getWaterfall,
+  type WaterfallResult,
 } from "@/lib/api";
 import {
   EmptyState,
@@ -40,11 +39,11 @@ import {
 import { formatCurrency, humanize } from "@/lib/format";
 
 export default function WaterfallPage() {
-  const [data, setData] = useState<ProjectionResult | null>(null);
+  const [data, setData] = useState<WaterfallResult | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    postProjection({ scenarios: ["base"], months: 12 })
+    getWaterfall()
       .then(setData)
       .catch((e) =>
         setError(e instanceof ApiError ? e.message : "Failed to load waterfall"),
@@ -55,7 +54,7 @@ export default function WaterfallPage() {
     <div className="space-y-6">
       <PageHeader
         title="Waterfall"
-        description="Revenue priority cascade and per-tranche distributions (base scenario)."
+        description="Revenue priority cascade and per-tranche distributions for the latest reported period."
       />
       {error ? (
         <ErrorState title="Could not load waterfall" message={error} />
@@ -68,17 +67,8 @@ export default function WaterfallPage() {
   );
 }
 
-function WaterfallContent({ result }: { result: ProjectionResult }) {
-  const proj: WaterfallProjection | undefined =
-    result.projections.base ??
-    result.projections[result.scenarios[0]] ??
-    Object.values(result.projections)[0];
-
-  if (!proj) {
-    return <EmptyState message="No waterfall projection returned." />;
-  }
-
-  const cascade = proj.revenue_waterfall ?? [];
+function WaterfallContent({ result }: { result: WaterfallResult }) {
+  const cascade = result.revenue_waterfall ?? [];
   const chartData = cascade.map((step) => ({
     name: `${step.priority} ${step.recipient}`,
     distributed: step.amount_distributed,
@@ -86,6 +76,56 @@ function WaterfallContent({ result }: { result: ProjectionResult }) {
 
   return (
     <div className="space-y-6">
+      {/* Headline cards */}
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground">
+              Reporting period
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-lg font-semibold">{result.reporting_period}</div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground">
+              Available revenue
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-lg font-semibold tabular-nums">
+              {formatCurrency(result.available_revenue_funds)}
+            </div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground">
+              Total distributed
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-lg font-semibold tabular-nums">
+              {formatCurrency(result.total_distributed)}
+            </div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground">
+              Shortfall
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-lg font-semibold tabular-nums">
+              {formatCurrency(result.shortfall)}
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
       <Card>
         <CardHeader>
           <CardTitle className="text-base">
@@ -171,7 +211,7 @@ function WaterfallContent({ result }: { result: ProjectionResult }) {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {proj.tranche_distributions.map((t) => (
+              {result.tranche_distributions.map((t) => (
                 <TableRow key={t.tranche}>
                   <TableCell className="font-medium">
                     {humanize(t.tranche)}
