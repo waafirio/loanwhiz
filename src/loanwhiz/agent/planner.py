@@ -99,6 +99,29 @@ class AgentResponse(TypedDict):
 # ---------------------------------------------------------------------------
 
 
+def _content_to_text(content: object) -> str:
+    """Normalise a LangChain message ``.content`` to a plain string.
+
+    Older models returned a bare ``str``; newer Gemini / langchain versions
+    return a list of content-part dicts (``[{"type": "text", "text": "..."}]``)
+    or objects. Join the text parts so downstream (str-typed) consumers like
+    ``GovernanceEvidencePack.answer`` get a string regardless.
+    """
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        parts: list[str] = []
+        for part in content:
+            if isinstance(part, str):
+                parts.append(part)
+            elif isinstance(part, dict):
+                text = part.get("text")
+                if isinstance(text, str):
+                    parts.append(text)
+        return "".join(parts)
+    return str(content)
+
+
 def run_query(question: str, save_evidence: bool = True) -> AgentResponse:
     """Run a structured finance question through the planner agent.
 
@@ -124,8 +147,12 @@ def run_query(question: str, save_evidence: bool = True) -> AgentResponse:
     agent = create_planner_agent()
     result = agent.invoke({"messages": [("user", question)]})
 
-    # The last message in the graph output is the final AI answer.
-    answer: str = result["messages"][-1].content
+    # The last message in the graph output is the final AI answer. Newer
+    # Gemini / langchain versions return ``.content`` as a list of content
+    # parts (e.g. ``[{"type": "text", "text": "..."}]``) rather than a bare
+    # string, so normalise to text before it reaches the (str-typed) evidence
+    # pack.
+    answer: str = _content_to_text(result["messages"][-1].content)
 
     # Walk the message history and extract ToolCallRecord entries from every
     # AI message that carries a non-empty .tool_calls list.
