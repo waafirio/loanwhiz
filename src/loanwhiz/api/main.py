@@ -24,6 +24,7 @@ request/response so a later swap to a dedicated projector is a drop-in change.
 from __future__ import annotations
 
 from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
 from loanwhiz.agent.executor import execute_query
@@ -39,6 +40,16 @@ app = FastAPI(
     title="LoanWhiz API",
     description="Structured finance agent framework — REST interface",
     version="0.1.0",
+)
+
+# Allow the local Next.js demo frontend (v2, served on :3000) to call this API
+# from the browser. Scoped to the two localhost dev origins — this is a local
+# demo allowlist, not a production CORS policy.
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 # Registry of known deals. For the hackathon, Green Lion is the one deal; the
