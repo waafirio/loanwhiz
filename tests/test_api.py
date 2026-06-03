@@ -579,6 +579,117 @@ def test_deal_tape_analytics_unknown_returns_404():
 
 
 # ---------------------------------------------------------------------------
+# Governance evidence pack (#136) — real logger, temp store
+# ---------------------------------------------------------------------------
+
+
+def _seed_evidence_pack(log_dir: str):
+    """Create and persist a known GovernanceEvidencePack into ``log_dir``.
+
+    Uses the real ``EvidencePackLogger`` (only the log directory is redirected
+    to a temp path) so the GET endpoint's load path is exercised end-to-end
+    without running an agent query. Returns the persisted pack.
+    """
+    from loanwhiz.governance import (
+        EvidencePackLogger,
+        GovernanceEvidencePack,
+        ToolCallRecord,
+    )
+
+    pack = GovernanceEvidencePack.create(
+        query="Is the deal compliant?",
+        answer="Yes, all covenants are within limits.",
+        tool_calls=[
+            ToolCallRecord(
+                call_index=0,
+                tool_name="covenant_monitor",
+                input_summary="Run covenants over latest period",
+                output_summary="No active triggers",
+                confidence=0.92,
+                citations=[{"source": "investor_report_2026-04", "page": 3}],
+                duration_ms=120.0,
+                timestamp="2026-06-03T00:00:00+00:00",
+            )
+        ],
+    )
+    EvidencePackLogger(log_dir=log_dir).save(pack)
+    return pack
+
+
+def test_governance_pack_returns_stored_pack(tmp_path):
+    """A stored pack is returned in full by GET /governance/{pack_id}."""
+    pack = _seed_evidence_pack(str(tmp_path))
+
+    with patch("loanwhiz.api.main.GOVERNANCE_LOG_DIR", str(tmp_path)):
+        resp = client.get(f"/governance/{pack.pack_id}")
+
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["pack_id"] == pack.pack_id
+    assert body["query"] == "Is the deal compliant?"
+    assert body["answer"] == "Yes, all covenants are within limits."
+    # Aggregate confidence is the min of tool confidences; one call at 0.92.
+    assert body["aggregate_confidence"] == pytest.approx(0.92)
+    assert body["human_review_required"] is False
+    # Tool-call trace surfaced.
+    assert len(body["tool_calls"]) == 1
+    call = body["tool_calls"][0]
+    assert call["tool_name"] == "covenant_monitor"
+    assert call["confidence"] == pytest.approx(0.92)
+    # Deduplicated citation trail surfaced.
+    assert body["all_citations"] == [
+        {"source": "investor_report_2026-04", "page": 3}
+    ]
+    # Governance metadata present.
+    assert body["finos_compliant"] is True
+    assert body["framework_version"] == pack.framework_version
+    assert body["model_used"] == pack.model_used
+
+
+def test_governance_pack_flags_human_review_when_low_confidence(tmp_path):
+    """A low-confidence pack round-trips with human_review_required True."""
+    from loanwhiz.governance import (
+        EvidencePackLogger,
+        GovernanceEvidencePack,
+        ToolCallRecord,
+    )
+
+    pack = GovernanceEvidencePack.create(
+        query="What's the risk?",
+        answer="Uncertain.",
+        tool_calls=[
+            ToolCallRecord(
+                call_index=0,
+                tool_name="waterfall_runner",
+                input_summary="Project stress scenario",
+                output_summary="Shortfall in junior tranche",
+                confidence=0.4,
+                citations=[],
+                duration_ms=50.0,
+                timestamp="2026-06-03T00:00:00+00:00",
+            )
+        ],
+    )
+    EvidencePackLogger(log_dir=str(tmp_path)).save(pack)
+
+    with patch("loanwhiz.api.main.GOVERNANCE_LOG_DIR", str(tmp_path)):
+        resp = client.get(f"/governance/{pack.pack_id}")
+
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["aggregate_confidence"] == pytest.approx(0.4)
+    assert body["human_review_required"] is True
+
+
+def test_governance_pack_unknown_returns_404(tmp_path):
+    """An unknown pack id returns 404."""
+    with patch("loanwhiz.api.main.GOVERNANCE_LOG_DIR", str(tmp_path)):
+        resp = client.get("/governance/does-not-exist")
+    assert resp.status_code == 404
+    assert resp.json()["detail"] == "Evidence pack does-not-exist not found"
+
+
+# ---------------------------------------------------------------------------
 # Integration — real primitives (hits network: tape downloads). Deselect with
 # `-m "not integration"`.
 # ---------------------------------------------------------------------------

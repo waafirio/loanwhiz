@@ -32,6 +32,7 @@ from pydantic import BaseModel, Field
 from loanwhiz.agent.executor import execute_query
 from loanwhiz.config import GREEN_LION
 from loanwhiz.extraction.assembler import DealModel, _slug
+from loanwhiz.governance import EvidencePackLogger
 from loanwhiz.primitives.collections_aggregator import (
     CollectionsAggregator,
     CollectionsInput,
@@ -560,3 +561,79 @@ def deal_project(deal_id: str, req: ProjectRequest) -> dict:
         "projections": projections,
         "wal": wal,
     }
+
+
+# ---------------------------------------------------------------------------
+# Governance evidence pack (#136)
+#
+# Self-contained block (response models + handler) for the auditable-agents
+# surface: GET /governance/{pack_id} returns a stored GovernanceEvidencePack —
+# the agent's tool-call trace, per-tool/aggregate confidence, deduplicated
+# citation trail, and human-review flag — so the UI (#138) can render the
+# evidence behind a query. Read-only over the EvidencePackLogger the planner
+# already writes to via run_query(..., save_evidence=True). Kept contiguous to
+# minimise additive merge conflicts with siblings editing this module.
+# ---------------------------------------------------------------------------
+
+# Root directory the EvidencePackLogger persists packs under. Mirrors the
+# logger's own default log_dir (loanwhiz.governance.evidence_pack), so this
+# endpoint reads from the same JSONL store the planner writes to. Patchable for
+# tests (same pattern as DEAL_MODEL_CACHE_DIR) so the suite can seed a pack into
+# a temp dir without running an agent query.
+GOVERNANCE_LOG_DIR = "/tmp/loanwhiz_governance"
+
+
+class ToolCallRecordModel(BaseModel):
+    """One agent tool call within a query (mirrors ``ToolCallRecord``)."""
+
+    call_index: int
+    tool_name: str
+    input_summary: str
+    output_summary: str
+    confidence: float
+    citations: list[dict]
+    duration_ms: float
+    timestamp: str
+
+
+class GovernanceEvidencePackResponse(BaseModel):
+    """Response body for ``GET /governance/{pack_id}``.
+
+    Mirrors the serialisable shape of
+    :class:`~loanwhiz.governance.evidence_pack.GovernanceEvidencePack` — the
+    audit trail (query/answer/timestamp + ordered tool-call records), the
+    per-tool and aggregate confidence, the deduplicated citation trail, the
+    human-review flag, and the governance metadata.
+    """
+
+    pack_id: str
+    query: str
+    answer: str
+    timestamp: str
+
+    tool_calls: list[ToolCallRecordModel]
+    aggregate_confidence: float
+    all_citations: list[dict]
+    human_review_required: bool
+
+    model_used: str
+    framework_version: str
+    finos_compliant: bool
+
+
+@app.get("/governance/{pack_id}", response_model=GovernanceEvidencePackResponse)
+def governance_pack(pack_id: str) -> GovernanceEvidencePackResponse:
+    """Return the stored governance evidence pack for ``pack_id``.
+
+    Loads the pack from the on-disk ``EvidencePackLogger`` store (the same
+    store the planner writes to when a query runs with ``save_evidence=True``)
+    and returns its full serialisable shape. Raises 404 when no pack with that
+    id exists.
+    """
+    logger = EvidencePackLogger(log_dir=GOVERNANCE_LOG_DIR)
+    pack = logger.load(pack_id)
+    if pack is None:
+        raise HTTPException(
+            status_code=404, detail=f"Evidence pack {pack_id} not found"
+        )
+    return GovernanceEvidencePackResponse(**pack.model_dump())
