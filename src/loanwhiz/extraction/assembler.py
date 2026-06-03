@@ -35,7 +35,11 @@ from pydantic import BaseModel
 
 from loanwhiz.extraction.covenant_extractor import extract_covenants
 from loanwhiz.extraction.definitions_graph import extract_definitions
-from loanwhiz.extraction.section_router import extract_key_sf_sections, route_sections
+from loanwhiz.extraction.section_router import (
+    SectionMap,
+    extract_key_sf_sections,
+    route_sections,
+)
 from loanwhiz.extraction.waterfall_extractor import extract_all_waterfalls
 
 
@@ -72,8 +76,11 @@ class DealModel(BaseModel):
     covenants:
         ``ExtractedCovenants.model_dump()`` — triggers and issuer covenants.
     tranche_structure:
-        Derived from waterfall steps — one dict per step (convenience view
-        for downstream consumers that just want the payment hierarchy).
+        The deal's note-class structure — one dict per tranche
+        ``{name, size_eur, rating, rate, seniority}``, ordered senior→junior.
+        Parsed from the prospectus tranche table (the first table of the
+        prospectus), falling back to the class references in the waterfall
+        steps when no table is found.
     trigger_names:
         Quick list of all trigger names from the covenants.
     """
@@ -194,7 +201,7 @@ def extract_deal_model(
         },
         waterfalls={k: v.model_dump() for k, v in waterfalls.items()},
         covenants=covenants.model_dump(),
-        tranche_structure=_extract_tranches(waterfalls),
+        tranche_structure=_extract_tranches(section_map, waterfalls),
         trigger_names=[t.name for t in covenants.triggers],
     )
 
@@ -234,40 +241,268 @@ def _slug(name: str) -> str:
     return collapsed.strip("-")
 
 
-def _extract_tranches(waterfalls: dict) -> list[dict]:
-    """Derive a tranche-structure list from the revenue waterfall steps.
+def _extract_tranches(
+    section_map: "SectionMap | None" = None,
+    waterfalls: dict | None = None,
+) -> list[dict]:
+    """Derive the deal's tranche (note class) structure.
 
-    Each dict in the returned list represents one payment step from the
-    revenue waterfall (or the first available waterfall when no revenue
-    waterfall exists).  The step is the most natural proxy for the tranche
-    hierarchy in a structured finance deal — one entry per priority class.
+    A tranche is a *note class* — Class A / B / C — each with a principal
+    size, credit rating, and coupon.  This is **not** the same thing as a
+    Priority-of-Payments step: the waterfall describes the *order* in which
+    cash is paid, while the tranche structure describes the *instruments*
+    that exist and their relative seniority.
 
-    Returns an empty list when no waterfalls are available.
+    Source choice (most reliable first)
+    -----------------------------------
+    1.  **Prospectus tranche table** (preferred).  The first table of an
+        RMBS/ABS prospectus lists every note class against rows such as
+        ``Principal Amount``, ``Issue Price``, ``Interest Rate`` and
+        ``Expected Ratings``.  Docling renders this as a markdown pipe
+        table in ``section_map.full_text``.  This is the only source that
+        carries sizes, ratings and coupons, so we parse it when available.
+    2.  **Waterfall class references** (fallback).  When no tranche table
+        can be located, derive the class names + seniority order from the
+        ``class_a_*`` / ``class_b_*`` / ``class_c_*`` recipients that appear
+        in the extracted waterfall steps.  Sizes / ratings / coupons are
+        ``None`` in this degraded mode, but the seniority skeleton is kept.
+
+    The earlier implementation derived tranches from revenue-waterfall steps
+    directly; for Green Lion the revenue waterfall extracted zero steps, so
+    that approach returned an empty list even though the prospectus tranche
+    table (and the redemption / post-enforcement waterfalls) clearly carry
+    the Class A/B/C structure — hence this rewrite.
 
     Parameters
     ----------
+    section_map:
+        The routed :class:`SectionMap` whose ``full_text`` holds the Docling
+        markdown (incl. the tranche table).  Primary source.
     waterfalls:
-        Output of :func:`extract_all_waterfalls` — ``{waterfall_type: ExtractedWaterfall}``.
+        ``{waterfall_type: ExtractedWaterfall}`` — fallback source for class
+        names + seniority when no tranche table is found.
 
     Returns
     -------
     list[dict]
-        One dict per step: ``{priority, recipient, description, waterfall_type}``.
+        One dict per tranche, ordered senior→junior:
+        ``{name, size_eur, rating, rate, seniority}``.
     """
-    # Prefer the revenue waterfall as the canonical tranche hierarchy.
-    waterfall = waterfalls.get("revenue") or next(iter(waterfalls.values()), None)
-    if waterfall is None:
+    if section_map is not None:
+        tranches = _parse_tranche_table(section_map.full_text)
+        if tranches:
+            return tranches
+
+    if waterfalls:
+        return _tranches_from_waterfalls(waterfalls)
+
+    return []
+
+
+# Maps a class letter to its 0-based seniority (A is most senior).
+def _seniority_for(letter: str) -> int:
+    return ord(letter.upper()) - ord("A")
+
+
+# A EUR amount such as "€1,000,000,000", "EUR 53,100,000" or "10,500,000".
+_AMOUNT_RE = re.compile(
+    r"(?:€|EUR\s*)?\s*([0-9][0-9.,]*[0-9]|[0-9])",
+)
+
+# A note-class label, e.g. "Class A", "Class A1", "Class A Notes".
+_CLASS_RE = re.compile(r"Class\s+([A-Z])\d*", re.IGNORECASE)
+
+# A coupon / interest-rate expression, e.g. "3 month EURIBOR + 0.43%" or "0.43%".
+_RATE_RE = re.compile(
+    r"((?:\d+\s*(?:month|m)\s*)?EURIBOR\s*[+\-]\s*[0-9.]+\s*%?|[0-9.]+\s*%)",
+    re.IGNORECASE,
+)
+
+# A rating token, e.g. "AAA", "Aaa", "AA+", "BBB-", "NR", "Unrated".
+_RATING_RE = re.compile(r"\b(AAA|Aaa|AA[+-]?|A[+-]?|BBB[+-]?|BB[+-]?|B[+-]?|NR|Unrated)\b")
+
+
+def _parse_euro_amount(text: str) -> float | None:
+    """Parse the first EUR amount in *text* into a float, or ``None``."""
+    m = _AMOUNT_RE.search(text)
+    if not m:
+        return None
+    raw = m.group(1).replace(".", "").replace(",", "")
+    if not raw.isdigit():
+        # Fall back to thousands-separator-as-comma only.
+        raw = m.group(1).replace(",", "")
+        try:
+            return float(raw)
+        except ValueError:
+            return None
+    return float(raw)
+
+
+def _parse_tranche_table(markdown_text: str) -> list[dict]:
+    """Parse the prospectus tranche table out of Docling markdown.
+
+    Handles both layouts Docling emits:
+
+    * **Class-as-column** (most common): the header row lists the classes
+      (``| | Class A | Class B | Class C |``) and subsequent rows are
+      attributes (``| Principal Amount | €1,000,000,000 | ... |``).
+    * **Class-as-row**: each row is one class with its attributes spread
+      across columns.
+
+    Returns ``[]`` if no recognisable tranche table is present so the caller
+    can fall back to the waterfall source.
+    """
+    # Locate a pipe table that mentions the classes and a principal/amount row.
+    tables = _markdown_tables(markdown_text)
+    for table in tables:
+        flat = "\n".join(" ".join(row) for row in table)
+        if not _CLASS_RE.search(flat):
+            continue
+        if not re.search(r"principal|amount|nominal", flat, re.IGNORECASE):
+            continue
+
+        tranches = _tranches_from_class_column_table(table)
+        if tranches:
+            return tranches
+        tranches = _tranches_from_class_row_table(table)
+        if tranches:
+            return tranches
+    return []
+
+
+def _markdown_tables(markdown_text: str) -> list[list[list[str]]]:
+    """Split markdown into pipe tables; each table is a list of cell-rows.
+
+    Separator rows (``|---|---|``) are dropped.
+    """
+    tables: list[list[list[str]]] = []
+    current: list[list[str]] = []
+    for line in markdown_text.splitlines():
+        stripped = line.strip()
+        if stripped.startswith("|") and stripped.count("|") >= 2:
+            cells = [c.strip() for c in stripped.strip("|").split("|")]
+            # Skip the GFM separator row (---, :--:, etc.).
+            if all(set(c) <= set("-: ") and c for c in cells):
+                continue
+            current.append(cells)
+        else:
+            if current:
+                tables.append(current)
+                current = []
+    if current:
+        tables.append(current)
+    return tables
+
+
+def _tranches_from_class_column_table(table: list[list[str]]) -> list[dict]:
+    """Parse a table where each *column* is a note class."""
+    # Find the header row that names the classes.
+    header_idx = None
+    class_cols: dict[int, str] = {}
+    for idx, row in enumerate(table):
+        cols = {i: _CLASS_RE.search(cell).group(1).upper()
+                for i, cell in enumerate(row) if _CLASS_RE.search(cell)}
+        if len(cols) >= 2:
+            header_idx, class_cols = idx, cols
+            break
+    if header_idx is None or not class_cols:
         return []
 
-    return [
+    # Walk attribute rows, slotting each cell into its class column.
+    attrs: dict[str, dict] = {
+        letter: {"name": f"Class {letter}", "size_eur": None,
+                 "rating": None, "rate": None, "seniority": _seniority_for(letter)}
+        for letter in class_cols.values()
+    }
+    for row in table[header_idx + 1:]:
+        if not row:
+            continue
+        label = row[0].lower()
+        for col, letter in class_cols.items():
+            if col >= len(row):
+                continue
+            cell = row[col]
+            if re.search(r"principal|amount|nominal", label):
+                if attrs[letter]["size_eur"] is None:
+                    attrs[letter]["size_eur"] = _parse_euro_amount(cell)
+            elif "rating" in label:
+                m = _RATING_RE.search(cell)
+                if m and attrs[letter]["rating"] is None:
+                    attrs[letter]["rating"] = m.group(1)
+            elif re.search(r"interest|rate|coupon|margin", label):
+                m = _RATE_RE.search(cell)
+                if m and attrs[letter]["rate"] is None:
+                    attrs[letter]["rate"] = m.group(1).strip()
+
+    ordered = sorted(attrs.values(), key=lambda t: t["seniority"])
+    # Only accept the parse if at least one tranche carries a size.
+    if any(t["size_eur"] is not None for t in ordered):
+        return ordered
+    return []
+
+
+def _tranches_from_class_row_table(table: list[list[str]]) -> list[dict]:
+    """Parse a table where each *row* is a note class."""
+    tranches: list[dict] = []
+    seen: set[str] = set()
+    for row in table:
+        joined = " ".join(row)
+        m = _CLASS_RE.search(joined)
+        if not m:
+            continue
+        letter = m.group(1).upper()
+        if letter in seen:
+            continue
+        # Exclude the cell holding the "Class X" label so its letter isn't
+        # misread as a rating (e.g. "Class A Notes" -> rating "A").
+        attr_cells = [c for c in row if not _CLASS_RE.search(c)]
+        size = next((a for a in (_parse_euro_amount(c) for c in attr_cells) if a), None)
+        rating = next(
+            (r.group(1) for c in attr_cells if (r := _RATING_RE.search(c))), None
+        )
+        rate = next(
+            (r.group(1).strip() for c in attr_cells if (r := _RATE_RE.search(c))), None
+        )
+        if size is None:
+            continue
+        seen.add(letter)
+        tranches.append({
+            "name": f"Class {letter}",
+            "size_eur": size,
+            "rating": rating,
+            "rate": rate,
+            "seniority": _seniority_for(letter),
+        })
+    return sorted(tranches, key=lambda t: t["seniority"]) if tranches else []
+
+
+def _tranches_from_waterfalls(waterfalls: dict) -> list[dict]:
+    """Fallback: derive class names + seniority from waterfall step recipients.
+
+    Scans every waterfall's step recipients for ``class_a`` / ``class_b`` /
+    ``class_c`` references and emits one tranche per distinct class, ordered
+    senior→junior.  Sizes / ratings / coupons are unavailable from this
+    source and left as ``None``.
+    """
+    letters: set[str] = set()
+    # Match e.g. "class_a" in "class_a_notes_principal": a single class letter
+    # not immediately followed by another letter.
+    pattern = re.compile(r"class_([a-z])(?![a-z])")
+    for waterfall in waterfalls.values():
+        for step in waterfall.steps:
+            for m in pattern.finditer(step.recipient.lower()):
+                letters.add(m.group(1).upper())
+    tranches = [
         {
-            "priority": step.priority,
-            "recipient": step.recipient,
-            "description": step.description,
-            "waterfall_type": waterfall.waterfall_type,
+            "name": f"Class {letter}",
+            "size_eur": None,
+            "rating": None,
+            "rate": None,
+            "seniority": _seniority_for(letter),
         }
-        for step in waterfall.steps
+        for letter in letters
     ]
+    return sorted(tranches, key=lambda t: t["seniority"])
 
 
 def _download_and_convert(prospectus_url: str) -> str:

@@ -247,13 +247,16 @@ def _print_deal_model_summary(model) -> None:
     print(f"  Sections found:       {', '.join(meta.sections_found) or '(none)'}")
     print(f"  Completeness score:   {meta.completeness_score:.0%}")
 
-    # Tranche / payment hierarchy (derived from the revenue waterfall steps).
+    # Tranche structure (note classes parsed from the prospectus tranche table).
     tranches = model.tranche_structure
-    print(f"\n  Payment hierarchy ({len(tranches)} steps):")
-    for step in tranches:
-        prio = step.get("priority", "?")
-        recipient = step.get("recipient", "")
-        print(f"    {prio:>5}  {recipient}")
+    print(f"\n  Tranche structure ({len(tranches)} classes):")
+    for t in tranches:
+        name = t.get("name", "?")
+        size = t.get("size_eur")
+        size_str = _fmt_eur(size) if size else "—"
+        rating = t.get("rating") or "—"
+        rate = t.get("rate") or "—"
+        print(f"    {name:<9} {size_str:>10}  {rating:<10} {rate}")
 
     # Waterfall step counts per waterfall type.
     print(f"\n  Waterfalls extracted:")

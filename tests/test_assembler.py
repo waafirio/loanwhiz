@@ -31,6 +31,7 @@ from loanwhiz.extraction.assembler import (
     _slug,
     extract_deal_model,
 )
+from loanwhiz.extraction.section_router import route_sections
 from loanwhiz.extraction.waterfall_extractor import ExtractedWaterfall, WaterfallStep
 
 # ---------------------------------------------------------------------------
@@ -115,10 +116,11 @@ def _make_minimal_deal_model(cache_path: str = "/tmp/test_deal.json") -> DealMod
         },
         tranche_structure=[
             {
-                "priority": "(a)",
-                "recipient": "security_trustee_fees",
-                "description": "Pay security trustee fees.",
-                "waterfall_type": "revenue",
+                "name": "Class A",
+                "size_eur": 1_000_000_000.0,
+                "rating": "AAA",
+                "rate": "3m EURIBOR + 0.43%",
+                "seniority": 0,
             }
         ],
         trigger_names=[],
@@ -166,50 +168,101 @@ class TestSlug:
 # ---------------------------------------------------------------------------
 
 
-class TestExtractTranches:
-    def test_empty_waterfalls_returns_empty_list(self) -> None:
-        result = _extract_tranches({})
-        assert result == []
+# Representative Green Lion tranche table as Docling renders it: the first
+# table of the prospectus, class-as-column with attribute rows.  This is the
+# fixture the unit tests feed to _extract_tranches so the slow full pipeline
+# (Docling + Gemini) is never required to validate the tranche parse.
+_GREEN_LION_TRANCHE_TABLE_MD = """\
+# Green Lion 2026-1 B.V. — Notes
 
-    def test_revenue_waterfall_steps_become_tranches(self) -> None:
-        waterfalls = {"revenue": _make_waterfall("revenue", n_steps=3)}
-        result = _extract_tranches(waterfalls)
-        assert len(result) == 3
+|                  | Class A             | Class B          | Class C          |
+|------------------|---------------------|------------------|------------------|
+| Principal Amount | €1,000,000,000      | €53,100,000      | €10,500,000      |
+| Issue Price      | 100%                | 100%             | 100%             |
+| Interest rate    | 3m EURIBOR + 0.43%  | 3m EURIBOR + 1.10% | 2.50%          |
+| Expected Ratings | AAA / Aaa           | AA / Aa2         | NR               |
+
+## Conditions of the Notes
+Some following text.
+"""
+
+
+def _waterfall_with_class_recipients() -> dict:
+    """A waterfall whose steps reference class_a/class_b/class_c recipients."""
+    steps = [
+        _make_step(priority="(a)", recipient="class_a_notes_principal"),
+        _make_step(priority="(b)", recipient="class_b_notes_principal"),
+        _make_step(priority="(c)", recipient="class_c_notes_principal"),
+    ]
+    wf = ExtractedWaterfall(
+        deal_name=_DEAL_NAME,
+        waterfall_type="post_enforcement",
+        steps=steps,
+        source_section="Post-Enforcement Priority of Payments",
+        extraction_confidence=1.0,
+    )
+    return {"post_enforcement": wf}
+
+
+class TestExtractTranches:
+    def test_no_sources_returns_empty_list(self) -> None:
+        assert _extract_tranches(None, None) == []
+        assert _extract_tranches(None, {}) == []
+
+    def test_parses_green_lion_tranche_table(self) -> None:
+        section_map = route_sections(_GREEN_LION_TRANCHE_TABLE_MD)
+        result = _extract_tranches(section_map)
+        assert len(result) >= 3
+        names = [t["name"] for t in result]
+        assert names == ["Class A", "Class B", "Class C"]
+
+    def test_tranche_sizes_correct(self) -> None:
+        section_map = route_sections(_GREEN_LION_TRANCHE_TABLE_MD)
+        by_name = {t["name"]: t for t in _extract_tranches(section_map)}
+        assert by_name["Class A"]["size_eur"] == 1_000_000_000.0
+        assert by_name["Class B"]["size_eur"] == 53_100_000.0
+        assert by_name["Class C"]["size_eur"] == 10_500_000.0
+
+    def test_tranche_ratings_and_rate(self) -> None:
+        section_map = route_sections(_GREEN_LION_TRANCHE_TABLE_MD)
+        by_name = {t["name"]: t for t in _extract_tranches(section_map)}
+        assert by_name["Class A"]["rating"] == "AAA"
+        assert "EURIBOR" in by_name["Class A"]["rate"]
+        assert "0.43" in by_name["Class A"]["rate"]
 
     def test_tranche_has_required_keys(self) -> None:
-        waterfalls = {"revenue": _make_waterfall("revenue", n_steps=2)}
-        result = _extract_tranches(waterfalls)
-        for tranche in result:
-            assert "priority" in tranche
-            assert "recipient" in tranche
-            assert "description" in tranche
-            assert "waterfall_type" in tranche
+        section_map = route_sections(_GREEN_LION_TRANCHE_TABLE_MD)
+        for tranche in _extract_tranches(section_map):
+            assert "name" in tranche
+            assert "size_eur" in tranche
+            assert "rating" in tranche
+            assert "rate" in tranche
+            assert "seniority" in tranche
 
-    def test_tranche_waterfall_type_matches_source(self) -> None:
-        waterfalls = {"revenue": _make_waterfall("revenue", n_steps=2)}
-        result = _extract_tranches(waterfalls)
-        assert all(t["waterfall_type"] == "revenue" for t in result)
+    def test_seniority_order_senior_to_junior(self) -> None:
+        section_map = route_sections(_GREEN_LION_TRANCHE_TABLE_MD)
+        result = _extract_tranches(section_map)
+        seniorities = [t["seniority"] for t in result]
+        assert seniorities == sorted(seniorities)
+        assert result[0]["name"] == "Class A"
 
-    def test_prefers_revenue_over_redemption(self) -> None:
-        waterfalls = {
-            "redemption": _make_waterfall("redemption", n_steps=5),
-            "revenue": _make_waterfall("revenue", n_steps=3),
-        }
-        result = _extract_tranches(waterfalls)
-        # Should pick revenue (3 steps), not redemption (5 steps)
-        assert len(result) == 3
-        assert all(t["waterfall_type"] == "revenue" for t in result)
+    def test_table_preferred_over_waterfall(self) -> None:
+        section_map = route_sections(_GREEN_LION_TRANCHE_TABLE_MD)
+        result = _extract_tranches(section_map, _waterfall_with_class_recipients())
+        # Table wins → sizes are populated (waterfall fallback can't supply them).
+        assert all(t["size_eur"] is not None for t in result)
 
-    def test_falls_back_to_first_waterfall_when_no_revenue(self) -> None:
-        waterfalls = {"redemption": _make_waterfall("redemption", n_steps=4)}
-        result = _extract_tranches(waterfalls)
-        assert len(result) == 4
+    def test_falls_back_to_waterfall_when_no_table(self) -> None:
+        section_map = route_sections("# Definitions\nNo table here.\n")
+        result = _extract_tranches(section_map, _waterfall_with_class_recipients())
+        names = [t["name"] for t in result]
+        assert names == ["Class A", "Class B", "Class C"]
+        # Fallback has no sizes/ratings.
+        assert all(t["size_eur"] is None for t in result)
 
-    def test_priorities_preserved_in_order(self) -> None:
-        waterfalls = {"revenue": _make_waterfall("revenue", n_steps=3)}
-        result = _extract_tranches(waterfalls)
-        priorities = [t["priority"] for t in result]
-        assert priorities == ["(a)", "(b)", "(c)"]
+    def test_waterfall_only_fallback(self) -> None:
+        result = _extract_tranches(None, _waterfall_with_class_recipients())
+        assert [t["name"] for t in result] == ["Class A", "Class B", "Class C"]
 
 
 # ---------------------------------------------------------------------------
@@ -590,13 +643,18 @@ class TestGreenLionDealModel:
     def test_completeness_score_between_0_and_1(self, model: DealModel) -> None:
         assert 0.0 <= model.metadata.completeness_score <= 1.0
 
-    def test_tranche_structure_derived_from_waterfall(self, model: DealModel) -> None:
+    def test_tranche_structure_is_note_classes(self, model: DealModel) -> None:
         assert isinstance(model.tranche_structure, list)
-        if model.tranche_structure:
-            tranche = model.tranche_structure[0]
-            assert "priority" in tranche
-            assert "recipient" in tranche
-            assert "waterfall_type" in tranche
+        # Green Lion has Class A/B/C — expect at least three tranches.
+        assert len(model.tranche_structure) >= 3
+        tranche = model.tranche_structure[0]
+        assert "name" in tranche
+        assert "size_eur" in tranche
+        assert "rating" in tranche
+        assert "rate" in tranche
+        assert "seniority" in tranche
+        names = [t["name"] for t in model.tranche_structure]
+        assert any("Class A" in n for n in names)
 
     def test_trigger_names_is_list(self, model: DealModel) -> None:
         assert isinstance(model.trigger_names, list)
