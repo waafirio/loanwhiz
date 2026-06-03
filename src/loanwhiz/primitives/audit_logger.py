@@ -9,6 +9,7 @@ Governance Framework patterns:
 - Model version (populated when an LLM was used)
 - Human review flag (fires when confidence < configurable threshold)
 - A replay command string sufficient to reproduce the call
+- Per-call LLM provenance (model, prompt hash, temperature, token counts)
 
 Usage — context manager::
 
@@ -24,10 +25,25 @@ Usage — wrap_primitive::
     wrapped = wrap_primitive(primitive)
     result, entry = wrapped(my_input)
 
+Usage — LLM-backed primitives::
+
+    with LLMCallTracker() as tracker:
+        response = client.models.generate_content(model=MODEL_PRO, contents=prompt)
+        tracker.record(model=MODEL_PRO, prompt=prompt, response=response.text)
+
+    result = PrimitiveResult(output=..., llm_calls=tracker.calls)
+
 Usage — replay::
 
     result = replay(entry, primitive, original_input)
-    # raises HashMismatchError when the output hash doesn't match
+    # deterministic: raises HashMismatchError when output hash doesn't match
+    # non-deterministic (is_deterministic=False): raises LLMReplayMismatchError
+    #   when the (model, prompt_hash) sequence changes
+
+Usage — replay by trace id::
+
+    result = replay_by_trace_id(trace_id, log_dir, primitive, original_input)
+    # raises TraceNotFoundError when no entry with that entry_id exists
 """
 
 from __future__ import annotations
@@ -59,6 +75,47 @@ from loanwhiz.primitives.registry import register_primitive
 class HashMismatchError(Exception):
     """Raised by ``replay()`` when the replayed output hash differs from the
     original, indicating a non-deterministic primitive or a corrupted entry."""
+
+
+class LLMReplayMismatchError(Exception):
+    """Raised by ``replay()`` for a non-deterministic entry when the replayed
+    LLM call sequence (model + prompt_hash pairs) differs from the original."""
+
+
+class TraceNotFoundError(Exception):
+    """Raised by ``replay_by_trace_id()`` when no entry with the given
+    ``entry_id`` exists in the JSONL files under ``log_dir``."""
+
+
+# ---------------------------------------------------------------------------
+# LLMCallRecord — per-call LLM provenance within a primitive execution
+# ---------------------------------------------------------------------------
+
+
+class LLMCallRecord(BaseModel):
+    """Record of a single LLM API call within a primitive execution.
+
+    Attributes:
+        call_index:        0-based index (for multi-call primitives).
+        model:             Model identifier, e.g. ``"gemini-2.5-pro"``.
+        prompt_hash:       SHA-256 hex digest of the prompt sent.
+        prompt_preview:    First 200 characters of the prompt (for debugging).
+        response_preview:  First 200 characters of the response.
+        temperature:       Sampling temperature used (default 0.0).
+        input_tokens:      Number of input tokens, or ``None`` if unavailable.
+        output_tokens:     Number of output tokens, or ``None`` if unavailable.
+        call_duration_ms:  Wall-clock call duration in ms, or ``None``.
+    """
+
+    call_index: int = Field(..., ge=0, description="0-based call index.")
+    model: str = Field(..., description="Model identifier.")
+    prompt_hash: str = Field(..., description="SHA-256 hex digest of the prompt.")
+    prompt_preview: str = Field(..., description="First 200 chars of the prompt.")
+    response_preview: str = Field(..., description="First 200 chars of the response.")
+    temperature: float = Field(default=0.0, ge=0.0, description="Sampling temperature.")
+    input_tokens: int | None = Field(default=None, description="Input token count.")
+    output_tokens: int | None = Field(default=None, description="Output token count.")
+    call_duration_ms: float | None = Field(default=None, description="Call wall-clock time in ms.")
 
 
 # ---------------------------------------------------------------------------
@@ -106,6 +163,18 @@ class AuditLogEntry(BaseModel):
     replay_command: str | None = Field(
         default=None,
         description="Python one-liner to reproduce this exact execution.",
+    )
+    llm_calls: list[LLMCallRecord] = Field(
+        default_factory=list,
+        description="Per-call LLM provenance records (empty for rule-based primitives).",
+    )
+    is_deterministic: bool = Field(
+        default=True,
+        description=(
+            "False when at least one LLM call was made. "
+            "replay() uses this flag to select the verification strategy: "
+            "hash-check for deterministic, prompt-hash-sequence-check for LLM-backed."
+        ),
     )
 
 
@@ -226,6 +295,90 @@ def _build_replay_command(primitive: Primitive, input_hash: str) -> str:
 
 
 # ---------------------------------------------------------------------------
+# LLMCallTracker — context manager for recording LLM calls in a primitive
+# ---------------------------------------------------------------------------
+
+
+class LLMCallTracker:
+    """Context manager that records LLM API calls for audit logging.
+
+    Use this inside a ``Primitive.execute()`` that makes one or more LLM
+    calls to accumulate ``LLMCallRecord`` objects for inclusion in the
+    ``AuditLogEntry``.
+
+    Usage::
+
+        with LLMCallTracker() as tracker:
+            response = client.models.generate_content(model=MODEL_PRO, contents=prompt)
+            tracker.record(model=MODEL_PRO, prompt=prompt, response=response.text)
+
+        # Pass tracker.calls to ExecutionContext.log() via the result's llm_calls:
+        result = PrimitiveResult(output=..., llm_calls=tracker.calls)
+
+    Attributes:
+        calls: Accumulated ``LLMCallRecord`` objects in call order.
+    """
+
+    def __init__(self) -> None:
+        self.calls: list[LLMCallRecord] = []
+
+    def __enter__(self) -> "LLMCallTracker":
+        return self
+
+    def __exit__(self, *args: Any) -> None:
+        pass
+
+    def record(
+        self,
+        model: str,
+        prompt: str,
+        response: str,
+        temperature: float = 0.0,
+        input_tokens: int | None = None,
+        output_tokens: int | None = None,
+        call_duration_ms: float | None = None,
+    ) -> LLMCallRecord:
+        """Record one LLM call and append it to ``self.calls``.
+
+        Parameters
+        ----------
+        model:
+            Model identifier (e.g. ``"gemini-2.5-pro"``).
+        prompt:
+            The full prompt sent to the model. A SHA-256 hash is computed
+            and stored; the first 200 characters are kept as a preview.
+        response:
+            The model's response text. The first 200 characters are kept.
+        temperature:
+            Sampling temperature used (default 0.0).
+        input_tokens:
+            Input token count, or ``None`` if unavailable.
+        output_tokens:
+            Output token count, or ``None`` if unavailable.
+        call_duration_ms:
+            Wall-clock call duration in milliseconds, or ``None``.
+
+        Returns
+        -------
+        LLMCallRecord
+            The record that was appended.
+        """
+        record = LLMCallRecord(
+            call_index=len(self.calls),
+            model=model,
+            prompt_hash=hashlib.sha256(prompt.encode()).hexdigest(),
+            prompt_preview=prompt[:200],
+            response_preview=response[:200],
+            temperature=temperature,
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+            call_duration_ms=call_duration_ms,
+        )
+        self.calls.append(record)
+        return record
+
+
+# ---------------------------------------------------------------------------
 # ExecutionContext — context manager that wraps a primitive call
 # ---------------------------------------------------------------------------
 
@@ -283,7 +436,11 @@ class ExecutionContext:
         # No exception suppression — just record the elapsed time.
         pass
 
-    def log(self, result: PrimitiveResult) -> AuditLogEntry:
+    def log(
+        self,
+        result: PrimitiveResult,
+        llm_calls: list[LLMCallRecord] | None = None,
+    ) -> AuditLogEntry:
         """Build, persist, and return the ``AuditLogEntry`` for this execution.
 
         Must be called after ``primitive.execute()`` returns and while the
@@ -293,6 +450,10 @@ class ExecutionContext:
         ----------
         result:
             The ``PrimitiveResult`` returned by ``primitive.execute()``.
+        llm_calls:
+            Optional list of ``LLMCallRecord`` objects accumulated by a
+            ``LLMCallTracker`` during execution.  When non-empty,
+            ``is_deterministic`` is set to ``False`` in the entry.
 
         Returns
         -------
@@ -313,6 +474,9 @@ class ExecutionContext:
 
         replay_command = _build_replay_command(self._primitive, input_hash)
 
+        resolved_llm_calls: list[LLMCallRecord] = llm_calls if llm_calls is not None else []
+        is_deterministic = len(resolved_llm_calls) == 0
+
         entry = AuditLogEntry(
             entry_id=str(uuid.uuid4()),
             primitive_name=self._primitive.name,
@@ -326,6 +490,8 @@ class ExecutionContext:
             human_review_required=result.confidence < self._threshold,
             model_version=self._model_version,
             replay_command=replay_command,
+            llm_calls=resolved_llm_calls,
+            is_deterministic=is_deterministic,
         )
 
         # Append to JSONL file
@@ -400,13 +566,28 @@ def replay(
     entry: AuditLogEntry,
     primitive: Primitive,
     original_input: Any,
+    replayed_llm_calls: list[LLMCallRecord] | None = None,
 ) -> PrimitiveResult:
-    """Replay a logged execution and verify the output hash matches.
+    """Replay a logged execution and verify the output.
 
-    Re-runs ``primitive.execute(original_input)`` and compares the SHA-256
-    of the new output to ``entry.output_hash``. For deterministic (rule-based)
-    primitives the hashes must match. For LLM-backed primitives they may
-    differ — the caller decides whether to treat a mismatch as an error.
+    Re-runs ``primitive.execute(original_input)`` then verifies the replay
+    against ``entry`` using the strategy appropriate for the primitive type:
+
+    - **Deterministic** (``entry.is_deterministic is True``): SHA-256 of the
+      new output must equal ``entry.output_hash``; raises ``HashMismatchError``
+      otherwise.
+    - **Non-deterministic / LLM-backed** (``entry.is_deterministic is False``):
+      skips the output hash check (LLM outputs are inherently variable) and
+      instead verifies that the replayed LLM calls match the same
+      ``(model, prompt_hash)`` sequence as ``entry.llm_calls``.  Raises
+      ``LLMReplayMismatchError`` when the sequence differs (different length or
+      any mismatched pair at a given index).
+
+    For the non-deterministic path, pass the ``LLMCallTracker.calls`` list that
+    the primitive accumulated during its replayed execution as
+    ``replayed_llm_calls``.  If ``replayed_llm_calls`` is ``None``, the
+    sequence is treated as empty (matches only when ``entry.llm_calls`` is also
+    empty).
 
     Parameters
     ----------
@@ -416,6 +597,10 @@ def replay(
         A ``Primitive`` instance of the same type that produced the entry.
     original_input:
         The input value that was passed to the original ``execute()`` call.
+    replayed_llm_calls:
+        Optional list of ``LLMCallRecord`` objects accumulated by a
+        ``LLMCallTracker`` during the replayed execution.  Only relevant
+        when ``entry.is_deterministic`` is ``False``.
 
     Returns
     -------
@@ -425,17 +610,104 @@ def replay(
     Raises
     ------
     HashMismatchError
-        When the replayed output hash does not match ``entry.output_hash``.
+        When ``entry.is_deterministic`` is ``True`` and the replayed output
+        hash does not match ``entry.output_hash``.
+    LLMReplayMismatchError
+        When ``entry.is_deterministic`` is ``False`` and the replayed
+        ``(model, prompt_hash)`` sequence differs from the original.
     """
     result = primitive.execute(original_input)
-    replayed_hash = _sha256_of(result.output)
-    if replayed_hash != entry.output_hash:
-        raise HashMismatchError(
-            f"Replay hash mismatch for primitive '{entry.primitive_name}': "
-            f"expected {entry.output_hash!r}, got {replayed_hash!r}. "
-            "The primitive may be non-deterministic."
-        )
+
+    if entry.is_deterministic:
+        # Deterministic path — verify output hash.
+        replayed_hash = _sha256_of(result.output)
+        if replayed_hash != entry.output_hash:
+            raise HashMismatchError(
+                f"Replay hash mismatch for primitive '{entry.primitive_name}': "
+                f"expected {entry.output_hash!r}, got {replayed_hash!r}. "
+                "The primitive may be non-deterministic."
+            )
+    else:
+        # Non-deterministic / LLM-backed path — verify (model, prompt_hash) sequence.
+        original_seq = [(c.model, c.prompt_hash) for c in entry.llm_calls]
+        resolved_replayed = replayed_llm_calls if replayed_llm_calls is not None else []
+        replayed_seq = [(c.model, c.prompt_hash) for c in resolved_replayed]
+
+        if original_seq != replayed_seq:
+            raise LLMReplayMismatchError(
+                f"LLM call sequence mismatch for primitive '{entry.primitive_name}': "
+                f"original had {len(original_seq)} call(s) "
+                f"{[m for m, _ in original_seq]!r}, "
+                f"replay had {len(replayed_seq)} call(s) "
+                f"{[m for m, _ in replayed_seq]!r}."
+            )
+
     return result
+
+
+def replay_by_trace_id(
+    trace_id: str,
+    log_dir: str,
+    primitive: Primitive,
+    original_input: Any,
+    replayed_llm_calls: list[LLMCallRecord] | None = None,
+) -> PrimitiveResult:
+    """Locate an ``AuditLogEntry`` by its ``entry_id`` and replay it.
+
+    Scans all ``*.jsonl`` files under ``log_dir`` for a line whose
+    ``entry_id`` matches ``trace_id``, then delegates to ``replay()``.
+
+    Parameters
+    ----------
+    trace_id:
+        The ``entry_id`` UUID string of the target ``AuditLogEntry``.
+    log_dir:
+        Root directory for JSONL audit files (the same value passed to
+        ``ExecutionContext`` or ``wrap_primitive``).
+    primitive:
+        A ``Primitive`` instance of the same type that produced the entry.
+    original_input:
+        The input value that was passed to the original ``execute()`` call.
+    replayed_llm_calls:
+        Optional list of ``LLMCallRecord`` objects from a ``LLMCallTracker``
+        run during the caller's replayed execution.  Forwarded to ``replay()``
+        for non-deterministic entries (``is_deterministic=False``).
+
+    Returns
+    -------
+    PrimitiveResult
+        The result of the replayed execution.
+
+    Raises
+    ------
+    TraceNotFoundError
+        When no ``AuditLogEntry`` with ``entry_id == trace_id`` is found
+        in any JSONL file under ``log_dir``.
+    HashMismatchError
+        Propagated from ``replay()`` for deterministic primitives.
+    LLMReplayMismatchError
+        Propagated from ``replay()`` for non-deterministic primitives.
+    """
+    log_root = Path(log_dir)
+    if log_root.exists():
+        for jsonl_file in sorted(log_root.rglob("*.jsonl")):
+            text = jsonl_file.read_text(encoding="utf-8")
+            for line in text.splitlines():
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    candidate = AuditLogEntry.model_validate_json(line)
+                    if candidate.entry_id == trace_id:
+                        return replay(
+                            candidate, primitive, original_input, replayed_llm_calls
+                        )
+                except Exception:
+                    pass  # Malformed lines are silently skipped
+
+    raise TraceNotFoundError(
+        f"No AuditLogEntry with entry_id={trace_id!r} found under {log_dir!r}."
+    )
 
 
 # ---------------------------------------------------------------------------
