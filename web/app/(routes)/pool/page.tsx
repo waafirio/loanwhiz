@@ -20,12 +20,14 @@ import {
   getTapeAnalytics,
   type TapeAnalyticsPeriod,
 } from "@/lib/api";
+import { useSelectedDeal } from "@/lib/deal-context";
 import {
   EmptyState,
   ErrorState,
   LoadingState,
   PageHeader,
 } from "@/components/page-states";
+import { TablePagination } from "@/components/table-pagination";
 import {
   Card,
   CardContent,
@@ -41,22 +43,46 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { formatCurrency, formatPct, humanize } from "@/lib/format";
+import { usePagination } from "@/lib/use-pagination";
 
 const BAR_COLORS = ["#2563eb", "#16a34a", "#d97706", "#9333ea", "#dc2626", "#0891b2"];
 
 export default function PoolPage() {
-  const [data, setData] = useState<TapeAnalyticsPeriod[] | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const { dealId } = useSelectedDeal();
+  // Tag the result with its deal so a deal switch falls back to the loading
+  // state without a synchronous setState in the effect (see Overview page).
+  const [state, setState] = useState<{
+    dealId: string;
+    data: TapeAnalyticsPeriod[] | null;
+    error: string | null;
+  }>({ dealId, data: null, error: null });
 
   useEffect(() => {
-    getTapeAnalytics()
-      .then(setData)
-      .catch((e) =>
-        setError(
-          e instanceof ApiError ? e.message : "Failed to load pool analytics",
-        ),
+    let cancelled = false;
+    getTapeAnalytics(dealId)
+      .then(
+        (d) => !cancelled && setState({ dealId, data: d, error: null }),
+      )
+      .catch(
+        (e) =>
+          !cancelled &&
+          setState({
+            dealId,
+            data: null,
+            error:
+              e instanceof ApiError
+                ? e.message
+                : "Failed to load pool analytics",
+          }),
       );
-  }, []);
+    return () => {
+      cancelled = true;
+    };
+  }, [dealId]);
+
+  const current = state.dealId === dealId ? state : null;
+  const data = current?.data ?? null;
+  const error = current?.error ?? null;
 
   return (
     <div className="space-y-6">
@@ -91,6 +117,10 @@ function breakdownRows(
 }
 
 function PoolContent({ periods }: { periods: TapeAnalyticsPeriod[] }) {
+  // One point per reporting period — the x-axis is a real time axis (period
+  // date), so a ~48-period response reads as a trend line rather than 48
+  // categorical bars. `minTickGap` lets recharts thin the date ticks so they
+  // stay legible at high period counts.
   const chartData = useMemo(
     () =>
       periods.map((p) => ({
@@ -102,6 +132,12 @@ function PoolContent({ periods }: { periods: TapeAnalyticsPeriod[] }) {
       })),
     [periods],
   );
+
+  // The per-period metrics table reads down by period (one row per period),
+  // not across (one column per period) — so 48 periods is a long paginated
+  // list, not 48 unreadable columns.
+  const tableRows = useMemo(() => [...periods].reverse(), [periods]); // newest first
+  const pagination = usePagination(tableRows, 12);
 
   const latest = periods[periods.length - 1];
 
@@ -115,10 +151,12 @@ function PoolContent({ periods }: { periods: TapeAnalyticsPeriod[] }) {
 
   return (
     <div className="space-y-6">
-      {/* Pool balance trend */}
+      {/* Pool balance over time */}
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">Pool balance across periods</CardTitle>
+          <CardTitle className="text-base">
+            Pool balance over time ({periods.length} periods)
+          </CardTitle>
         </CardHeader>
         <CardContent>
           <ResponsiveContainer width="100%" height={300}>
@@ -127,7 +165,12 @@ function PoolContent({ periods }: { periods: TapeAnalyticsPeriod[] }) {
               margin={{ top: 8, right: 16, bottom: 8, left: 8 }}
             >
               <CartesianGrid strokeDasharray="3 3" />
-              <XAxis dataKey="period" fontSize={12} />
+              <XAxis
+                dataKey="period"
+                fontSize={12}
+                minTickGap={24}
+                tickMargin={8}
+              />
               <YAxis fontSize={12} width={88} />
               <Tooltip formatter={(v) => formatCurrency(Number(v))} />
               <Legend />
@@ -136,14 +179,58 @@ function PoolContent({ periods }: { periods: TapeAnalyticsPeriod[] }) {
                 dataKey="pool_balance_eur"
                 name="Pool balance"
                 stroke="#2563eb"
-                dot
+                dot={false}
               />
             </LineChart>
           </ResponsiveContainer>
         </CardContent>
       </Card>
 
-      {/* Per-period headline metrics */}
+      {/* Weighted LTV & coupon over time */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">
+            Weighted LTV &amp; coupon over time
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <ResponsiveContainer width="100%" height={280}>
+            <LineChart
+              data={chartData}
+              margin={{ top: 8, right: 16, bottom: 8, left: 8 }}
+            >
+              <CartesianGrid strokeDasharray="3 3" />
+              <XAxis
+                dataKey="period"
+                fontSize={12}
+                minTickGap={24}
+                tickMargin={8}
+              />
+              <YAxis fontSize={12} unit="%" width={56} />
+              <Tooltip formatter={(v) => formatPct(Number(v))} />
+              <Legend />
+              <Line
+                type="monotone"
+                dataKey="wtd_ltv"
+                name="Weighted LTV"
+                stroke="#16a34a"
+                dot={false}
+                connectNulls
+              />
+              <Line
+                type="monotone"
+                dataKey="wtd_coupon_pct"
+                name="Weighted coupon"
+                stroke="#d97706"
+                dot={false}
+                connectNulls
+              />
+            </LineChart>
+          </ResponsiveContainer>
+        </CardContent>
+      </Card>
+
+      {/* Per-period headline metrics — one row per period, paginated */}
       <Card>
         <CardHeader>
           <CardTitle className="text-base">Per-period metrics</CardTitle>
@@ -152,78 +239,44 @@ function PoolContent({ periods }: { periods: TapeAnalyticsPeriod[] }) {
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Metric</TableHead>
-                {periods.map((p) => (
-                  <TableHead key={periodLabel(p)} className="text-right">
-                    {periodLabel(p)}
-                  </TableHead>
-                ))}
+                <TableHead>Period</TableHead>
+                <TableHead className="text-right">Pool balance</TableHead>
+                <TableHead className="text-right">Loan count</TableHead>
+                <TableHead className="text-right">Weighted LTV</TableHead>
+                <TableHead className="text-right">Weighted coupon</TableHead>
+                <TableHead className="text-right">Seasoning (mo)</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              <TableRow>
-                <TableCell className="font-medium">Pool balance</TableCell>
-                {periods.map((p) => (
-                  <TableCell
-                    key={periodLabel(p)}
-                    className="text-right tabular-nums"
-                  >
+              {pagination.pageItems.map((p) => (
+                <TableRow key={periodLabel(p)}>
+                  <TableCell className="font-medium">{periodLabel(p)}</TableCell>
+                  <TableCell className="text-right tabular-nums">
                     {formatCurrency(p.pool_balance_eur)}
                   </TableCell>
-                ))}
-              </TableRow>
-              <TableRow>
-                <TableCell className="font-medium">Loan count</TableCell>
-                {periods.map((p) => (
-                  <TableCell
-                    key={periodLabel(p)}
-                    className="text-right tabular-nums"
-                  >
+                  <TableCell className="text-right tabular-nums">
                     {p.loan_count.toLocaleString()}
                   </TableCell>
-                ))}
-              </TableRow>
-              <TableRow>
-                <TableCell className="font-medium">Weighted LTV</TableCell>
-                {periods.map((p) => (
-                  <TableCell
-                    key={periodLabel(p)}
-                    className="text-right tabular-nums"
-                  >
+                  <TableCell className="text-right tabular-nums">
                     {p.pool_stats.wtd_ltv != null
                       ? formatPct(p.pool_stats.wtd_ltv)
                       : "—"}
                   </TableCell>
-                ))}
-              </TableRow>
-              <TableRow>
-                <TableCell className="font-medium">Weighted coupon</TableCell>
-                {periods.map((p) => (
-                  <TableCell
-                    key={periodLabel(p)}
-                    className="text-right tabular-nums"
-                  >
+                  <TableCell className="text-right tabular-nums">
                     {p.pool_stats.wtd_coupon_pct != null
                       ? formatPct(p.pool_stats.wtd_coupon_pct)
                       : "—"}
                   </TableCell>
-                ))}
-              </TableRow>
-              <TableRow>
-                <TableCell className="font-medium">Weighted seasoning (mo)</TableCell>
-                {periods.map((p) => (
-                  <TableCell
-                    key={periodLabel(p)}
-                    className="text-right tabular-nums"
-                  >
+                  <TableCell className="text-right tabular-nums">
                     {p.pool_stats.wtd_seasoning != null
                       ? p.pool_stats.wtd_seasoning.toFixed(1)
                       : "—"}
                   </TableCell>
-                ))}
-              </TableRow>
+                </TableRow>
+              ))}
             </TableBody>
           </Table>
+          <TablePagination pagination={pagination} noun="periods" />
         </CardContent>
       </Card>
 
