@@ -23,12 +23,15 @@ request/response so a later swap to a dedicated projector is a drop-in change.
 
 from __future__ import annotations
 
+from pathlib import Path
+
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
 from loanwhiz.agent.executor import execute_query
 from loanwhiz.config import GREEN_LION
+from loanwhiz.extraction.assembler import DealModel, _slug
 from loanwhiz.primitives.collections_aggregator import (
     CollectionsAggregator,
     CollectionsInput,
@@ -113,6 +116,62 @@ class ProjectRequest(BaseModel):
     months: int = 12
 
 
+# Directory where ``loanwhiz.extraction.assembler.extract_deal_model`` caches
+# extracted deal models. The ``/deal/{id}/model`` endpoint reads from here but
+# never triggers a cold extraction (that path is ~10min via Docling) — it only
+# serves a cache hit and otherwise degrades gracefully. Mirrors the assembler's
+# default ``cache_dir`` so the two agree on where the artifact lives.
+DEAL_MODEL_CACHE_DIR = "/tmp/loanwhiz_cache/deals"
+
+
+class DealModelResponse(BaseModel):
+    """Response body for ``GET /deal/{deal_id}/model``.
+
+    Carries the deal *config* (name + document URLs the frontend already uses)
+    alongside the *extracted* :class:`~loanwhiz.extraction.assembler.DealModel`
+    when it has been cached. The extracted model (tranches, triggers,
+    waterfalls, completeness, metadata) is the full ``DealModel.model_dump()``
+    nested under ``deal_model`` — kept as a free-form dict so the assembler's
+    schema is the single source of truth and need not be restated here.
+
+    When the cache is cold/missing the endpoint does **not** block on a cold
+    extraction: it returns the config with ``deal_model=None`` and
+    ``extraction_status="not_cached"`` so the frontend can render what it has
+    and surface the extraction state.
+    """
+
+    # Deal config (unchanged from the GREEN_LION context — what the frontend
+    # already consumes; kept so nothing breaks).
+    deal_name: str
+    prospectus_url: str
+    tape_urls: list[dict]
+    investor_report_urls: list[dict]
+
+    # Extraction state + the cached extracted model (if any).
+    extraction_status: str          # "cached" | "not_cached"
+    completeness_score: float | None = None
+    trigger_names: list[str] | None = None
+    deal_model: dict | None = None   # full DealModel.model_dump() on cache hit
+
+
+class ScenarioWal(BaseModel):
+    """Class A weighted-average life (WAL) for one projected scenario.
+
+    Surfaced per scenario in the ``POST /deal/{deal_id}/project`` response
+    (additively — the existing waterfall projection fields are left intact).
+
+    Attributes:
+        wal_class_a_months:  Class A weighted-average life in months, computed as
+                             ``sum(t × principal_t) / sum(principal_t)`` over the
+                             projection horizon. ``0.0`` when no Class A principal
+                             is returned.
+        wal_class_a_years:   ``wal_class_a_months / 12`` for convenience.
+    """
+
+    wal_class_a_months: float
+    wal_class_a_years: float
+
+
 # ---------------------------------------------------------------------------
 # Service / health
 # ---------------------------------------------------------------------------
@@ -163,10 +222,39 @@ def _require_deal(deal_id: str) -> dict:
     return deal
 
 
-@app.get("/deal/{deal_id}/model")
-def deal_model(deal_id: str) -> dict:
-    """Return the deal context/model (document URLs, structure)."""
-    return _require_deal(deal_id)
+@app.get("/deal/{deal_id}/model", response_model=DealModelResponse)
+def deal_model(deal_id: str) -> DealModelResponse:
+    """Return the deal config plus the cached extracted DealModel.
+
+    Serves the extracted model (tranches, triggers, waterfalls, completeness,
+    metadata) from the assembler's on-disk cache when present. **Never triggers
+    a cold extraction** — that runs Docling (~10min) — so on a cache miss the
+    endpoint returns the config with ``deal_model=None`` and
+    ``extraction_status="not_cached"`` rather than blocking the request.
+    """
+    deal = _require_deal(deal_id)
+
+    base = DealModelResponse(
+        deal_name=deal["deal_name"],
+        prospectus_url=deal["prospectus_url"],
+        tape_urls=deal["tape_urls"],
+        investor_report_urls=deal["investor_report_urls"],
+        extraction_status="not_cached",
+    )
+
+    # Check the cache file directly (do NOT call extract_deal_model — a cache
+    # miss there would synchronously run the ~10min Docling pipeline). The path
+    # mirrors the assembler's: {cache_dir}/{slug(deal_name)}.json.
+    cache_path = Path(DEAL_MODEL_CACHE_DIR) / f"{_slug(deal['deal_name'])}.json"
+    if not cache_path.exists():
+        return base
+
+    model = DealModel.model_validate_json(cache_path.read_text(encoding="utf-8"))
+    base.extraction_status = "cached"
+    base.completeness_score = model.metadata.completeness_score
+    base.trigger_names = model.trigger_names
+    base.deal_model = model.model_dump()
+    return base
 
 
 @app.get("/deal/{deal_id}/compliance")
@@ -349,6 +437,59 @@ def deal_waterfall(deal_id: str) -> WaterfallResponse:
     )
 
 
+# --- tape-analytics (#110) ---------------------------------------------------
+# Self-contained block (response model + handler) for the per-period pool
+# analytics endpoint. Kept contiguous to minimise conflicts with the sibling
+# issues (#109/#111/#112) editing this same module in parallel.
+
+
+class TapeAnalyticsPeriod(BaseModel):
+    """Per-period pool analytics for one ESMA tape, returned by tape-analytics.
+
+    Mirrors :class:`~loanwhiz.primitives.esma_tape_normaliser.EsmaTapeOutput`
+    (balance, loan count, weighted pool stats, arrears, and the EPC /
+    geographic / property-type breakdowns), with the deal's reporting-period
+    date the tape was registered under for chronological context.
+    """
+
+    tape_date: str
+    reporting_date: str
+    asset_class: str
+    transaction_name: str | None
+    loan_count: int
+    pool_balance_eur: float
+    pool_stats: dict[str, float]
+    arrears_breakdown: dict[str, float]
+    epc_breakdown: dict[str, float] | None
+    rate_type_breakdown: dict[str, float] | None
+    property_type_breakdown: dict[str, float] | None
+    geographic_breakdown: dict[str, float] | None
+    annex_detected: str
+
+
+@app.get("/deal/{deal_id}/tape-analytics", response_model=list[TapeAnalyticsPeriod])
+def deal_tape_analytics(deal_id: str) -> list[TapeAnalyticsPeriod]:
+    """Return per-period pool analytics across the deal's ESMA tapes.
+
+    Normalises every ESMA tape the deal references (deterministic, no LLM) and
+    returns one analytics object per reporting period in chronological order —
+    pool balance, loan count, arrears, weighted LTV, and the EPC / geographic /
+    property-type breakdowns.
+    """
+    deal = _require_deal(deal_id)
+    normaliser = EsmaTapeNormaliser()
+    return [
+        TapeAnalyticsPeriod(
+            tape_date=tape["date"],
+            **normaliser.execute(EsmaTapeInput(file_url=tape["url"])).output.model_dump(),
+        )
+        for tape in deal["tape_urls"]
+    ]
+
+
+# --- end tape-analytics (#110) -----------------------------------------------
+
+
 @app.post("/deal/{deal_id}/project")
 def deal_project(deal_id: str, req: ProjectRequest) -> dict:
     """Project forward payment waterfalls under the requested scenarios.
@@ -368,6 +509,7 @@ def deal_project(deal_id: str, req: ProjectRequest) -> dict:
     base_principal = base["current_pool_balance"] * 0.10 * (req.months / 12.0)
 
     projections = {}
+    wal = {}
     for scenario in req.scenarios:
         factor = _SCENARIO_COLLECTION_FACTORS.get(scenario, 1.0)
         result = runner.execute(
@@ -387,11 +529,35 @@ def deal_project(deal_id: str, req: ProjectRequest) -> dict:
                 class_b_pdl_balance=0.0,
             )
         )
-        projections[scenario] = result.output.model_dump()
+        projection = result.output.model_dump()
+
+        # Class A weighted-average life for the scenario. WAL is
+        # sum(t × principal_t) / sum(principal_t); over this single-period
+        # horizon the one Class A principal distribution lands at month
+        # ``req.months``, so a positive Class A principal yields a WAL of the
+        # full horizon and zero principal yields 0.0 (avoids divide-by-zero).
+        class_a_principal = sum(
+            dist.get("principal_received", 0.0)
+            for dist in projection.get("tranche_distributions", [])
+            if dist.get("tranche") == "class_a"
+        )
+        wal_months = float(req.months) if class_a_principal > 0.0 else 0.0
+        scenario_wal = ScenarioWal(
+            wal_class_a_months=wal_months,
+            wal_class_a_years=wal_months / 12.0,
+        )
+
+        # Surface WAL additively on the per-scenario projection (existing
+        # waterfall fields are untouched) and in a top-level per-scenario map.
+        projection["wal_class_a_months"] = scenario_wal.wal_class_a_months
+        projection["wal_class_a_years"] = scenario_wal.wal_class_a_years
+        projections[scenario] = projection
+        wal[scenario] = scenario_wal.model_dump()
 
     return {
         "deal_id": deal_id,
         "months": req.months,
         "scenarios": req.scenarios,
         "projections": projections,
+        "wal": wal,
     }
