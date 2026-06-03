@@ -28,7 +28,6 @@ the structural mechanics but not macro-economic randomness.
 from __future__ import annotations
 
 import time
-from typing import List
 
 from pydantic import BaseModel, Field
 
@@ -40,7 +39,7 @@ from loanwhiz.primitives.base import (
     PrimitiveResult,
 )
 from loanwhiz.primitives.registry import register_primitive
-from loanwhiz.primitives.waterfall_runner import WaterfallInput, WaterfallRunner
+from loanwhiz.primitives.waterfall_runner import WaterfallInput, WaterfallOutput, WaterfallRunner
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -142,7 +141,7 @@ class ScenarioProjection(BaseModel):
     """
 
     scenario: ScenarioAssumptions
-    periods: List[PeriodProjection]
+    periods: list[PeriodProjection]
     total_class_a: float
     total_class_b: float
     wal_class_a_months: float
@@ -179,7 +178,7 @@ class CashflowProjectorInput(BaseInput):
     current_class_c_balance: float
     class_a_rate_pct: float
     reserve_fund_balance: float
-    scenarios: List[ScenarioAssumptions] = Field(
+    scenarios: list[ScenarioAssumptions] = Field(
         default_factory=lambda: [
             ScenarioAssumptions(
                 name="base",
@@ -207,8 +206,38 @@ class CashflowProjectorOutput(BaseModel):
                               month 8; Stress: WAL 4.1yr …".
     """
 
-    scenario_projections: List[ScenarioProjection]
+    scenario_projections: list[ScenarioProjection]
     summary: str
+
+
+# ---------------------------------------------------------------------------
+# Module-level lookup helpers (used inside _project_scenario to avoid
+# redefining closures on every loop iteration).
+# ---------------------------------------------------------------------------
+
+
+def _tranche_total(wf_output: WaterfallOutput, tranche_name: str) -> float:
+    """Return total_received for *tranche_name* from the waterfall output."""
+    for dist in wf_output.tranche_distributions:
+        if dist.tranche == tranche_name:
+            return dist.total_received
+    return 0.0
+
+
+def _tranche_principal(wf_output: WaterfallOutput, tranche_name: str) -> float:
+    """Return principal_received for *tranche_name* from the waterfall output."""
+    for dist in wf_output.tranche_distributions:
+        if dist.tranche == tranche_name:
+            return dist.principal_received
+    return 0.0
+
+
+def _rev_step_distributed(wf_output: WaterfallOutput, recipient: str) -> float:
+    """Return amount_distributed for *recipient* from the revenue waterfall."""
+    for step in wf_output.revenue_waterfall:
+        if step.recipient == recipient:
+            return step.amount_distributed
+    return 0.0
 
 
 # ---------------------------------------------------------------------------
@@ -410,41 +439,29 @@ class CashflowProjector(Primitive[CashflowProjectorInput, CashflowProjectorOutpu
             # 3. Extract distributions from waterfall output.
             # ------------------------------------------------------------------
 
-            def _tranche_total(tranche_name: str) -> float:
-                for dist in wf_output.tranche_distributions:
-                    if dist.tranche == tranche_name:
-                        return dist.total_received
-                return 0.0
+            class_a_dist = _tranche_total(wf_output, "class_a")
+            class_b_dist = _tranche_total(wf_output, "class_b")
+            class_c_dist = _tranche_total(wf_output, "class_c")
 
-            def _tranche_principal(tranche_name: str) -> float:
-                for dist in wf_output.tranche_distributions:
-                    if dist.tranche == tranche_name:
-                        return dist.principal_received
-                return 0.0
-
-            class_a_dist = _tranche_total("class_a")
-            class_b_dist = _tranche_total("class_b")
-            class_c_dist = _tranche_total("class_c")
-
-            class_a_principal = _tranche_principal("class_a")
+            class_a_principal = _tranche_principal(wf_output, "class_a")
+            class_b_principal_dist = _tranche_principal(wf_output, "class_b")
+            class_c_principal_dist = _tranche_principal(wf_output, "class_c")
 
             # Amount replenished into the PDL this period (revenue step e/h).
-            def _rev_step_distributed(recipient: str) -> float:
-                for step in wf_output.revenue_waterfall:
-                    if step.recipient == recipient:
-                        return step.amount_distributed
-                return 0.0
-
-            class_a_pdl_replenished = _rev_step_distributed("class_a_pdl_replenishment")
-            class_b_pdl_replenished = _rev_step_distributed("class_b_pdl_replenishment")
+            class_a_pdl_replenished = _rev_step_distributed(
+                wf_output, "class_a_pdl_replenishment"
+            )
+            class_b_pdl_replenished = _rev_step_distributed(
+                wf_output, "class_b_pdl_replenishment"
+            )
 
             # ------------------------------------------------------------------
             # 4. Update state for next period.
             # ------------------------------------------------------------------
 
             class_a_balance = max(0.0, class_a_balance - class_a_principal)
-            class_b_balance = max(0.0, class_b_balance - _tranche_principal("class_b"))
-            class_c_balance = max(0.0, class_c_balance - _tranche_principal("class_c"))
+            class_b_balance = max(0.0, class_b_balance - class_b_principal_dist)
+            class_c_balance = max(0.0, class_c_balance - class_c_principal_dist)
             pool_balance = pool_balance_end
             cumulative_losses += period_loss
 
