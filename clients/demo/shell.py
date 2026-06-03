@@ -98,8 +98,11 @@ if str(_SRC) not in sys.path:
     sys.path.insert(0, str(_SRC))
 
 from clients.demo.tabs.pool import render as pool_render  # noqa: E402
+from clients.demo.tabs.waterfall import render as waterfall_render  # noqa: E402
 from loanwhiz.config import GREEN_LION  # noqa: E402
 from loanwhiz.extraction.assembler import DealModel  # noqa: E402
+
+from clients.demo.tabs.overview import render as deal_overview_render  # noqa: E402
 
 # Default on-disk extraction cache — must match ``extract_deal_model``'s
 # default so the cache-aware read finds what the (pre-warm) extraction wrote.
@@ -317,9 +320,9 @@ def _stub_render(issue_number: int, title: str) -> Callable[[gr.State], None]:
 # but the ORDER is the narrative arc — do not reorder. Each entry's ``render``
 # is a stub until the named sibling issue lands its tab module.
 TAB_REGISTRY: list[TabSpec] = [
-    TabSpec(title="Deal Overview", render=_stub_render(78, "Deal Overview")),
+    TabSpec(title="Deal Overview", render=deal_overview_render),
     TabSpec(title="Pool & Performance", render=pool_render),
-    TabSpec(title="Waterfall", render=_stub_render(80, "Waterfall")),
+    TabSpec(title="Waterfall", render=waterfall_render),
     TabSpec(
         title="Compliance & Covenants",
         render=_stub_render(82, "Compliance & Covenants"),
@@ -367,12 +370,17 @@ def _chat_stub_respond(message: str, history: list[dict]) -> list[dict]:
     ]
 
 
-def _render_chat_panel() -> None:
+def _render_chat_panel(deal_state: gr.State) -> None:
     """Render the docked chat panel (visible from every tab).
 
     Built once, inside the shared right-hand column, so it persists across tab
-    switches. Issue #81 owns the real wiring; everything here is the shell.
+    switches. The real chat handler lives in ``clients/demo/tabs/chat.py``
+    (issue #81): a user message runs through the planner agent grounded in the
+    loaded ``deal_state``, and the answer comes back in messages format with
+    cited documents appended inline. ``deal_state`` is wired as an input so the
+    answer is deal-specific (see ``CONTRACT.md`` §5).
     """
+    from clients.demo.tabs.chat import chat_respond
     gr.Markdown("### 💬 Ask LoanWhiz")
     # This Gradio build's Chatbot is messages-only (value is a list of
     # {"role", "content"} dicts) — see _chat_stub_respond. On Gradio builds
@@ -391,13 +399,15 @@ def _render_chat_panel() -> None:
         send = gr.Button("Send", variant="primary", size="sm")
         clear = gr.Button("Clear", size="sm")
 
-    def _respond(message: str, history: list[dict]) -> tuple[str, list[dict]]:
+    def _respond(
+        message: str, history: list[dict], state: "DealState"
+    ) -> tuple[str, list[dict]]:
         if not message.strip():
             return "", history
-        return "", _chat_stub_respond(message, history)
+        return "", chat_respond(message, history, state)
 
-    send.click(_respond, [msg, chatbot], [msg, chatbot])
-    msg.submit(_respond, [msg, chatbot], [msg, chatbot])
+    send.click(_respond, [msg, chatbot, deal_state], [msg, chatbot])
+    msg.submit(_respond, [msg, chatbot, deal_state], [msg, chatbot])
     clear.click(lambda: [], None, chatbot)
 
 
@@ -443,7 +453,7 @@ def build_app() -> gr.Blocks:
 
             # Right: the docked chat panel — present beside every tab.
             with gr.Column(scale=1, min_width=320):
-                _render_chat_panel()
+                _render_chat_panel(deal_state)
 
         def _load() -> tuple[DealState, str]:
             state = DealState.load_green_lion()
