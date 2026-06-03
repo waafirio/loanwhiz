@@ -1,8 +1,0 @@
-gradio>=4.0
-# google-genai is required by the report verifier (PDF figure extraction via
-# Gemini). The covenant tab works without it; the report-verification tab
-# degrades gracefully when Vertex AI access is unavailable.
-google-genai>=1.0
-# loanwhiz primitives are available via editable install from the repo root:
-#   pip install -e ../../
-# or via PYTHONPATH pointing to ../../src (handled by app.py sys.path insert).

@@ -388,6 +388,45 @@ class TestConfidenceScoring:
 
 
 # ---------------------------------------------------------------------------
+# Gemini client construction (Vertex AI / ADC)
+# ---------------------------------------------------------------------------
+
+
+class TestGeminiClientConstruction:
+    """The Gemini client must be built for Vertex AI so it works under ADC.
+
+    Regression for #76: a bare ``genai.Client()`` defaults to the Gemini
+    Developer API and requires ``GEMINI_API_KEY``, failing under Vertex/ADC.
+    """
+
+    def test_client_built_for_vertex(self):
+        from loanwhiz.config import GCP_LOCATION, GCP_PROJECT, MODEL_FLASH
+        from loanwhiz.primitives.report_verifier import _extract_figures_with_gemini
+
+        mock_response = MagicMock()
+        mock_response.text = json.dumps({"class_a_interest_paid": 9_050_000.0})
+
+        with patch(
+            "loanwhiz.primitives.report_verifier.genai.Client"
+        ) as mock_client_cls:
+            mock_client = mock_client_cls.return_value
+            mock_client.models.generate_content.return_value = mock_response
+
+            figures = _extract_figures_with_gemini(
+                pdf_url=_APRIL_REPORT_URL,
+                reporting_period="April 2026",
+            )
+
+        mock_client_cls.assert_called_once_with(
+            vertexai=True, project=GCP_PROJECT, location=GCP_LOCATION
+        )
+        # The configured model name is used, not a hardcoded/dev-API name.
+        _, call_kwargs = mock_client.models.generate_content.call_args
+        assert call_kwargs["model"] == MODEL_FLASH
+        assert figures == {"class_a_interest_paid": 9_050_000.0}
+
+
+# ---------------------------------------------------------------------------
 # Caching behaviour
 # ---------------------------------------------------------------------------
 
