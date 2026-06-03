@@ -194,9 +194,23 @@ class TestBuildReportedFigure:
         assert fig.delta_pct == pytest.approx(0.0)
 
     def test_zero_computed_nonzero_reported(self):
-        # Division by zero case → inf delta_pct → mismatch
+        # Division by zero case → sentinel 999.0 delta_pct → mismatch
         fig = _build_reported_figure("x", 100.0, 0.0, 1.0)
         assert fig.match is False
+        assert fig.delta_pct == pytest.approx(999.0)
+        # Verify JSON-serializability (no inf/nan → null issue)
+        import json
+        from loanwhiz.primitives.report_verifier import ReportedFigure
+        rf = ReportedFigure(
+            line_item="x",
+            reported_value=100.0,
+            computed_value=0.0,
+            delta=100.0,
+            delta_pct=fig.delta_pct,
+            match=fig.match,
+        )
+        serialized = json.loads(rf.model_dump_json())
+        assert serialized["delta_pct"] == pytest.approx(999.0)
 
     def test_tolerance_field_stored(self):
         fig = _build_reported_figure("x", 100.0, 100.0, 2.5)

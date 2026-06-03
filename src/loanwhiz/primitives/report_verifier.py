@@ -85,7 +85,12 @@ class ReportedFigure(BaseModel):
         reported_value:  Value extracted from the investor report (EUR).
         computed_value:  Value from the waterfall runner output (EUR).
         delta:           ``reported_value - computed_value``.
-        delta_pct:       ``delta / computed_value * 100``; 0.0 when computed_value is 0.
+        delta_pct:       ``delta / computed_value * 100`` when ``computed_value != 0``.
+                         When both values are zero the percentage is 0.0.
+                         When ``computed_value`` is 0 but ``reported_value`` is not,
+                         the discrepancy is unbounded — stored as 999.0 (a sentinel
+                         indicating "computed was zero, reported non-zero; treat as
+                         a mismatch regardless of tolerance").
         match:           ``True`` if ``abs(delta_pct) < tolerance_pct``.
         tolerance_pct:   Tolerance used for the match decision (default 1.0%).
     """
@@ -352,8 +357,10 @@ def _build_reported_figure(
         delta_pct = delta / computed_value * 100.0
     else:
         # Avoid division by zero: if both are 0 it's a perfect match; otherwise
-        # the discrepancy is unbounded — flag as mismatch.
-        delta_pct = 0.0 if reported_value == 0.0 else float("inf")
+        # the discrepancy is unbounded.  Use 999.0 as a finite sentinel that
+        # (a) JSON-serializes cleanly, (b) exceeds any reasonable tolerance_pct,
+        # and (c) is unambiguous in the output (not null / not inf).
+        delta_pct = 0.0 if reported_value == 0.0 else 999.0
 
     match = abs(delta_pct) < tolerance_pct
 
