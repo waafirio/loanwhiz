@@ -14,3 +14,4 @@ venv/
 data/deals/*.json
 node_modules/
 dist/
+.liz/state/
