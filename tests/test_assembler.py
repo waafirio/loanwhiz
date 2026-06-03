@@ -25,8 +25,12 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from loanwhiz.extraction.assembler import (
+    DEFAULT_DEAL_CACHE_DIR,
+    DEFAULT_DOCLING_CACHE_DIR,
     DealModel,
     DealModelMetadata,
+    _docling_cache_path,
+    _download_and_convert,
     _extract_tranches,
     _slug,
     extract_deal_model,
@@ -585,6 +589,255 @@ class TestExtractDealModelMocked:
                 deal_name=deal_name,
                 cache_dir=cache_dir,
             )
+
+
+# ---------------------------------------------------------------------------
+# Unit tests — durable cache location (#132)
+# ---------------------------------------------------------------------------
+
+
+class TestDurableCacheLocation:
+    """The default cache dirs must be the repo's durable data/ tree, not /tmp."""
+
+    def test_deal_cache_default_is_data_deals(self) -> None:
+        assert DEFAULT_DEAL_CACHE_DIR.parts[-2:] == ("data", "deals")
+        # Must NOT be the old ephemeral /tmp/loanwhiz_cache location.
+        assert "loanwhiz_cache" not in str(DEFAULT_DEAL_CACHE_DIR)
+        assert not str(DEFAULT_DEAL_CACHE_DIR).startswith("/tmp/")
+
+    def test_docling_cache_default_is_data_docling_cache(self) -> None:
+        assert DEFAULT_DOCLING_CACHE_DIR.parts[-2:] == ("data", "docling_cache")
+        assert "loanwhiz_cache" not in str(DEFAULT_DOCLING_CACHE_DIR)
+        assert not str(DEFAULT_DOCLING_CACHE_DIR).startswith("/tmp/")
+
+    def test_deal_and_docling_caches_share_repo_data_root(self) -> None:
+        # Both resolve under the same committed repo data/ directory.
+        assert DEFAULT_DEAL_CACHE_DIR.parent == DEFAULT_DOCLING_CACHE_DIR.parent
+        assert DEFAULT_DEAL_CACHE_DIR.parent.name == "data"
+
+    def test_default_cache_dir_signature_uses_constant(self) -> None:
+        """extract_deal_model's default cache_dir resolves to the durable path."""
+        import inspect
+
+        sig = inspect.signature(extract_deal_model)
+        assert sig.parameters["cache_dir"].default == str(DEFAULT_DEAL_CACHE_DIR)
+        assert "loanwhiz_cache" not in sig.parameters["cache_dir"].default
+        assert not sig.parameters["cache_dir"].default.startswith("/tmp/")
+
+
+# ---------------------------------------------------------------------------
+# Unit tests — Docling markdown cache (#132)
+# ---------------------------------------------------------------------------
+
+
+class TestDoclingMarkdownCache:
+    """_download_and_convert reuses cached OCR markdown instead of re-running."""
+
+    def test_cache_path_keyed_by_url_hash(self) -> None:
+        p1 = _docling_cache_path(_PROSPECTUS_URL, "/some/dir")
+        p2 = _docling_cache_path(_PROSPECTUS_URL, "/some/dir")
+        p3 = _docling_cache_path("https://example.com/other.pdf", "/some/dir")
+        # Same URL → same path; different URL → different path.
+        assert p1 == p2
+        assert p1 != p3
+        assert p1.suffix == ".md"
+        assert p1.parent == Path("/some/dir")
+
+    def test_cache_hit_skips_docling_conversion(self) -> None:
+        """When the markdown cache exists, no download/Docling is invoked."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            cache_file = _docling_cache_path(_PROSPECTUS_URL, tmpdir)
+            cache_file.parent.mkdir(parents=True, exist_ok=True)
+            cache_file.write_text("# Cached markdown\nbody", encoding="utf-8")
+
+            # Patch the lazy imports so a real download/Docling would blow up.
+            with patch.dict(
+                "sys.modules",
+                {
+                    "requests": MagicMock(),
+                    "docling": MagicMock(),
+                    "docling.document_converter": MagicMock(),
+                },
+            ):
+                import sys
+
+                result = _download_and_convert(_PROSPECTUS_URL, cache_dir=tmpdir)
+                # Docling's DocumentConverter must never have been called.
+                conv = sys.modules["docling.document_converter"].DocumentConverter
+                conv.assert_not_called()
+
+            assert result == "# Cached markdown\nbody"
+
+    def test_force_refresh_busts_markdown_cache(self) -> None:
+        """force_refresh=True ignores the cached markdown and re-converts."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            cache_file = _docling_cache_path(_PROSPECTUS_URL, tmpdir)
+            cache_file.parent.mkdir(parents=True, exist_ok=True)
+            cache_file.write_text("# Stale markdown", encoding="utf-8")
+
+            fake_requests = MagicMock()
+            fake_requests.get.return_value = MagicMock(
+                content=b"%PDF-1.4 fake", raise_for_status=lambda: None
+            )
+            fake_converter_mod = MagicMock()
+            fake_doc = MagicMock()
+            fake_doc.document.export_to_markdown.return_value = "# Fresh markdown"
+            fake_converter_mod.DocumentConverter.return_value.convert.return_value = (
+                fake_doc
+            )
+
+            with patch.dict(
+                "sys.modules",
+                {
+                    "requests": fake_requests,
+                    "docling": MagicMock(),
+                    "docling.document_converter": fake_converter_mod,
+                },
+            ):
+                result = _download_and_convert(
+                    _PROSPECTUS_URL, cache_dir=tmpdir, force_refresh=True
+                )
+                fake_converter_mod.DocumentConverter.assert_called_once()
+
+            # Fresh result returned AND written back to the cache.
+            assert result == "# Fresh markdown"
+            assert cache_file.read_text(encoding="utf-8") == "# Fresh markdown"
+
+    def test_cache_miss_writes_markdown(self) -> None:
+        """On a cold cache, the converted markdown is persisted for reuse."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            cache_file = _docling_cache_path(_PROSPECTUS_URL, tmpdir)
+            assert not cache_file.exists()
+
+            fake_requests = MagicMock()
+            fake_requests.get.return_value = MagicMock(
+                content=b"%PDF-1.4 fake", raise_for_status=lambda: None
+            )
+            fake_converter_mod = MagicMock()
+            fake_doc = MagicMock()
+            fake_doc.document.export_to_markdown.return_value = "# Converted"
+            fake_converter_mod.DocumentConverter.return_value.convert.return_value = (
+                fake_doc
+            )
+
+            with patch.dict(
+                "sys.modules",
+                {
+                    "requests": fake_requests,
+                    "docling": MagicMock(),
+                    "docling.document_converter": fake_converter_mod,
+                },
+            ):
+                result = _download_and_convert(_PROSPECTUS_URL, cache_dir=tmpdir)
+
+            assert result == "# Converted"
+            assert cache_file.read_text(encoding="utf-8") == "# Converted"
+
+
+# ---------------------------------------------------------------------------
+# Unit tests — force_refresh propagation to sub-extractors (#132)
+# ---------------------------------------------------------------------------
+
+
+class TestForceRefreshPropagation:
+    """extract_deal_model(force_refresh=True) must bust the sub-extractor caches.
+
+    The #125 revenue-waterfall fix was masked on re-warm because the waterfall
+    extractor served its own stale disk cache.  force_refresh must reach every
+    sub-extractor (definitions / waterfalls / covenants) and the Docling cache.
+    """
+
+    @staticmethod
+    def _common_mocks() -> dict:
+        fake_defined_term = MagicMock()
+        fake_defined_term.definition = "x"
+        fake_defined_term.page_or_section = "Section 9.1"
+        fake_defs_graph = MagicMock()
+        fake_defs_graph.terms = {"Term": fake_defined_term}
+
+        fake_waterfalls = {"revenue": _make_waterfall("revenue", n_steps=2)}
+
+        fake_covenants = MagicMock()
+        fake_covenants.model_dump.return_value = {
+            "deal_name": "Test",
+            "triggers": [],
+            "issuer_covenants": [],
+            "extraction_confidence": 0.0,
+        }
+        fake_covenants.triggers = []
+        return {
+            "defs": fake_defs_graph,
+            "waterfalls": fake_waterfalls,
+            "covenants": fake_covenants,
+        }
+
+    def test_force_refresh_propagates_to_all_sub_extractors(self) -> None:
+        mocks = self._common_mocks()
+        with tempfile.TemporaryDirectory() as tmpdir:
+            # Seed a stale deal-model cache so force_refresh must override it.
+            cache_file = Path(tmpdir) / "green-lion-2026-1-bv.json"
+            cache_file.write_text(
+                _make_minimal_deal_model(cache_path=str(cache_file)).model_dump_json(
+                    indent=2
+                ),
+                encoding="utf-8",
+            )
+
+            with patch(
+                "loanwhiz.extraction.assembler._download_and_convert",
+                return_value="# Definitions\ntext\n## Revenue Priority of Payments\nx",
+            ) as mock_dl, patch(
+                "loanwhiz.extraction.assembler.extract_definitions",
+                return_value=mocks["defs"],
+            ) as mock_defs, patch(
+                "loanwhiz.extraction.assembler.extract_all_waterfalls",
+                return_value=mocks["waterfalls"],
+            ) as mock_wf, patch(
+                "loanwhiz.extraction.assembler.extract_covenants",
+                return_value=mocks["covenants"],
+            ) as mock_cov:
+                extract_deal_model(
+                    prospectus_url=_PROSPECTUS_URL,
+                    deal_name=_DEAL_NAME,
+                    cache_dir=tmpdir,
+                    docling_cache_dir=tmpdir,
+                    force_refresh=True,
+                )
+
+            # Docling download/convert called with force_refresh=True.
+            assert mock_dl.call_args.kwargs.get("force_refresh") is True
+            # Each sub-extractor called with force_refresh=True.
+            assert mock_defs.call_args.kwargs.get("force_refresh") is True
+            assert mock_wf.call_args.kwargs.get("force_refresh") is True
+            assert mock_cov.call_args.kwargs.get("force_refresh") is True
+
+    def test_no_force_refresh_passes_false_to_sub_extractors(self) -> None:
+        mocks = self._common_mocks()
+        with tempfile.TemporaryDirectory() as tmpdir:
+            with patch(
+                "loanwhiz.extraction.assembler._download_and_convert",
+                return_value="# Definitions\ntext\n## Revenue Priority of Payments\nx",
+            ) as mock_dl, patch(
+                "loanwhiz.extraction.assembler.extract_definitions",
+                return_value=mocks["defs"],
+            ) as mock_defs, patch(
+                "loanwhiz.extraction.assembler.extract_all_waterfalls",
+                return_value=mocks["waterfalls"],
+            ) as mock_wf, patch(
+                "loanwhiz.extraction.assembler.extract_covenants",
+                return_value=mocks["covenants"],
+            ) as mock_cov:
+                extract_deal_model(
+                    prospectus_url=_PROSPECTUS_URL,
+                    deal_name=_DEAL_NAME,
+                    cache_dir=tmpdir,
+                    docling_cache_dir=tmpdir,
+                )
+
+            assert mock_dl.call_args.kwargs.get("force_refresh") is False
+            assert mock_defs.call_args.kwargs.get("force_refresh") is False
+            assert mock_wf.call_args.kwargs.get("force_refresh") is False
+            assert mock_cov.call_args.kwargs.get("force_refresh") is False
 
 
 # ---------------------------------------------------------------------------
