@@ -14,6 +14,7 @@ Two test layers:
 
 from __future__ import annotations
 
+import re
 import textwrap
 from pathlib import Path
 
@@ -114,6 +115,127 @@ _SYNTHETIC_MD = textwrap.dedent("""\
 
     Credit enhancement is provided by the reserve fund.
 """)
+
+
+# Regression fixture for #122: the real Green Lion prospectus structures the
+# Priorities of Payments as a numbered *parent* heading (``## 5.2 PRIORITIES OF
+# PAYMENTS``) — whose body is empty — immediately followed by the content
+# sub-sections (``## Revenue Priority of Payments`` etc.) that actually hold the
+# (a)–(k) payment steps.  The old keyword list ``["revenue priority", "5.2"]``
+# made ``SectionMap.find`` return the empty numbered parent (it appears first in
+# document order and "5.2" matches its title), so the revenue waterfall fed
+# Gemini ~0 chars and extracted 0 steps.  This fixture mirrors that structure so
+# the regression is caught without the 1M-char real markdown.
+_POP_STRUCTURE_MD = textwrap.dedent("""\
+    # Prospectus
+
+    ## 5.1 AVAILABLE FUNDS
+
+    ## Available Revenue Funds
+
+    Available Revenue Funds means the aggregate of the following amounts.
+
+    ## 5.2 PRIORITIES OF PAYMENTS
+
+    ## Revenue Priority of Payments
+
+    On each Notes Payment Date the Available Revenue Funds will be applied in
+    the following order of priority:
+
+    - (a) first, fees of the Security Trustee;
+    - (b) second, fees of the Paying Agent and Servicer;
+    - (c) third, amounts due under the Interest Rate Swap;
+    - (d) fourth, interest on the Class A Notes;
+    - (e) fifth, to credit the Class A Principal Deficiency Ledger;
+    - (f) sixth, interest on the Class B Notes;
+    - (g) seventh, to credit the Class B Principal Deficiency Ledger;
+    - (h) eighth, to credit the Reserve Fund;
+    - (i) ninth, subordinated swap amounts;
+    - (j) tenth, amounts due to the Subordinated Loan Provider;
+    - (k) eleventh, the deferred purchase price to the Seller.
+
+    ## Redemption Priority of Payments
+
+    On each Notes Payment Date the Available Redemption Funds will be applied:
+
+    - (a) first, Class A principal;
+    - (b) second, Class B principal.
+
+    ## Post-Enforcement Priority of Payments
+
+    Following an Enforcement Notice, proceeds are applied:
+
+    - (a) first, Security Trustee fees;
+    - (b) second, Class A amounts.
+
+    ## 5.3 LOSS ALLOCATION
+
+    Losses are allocated to the Principal Deficiency Ledgers.
+""")
+
+
+def test_pop_numbered_parent_does_not_mask_content_section() -> None:
+    """Regression for #122: revenue PoP resolves to the content sub-section.
+
+    The numbered ``## 5.2 PRIORITIES OF PAYMENTS`` parent header is empty and
+    precedes ``## Revenue Priority of Payments`` in document order.  The matcher
+    must return the *content* sub-section (with the (a)–(k) steps), not the empty
+    parent — otherwise the waterfall extractor sees ~0 chars and yields 0 steps.
+    """
+    sm = route_sections(_POP_STRUCTURE_MD)
+    sf = extract_key_sf_sections(sm)
+
+    rev = sf["revenue_priority_of_payments"]
+    assert rev is not None, "revenue_priority_of_payments not found"
+    assert rev.title == "Revenue Priority of Payments", (
+        f"matched the wrong section: {rev.title!r} "
+        "(likely the empty '5.2 PRIORITIES OF PAYMENTS' parent header)"
+    )
+    # The content section must carry real waterfall text, not just a header line.
+    assert "Available Revenue Funds" in rev.text
+    step_letters = re.findall(r"^- \(([a-z])\)", rev.text, re.MULTILINE)
+    assert step_letters == list("abcdefghijk"), (
+        f"expected 11 lettered steps (a)-(k), got {step_letters}"
+    )
+
+    # Redemption must not collapse onto '5.3 LOSS ALLOCATION'.
+    red = sf["redemption_priority_of_payments"]
+    assert red is not None
+    assert red.title == "Redemption Priority of Payments", (
+        f"redemption matched wrong section: {red.title!r}"
+    )
+    assert "loss allocation" not in red.text.lower()
+
+    post = sf["post_enforcement_priority"]
+    assert post is not None
+    assert post.title == "Post-Enforcement Priority of Payments"
+
+
+def test_waterfall_keywords_match_content_sections() -> None:
+    """The waterfall_extractor keyword lists locate the content sub-sections.
+
+    Mirrors test_pop_numbered_parent_does_not_mask_content_section but exercises
+    the exact keyword lists the waterfall extractor uses to feed Gemini.
+    """
+    from loanwhiz.extraction.waterfall_extractor import _WATERFALL_SECTION_KEYWORDS
+
+    sm = route_sections(_POP_STRUCTURE_MD)
+
+    expected_titles = {
+        "revenue": "Revenue Priority of Payments",
+        "redemption": "Redemption Priority of Payments",
+        "post_enforcement": "Post-Enforcement Priority of Payments",
+    }
+    for wf_type, keywords in _WATERFALL_SECTION_KEYWORDS.items():
+        section = sm.find(*keywords)
+        assert section is not None, f"{wf_type} section not found with {keywords}"
+        assert section.title == expected_titles[wf_type], (
+            f"{wf_type}: matched {section.title!r}, expected "
+            f"{expected_titles[wf_type]!r}"
+        )
+        # Each must carry a non-trivial body (not just the header line).
+        body = section.text.split("\n", 1)[1] if "\n" in section.text else ""
+        assert body.strip(), f"{wf_type} section body is empty"
 
 
 def test_section_map_basic() -> None:

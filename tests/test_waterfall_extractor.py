@@ -263,6 +263,104 @@ class TestCacheRoundTrip:
             assert result.waterfall_type == "revenue"
 
 
+class TestRevenueSectionFedToGemini:
+    """Regression for #122: the revenue path must feed Gemini non-empty text.
+
+    The bug was in section location, not the Gemini call: the keyword list
+    matched an empty numbered parent header (``## 5.2 PRIORITIES OF PAYMENTS``)
+    instead of the content sub-section (``## Revenue Priority of Payments``), so
+    Gemini received ~0 chars and returned 0 steps.  We mock the Gemini client
+    and assert the prompt it receives contains the real waterfall body.
+    """
+
+    # Mirrors the real Green Lion structure: empty numbered parent then content.
+    _POP_MD = (
+        "## 5.2 PRIORITIES OF PAYMENTS\n\n"
+        "## Revenue Priority of Payments\n\n"
+        "On each Notes Payment Date the Available Revenue Funds will be applied:\n\n"
+        "- (a) first, fees of the Security Trustee;\n"
+        "- (b) second, interest on the Class A Notes;\n"
+        "- (c) third, the deferred purchase price.\n\n"
+        "## 5.3 LOSS ALLOCATION\n\n"
+        "Losses are allocated to the Principal Deficiency Ledgers.\n"
+    )
+
+    def _run(self) -> str:
+        """Run extract_waterfall('revenue') with a mocked Gemini client.
+
+        Returns the prompt text that was passed to ``generate_content``.
+        """
+        from loanwhiz.extraction.section_router import route_sections
+
+        section_map = route_sections(self._POP_MD)
+
+        definitions = MagicMock()
+        definitions.resolve.return_value = None
+        definitions.resolve_all.return_value = {}
+
+        # Fake Gemini function-call response with one step.
+        fake_fc = MagicMock()
+        fake_fc.args = {
+            "steps": [
+                {
+                    "priority": "(a)",
+                    "recipient": "security_trustee_fees",
+                    "description": "Pay Security Trustee fees.",
+                    "amount_formula": "as accrued",
+                    "condition": "",
+                    "is_pari_passu": False,
+                    "citation": {
+                        "document": "Green Lion 2026-1 Prospectus",
+                        "page_or_row": "Section 5.2(a)",
+                        "excerpt": "fees of the Security Trustee",
+                    },
+                }
+            ],
+            "source_section": "Section 5.2",
+        }
+        fake_part = MagicMock()
+        fake_part.function_call = fake_fc
+        fake_candidate = MagicMock()
+        fake_candidate.content.parts = [fake_part]
+        fake_response = MagicMock()
+        fake_response.candidates = [fake_candidate]
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            cache_file = Path(tmpdir) / "waterfall_test_revenue.json"
+            with patch(
+                "loanwhiz.extraction.waterfall_extractor.genai.Client"
+            ) as mock_client:
+                mock_client.return_value.models.generate_content.return_value = (
+                    fake_response
+                )
+                result = extract_waterfall(
+                    section_map=section_map,
+                    definitions=definitions,
+                    waterfall_type="revenue",
+                    deal_name="test",
+                    cache_path=str(cache_file),
+                )
+                call = mock_client.return_value.models.generate_content.call_args
+                prompt = call.kwargs["contents"]
+
+        self._result = result
+        return prompt
+
+    def test_prompt_contains_revenue_body_not_empty_parent(self) -> None:
+        prompt = self._run()
+        # The content section body — not just the empty '5.2' parent header.
+        assert "Available Revenue Funds" in prompt
+        assert "- (a) first, fees of the Security Trustee" in prompt
+        # The unrelated loss-allocation section must not have leaked in.
+        assert "LOSS ALLOCATION" not in prompt
+
+    def test_revenue_extraction_yields_steps(self) -> None:
+        self._run()
+        assert len(self._result.steps) == 1
+        assert self._result.steps[0].priority == "(a)"
+        assert self._result.waterfall_type == "revenue"
+
+
 class TestCachePathFor:
     """_cache_path_for helper."""
 
