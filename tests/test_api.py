@@ -41,6 +41,111 @@ def test_health_returns_ok():
 
 
 # ---------------------------------------------------------------------------
+# Deal registry — GET /deals (#131)
+# ---------------------------------------------------------------------------
+
+
+def test_deals_lists_green_lion():
+    """GET /deals returns the available deals (id + name); Green Lion present."""
+    resp = client.get("/deals")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert isinstance(body, list)
+    assert {"id": "green-lion-2026-1", "name": "Green Lion 2026-1 B.V."} in body
+    # Each entry carries exactly id + name (the selector contract).
+    for entry in body:
+        assert set(entry) == {"id", "name"}
+
+
+def test_deals_surfaces_second_registered_deal():
+    """Adding a deal to the registry surfaces it in GET /deals — data, not code.
+
+    Patches the module-level ``DEALS`` with an extra deal (as a non-code
+    addition would, via config/data) and confirms it appears in the listing
+    alongside Green Lion.
+    """
+    from loanwhiz.api import main as api_main
+
+    extra = {
+        "deal_name": "Sponsor Deal 2025-1 B.V.",
+        "prospectus_url": "https://example.test/sponsor-2025-1-prospectus.pdf",
+        "tape_urls": [],
+        "investor_report_urls": [],
+    }
+    augmented = {**api_main.DEALS, "sponsor-2025-1": extra}
+    with patch.object(api_main, "DEALS", augmented):
+        resp = client.get("/deals")
+
+    assert resp.status_code == 200
+    body = resp.json()
+    ids = {entry["id"] for entry in body}
+    assert {"green-lion-2026-1", "sponsor-2025-1"} <= ids
+    assert {"id": "sponsor-2025-1", "name": "Sponsor Deal 2025-1 B.V."} in body
+
+
+# ---------------------------------------------------------------------------
+# Deal registry — config-driven loading (#131)
+# ---------------------------------------------------------------------------
+
+
+def test_registry_contains_green_lion():
+    """The config-driven registry always carries Green Lion as a default."""
+    from loanwhiz.config import DEAL_REGISTRY, GREEN_LION
+
+    assert "green-lion-2026-1" in DEAL_REGISTRY
+    assert DEAL_REGISTRY["green-lion-2026-1"] is GREEN_LION
+    assert DEAL_REGISTRY["green-lion-2026-1"]["deal_name"] == "Green Lion 2026-1 B.V."
+
+
+def test_registry_merges_deal_from_data_file(tmp_path):
+    """A deal added to data/deals.json is merged into the registry — no code.
+
+    Demonstrates the non-code-addition path: write a deals.json with an extra
+    deal, point the loader at it, and confirm the new deal joins the in-code
+    Green Lion default.
+    """
+    from loanwhiz.config import _load_deal_registry
+
+    data_file = tmp_path / "deals.json"
+    data_file.write_text(
+        json.dumps(
+            {
+                "sponsor-2025-1": {
+                    "deal_name": "Sponsor Deal 2025-1 B.V.",
+                    "prospectus_url": "https://example.test/p.pdf",
+                    "tape_urls": [],
+                    "investor_report_urls": [],
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    registry = _load_deal_registry(data_file)
+    # In-code default still present, plus the data-file deal.
+    assert "green-lion-2026-1" in registry
+    assert registry["sponsor-2025-1"]["deal_name"] == "Sponsor Deal 2025-1 B.V."
+
+
+def test_registry_tolerates_missing_data_file(tmp_path):
+    """An absent data file yields just the in-code defaults (no crash)."""
+    from loanwhiz.config import _load_deal_registry
+
+    registry = _load_deal_registry(tmp_path / "does-not-exist.json")
+    assert "green-lion-2026-1" in registry
+
+
+def test_registry_tolerates_malformed_data_file(tmp_path):
+    """A malformed data file is ignored; defaults still load (never takes API down)."""
+    from loanwhiz.config import _load_deal_registry
+
+    bad = tmp_path / "deals.json"
+    bad.write_text("{ not valid json", encoding="utf-8")
+    registry = _load_deal_registry(bad)
+    assert "green-lion-2026-1" in registry
+
+
+# ---------------------------------------------------------------------------
 # CORS
 # ---------------------------------------------------------------------------
 

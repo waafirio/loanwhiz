@@ -32,7 +32,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
 from loanwhiz.agent.executor import execute_query
-from loanwhiz.config import GREEN_LION
+from loanwhiz.config import DEAL_REGISTRY, GREEN_LION
 from loanwhiz.extraction.assembler import DealModel, _slug
 from loanwhiz.primitives.collections_aggregator import (
     CollectionsAggregator,
@@ -61,9 +61,11 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Registry of known deals. For the hackathon, Green Lion is the one deal; the
+# Registry of known deals, sourced from the config-driven DEAL_REGISTRY. The
 # key is the canonical deal id clients use in the /deal/{deal_id}/... routes.
-DEALS: dict[str, dict] = {"green-lion-2026-1": GREEN_LION}
+# Adding a deal is data (config / data/deals.json), not code here — see
+# loanwhiz.config.DEAL_REGISTRY. Green Lion is the first registered deal.
+DEALS: dict[str, dict] = DEAL_REGISTRY
 
 # Green Lion 2026-1 capital structure / latest reported figures, used as the
 # base case for the forward projection. These mirror the deal's reported tape
@@ -222,6 +224,38 @@ def _require_deal(deal_id: str) -> dict:
     if deal is None:
         raise HTTPException(status_code=404, detail=f"Deal {deal_id} not found")
     return deal
+
+
+# --- deal registry listing (#131) --------------------------------------------
+# Self-contained block (response model + handler) for the deal-registry listing.
+# Lets the frontend deal selector (#134) populate from the config-driven
+# registry. Kept contiguous to minimise conflicts with the sibling issues
+# (#130 / #135 / #136) editing this same module in parallel.
+
+
+class DealSummary(BaseModel):
+    """One available deal — id + display name — for ``GET /deals``."""
+
+    id: str
+    name: str
+
+
+@app.get("/deals", response_model=list[DealSummary])
+def list_deals() -> list[DealSummary]:
+    """List the available deals (id + name) from the config-driven registry.
+
+    Sourced from :data:`DEALS` (``loanwhiz.config.DEAL_REGISTRY``), so a deal
+    added as data — not code — surfaces here automatically. The frontend deal
+    selector uses this to populate; ``id`` is the value to pass to the
+    ``/deal/{deal_id}/...`` routes.
+    """
+    return [
+        DealSummary(id=deal_id, name=deal["deal_name"])
+        for deal_id, deal in DEALS.items()
+    ]
+
+
+# --- end deal registry listing (#131) ----------------------------------------
 
 
 @app.get("/deal/{deal_id}/model", response_model=DealModelResponse)
