@@ -637,7 +637,25 @@ def _tape_output_dump(reporting_date: str, pool_balance: float) -> dict:
     }
 
 
-def test_deal_tape_analytics_returns_periods():
+@pytest.fixture
+def _isolated_tape_cache(tmp_path):
+    """Point the tape-analytics cache at a clean tmp dir and empty memo.
+
+    Keeps the analytics-cache tests deterministic: each test starts cold (no
+    on-disk artifact, no in-process memo) and never touches the shared
+    ``/tmp/loanwhiz_cache/tape_analytics`` dir.
+    """
+    from loanwhiz.api import main as api_main
+
+    saved_memo = dict(api_main._TAPE_ANALYTICS_MEMO)
+    api_main._TAPE_ANALYTICS_MEMO.clear()
+    with patch("loanwhiz.api.main.TAPE_ANALYTICS_CACHE_DIR", str(tmp_path)):
+        yield tmp_path
+    api_main._TAPE_ANALYTICS_MEMO.clear()
+    api_main._TAPE_ANALYTICS_MEMO.update(saved_memo)
+
+
+def test_deal_tape_analytics_returns_periods(_isolated_tape_cache):
     dumps = [
         _tape_output_dump("2026-02-28", 1_050_000_000.0),
         _tape_output_dump("2026-03-31", 1_040_000_000.0),
@@ -681,6 +699,68 @@ def test_deal_tape_analytics_returns_periods():
 def test_deal_tape_analytics_unknown_returns_404():
     resp = client.get("/deal/unknown/tape-analytics")
     assert resp.status_code == 404
+
+
+def test_deal_tape_analytics_computes_each_tape_once_across_calls(_isolated_tape_cache):
+    """Repeated /tape-analytics calls normalise each tape exactly once.
+
+    Two requests over a 3-tape deal would, without caching, run the normaliser
+    6 times. With the keyed cache (memo + on-disk JSON), each tape is computed
+    once: total execute() calls == number of tapes, not 2× that.
+    """
+    dumps = [
+        _tape_output_dump("2026-02-28", 1_050_000_000.0),
+        _tape_output_dump("2026-03-31", 1_040_000_000.0),
+        _tape_output_dump("2026-04-30", 1_033_412_063.0),
+    ]
+    results = iter(_FakeResult(d) for d in dumps)
+
+    with patch("loanwhiz.api.main.EsmaTapeNormaliser") as MockNorm:
+        MockNorm.return_value.execute.side_effect = lambda _inp: next(results)
+        first = client.get("/deal/green-lion-2026-1/tape-analytics")
+        second = client.get("/deal/green-lion-2026-1/tape-analytics")
+
+    assert first.status_code == 200
+    assert second.status_code == 200
+    # Both responses identical (served from cache the second time).
+    assert first.json() == second.json()
+    # One compute per tape across BOTH requests — not two.
+    assert MockNorm.return_value.execute.call_count == 3
+
+
+def test_deal_tape_analytics_on_disk_cache_survives_fresh_process(_isolated_tape_cache):
+    """A populated on-disk cache serves a 'fresh process' (empty memo) without
+    re-running the normaliser.
+
+    Simulates a restart: prime the cache via one request, clear the in-process
+    memo (as a new process would have), then request again with the normaliser
+    patched to raise — proving the second request reads from disk only.
+    """
+    from loanwhiz.api import main as api_main
+
+    dumps = [
+        _tape_output_dump("2026-02-28", 1_050_000_000.0),
+        _tape_output_dump("2026-03-31", 1_040_000_000.0),
+        _tape_output_dump("2026-04-30", 1_033_412_063.0),
+    ]
+    results = iter(_FakeResult(d) for d in dumps)
+    with patch("loanwhiz.api.main.EsmaTapeNormaliser") as MockNorm:
+        MockNorm.return_value.execute.side_effect = lambda _inp: next(results)
+        primed = client.get("/deal/green-lion-2026-1/tape-analytics")
+    assert primed.status_code == 200
+    # On-disk artifacts written, one per tape.
+    assert len(list(_isolated_tape_cache.glob("*.json"))) == 3
+
+    # Simulate a fresh process: memo empty, but on-disk cache present.
+    api_main._TAPE_ANALYTICS_MEMO.clear()
+    with patch("loanwhiz.api.main.EsmaTapeNormaliser") as MockNorm2:
+        MockNorm2.return_value.execute.side_effect = AssertionError(
+            "normaliser must not run when the on-disk cache is warm"
+        )
+        resp = client.get("/deal/green-lion-2026-1/tape-analytics")
+
+    assert resp.status_code == 200
+    assert resp.json() == primed.json()
 
 
 # ---------------------------------------------------------------------------
