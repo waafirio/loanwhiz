@@ -154,6 +154,7 @@ Call the `record_defined_terms` function with the complete list.
 def extract_definitions(
     section_map: SectionMap,
     max_chars: int = 40_000,
+    force_refresh: bool = False,
 ) -> DefinitionsGraph:
     """Extract defined terms from the Definitions section using Gemini 2.5 Pro.
 
@@ -168,6 +169,12 @@ def extract_definitions(
         Maximum characters of the Definitions section to send to the LLM.
         The Green Lion 2026-1 Definitions section is ~30 k chars; the default
         of 40 k leaves headroom.
+    force_refresh:
+        Accepted so a deal-model ``force_refresh`` can propagate uniformly to
+        every sub-extractor.  This function holds no on-disk cache of its own
+        (it always calls Gemini against the supplied ``section_map``), so the
+        flag is a no-op here — but keeping the parameter avoids a special-case
+        at the call site and documents that nothing stale is served.
 
     Raises
     ------
@@ -320,6 +327,7 @@ def _graph_from_json(data: dict) -> DefinitionsGraph:
 def load_or_extract(
     prospectus_url: str,
     cache_path: str | None = None,
+    force_refresh: bool = False,
 ) -> DefinitionsGraph:
     """Load cached definitions graph or extract fresh from the prospectus.
 
@@ -342,6 +350,10 @@ def load_or_extract(
     cache_path:
         Override the default cache location. Auto-derived from ``prospectus_url``
         when ``None``.
+    force_refresh:
+        When ``True``, ignore any cached definitions on disk and re-run the
+        download → Docling → Gemini pipeline (the fresh graph is written back
+        to the cache).
 
     Returns
     -------
@@ -357,7 +369,7 @@ def load_or_extract(
     """
     cache = Path(cache_path) if cache_path else _default_cache_path(prospectus_url)
 
-    if cache.exists():
+    if cache.exists() and not force_refresh:
         data = json.loads(cache.read_text(encoding="utf-8"))
         return _graph_from_json(data)
 

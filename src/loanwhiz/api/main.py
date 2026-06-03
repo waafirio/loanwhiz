@@ -23,6 +23,8 @@ request/response so a later swap to a dedicated projector is a drop-in change.
 
 from __future__ import annotations
 
+import hashlib
+import json
 from pathlib import Path
 from typing import Any
 
@@ -31,8 +33,12 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
 from loanwhiz.agent.executor import execute_query
-from loanwhiz.config import GREEN_LION
-from loanwhiz.extraction.assembler import DealModel, _slug
+from loanwhiz.config import DEAL_REGISTRY, GREEN_LION
+from loanwhiz.extraction.assembler import (
+    DEFAULT_DEAL_CACHE_DIR,
+    DealModel,
+    _slug,
+)
 from loanwhiz.governance import EvidencePackLogger
 from loanwhiz.primitives.collections_aggregator import (
     CollectionsAggregator,
@@ -75,9 +81,11 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Registry of known deals. For the hackathon, Green Lion is the one deal; the
+# Registry of known deals, sourced from the config-driven DEAL_REGISTRY. The
 # key is the canonical deal id clients use in the /deal/{deal_id}/... routes.
-DEALS: dict[str, dict] = {"green-lion-2026-1": GREEN_LION}
+# Adding a deal is data (config / data/deals.json), not code here — see
+# loanwhiz.config.DEAL_REGISTRY. Green Lion is the first registered deal.
+DEALS: dict[str, dict] = DEAL_REGISTRY
 
 # Green Lion 2026-1 capital structure / latest reported figures, used as the
 # base case for the forward projection. These mirror the deal's reported tape
@@ -135,9 +143,10 @@ class ProjectRequest(BaseModel):
 # Directory where ``loanwhiz.extraction.assembler.extract_deal_model`` caches
 # extracted deal models. The ``/deal/{id}/model`` endpoint reads from here but
 # never triggers a cold extraction (that path is ~10min via Docling) — it only
-# serves a cache hit and otherwise degrades gracefully. Mirrors the assembler's
-# default ``cache_dir`` so the two agree on where the artifact lives.
-DEAL_MODEL_CACHE_DIR = "/tmp/loanwhiz_cache/deals"
+# serves a cache hit and otherwise degrades gracefully. Sourced from the
+# assembler's durable default (#132 moved it from /tmp to the committed
+# data/deals/) so the writer and this reader never diverge.
+DEAL_MODEL_CACHE_DIR = str(DEFAULT_DEAL_CACHE_DIR)
 
 
 class DealModelResponse(BaseModel):
@@ -236,6 +245,38 @@ def _require_deal(deal_id: str) -> dict:
     if deal is None:
         raise HTTPException(status_code=404, detail=f"Deal {deal_id} not found")
     return deal
+
+
+# --- deal registry listing (#131) --------------------------------------------
+# Self-contained block (response model + handler) for the deal-registry listing.
+# Lets the frontend deal selector (#134) populate from the config-driven
+# registry. Kept contiguous to minimise conflicts with the sibling issues
+# (#130 / #135 / #136) editing this same module in parallel.
+
+
+class DealSummary(BaseModel):
+    """One available deal — id + display name — for ``GET /deals``."""
+
+    id: str
+    name: str
+
+
+@app.get("/deals", response_model=list[DealSummary])
+def list_deals() -> list[DealSummary]:
+    """List the available deals (id + name) from the config-driven registry.
+
+    Sourced from :data:`DEALS` (``loanwhiz.config.DEAL_REGISTRY``), so a deal
+    added as data — not code — surfaces here automatically. The frontend deal
+    selector uses this to populate; ``id`` is the value to pass to the
+    ``/deal/{deal_id}/...`` routes.
+    """
+    return [
+        DealSummary(id=deal_id, name=deal["deal_name"])
+        for deal_id, deal in DEALS.items()
+    ]
+
+
+# --- end deal registry listing (#131) ----------------------------------------
 
 
 @app.get("/deal/{deal_id}/model", response_model=DealModelResponse)
@@ -456,6 +497,74 @@ def deal_waterfall(deal_id: str) -> WaterfallResponse:
 # Self-contained block (response model + handler) for the per-period pool
 # analytics endpoint. Kept contiguous to minimise conflicts with the sibling
 # issues (#109/#111/#112) editing this same module in parallel.
+#
+# Caching (#130, Part of #128 — scale-readiness)
+# ----------------------------------------------
+# Normalising every ESMA tape on every request fetches + parses each CSV anew;
+# with ~48 monthly tapes a single ``/tape-analytics`` call would take 30-90s
+# and pay that cost on every refresh. Each tape's normalised analytics is
+# deterministic and keyed by its (content-stable) URL, so we cache it in two
+# layers:
+#
+#   1. In-process memo (``_TAPE_ANALYTICS_MEMO``) — instant repeat reads within
+#      a running process.
+#   2. On-disk JSON under ``TAPE_ANALYTICS_CACHE_DIR`` — survives restarts.
+#
+# Both are keyed by the tape URL (a new reporting period is a new URL, never a
+# mutated file, so URL-keying never serves stale data). The on-disk dir is
+# deliberately distinct from the assembler's extraction cache
+# (``DEAL_MODEL_CACHE_DIR`` / ``/tmp/loanwhiz_cache/deals``, reworked under
+# #132) so the two cache stories don't collide.
+#
+# Invalidation: delete ``TAPE_ANALYTICS_CACHE_DIR`` (and restart, or clear
+# ``_TAPE_ANALYTICS_MEMO``) — there is no per-tape expiry because the keyed
+# URLs are immutable.
+
+# On-disk cache directory for normalised tape analytics. Distinct from
+# DEAL_MODEL_CACHE_DIR so this cache never collides with the extraction
+# artifact cache (#132). Module-level so tests can patch it at a tmp_path.
+TAPE_ANALYTICS_CACHE_DIR = "/tmp/loanwhiz_cache/tape_analytics"
+
+# In-process memo: tape URL -> EsmaTapeOutput.model_dump() dict. Module-level
+# so it persists across requests within a process; tests clear it for
+# determinism.
+_TAPE_ANALYTICS_MEMO: dict[str, dict] = {}
+
+
+def _tape_cache_path(url: str) -> Path:
+    """On-disk cache path for a tape URL.
+
+    The URL is the cache key; we hash it to a filesystem-safe filename rather
+    than embedding the raw URL.
+    """
+    digest = hashlib.sha256(url.encode("utf-8")).hexdigest()
+    return Path(TAPE_ANALYTICS_CACHE_DIR) / f"{digest}.json"
+
+
+def _normalised_tape_output(url: str) -> dict:
+    """Return the normalised ``EsmaTapeOutput`` dict for a tape URL, cached.
+
+    Checks the in-process memo, then the on-disk JSON cache, and only on a miss
+    runs the (network-fetching, CPU-heavy) :class:`EsmaTapeNormaliser`. A miss
+    populates both layers so the analytics for any given tape is computed at
+    most once. The returned dict is the unchanged ``EsmaTapeOutput.model_dump()``
+    shape — callers spread it into ``TapeAnalyticsPeriod`` as before.
+    """
+    memo_hit = _TAPE_ANALYTICS_MEMO.get(url)
+    if memo_hit is not None:
+        return memo_hit
+
+    cache_path = _tape_cache_path(url)
+    if cache_path.exists():
+        output = json.loads(cache_path.read_text(encoding="utf-8"))
+        _TAPE_ANALYTICS_MEMO[url] = output
+        return output
+
+    output = EsmaTapeNormaliser().execute(EsmaTapeInput(file_url=url)).output.model_dump()
+    cache_path.parent.mkdir(parents=True, exist_ok=True)
+    cache_path.write_text(json.dumps(output), encoding="utf-8")
+    _TAPE_ANALYTICS_MEMO[url] = output
+    return output
 
 
 class TapeAnalyticsPeriod(BaseModel):
@@ -490,13 +599,16 @@ def deal_tape_analytics(deal_id: str) -> list[TapeAnalyticsPeriod]:
     returns one analytics object per reporting period in chronological order —
     pool balance, loan count, arrears, weighted LTV, and the EPC / geographic /
     property-type breakdowns.
+
+    Per-tape analytics is served from a keyed cache (in-process memo + on-disk
+    JSON, keyed by tape URL) so a given tape is normalised at most once; see the
+    caching note at the top of this block.
     """
     deal = _require_deal(deal_id)
-    normaliser = EsmaTapeNormaliser()
     return [
         TapeAnalyticsPeriod(
             tape_date=tape["date"],
-            **normaliser.execute(EsmaTapeInput(file_url=tape["url"])).output.model_dump(),
+            **_normalised_tape_output(tape["url"]),
         )
         for tape in deal["tape_urls"]
     ]

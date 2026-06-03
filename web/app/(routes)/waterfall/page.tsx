@@ -16,6 +16,7 @@ import {
   getWaterfall,
   type WaterfallResult,
 } from "@/lib/api";
+import { useSelectedDeal } from "@/lib/deal-context";
 import {
   EmptyState,
   ErrorState,
@@ -39,16 +40,39 @@ import {
 import { formatCurrency, humanize } from "@/lib/format";
 
 export default function WaterfallPage() {
-  const [data, setData] = useState<WaterfallResult | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const { dealId } = useSelectedDeal();
+  // Tag the result with its deal so a deal switch falls back to the loading
+  // state without a synchronous setState in the effect (see Overview page).
+  const [state, setState] = useState<{
+    dealId: string;
+    data: WaterfallResult | null;
+    error: string | null;
+  }>({ dealId, data: null, error: null });
 
   useEffect(() => {
-    getWaterfall()
-      .then(setData)
-      .catch((e) =>
-        setError(e instanceof ApiError ? e.message : "Failed to load waterfall"),
+    let cancelled = false;
+    getWaterfall(dealId)
+      .then(
+        (d) => !cancelled && setState({ dealId, data: d, error: null }),
+      )
+      .catch(
+        (e) =>
+          !cancelled &&
+          setState({
+            dealId,
+            data: null,
+            error:
+              e instanceof ApiError ? e.message : "Failed to load waterfall",
+          }),
       );
-  }, []);
+    return () => {
+      cancelled = true;
+    };
+  }, [dealId]);
+
+  const current = state.dealId === dealId ? state : null;
+  const data = current?.data ?? null;
+  const error = current?.error ?? null;
 
   return (
     <div className="space-y-6">

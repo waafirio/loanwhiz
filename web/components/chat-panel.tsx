@@ -118,8 +118,8 @@ export function ChatPanel() {
             Ask LoanWhiz
           </SheetTitle>
           <SheetDescription>
-            Ask the structured-finance agent about Green Lion 2026-1. Answers
-            cite the agent&apos;s reasoning trace.
+            Ask the structured-finance agent about the deal. Answers cite the
+            agent&apos;s reasoning trace.
           </SheetDescription>
         </SheetHeader>
 

@@ -370,6 +370,7 @@ def extract_waterfall(
     deal_name: str = "deal",
     cache_path: str | None = None,
     max_chars: int = 20_000,
+    force_refresh: bool = False,
 ) -> ExtractedWaterfall:
     """Extract waterfall steps from the prospectus using Gemini 2.5 Pro.
 
@@ -393,6 +394,10 @@ def extract_waterfall(
         Override the default cache location. Auto-derived when ``None``.
     max_chars:
         Maximum characters of the section text to send to Gemini.
+    force_refresh:
+        When ``True``, ignore any cached result on disk and re-run the Gemini
+        extraction (the fresh result is still written back to the cache).  This
+        is what lets a deal-model ``force_refresh`` bust a stale waterfall cache.
 
     Returns
     -------
@@ -412,9 +417,9 @@ def extract_waterfall(
             f"Must be one of: {list(_WATERFALL_SECTION_KEYWORDS)}"
         )
 
-    # Check cache first.
+    # Check cache first (unless force_refresh busts it).
     resolved_cache = _cache_path_for(deal_name, waterfall_type, cache_path)
-    if resolved_cache.exists():
+    if resolved_cache.exists() and not force_refresh:
         data = json.loads(resolved_cache.read_text(encoding="utf-8"))
         return _waterfall_from_dict(data)
 
@@ -529,6 +534,7 @@ def extract_all_waterfalls(
     definitions: DefinitionsGraph,
     deal_name: str = "deal",
     cache_dir: str | None = None,
+    force_refresh: bool = False,
 ) -> dict[str, ExtractedWaterfall]:
     """Extract revenue, redemption, and post-enforcement waterfalls.
 
@@ -543,6 +549,8 @@ def extract_all_waterfalls(
     cache_dir:
         Override the default cache directory. When provided, cache files
         are written to ``<cache_dir>/waterfall_{deal_name}_{type}.json``.
+    force_refresh:
+        When ``True``, bust each waterfall's disk cache and re-extract.
 
     Returns
     -------
@@ -566,6 +574,7 @@ def extract_all_waterfalls(
                 waterfall_type=waterfall_type,
                 deal_name=deal_name,
                 cache_path=cache_path,
+                force_refresh=force_refresh,
             )
         except ValueError:
             # Section not found in this prospectus — skip silently.

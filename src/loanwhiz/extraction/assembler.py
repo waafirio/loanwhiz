@@ -25,6 +25,7 @@ Usage
 
 from __future__ import annotations
 
+import hashlib
 import re
 import tempfile
 import time
@@ -41,6 +42,31 @@ from loanwhiz.extraction.section_router import (
     route_sections,
 )
 from loanwhiz.extraction.waterfall_extractor import extract_all_waterfalls
+
+
+# ---------------------------------------------------------------------------
+# Durable cache locations
+# ---------------------------------------------------------------------------
+#
+# Extracted artifacts are persisted to the repo's ``data/`` tree rather than
+# ``/tmp`` so a pre-warmed deal survives a reboot and ships with the repo — the
+# demo must never have to re-extract.  ``_REPO_ROOT`` is resolved from this
+# module's location (``src/loanwhiz/extraction/assembler.py`` → four parents up
+# is the repo root) so the path is correct regardless of the process cwd.
+#
+# The directories are committed (each carries a ``.gitkeep``); the generated
+# artifacts themselves are gitignored (see ``.gitignore``).
+
+_REPO_ROOT = Path(__file__).resolve().parents[3]
+
+# Where the assembled DealModel JSON is cached (one file per deal).
+DEFAULT_DEAL_CACHE_DIR = _REPO_ROOT / "data" / "deals"
+
+# Where the Docling markdown (OCR output) is cached, keyed by a hash of the
+# prospectus URL.  Caching this separately means a ``force_refresh`` that only
+# wants to re-run the fast Gemini extraction does not have to re-run the
+# ~18–37 min Docling OCR for the same prospectus.
+DEFAULT_DOCLING_CACHE_DIR = _REPO_ROOT / "data" / "docling_cache"
 
 
 # ---------------------------------------------------------------------------
@@ -113,8 +139,9 @@ _EXPECTED_SECTIONS: list[str] = [
 def extract_deal_model(
     prospectus_url: str,
     deal_name: str,
-    cache_dir: str = "/tmp/loanwhiz_cache/deals",
+    cache_dir: str = str(DEFAULT_DEAL_CACHE_DIR),
     force_refresh: bool = False,
+    docling_cache_dir: str = str(DEFAULT_DOCLING_CACHE_DIR),
 ) -> DealModel:
     """Extract complete deal model from a prospectus PDF.
 
@@ -130,10 +157,21 @@ def extract_deal_model(
         Human-readable deal name, e.g. ``"Green Lion 2026-1 B.V."``.  Used to
         derive the cache filename and stored in the metadata.
     cache_dir:
-        Directory in which to store the cached deal model JSON.
-        Created automatically if it does not exist.
+        Directory in which to store the cached deal model JSON.  Defaults to
+        the repo's durable ``data/deals/`` so the artifact survives reboots and
+        ships with the repo.  Created automatically if it does not exist.
     force_refresh:
-        When ``True``, bypass the cache and re-run the full extraction pipeline.
+        When ``True``, bypass the deal-model cache and re-run extraction.  This
+        propagates to the sub-extractors (definitions / waterfalls / covenants)
+        so their own on-disk caches are busted too, and busts the Docling
+        markdown cache so the OCR is re-run.  (Pass ``force_refresh=True`` after
+        a sub-extractor fix to ensure a re-warm does not serve a stale result.)
+    docling_cache_dir:
+        Directory in which to cache the Docling markdown (OCR output), keyed by
+        a hash of ``prospectus_url``.  Defaults to the repo's durable
+        ``data/docling_cache/``.  Reusing this cache lets a ``force_refresh``
+        re-run only the fast Gemini extraction without re-running the
+        ~18–37 min Docling OCR.
 
     Returns
     -------
@@ -155,26 +193,41 @@ def extract_deal_model(
 
     t0 = time.time()
 
-    # 1. Download and convert the PDF to markdown via Docling.
-    markdown_text = _download_and_convert(prospectus_url)
+    # 1. Download and convert the PDF to markdown via Docling.  The Docling
+    #    markdown is cached separately (keyed by prospectus URL) so a
+    #    force_refresh re-runs only the fast Gemini extraction, not the
+    #    expensive OCR.  force_refresh busts that markdown cache too.
+    markdown_text = _download_and_convert(
+        prospectus_url,
+        cache_dir=docling_cache_dir,
+        force_refresh=force_refresh,
+    )
 
     # 2. Route sections.
     section_map = route_sections(markdown_text)
     key_sections = extract_key_sf_sections(section_map)
     sections_found = [k for k, v in key_sections.items() if v is not None]
 
-    # 3. Extract definitions.
-    definitions_graph = extract_definitions(section_map)
+    # 3. Extract definitions.  force_refresh propagates so any sub-extractor
+    #    disk cache is busted (definitions has none of its own, but the param
+    #    keeps the propagation uniform).
+    definitions_graph = extract_definitions(section_map, force_refresh=force_refresh)
 
-    # 4. Extract waterfalls.
+    # 4. Extract waterfalls.  force_refresh busts the per-waterfall disk cache
+    #    (the #132 fix: a re-warm after the #125 revenue-waterfall fix must not
+    #    serve the stale waterfall_{deal}_{type}.json).
     waterfalls = extract_all_waterfalls(
         section_map,
         definitions_graph,
         deal_name=deal_name,
+        force_refresh=force_refresh,
     )
 
-    # 5. Extract covenants / triggers.
-    covenants = extract_covenants(section_map, definitions_graph)
+    # 5. Extract covenants / triggers.  force_refresh busts the covenants disk
+    #    cache too.
+    covenants = extract_covenants(
+        section_map, definitions_graph, force_refresh=force_refresh
+    )
 
     # 6. Compute completeness.
     completeness = len(
@@ -505,24 +558,52 @@ def _tranches_from_waterfalls(waterfalls: dict) -> list[dict]:
     return sorted(tranches, key=lambda t: t["seniority"])
 
 
-def _download_and_convert(prospectus_url: str) -> str:
+def _docling_cache_path(prospectus_url: str, cache_dir: str) -> Path:
+    """Return the Docling-markdown cache path for a prospectus URL.
+
+    Keyed by a SHA-256 hash of the URL so different prospectuses never collide
+    and the same prospectus always maps to the same file (durable reuse).
+    """
+    digest = hashlib.sha256(prospectus_url.encode("utf-8")).hexdigest()
+    return Path(cache_dir) / f"{digest}.md"
+
+
+def _download_and_convert(
+    prospectus_url: str,
+    cache_dir: str = str(DEFAULT_DOCLING_CACHE_DIR),
+    force_refresh: bool = False,
+) -> str:
     """Download a prospectus PDF and convert it to markdown via Docling.
+
+    The Docling markdown is cached on disk, keyed by a hash of
+    ``prospectus_url``.  On a cache hit (and ``force_refresh`` is ``False``) the
+    cached markdown is returned immediately — **no download, no Docling OCR**.
+    This is what lets a ``force_refresh`` of the deal model re-run only the fast
+    Gemini extraction instead of the ~18–37 min OCR.
 
     Parameters
     ----------
     prospectus_url:
         HTTP(S) URL of the prospectus PDF.
+    cache_dir:
+        Directory in which to cache the converted markdown.
+    force_refresh:
+        When ``True``, ignore any cached markdown and re-download + re-convert.
 
     Returns
     -------
     str
-        Markdown text produced by Docling.
+        Markdown text produced by Docling (or loaded from cache).
 
     Raises
     ------
     RuntimeError
         If the download fails or Docling conversion raises.
     """
+    cache_path = _docling_cache_path(prospectus_url, cache_dir)
+    if cache_path.exists() and not force_refresh:
+        return cache_path.read_text(encoding="utf-8")
+
     try:
         import requests
     except ImportError as exc:
@@ -555,8 +636,13 @@ def _download_and_convert(prospectus_url: str) -> str:
         try:
             converter = DocumentConverter()
             result = converter.convert(pdf_path)
-            return result.document.export_to_markdown()
+            markdown = result.document.export_to_markdown()
         except Exception as exc:
             raise RuntimeError(
                 f"Docling conversion failed for PDF downloaded from {prospectus_url}: {exc}"
             ) from exc
+
+    # Persist the OCR output so future (force_)refreshes reuse it.
+    cache_path.parent.mkdir(parents=True, exist_ok=True)
+    cache_path.write_text(markdown, encoding="utf-8")
+    return markdown
