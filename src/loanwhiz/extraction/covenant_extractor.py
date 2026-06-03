@@ -269,6 +269,7 @@ def extract_covenants(
     section_map: SectionMap,
     definitions: object,  # DefinitionsGraph — accepted but not required for extraction
     cache_path: str | None = None,
+    force_refresh: bool = False,
 ) -> ExtractedCovenants:
     """Extract triggers and covenants from prospectus using Gemini 2.5 Pro.
 
@@ -289,6 +290,10 @@ def extract_covenants(
     cache_path:
         Override the default cache location. Auto-derived from ``deal_name``
         when ``None``.
+    force_refresh:
+        When ``True``, ignore any cached result on disk and re-run the Gemini
+        extraction (the fresh result is still written back to the cache).  This
+        is what lets a deal-model ``force_refresh`` bust a stale covenant cache.
 
     Returns
     -------
@@ -305,8 +310,8 @@ def extract_covenants(
     # Resolve cache path
     resolved_cache = Path(cache_path) if cache_path else _default_cache_path(deal_name)
 
-    # Load from cache if available
-    if resolved_cache.exists():
+    # Load from cache if available (unless force_refresh busts it)
+    if resolved_cache.exists() and not force_refresh:
         data = json.loads(resolved_cache.read_text(encoding="utf-8"))
         return _covenants_from_json(data)
 

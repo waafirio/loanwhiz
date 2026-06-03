@@ -407,7 +407,12 @@ class TestExtractAllWaterfalls:
         definitions = MagicMock()
 
         def _fake_extract(
-            section_map, definitions, waterfall_type, deal_name, cache_path=None
+            section_map,
+            definitions,
+            waterfall_type,
+            deal_name,
+            cache_path=None,
+            force_refresh=False,
         ):
             return _make_waterfall(waterfall_type=waterfall_type)
 
@@ -429,7 +434,12 @@ class TestExtractAllWaterfalls:
         definitions = MagicMock()
 
         def _fake_extract(
-            section_map, definitions, waterfall_type, deal_name, cache_path=None
+            section_map,
+            definitions,
+            waterfall_type,
+            deal_name,
+            cache_path=None,
+            force_refresh=False,
         ):
             if waterfall_type == "revenue":
                 return _make_waterfall(waterfall_type="revenue")
@@ -446,6 +456,151 @@ class TestExtractAllWaterfalls:
             )
 
         assert list(result.keys()) == ["revenue"]
+
+
+# ---------------------------------------------------------------------------
+# Unit tests — force_refresh busts the disk cache (#132)
+# ---------------------------------------------------------------------------
+
+
+class TestForceRefresh:
+    """force_refresh must re-extract even when a cache file is present.
+
+    Regression for #132: after the #125 revenue-waterfall fix, a re-warm with
+    force_refresh still returned the stale cached waterfall because
+    extract_waterfall had no way to bust its own disk cache.
+    """
+
+    _POP_MD = (
+        "## Revenue Priority of Payments\n\n"
+        "On each Notes Payment Date the Available Revenue Funds will be applied:\n\n"
+        "- (a) first, fees of the Security Trustee;\n"
+        "- (b) second, interest on the Class A Notes;\n"
+    )
+
+    @staticmethod
+    def _fake_response(n_steps: int) -> MagicMock:
+        steps = [
+            {
+                "priority": f"({chr(ord('a') + i)})",
+                "recipient": f"recipient_{i}",
+                "description": "desc",
+                "amount_formula": "as accrued",
+                "condition": "",
+                "is_pari_passu": False,
+                "citation": {
+                    "document": "Green Lion 2026-1 Prospectus",
+                    "page_or_row": "Section 5.2",
+                    "excerpt": "x",
+                },
+            }
+            for i in range(n_steps)
+        ]
+        fake_fc = MagicMock()
+        fake_fc.args = {"steps": steps, "source_section": "Section 5.2"}
+        fake_part = MagicMock()
+        fake_part.function_call = fake_fc
+        fake_candidate = MagicMock()
+        fake_candidate.content.parts = [fake_part]
+        fake_response = MagicMock()
+        fake_response.candidates = [fake_candidate]
+        return fake_response
+
+    def test_force_refresh_reextracts_despite_cache(self) -> None:
+        from loanwhiz.extraction.section_router import route_sections
+
+        section_map = route_sections(self._POP_MD)
+        definitions = MagicMock()
+        definitions.resolve.return_value = None
+        definitions.resolve_all.return_value = {}
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            cache_file = Path(tmpdir) / "waterfall_test_revenue.json"
+            # Seed a STALE cache (0 steps — the #125 symptom).
+            _write_cache(
+                ExtractedWaterfall(
+                    deal_name="test",
+                    waterfall_type="revenue",
+                    steps=[],
+                    source_section="Section 5.2",
+                    extraction_confidence=0.0,
+                ),
+                cache_file,
+            )
+
+            with patch(
+                "loanwhiz.extraction.waterfall_extractor.genai.Client"
+            ) as mock_client:
+                mock_client.return_value.models.generate_content.return_value = (
+                    self._fake_response(n_steps=2)
+                )
+                result = extract_waterfall(
+                    section_map=section_map,
+                    definitions=definitions,
+                    waterfall_type="revenue",
+                    deal_name="test",
+                    cache_path=str(cache_file),
+                    force_refresh=True,
+                )
+                # Gemini WAS called despite the cache existing.
+                mock_client.assert_called_once()
+
+            # Fresh (non-stale) result, and the cache was overwritten.
+            assert len(result.steps) == 2
+            reloaded = _waterfall_from_dict(
+                json.loads(cache_file.read_text(encoding="utf-8"))
+            )
+            assert len(reloaded.steps) == 2
+
+    def test_force_refresh_false_still_uses_cache(self) -> None:
+        """Default behaviour (force_refresh=False) still serves the cache."""
+        synthetic = _make_waterfall(n_steps=11)
+        with tempfile.TemporaryDirectory() as tmpdir:
+            cache_file = Path(tmpdir) / "waterfall_test_revenue.json"
+            _write_cache(synthetic, cache_file)
+
+            with patch(
+                "loanwhiz.extraction.waterfall_extractor.genai.Client"
+            ) as mock_client:
+                result = extract_waterfall(
+                    section_map=MagicMock(),
+                    definitions=MagicMock(),
+                    waterfall_type="revenue",
+                    deal_name="test",
+                    cache_path=str(cache_file),
+                    force_refresh=False,
+                )
+                mock_client.assert_not_called()
+            assert len(result.steps) == 11
+
+    def test_extract_all_waterfalls_threads_force_refresh(self) -> None:
+        """extract_all_waterfalls forwards force_refresh to each extract_waterfall."""
+        captured: list[bool] = []
+
+        def _fake_extract(
+            section_map,
+            definitions,
+            waterfall_type,
+            deal_name,
+            cache_path=None,
+            force_refresh=False,
+        ):
+            captured.append(force_refresh)
+            return _make_waterfall(waterfall_type=waterfall_type)
+
+        with patch(
+            "loanwhiz.extraction.waterfall_extractor.extract_waterfall",
+            side_effect=_fake_extract,
+        ):
+            extract_all_waterfalls(
+                section_map=MagicMock(),
+                definitions=MagicMock(),
+                deal_name="test",
+                force_refresh=True,
+            )
+
+        assert captured  # at least one waterfall type attempted
+        assert all(captured), "force_refresh not forwarded to every extract_waterfall"
 
 
 # ---------------------------------------------------------------------------
