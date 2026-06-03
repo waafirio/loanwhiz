@@ -100,10 +100,18 @@ class DeepLoansClient:
     # ------------------------------------------------------------------
 
     def _is_reachable(self) -> bool:
-        """Return True if the deeploans backend responds to a quick health probe.
+        """Return True only if a genuine deeploans backend answers at ``base_url``.
 
         Uses ``GET /openapi.json`` as the probe endpoint — it is unauthenticated
-        and always present on a running deeploans FastAPI instance.
+        and always present on a running deeploans FastAPI instance. A ``2xx``
+        status is *not* sufficient: any unrelated process bound to the same port
+        (a stray dev server, a static file host, a different FastAPI app) can
+        answer on it. We therefore confirm the response is an OpenAPI document
+        that *looks like deeploans* — it parses as JSON, carries the ``openapi``
+        version key, and exposes at least one ``/api/v1/{credit_type}/...`` data
+        path. If those identity markers are absent we treat the backend as
+        unreachable so callers fall back cleanly instead of mis-parsing a foreign
+        service's responses.
         """
         try:
             with httpx.Client(timeout=self.timeout) as client:
@@ -111,9 +119,35 @@ class DeepLoansClient:
                     f"{self.base_url}/openapi.json",
                     headers=self._headers,
                 )
-                return response.status_code < 500
         except (httpx.ConnectError, httpx.TimeoutException, httpx.TransportError):
             return False
+        if response.status_code >= 400:
+            return False
+        try:
+            payload = response.json()
+        except (ValueError, httpx.DecodingError):
+            return False
+        return self._looks_like_deeploans(payload)
+
+    @staticmethod
+    def _looks_like_deeploans(openapi: Any) -> bool:
+        """Return True if an ``/openapi.json`` payload identifies a deeploans API.
+
+        deeploans serves a standard OpenAPI document whose ``paths`` include the
+        loan-tape data routes ``/api/v1/{credit_type}/{table_name}``. We require
+        both the ``openapi`` version marker and at least one such ``/api/v1/``
+        path so a foreign service answering on the same port is rejected.
+        """
+        if not isinstance(openapi, dict) or "openapi" not in openapi:
+            return False
+        paths = openapi.get("paths")
+        if not isinstance(paths, dict):
+            return False
+        for path in paths:
+            parts = path.strip("/").split("/")
+            if len(parts) >= 4 and parts[0] == "api" and parts[1] == "v1":
+                return True
+        return False
 
     # ------------------------------------------------------------------
     # Public API
