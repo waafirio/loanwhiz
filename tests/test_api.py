@@ -231,6 +231,82 @@ def test_deal_project_defaults():
     assert body["scenarios"] == ["base", "stress"]
 
 
+def test_deal_project_includes_wal_per_scenario():
+    """The project response surfaces Class A WAL for each scenario.
+
+    Mocks the waterfall to return a Class A principal distribution; the handler
+    derives the Class A weighted-average life and exposes it both on each
+    per-scenario projection and in a top-level per-scenario ``wal`` map, without
+    dropping the existing waterfall projection fields.
+    """
+    waterfall_dump = {
+        "reporting_period": "projection+6m (base)",
+        "revenue_waterfall": [],
+        "redemption_waterfall": [],
+        "tranche_distributions": [
+            {
+                "tranche": "class_a",
+                "interest_received": 100.0,
+                "principal_received": 1_000.0,
+                "total_received": 1_100.0,
+                "opening_balance": 10_000.0,
+                "closing_balance": 9_000.0,
+            }
+        ],
+        "total_distributed": 1_100.0,
+        "shortfall": 0.0,
+    }
+
+    with patch("loanwhiz.api.main.WaterfallRunner") as MockRunner:
+        MockRunner.return_value.execute.return_value = _FakeResult(waterfall_dump)
+        resp = client.post(
+            "/deal/green-lion-2026-1/project",
+            json={"scenarios": ["base", "stress"], "months": 6},
+        )
+
+    assert resp.status_code == 200
+    body = resp.json()
+
+    # Existing fields stay intact.
+    assert set(body["projections"]) == {"base", "stress"}
+
+    # WAL surfaced per scenario, both inline and in the top-level map.
+    assert set(body["wal"]) == {"base", "stress"}
+    for scenario in ("base", "stress"):
+        proj = body["projections"][scenario]
+        # Existing waterfall fields are not dropped.
+        assert "tranche_distributions" in proj
+        assert "shortfall" in proj
+        # WAL additively present on the projection.
+        assert proj["wal_class_a_months"] == 6.0
+        assert proj["wal_class_a_years"] == pytest.approx(0.5)
+        # And in the top-level per-scenario WAL map.
+        assert body["wal"][scenario]["wal_class_a_months"] == 6.0
+        assert body["wal"][scenario]["wal_class_a_years"] == pytest.approx(0.5)
+
+
+def test_deal_project_wal_zero_when_no_class_a_principal():
+    """WAL is 0.0 when no Class A principal is returned (no divide-by-zero)."""
+    waterfall_dump = {
+        "reporting_period": "projection+12m (base)",
+        "revenue_waterfall": [],
+        "redemption_waterfall": [],
+        "tranche_distributions": [],
+        "total_distributed": 0.0,
+        "shortfall": 0.0,
+    }
+    with patch("loanwhiz.api.main.WaterfallRunner") as MockRunner:
+        MockRunner.return_value.execute.return_value = _FakeResult(waterfall_dump)
+        resp = client.post(
+            "/deal/green-lion-2026-1/project",
+            json={"scenarios": ["base"], "months": 12},
+        )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["projections"]["base"]["wal_class_a_months"] == 0.0
+    assert body["wal"]["base"]["wal_class_a_years"] == 0.0
+
+
 def test_deal_project_unknown_returns_404():
     resp = client.post("/deal/unknown/project", json={})
     assert resp.status_code == 404
