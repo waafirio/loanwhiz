@@ -8,7 +8,7 @@ Structured finance agent framework — SF-native primitives, deal model extracti
 
 ```
 CLIENTS
-  Unified Demo UI (clients/demo) — 5 tabs + docked chat  |  REST API
+  Demo UI (web/) — Next.js dashboard + docked chat  |  REST API (FastAPI)
                          |
                          v
           LANGGRAPH AGENT SERVICE
@@ -58,37 +58,35 @@ Verifies that Vertex AI / Gemini 2.5 Flash is reachable under your credentials:
 pytest tests/test_smoke.py
 ```
 
-### Run against the Green Lion demo
+### Run against the Green Lion demo (CLI)
 
-> **Note:** `demo/run_green_lion.py` is in progress and not yet runnable. The primitives it depends on are being implemented; see the Primitives table below. This section documents the intended invocation once the demo is complete.
+`demo/run_green_lion.py` is a standalone CLI walkthrough — no UI, useful as a backup or for headless runs:
 
 ```bash
 python demo/run_green_lion.py
 ```
 
-This will load the Green Lion 2026-1 deal package (prospectus, three monthly ESMA tapes, three monthly investor reports), run the full extraction and execution pipeline, and print a structured summary.
+This loads the Green Lion 2026-1 deal package (prospectus, three monthly ESMA tapes, three monthly investor reports), runs the full extraction and execution pipeline, and prints a structured summary.
 
 ---
 
 ## Demo UI
 
-The demo is a single unified Gradio app at `clients/demo/` — one multi-tab interface with a docked chat panel, replacing the earlier standalone chat / dashboard / compliance apps.
+The demo UI is a Next.js dashboard in `web/` served over the FastAPI REST API. One command starts both (API on :8000, UI on :3000):
 
 ```bash
-python clients/demo/app.py
+./scripts/run-demo-v2.sh
 ```
 
-Then open http://localhost:7860. The app shares one loaded deal across five tabs:
+Then open http://localhost:3000. The dashboard shares one loaded deal across five views, plus a docked chat panel:
 
-1. **Deal Overview** — the extracted deal model (tranche structure, definitions, waterfall, covenants).
-2. **Pool & Performance** — 3-period pool trends and EPC / geo / rate distributions.
-3. **Waterfall** — runs the extracted waterfall live and shows the distribution cascade.
-4. **Compliance & Covenants** — report verification, the covenant grid, and the actual-vs-projected-stress chart.
-5. **Cashflow Projection** — base vs stress projections and WAL.
+1. **Overview** — the extracted deal model (tranche structure, trigger names, completeness).
+2. **Pool & Performance** — 3-period pool analytics and arrears / EPC / geographic distributions.
+3. **Waterfall** — the revenue priority cascade and per-tranche distributions for the latest period.
+4. **Compliance & Covenants** — the live covenant monitor across reporting periods.
+5. **Projection** — base vs stress forward projections, including Class A WAL.
 
-The docked chat panel (right of every tab) answers ad-hoc deal questions grounded in the loaded deal model and tapes.
-
-> For demo-day operation (cache pre-warm, narrative walkthrough, fallbacks), see [`clients/demo/RUNBOOK.md`](clients/demo/RUNBOOK.md).
+The docked chat panel answers ad-hoc deal questions grounded in the loaded deal model and tapes.
 
 ---
 

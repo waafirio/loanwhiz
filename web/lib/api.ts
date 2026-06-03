@@ -112,6 +112,7 @@ export function postQuery(body: QueryRequest): Promise<QueryResponse> {
 
 // ---------------------------------------------------------------------------
 // Deal model  —  GET /deal/{deal_id}/model
+// (DealModelResponse: deal config + cached extracted DealModel)
 // ---------------------------------------------------------------------------
 
 export interface TapeRef {
@@ -124,20 +125,107 @@ export interface InvestorReportRef {
   url: string;
 }
 
-/** Mirrors `config.GREEN_LION`. */
+/**
+ * One note class in the extracted capital structure, from the assembler's
+ * `DealModel.tranche_structure` (`{name, size_eur, rating, rate, seniority}`,
+ * ordered senior→junior). Sizes / ratings / coupons are `null` when only the
+ * seniority skeleton could be derived (degraded extraction).
+ */
+export interface Tranche {
+  name: string;
+  size_eur: number | null;
+  rating: string | null;
+  rate: string | null;
+  /** 0-based seniority — 0 is most senior (Class A). */
+  seniority: number;
+}
+
+/** Provenance / quality metadata, from `DealModelMetadata`. */
+export interface DealModelMetadata {
+  deal_name: string;
+  prospectus_url: string;
+  extracted_at: string;
+  extraction_duration_sec: number;
+  sections_found: string[];
+  /** 0–1: fraction of expected prospectus sections found. */
+  completeness_score: number;
+  cache_path: string;
+  [key: string]: unknown;
+}
+
+/**
+ * The extracted `DealModel` (`assembler.DealModel.model_dump()`), nested under
+ * `deal_model` on a cache hit. Only the fields the frontend renders are typed;
+ * the rest (definitions, waterfalls, covenants) are left as forward-compatible
+ * extras.
+ */
+export interface ExtractedDealModel {
+  metadata: DealModelMetadata;
+  tranche_structure: Tranche[];
+  trigger_names: string[];
+  [key: string]: unknown;
+}
+
+/**
+ * Mirrors `DealModelResponse` — the deal config (name + document URLs) plus the
+ * cached extracted model when present. On a cache miss the endpoint returns
+ * `extraction_status: "not_cached"` with `deal_model: null` rather than blocking
+ * on a cold (~10min) extraction.
+ */
 export interface DealModel {
   deal_name: string;
   prospectus_url: string;
   tape_urls: TapeRef[];
   investor_report_urls: InvestorReportRef[];
-  // The endpoint returns the raw deal dict; allow forward-compatible extras.
-  [key: string]: unknown;
+
+  /** "cached" | "not_cached" */
+  extraction_status: string;
+  completeness_score: number | null;
+  trigger_names: string[] | null;
+  deal_model: ExtractedDealModel | null;
 }
 
 export function getDealModel(
   dealId: string = DEFAULT_DEAL_ID,
 ): Promise<DealModel> {
   return request<DealModel>(`/deal/${dealId}/model`);
+}
+
+// ---------------------------------------------------------------------------
+// Tape analytics  —  GET /deal/{deal_id}/tape-analytics
+// (EsmaTapeNormaliser → list of EsmaTapeOutput, one per reporting period)
+// ---------------------------------------------------------------------------
+
+/**
+ * Per-period pool analytics for one ESMA tape — mirrors `TapeAnalyticsPeriod`
+ * (the `EsmaTapeOutput` fields plus the deal's registered `tape_date`).
+ *
+ * `pool_stats` carries balance-weighted averages keyed by stat name
+ * (`wtd_coupon_pct`, `wtd_ltv`, `wtd_seasoning`, `wtd_remaining_term`); a key
+ * is absent when the source column wasn't present in the tape. `*_breakdown`
+ * maps are percentage distributions (0–100) and are `null` when the relevant
+ * column is missing from the annex.
+ */
+export interface TapeAnalyticsPeriod {
+  tape_date: string;
+  reporting_date: string;
+  asset_class: string;
+  transaction_name: string | null;
+  loan_count: number;
+  pool_balance_eur: number;
+  pool_stats: Record<string, number>;
+  arrears_breakdown: Record<string, number>;
+  epc_breakdown: Record<string, number> | null;
+  rate_type_breakdown: Record<string, number> | null;
+  property_type_breakdown: Record<string, number> | null;
+  geographic_breakdown: Record<string, number> | null;
+  annex_detected: string;
+}
+
+export function getTapeAnalytics(
+  dealId: string = DEFAULT_DEAL_ID,
+): Promise<TapeAnalyticsPeriod[]> {
+  return request<TapeAnalyticsPeriod[]>(`/deal/${dealId}/tape-analytics`);
 }
 
 // ---------------------------------------------------------------------------
@@ -175,6 +263,33 @@ export function getCompliance(
 }
 
 // ---------------------------------------------------------------------------
+// Waterfall  —  GET /deal/{deal_id}/waterfall
+// (CollectionsAggregator → WaterfallRunner, latest reported period)
+// ---------------------------------------------------------------------------
+
+/**
+ * Mirrors `WaterfallResponse` — the 11-step Revenue Priority of Payments
+ * cascade and the per-tranche (Class A/B/C) distributions for the deal's latest
+ * reported period, plus the Available Revenue / Principal Funds it ran on.
+ */
+export interface WaterfallResult {
+  deal_id: string;
+  reporting_period: string;
+  available_revenue_funds: number;
+  available_principal_funds: number;
+  revenue_waterfall: WaterfallStep[];
+  tranche_distributions: TrancheDistribution[];
+  total_distributed: number;
+  shortfall: number;
+}
+
+export function getWaterfall(
+  dealId: string = DEFAULT_DEAL_ID,
+): Promise<WaterfallResult> {
+  return request<WaterfallResult>(`/deal/${dealId}/waterfall`);
+}
+
+// ---------------------------------------------------------------------------
 // Projection  —  POST /deal/{deal_id}/project
 // (WaterfallRunner → WaterfallOutput per scenario)
 // ---------------------------------------------------------------------------
@@ -208,7 +323,11 @@ export interface TrancheDistribution {
   closing_balance: number;
 }
 
-/** Mirrors `WaterfallOutput` — one scenario's projected waterfall. */
+/**
+ * Mirrors `WaterfallOutput` — one scenario's projected waterfall, with the
+ * Class A weighted-average life (WAL) the `/project` endpoint now surfaces
+ * additively on each scenario.
+ */
 export interface WaterfallProjection {
   reporting_period: string;
   revenue_waterfall: WaterfallStep[];
@@ -216,6 +335,16 @@ export interface WaterfallProjection {
   tranche_distributions: TrancheDistribution[];
   total_distributed: number;
   shortfall: number;
+  /** Class A weighted-average life in months over the projection horizon. */
+  wal_class_a_months: number;
+  /** `wal_class_a_months / 12`. */
+  wal_class_a_years: number;
+}
+
+/** Class A WAL for one scenario — mirrors `ScenarioWal`. */
+export interface ScenarioWal {
+  wal_class_a_months: number;
+  wal_class_a_years: number;
 }
 
 export interface ProjectionResult {
@@ -224,6 +353,8 @@ export interface ProjectionResult {
   scenarios: string[];
   /** Keyed by scenario name (e.g. "base", "stress"). */
   projections: Record<string, WaterfallProjection>;
+  /** Per-scenario Class A WAL, keyed by scenario name. */
+  wal: Record<string, ScenarioWal>;
 }
 
 export function postProjection(
