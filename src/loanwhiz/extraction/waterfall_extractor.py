@@ -77,10 +77,25 @@ _EXTRACT_TOOL_DESCRIPTION = (
 )
 
 # Keywords used to locate each waterfall section via SectionMap.find().
+#
+# These must match the *content* sub-section that actually holds the payment
+# steps — e.g. ``## Revenue Priority of Payments`` — not the numbered parent
+# header (``## 5.2 PRIORITIES OF PAYMENTS``), which in the Green Lion 2026-1
+# prospectus is an empty heading immediately preceding the content sub-section.
+# ``SectionMap.find`` returns the *first* section (in document order) whose
+# title contains any keyword, so a numeric keyword like ``"5.2"`` matched the
+# empty parent header and the revenue waterfall extracted 0 steps (#122).
+# ``"5.3"`` was likewise unsafe: it matches ``## 5.3 LOSS ALLOCATION``, not the
+# redemption section. Keep only the descriptive content-section keywords.
 _WATERFALL_SECTION_KEYWORDS: dict[str, list[str]] = {
-    "revenue": ["revenue priority", "5.2"],
-    "redemption": ["redemption priority", "5.3"],
-    "post_enforcement": ["post-enforcement", "post enforcement"],
+    "revenue": ["revenue priority of payments", "revenue priority"],
+    "redemption": ["redemption priority of payments", "redemption priority"],
+    "post_enforcement": [
+        "post-enforcement priority",
+        "post enforcement priority",
+        "post-enforcement",
+        "post enforcement",
+    ],
 }
 
 # Human-readable section names for citation and prompt context.

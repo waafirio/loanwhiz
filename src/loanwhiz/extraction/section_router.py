@@ -108,10 +108,22 @@ def extract_key_sf_sections(section_map: SectionMap) -> dict[str, Section | None
     numbering and titles but are intentionally broad so they generalise to
     other RMBS/CLO prospectuses that follow the same ESMA disclosure conventions.
     """
+    # NOTE: prefer the descriptive content sub-section title over a bare section
+    # number.  ``SectionMap.find`` returns the first section (in document order)
+    # whose title contains any keyword, so a numeric keyword like ``"5.2"`` can
+    # match an empty numbered parent header (``## 5.2 PRIORITIES OF PAYMENTS``)
+    # that precedes the actual content sub-section (``## Revenue Priority of
+    # Payments``) and yields a near-empty span — the root cause of #122 (revenue
+    # waterfall extracted 0 steps).  ``"5.3"`` was similarly unsafe (it matches
+    # ``## 5.3 LOSS ALLOCATION``).  Match on the content-section titles instead.
     return {
         "definitions": section_map.find("definitions", "9.1"),
-        "revenue_priority_of_payments": section_map.find("revenue priority", "5.2"),
-        "redemption_priority_of_payments": section_map.find("redemption priority", "5.3"),
+        "revenue_priority_of_payments": section_map.find(
+            "revenue priority of payments", "revenue priority"
+        ),
+        "redemption_priority_of_payments": section_map.find(
+            "redemption priority of payments", "redemption priority"
+        ),
         "post_enforcement_priority": section_map.find("post-enforcement", "post enforcement"),
         "credit_enhancement": section_map.find("credit enhancement", "credit structure"),
         "conditions_of_notes": section_map.find("conditions of the notes"),
