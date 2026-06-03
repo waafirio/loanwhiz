@@ -12,6 +12,7 @@ Run (fast — skips extraction + report-verifier Gemini calls, ~20-30s):
 """
 from __future__ import annotations
 
+import os
 import sys
 import time
 from pathlib import Path
@@ -21,6 +22,14 @@ sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 import pandas as pd
 
 from loanwhiz.config import GCP_LOCATION, GCP_PROJECT, GREEN_LION, MODEL_FLASH
+
+# Make the bare ``genai.Client()`` used inside some primitives (e.g.
+# ReportVerifier) route to Vertex AI, matching the project/region configured in
+# loanwhiz.config. We only set these if the operator hasn't already, so an
+# explicit GEMINI_API_KEY / GOOGLE_GENAI_USE_VERTEXAI choice is never overridden.
+os.environ.setdefault("GOOGLE_GENAI_USE_VERTEXAI", "true")
+os.environ.setdefault("GOOGLE_CLOUD_PROJECT", GCP_PROJECT)
+os.environ.setdefault("GOOGLE_CLOUD_LOCATION", GCP_LOCATION)
 
 # Try to import the data module (available when parallel issue #4 is merged)
 try:

@@ -14,12 +14,15 @@ python demo/run_green_lion.py
 Runs all 8 sections live, including the slow paths:
 
 - **Section 3** runs the full Docling + Gemini prospectus extraction
-  (`extract_deal_model`). The first run takes ~60–120s; results are cached to
-  `/tmp/loanwhiz_cache/deals/`, so subsequent runs load from disk instantly.
+  (`extract_deal_model`). Results are cached to `/tmp/loanwhiz_cache/deals/`, so
+  once the cache is warm subsequent runs load from disk instantly. The cold
+  run is dominated by Docling's PDF parse + OCR: ~1–2 minutes on a GPU, but
+  several minutes on CPU-only machines (RapidOCR on CPU is the bottleneck).
 - **Section 5** calls Gemini 2.5 Flash to extract figures from the April
   investor-report PDF and diffs them against the computed waterfall.
 
-Expect the full run to take a few minutes on a cold cache.
+Expect the full run to take a few minutes on a cold cache (mostly Docling).
+For a quick end-to-end demo, use `--fast` below.
 
 ### Fast mode (for a live demo, ~20–30s)
 
@@ -53,6 +56,11 @@ The script requires:
   - Set `GOOGLE_APPLICATION_CREDENTIALS` or run inside GCP with a service account
   - Set `GOOGLE_CLOUD_PROJECT=loanwhiz` if it is not already in your environment
   - The GCP project and region are configured in `src/loanwhiz/config.py`
+  - The script sets `GOOGLE_GENAI_USE_VERTEXAI=true` (plus project/location) by
+    default so the in-process `genai` clients route to Vertex AI. To use the
+    Gemini Developer API instead, export `GEMINI_API_KEY` and
+    `GOOGLE_GENAI_USE_VERTEXAI=false` before running — the script never
+    overrides an env var you have already set.
 
 If Vertex AI is unavailable the script degrades gracefully: extraction
 (Section 3) and report verification (Section 5) print an explanatory line, the
