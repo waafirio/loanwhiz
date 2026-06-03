@@ -286,3 +286,13 @@ def test_integration_pool_balance_question() -> None:
     assert isinstance(response["evidence_pack"], GovernanceEvidencePack)
     # A real Gemini run should call at least one tool to fetch the tape.
     assert len(response["evidence_pack"].tool_calls) >= 1
+
+
+def test_content_to_text_flattens_gemini_parts():
+    """Gemini returns .content as a list of parts; normalise to a string (#hotfix)."""
+    from loanwhiz.agent.planner import _content_to_text
+
+    parts = [{"type": "text", "text": "Pool balance "}, {"type": "text", "text": "€1.03B."}]
+    assert _content_to_text(parts) == "Pool balance €1.03B."
+    assert _content_to_text("plain") == "plain"
+    assert _content_to_text([]) == ""
