@@ -10,7 +10,6 @@ Covers:
 from __future__ import annotations
 
 from types import SimpleNamespace
-from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -187,14 +186,6 @@ def test_build_covenant_table_row_structure():
 
     tapes = [_make_tape("2026-02-28"), _make_tape("2026-04-30")]
 
-    with patch(
-        "clients.dashboard.app.CovenantMonitor.execute",
-        return_value=mock_result,
-    ):
-        # Import fresh so patch path resolves; call via the module directly
-        rows = mod.build_covenant_table.__wrapped__(tapes) if hasattr(mod.build_covenant_table, "__wrapped__") else None
-
-    # Patch at the module attribute level instead
     original_cls = mod.CovenantMonitor
 
     class _MockMonitor:
