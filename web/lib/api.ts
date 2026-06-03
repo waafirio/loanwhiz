@@ -111,6 +111,69 @@ export function postQuery(body: QueryRequest): Promise<QueryResponse> {
 }
 
 // ---------------------------------------------------------------------------
+// Governance evidence pack  —  GET /governance/{pack_id}
+// (EvidencePackLogger.load → GovernanceEvidencePackResponse: the auditable
+// trail behind one /query answer — tool-call trace, per-tool/aggregate
+// confidence, deduplicated citations, human-review flag, FINOS metadata.)
+// ---------------------------------------------------------------------------
+
+/**
+ * One source reference attached to a tool call or aggregated on the pack.
+ * Mirrors the backend `Citation` shape (`{document, page_or_row, excerpt}`);
+ * fields are optional/extensible since the API types citations as bare dicts.
+ */
+export interface Citation {
+  document?: string;
+  page_or_row?: string;
+  excerpt?: string;
+  [key: string]: unknown;
+}
+
+/** One agent tool call within a query (mirrors `ToolCallRecordModel`). */
+export interface ToolCallRecord {
+  /** 0-based position in the tool-call sequence. */
+  call_index: number;
+  tool_name: string;
+  input_summary: string;
+  output_summary: string;
+  /** Confidence score for this call, [0.0, 1.0]. */
+  confidence: number;
+  citations: Citation[];
+  duration_ms: number;
+  timestamp: string;
+}
+
+/**
+ * Mirrors `GovernanceEvidencePackResponse` — the complete, auditable evidence
+ * behind one `/query` answer: the audit trail (query/answer/timestamp +
+ * ordered tool-call records), per-tool and aggregate confidence, the
+ * deduplicated citation trail, the human-review flag, and FINOS metadata.
+ */
+export interface GovernanceEvidencePack {
+  pack_id: string;
+  query: string;
+  answer: string;
+  timestamp: string;
+
+  tool_calls: ToolCallRecord[];
+  /** Min of all tool-call confidences (1.0 when no tools ran), [0.0, 1.0]. */
+  aggregate_confidence: number;
+  all_citations: Citation[];
+  /** True when aggregate_confidence < 0.7. */
+  human_review_required: boolean;
+
+  model_used: string;
+  framework_version: string;
+  finos_compliant: boolean;
+}
+
+export function getGovernance(packId: string): Promise<GovernanceEvidencePack> {
+  return request<GovernanceEvidencePack>(
+    `/governance/${encodeURIComponent(packId)}`,
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Deal model  —  GET /deal/{deal_id}/model
 // (DealModelResponse: deal config + cached extracted DealModel)
 // ---------------------------------------------------------------------------
