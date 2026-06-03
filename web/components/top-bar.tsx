@@ -1,16 +1,12 @@
-import { Building2 } from "lucide-react";
-
-import { DEAL_LABEL } from "@/lib/nav";
-import { Badge } from "@/components/ui/badge";
+import { DealSelector } from "@/components/deal-selector";
 import { Separator } from "@/components/ui/separator";
 import { SidebarTrigger } from "@/components/ui/sidebar";
 
 /**
- * Sticky top bar: sidebar toggle, app title, and the deal selector.
- *
- * The deal selector is a static label — the backend serves a single deal
- * (Green Lion 2026-1). It is shaped as a selector so a future multi-deal
- * backend can swap it for a dropdown without touching the layout.
+ * Sticky top bar: sidebar toggle, app title, and the registry-driven deal
+ * selector. The selector (a shadcn `Select`) reads/writes the selected deal id
+ * from `DealProvider`; every data page threads that id into its API calls, so
+ * switching the deal here re-fetches the whole UI against the chosen deal.
  */
 export function TopBar() {
   return (
@@ -22,10 +18,7 @@ export function TopBar() {
         <span className="hidden text-xs text-muted-foreground sm:inline">
           Deal
         </span>
-        <Badge variant="secondary" className="gap-1.5 font-normal">
-          <Building2 className="size-3.5" />
-          {DEAL_LABEL}
-        </Badge>
+        <DealSelector />
       </div>
     </header>
   );

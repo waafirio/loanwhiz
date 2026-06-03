@@ -6,6 +6,7 @@ import { AppSidebar } from "@/components/app-sidebar";
 import { ChatPanel } from "@/components/chat-panel";
 import { TopBar } from "@/components/top-bar";
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
+import { DealProvider } from "@/lib/deal-context";
 
 const geistSans = Geist({
   variable: "--font-sans",
@@ -33,14 +34,16 @@ export default function RootLayout({
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
       <body className="min-h-full">
-        <SidebarProvider>
-          <AppSidebar />
-          <SidebarInset>
-            <TopBar />
-            <main className="flex-1 p-6">{children}</main>
-          </SidebarInset>
-          <ChatPanel />
-        </SidebarProvider>
+        <DealProvider>
+          <SidebarProvider>
+            <AppSidebar />
+            <SidebarInset>
+              <TopBar />
+              <main className="flex-1 p-6">{children}</main>
+            </SidebarInset>
+            <ChatPanel />
+          </SidebarProvider>
+        </DealProvider>
       </body>
     </html>
   );

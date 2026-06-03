@@ -84,6 +84,25 @@ export function getHealth(): Promise<HealthStatus> {
 }
 
 // ---------------------------------------------------------------------------
+// Deal registry  —  GET /deals
+// (config-driven DEAL_REGISTRY → list of DealSummary, see #131)
+// ---------------------------------------------------------------------------
+
+/**
+ * One available deal — id + display name — from `GET /deals`. The `id` is the
+ * value to thread into the `/deal/{id}/...` routes; the deal selector in the
+ * top bar populates from this list (see web/components/deal-selector.tsx).
+ */
+export interface DealSummary {
+  id: string;
+  name: string;
+}
+
+export function getDeals(): Promise<DealSummary[]> {
+  return request<DealSummary[]>("/deals");
+}
+
+// ---------------------------------------------------------------------------
 // Agent query  —  POST /query
 // ---------------------------------------------------------------------------
 
