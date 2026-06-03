@@ -38,7 +38,7 @@ from typing import Any
 from google import genai
 from pydantic import BaseModel, Field
 
-from loanwhiz.config import MODEL_FLASH
+from loanwhiz.config import GCP_LOCATION, GCP_PROJECT, MODEL_FLASH
 from loanwhiz.primitives.base import (
     AuditEntry,
     BaseInput,
@@ -245,7 +245,7 @@ Example output format:
   "total_collections": 14050000.0
 }}"""
 
-    client = genai.Client()
+    client = genai.Client(vertexai=True, project=GCP_PROJECT, location=GCP_LOCATION)
 
     # Fetch the PDF bytes and pass inline via httpx, or use the URL directly.
     # google-genai supports passing a URL as a Part for models that accept URLs.
