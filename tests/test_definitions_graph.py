@@ -39,7 +39,11 @@ from loanwhiz.extraction.definitions_graph import (
 # Constants
 # ---------------------------------------------------------------------------
 
-_CACHE_PATH = Path("/tmp/loanwhiz_cache/definitions_green_lion_2026_1_prospectus.json")
+# Cache dir relocated to data/extraction_cache in #152; derive from the module
+# under test rather than hardcoding the old /tmp literal.
+from loanwhiz.extraction.definitions_graph import _CACHE_DIR
+
+_CACHE_PATH = _CACHE_DIR / "definitions_green_lion_2026_1_prospectus.json"
 _PROSPECTUS_URL = (
     "https://huggingface.co/datasets/Algoritmica/green-lion-2026"
     "/resolve/main/Hackathon_Data/green-lion-2026-1-prospectus.pdf"

@@ -42,7 +42,11 @@ from loanwhiz.extraction.section_router import SectionMap, route_sections
 # Constants
 # ---------------------------------------------------------------------------
 
-_CACHE_PATH = Path("/tmp/loanwhiz_cache/covenants_Green_Lion_2026_1_B_V_.json")
+# Cache dir relocated to data/extraction_cache in #152; derive from the module
+# under test rather than hardcoding the old /tmp literal.
+from loanwhiz.extraction.covenant_extractor import _CACHE_DIR
+
+_CACHE_PATH = _CACHE_DIR / "covenants_Green_Lion_2026_1_B_V_.json"
 
 # A minimal synthetic prospectus excerpt that mentions all five known triggers
 _SYNTHETIC_PROSPECTUS = """\
@@ -541,7 +545,7 @@ def _get_or_build_covenants() -> ExtractedCovenants | None:
             "https://huggingface.co/datasets/Algoritmica/green-lion-2026"
             "/resolve/main/Hackathon_Data/green-lion-2026-1-prospectus.pdf"
         )
-        _DEF_CACHE = "/tmp/loanwhiz_cache/definitions_green_lion_2026_1_prospectus.json"
+        _DEF_CACHE = str(_CACHE_DIR / "definitions_green_lion_2026_1_prospectus.json")
 
         # Try to load section map from cached definitions (cheap)
         # Fall back to re-downloading the prospectus if necessary
@@ -555,9 +559,9 @@ def _get_or_build_covenants() -> ExtractedCovenants | None:
             from docling.document_converter import DocumentConverter
             import httpx
 
-            pdf_path = Path("/tmp/loanwhiz_cache/green-lion-2026-1-prospectus.pdf")
+            pdf_path = _CACHE_DIR / "green-lion-2026-1-prospectus.pdf"
             if not pdf_path.exists():
-                Path("/tmp/loanwhiz_cache").mkdir(parents=True, exist_ok=True)
+                _CACHE_DIR.mkdir(parents=True, exist_ok=True)
                 with httpx.Client(follow_redirects=True, timeout=120) as client:
                     resp = client.get(_PROSPECTUS_URL)
                     resp.raise_for_status()
