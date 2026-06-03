@@ -100,6 +100,8 @@ if str(_SRC) not in sys.path:
 from loanwhiz.config import GREEN_LION  # noqa: E402
 from loanwhiz.extraction.assembler import DealModel  # noqa: E402
 
+from clients.demo.tabs.overview import render as deal_overview_render  # noqa: E402
+
 # Default on-disk extraction cache — must match ``extract_deal_model``'s
 # default so the cache-aware read finds what the (pre-warm) extraction wrote.
 DEAL_CACHE_DIR = "/tmp/loanwhiz_cache/deals"
@@ -316,7 +318,7 @@ def _stub_render(issue_number: int, title: str) -> Callable[[gr.State], None]:
 # but the ORDER is the narrative arc — do not reorder. Each entry's ``render``
 # is a stub until the named sibling issue lands its tab module.
 TAB_REGISTRY: list[TabSpec] = [
-    TabSpec(title="Deal Overview", render=_stub_render(78, "Deal Overview")),
+    TabSpec(title="Deal Overview", render=deal_overview_render),
     TabSpec(title="Pool & Performance", render=_stub_render(79, "Pool & Performance")),
     TabSpec(title="Waterfall", render=_stub_render(80, "Waterfall")),
     TabSpec(
