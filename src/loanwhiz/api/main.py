@@ -186,6 +186,59 @@ def deal_compliance(deal_id: str) -> dict:
     return result.output.model_dump()
 
 
+# --- tape-analytics (#110) ---------------------------------------------------
+# Self-contained block (response model + handler) for the per-period pool
+# analytics endpoint. Kept contiguous to minimise conflicts with the sibling
+# issues (#109/#111/#112) editing this same module in parallel.
+
+
+class TapeAnalyticsPeriod(BaseModel):
+    """Per-period pool analytics for one ESMA tape, returned by tape-analytics.
+
+    Mirrors :class:`~loanwhiz.primitives.esma_tape_normaliser.EsmaTapeOutput`
+    (balance, loan count, weighted pool stats, arrears, and the EPC /
+    geographic / property-type breakdowns), with the deal's reporting-period
+    date the tape was registered under for chronological context.
+    """
+
+    tape_date: str
+    reporting_date: str
+    asset_class: str
+    transaction_name: str | None
+    loan_count: int
+    pool_balance_eur: float
+    pool_stats: dict[str, float]
+    arrears_breakdown: dict[str, float]
+    epc_breakdown: dict[str, float] | None
+    rate_type_breakdown: dict[str, float] | None
+    property_type_breakdown: dict[str, float] | None
+    geographic_breakdown: dict[str, float] | None
+    annex_detected: str
+
+
+@app.get("/deal/{deal_id}/tape-analytics", response_model=list[TapeAnalyticsPeriod])
+def deal_tape_analytics(deal_id: str) -> list[TapeAnalyticsPeriod]:
+    """Return per-period pool analytics across the deal's ESMA tapes.
+
+    Normalises every ESMA tape the deal references (deterministic, no LLM) and
+    returns one analytics object per reporting period in chronological order —
+    pool balance, loan count, arrears, weighted LTV, and the EPC / geographic /
+    property-type breakdowns.
+    """
+    deal = _require_deal(deal_id)
+    normaliser = EsmaTapeNormaliser()
+    return [
+        TapeAnalyticsPeriod(
+            tape_date=tape["date"],
+            **normaliser.execute(EsmaTapeInput(file_url=tape["url"])).output.model_dump(),
+        )
+        for tape in deal["tape_urls"]
+    ]
+
+
+# --- end tape-analytics (#110) -----------------------------------------------
+
+
 @app.post("/deal/{deal_id}/project")
 def deal_project(deal_id: str, req: ProjectRequest) -> dict:
     """Project forward payment waterfalls under the requested scenarios.
