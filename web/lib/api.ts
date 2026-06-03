@@ -366,3 +366,51 @@ export function postProjection(
     body: JSON.stringify(body),
   });
 }
+
+// ---------------------------------------------------------------------------
+// Primitive registry catalogue  —  GET /primitives  (#137)
+// (PRIMITIVE_REGISTRY.describe() + each primitive class's typed I/O schemas)
+// ---------------------------------------------------------------------------
+
+/**
+ * A minimal slice of a Pydantic-emitted JSON Schema — enough to render a
+ * primitive's typed I/O contract (field names + types) without a full schema
+ * viewer. The catalogue carries the standard `model_json_schema()` shape:
+ * `type: "object"` with a `properties` map and an optional `required` list;
+ * `$defs` holds referenced sub-models. Left forward-compatible with extras.
+ */
+export interface JsonSchema {
+  type?: string;
+  title?: string;
+  description?: string;
+  properties?: Record<string, JsonSchema>;
+  required?: string[];
+  items?: JsonSchema;
+  $ref?: string;
+  $defs?: Record<string, JsonSchema>;
+  anyOf?: JsonSchema[];
+  enum?: unknown[];
+  [key: string]: unknown;
+}
+
+/**
+ * One primitive in the registry catalogue — mirrors `PrimitiveCatalogueEntry`
+ * in `src/loanwhiz/api/main.py`. Combines registry metadata (name, version,
+ * description, author, tags, implementing class) with the primitive's typed
+ * input/output JSON schemas and a note on the framework's confidence semantics.
+ */
+export interface PrimitiveCatalogueEntry {
+  name: string;
+  version: string;
+  description: string;
+  author: string;
+  tags: string[];
+  class_name: string;
+  input_schema: JsonSchema;
+  output_schema: JsonSchema;
+  confidence: string;
+}
+
+export function getPrimitives(): Promise<PrimitiveCatalogueEntry[]> {
+  return request<PrimitiveCatalogueEntry[]>("/primitives");
+}
