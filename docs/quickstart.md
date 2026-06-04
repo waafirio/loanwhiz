@@ -113,7 +113,7 @@ The `GCP_LOCATION` should be a region where Gemini 2.5 Flash and Pro are availab
 
 ## Run Against the Green Lion Demo
 
-The Green Lion 2026-1 deal is a complete, publicly available Dutch synthetic RMBS package (prospectus PDF, three monthly ESMA Annex 2 tapes, three monthly investor reports). It is the primary demo dataset for this hackathon.
+The Green Lion 2026-1 deal is a complete, publicly available Dutch synthetic RMBS package. It spans **27 months of ESMA Annex 2 loan tapes** — 24 monthly historical tapes for January 2024 through December 2025 (`Algoritmica/green-lion-2024-2025`) plus 3 for February, March, and April 2026 (`Algoritmica/green-lion-2026`), the latter accompanied by the prospectus PDF and three monthly investor reports. January 2026 is an intentional gap. It is the primary demo dataset for this hackathon.
 
 > **Note:** `demo/run_green_lion.py` is in progress and not yet runnable — the primitives it orchestrates are still being implemented. This section documents the intended behaviour of the demo once complete.
 
@@ -125,7 +125,7 @@ python demo/run_green_lion.py
 
 What this does, in order:
 
-1. **Fetches the deal package** from HuggingFace (`Algoritmica/green-lion-2026`). Documents are downloaded on first run and cached locally under `data/deals/green-lion-2026-1/`.
+1. **Fetches the deal package** from HuggingFace (`Algoritmica/green-lion-2026` for the 2026 deal documents and `Algoritmica/green-lion-2024-2025` for the 24-month historical tapes). Documents are downloaded on first run and cached locally under `data/deals/green-lion-2026-1/`.
 
 2. **Extracts the deal model** using Docling + Gemini 2.5 Pro. The prospectus PDF is parsed into structured sections, and key deal components are extracted:
    - Revenue Priority of Payments (waterfall, 11 ordered steps from section 5.2)
@@ -135,7 +135,7 @@ What this does, in order:
 
    The extracted deal model is cached as `data/deals/green-lion-2026-1/deal_model.json`. Subsequent runs skip extraction.
 
-3. **Loads the ESMA tapes** for February, March, and April 2026 via the `esma_tape_normaliser` primitive. Computes pool analytics per period: WAL, arrears breakdown by bucket, EPC distribution, geographic distribution, rate type distribution.
+3. **Loads the ESMA tapes** — the full 27-month chronology (24 monthly tapes for 2024–2025 plus February, March, and April 2026) via the `esma_tape_normaliser` primitive. Computes pool analytics per period: WAL, arrears breakdown by bucket, EPC distribution, geographic distribution, rate type distribution.
 
 4. **Runs the waterfall** using the `waterfall_runner` primitive against each month's tape collections. Outputs computed distributions per tranche per period with a full audit trace.
 
@@ -151,22 +151,26 @@ What this does, in order:
 
 ## Running Against a New Deal
 
-To run the framework against a deal other than Green Lion, define a deal context dict following the pattern in `src/loanwhiz/config.py`:
+The framework is **data-agnostic by design** — adding a deal is *data*, not code. Drop a `src/loanwhiz/data/deals.json` file next to `config.py`; it is a JSON object mapping each `deal_id` to a deal-context dict and is merged over the in-code Green Lion default at import time (no Python edit required):
 
-```python
-MY_DEAL = {
+```json
+{
+  "my-deal-2026-1": {
     "deal_name": "My Deal 2026-1",
     "prospectus_url": "https://...",
     "tape_urls": [
-        {"date": "2026-02-28", "url": "https://..."},
-        {"date": "2026-03-31", "url": "https://..."},
+      {"date": "2026-02-28", "url": "https://..."},
+      {"date": "2026-03-31", "url": "https://..."}
     ],
     "investor_report_urls": [
-        {"period": "February 2026", "url": "https://..."},
-        {"period": "March 2026",    "url": "https://..."},
-    ],
+      {"period": "February 2026", "url": "https://..."},
+      {"period": "March 2026",    "url": "https://..."}
+    ]
+  }
 }
 ```
+
+A missing or malformed `deals.json` is tolerated — the Green Lion default still loads. A deal may also carry an optional `capital_structure` key (Class A/B/C balances + Class A rate), which `GET /deal/{id}/waterfall` resolves from the deal, falling back to the Green Lion structure when absent. See the README's "How to Run Against a New Deal" for the full deal-context shape.
 
 All three document types are optional for a partial run — for example, you can extract the deal model from the prospectus alone without supplying tape or investor report URLs. The framework will skip primitives that require missing inputs and log which steps were skipped.
 
