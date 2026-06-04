@@ -29,7 +29,8 @@ CLIENTS
             +-------- DATA LAYER -----+
       deeploans ETL + MCP server  (ESMA tape ingestion, multi-annex)
       Docling extraction pipeline (prospectus -> deal model JSON)
-      HuggingFace: Algoritmica/green-lion-2026
+      HuggingFace: Algoritmica/green-lion-2026 (2026 deal package)
+                 + Algoritmica/green-lion-2024-2025 (24-month history)
 ```
 
 ---
@@ -122,40 +123,48 @@ The docked chat panel answers ad-hoc deal questions grounded in the loaded deal 
 
 ## How to Run Against a New Deal
 
-Deal configuration lives in `src/loanwhiz/config.py`. Each deal is a Python dict with three keys:
+The framework is **data-agnostic by design**: adding a deal is *data*, not code. The canonical deal registry (`DEAL_REGISTRY` in `src/loanwhiz/config.py`) starts from the in-code Green Lion default and merges in any extra deals from the optional data file `src/loanwhiz/data/deals.json` at import time — so you add a deal **without editing any Python**. The API sources its `DEALS` from this registry, and the `/deal/{deal_id}/...` routes are keyed by the `deal_id` you choose.
 
-```python
-deal = {
+Create `src/loanwhiz/data/deals.json` as a JSON object mapping each `deal_id` to a deal-context dict (same shape as the in-code `GREEN_LION`):
+
+```json
+{
+  "my-deal-2026-1": {
     "deal_name": "My Deal 2026-1",
-    "prospectus_url": "https://...",          # URL to the prospectus PDF
+    "prospectus_url": "https://...",
     "tape_urls": [
-        {"date": "2026-02-28", "url": "https://..."},   # ESMA Annex 2 tape per period (.csv or .parquet)
-        {"date": "2026-03-31", "url": "https://..."},
+      {"date": "2026-02-28", "url": "https://..."},
+      {"date": "2026-03-31", "url": "https://..."}
     ],
     "investor_report_urls": [
-        {"period": "February 2026", "url": "https://..."},  # investor report PDF per period
-        {"period": "March 2026",    "url": "https://..."},
-    ],
+      {"period": "February 2026", "url": "https://..."},
+      {"period": "March 2026",    "url": "https://..."}
+    ]
+  }
 }
 ```
 
-Each `tape_urls[].url` may point at a **CSV or parquet** tape — the loader is format-agnostic and dispatches on the URL suffix (`.parquet`/`.pq` → parquet, anything else → CSV). The loader can additionally slice a single reporting period out of a **combined multi-month parquet** (one file holding many `reporting_date`s), so a deal whose tape is published as a single combined file is supported as a primitive-level capability.
+A missing or malformed `deals.json` is tolerated — the in-code Green Lion default still loads, so a bad data file can never take the API down (it is logged and skipped). An entry that reuses an existing `deal_id` overrides the default.
+
+Each `tape_urls[].url` may point at a **CSV or parquet** tape — the `esma_tape_normaliser` primitive is format-agnostic and dispatches on the URL suffix (`.parquet`/`.pq` → parquet, anything else → CSV), and can additionally slice a single reporting period out of a **combined multi-month parquet** (one file holding many `reporting_date`s). Tapes are referenced by their direct URLs (HuggingFace or a local `file://` path); the normaliser loads each and auto-detects its ESMA Annex schema.
 
 Pass this dict to the agent service or the extraction pipeline directly. The framework fetches the documents, runs Docling extraction to build the deal model JSON, and caches the result locally so extraction runs only once per deal.
 
 ### Optional deal-context keys
 
-The four keys above are required. A deal may also carry these **optional** keys to override the deal-specific figures the API routes use. Omitting any of them falls back to the Green Lion defaults, so the framework stays deal-generic without forcing every deal to specify them:
+Beyond the four required keys above, a deal-context dict may carry these **optional** keys that the API resolves from the deal, falling back to Green Lion defaults when absent — so a new deal works out of the box and only overrides what differs:
 
-| Key | Shape | Used by | Meaning |
-|-----|-------|---------|---------|
-| `capital_structure` | dict: `class_a_balance`, `class_a_rate_pct`, `class_b_balance`, `class_c_balance` | `/deal/{id}/waterfall` | Tranche balances + Class A rate the payment waterfall runs on. |
-| `original_pool_balance` | float (EUR) | `/deal/{id}/compliance` | Pool balance at closing — denominator for clean-up-call proximity and loss-rate. |
-| `projection_base` | dict: `current_pool_balance` + capital-structure / reserve-account figures | `/deal/{id}/project` | Base case the forward projection runs on. |
+| Key | Shape | Resolved by | Default when absent |
+|---|---|---|---|
+| `capital_structure` | object — `class_a_balance`, `class_a_rate_pct`, `class_b_balance`, `class_c_balance` | `GET /deal/{id}/waterfall` (the per-tranche cascade) | Green Lion 2026-1 capital structure |
+| `original_pool_balance` | float (EUR) | `GET /deal/{id}/compliance` (clean-up-call proximity + loss-rate denominator) | Green Lion closing balance |
+| `projection_base` | object — `current_pool_balance` + capital-structure / reserve-account figures | `GET /deal/{id}/project` (forward projection base case) | Green Lion projection base |
 
 Covenant **triggers** are not a deal-context key: `/deal/{id}/compliance` uses the deal model's *extracted* `covenants.triggers` (from the cached deal model the extraction pipeline builds), falling back to the covenant monitor's defaults when no extracted triggers are present.
 
-See `GREEN_LION` and the deal-context schema docstring in `config.py` for a fully worked example using the publicly available Green Lion 2026-1 dataset.
+Green Lion itself carries none of these optional keys and uses the defaults unchanged.
+
+See `GREEN_LION` and `DEAL_REGISTRY` in `config.py` for a fully worked example using the publicly available Green Lion 2024–2026 dataset.
 
 ---
 
@@ -200,15 +209,14 @@ See `GREEN_LION` and the deal-context schema docstring in `config.py` for a full
 
 ## Data
 
-**Green Lion 2026-1** (`Algoritmica/green-lion-2026` on HuggingFace)
+**Green Lion 2026-1** — a complete, publicly available structured finance deal package built around a synthetic Dutch RMBS. It spans **27 months of loan-tape history** across two HuggingFace datasets:
 
-A complete, publicly available structured finance deal package built around a synthetic Dutch RMBS:
+- **`Algoritmica/green-lion-2024-2025`** — 24 monthly ESMA Annex 2 loan tapes, one per month from January 2024 through December 2025.
+- **`Algoritmica/green-lion-2026`** — the 2026 deal package: 3 monthly ESMA Annex 2 loan tapes (February, March, April 2026), the prospectus PDF (Green Lion 2026-1 B.V.), and 3 monthly investor reports (February, March, April 2026).
 
-- 3 monthly ESMA Annex 2 loan tapes (February, March, April 2026)
-- Prospectus PDF (Green Lion 2026-1 B.V.)
-- 3 monthly investor reports (February, March, April 2026)
+That is **27 monthly tapes in total** (24 + 3). All tapes share the same ESMA Annex 2 schema. January 2026 (`202601`) exists in neither dataset and is an intentional gap in the chronology — the framework simply skips it. `src/loanwhiz/config.py` builds the full chronological `tape_urls` list programmatically (`_historical_tape_entries()` for 2024–2025, plus the three 2026 entries).
 
-This is the primary test and demo dataset for the hackathon submission. All data is synthetic and was released by Algoritmica.ai specifically for this hackathon.
+This is the primary test and demo dataset for the hackathon submission. All loan-level data is synthetic and was released by Algoritmica.ai specifically for this hackathon. See [docs/data-card.md](docs/data-card.md) for the full data card, including the synthetic-vs-real breakdown.
 
 Tape ingestion is format-agnostic: loan tapes may be supplied as **CSV or parquet**, including a single combined multi-month parquet from which the loader selects a reporting period. Green Lion ships as per-period CSV tapes.
 

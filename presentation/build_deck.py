@@ -292,7 +292,7 @@ arrow(Inches(6.05), my+Inches(1.28), Inches(0.5), Inches(0.35), vert=True)
 dy = Inches(6.18)
 box(Inches(0.7), dy, Inches(11.9), Inches(0.7),
     "DATA LAYER",
-    "Docling extraction (prospectus → JSON)   ·   deeploans ETL / ESMA tape ingestion   ·   HuggingFace: Algoritmica/green-lion-2026",
+    "Docling extraction (prospectus → JSON)   ·   deeploans ETL / ESMA tape ingestion   ·   HuggingFace: green-lion-2026 + green-lion-2024-2025 (27-month history)",
     NAVY, WHITE, sub_col=RGBColor(0xC7,0xD3,0xE8))
 
 # ===========================================================================
@@ -432,10 +432,10 @@ text(s, Inches(0.7), Inches(6.62), Inches(11.9), Inches(0.4),
 # ===========================================================================
 s = slide(); page_chrome(s, 9, "Proven on Green Lion 2026-1", kicker="Results")
 text(s, Inches(0.7), Inches(1.7), Inches(11.9), Inches(0.5),
-     [[("A complete synthetic Dutch RMBS released for the hackathon: prospectus + 3 monthly ESMA tapes + 3 investor reports.", 13.5, SLATE, False)]])
+     [[("A complete synthetic Dutch RMBS released for the hackathon: prospectus + 27 months of ESMA tapes (2024–2026) + 3 investor reports.", 13.5, SLATE, False)]])
 # metric tiles
 mets = [
-    ("3", "note tranches", "Class A (AAA) / B / C, with sizes & subordination"),
+    ("27", "monthly tapes", "Jan 2024 – Apr 2026 ESMA history (Jan-2026 gap)"),
     ("11", "revenue steps", "Full Revenue Priority of Payments (a)–(k), cited"),
     ("3", "waterfalls", "Revenue · Redemption · Post-Enforcement"),
     ("3", "live triggers", "Class A & B PDL + reserve-fund shortfall"),
@@ -456,10 +456,10 @@ card(s, Inches(0.7), by, Inches(5.95), Inches(1.9), "End-to-end, verified", bull
     "Confidence 0.75 with every tranche, step and trigger source-cited.",
     "Chat answers grounded numbers (e.g. pool balance €1.03bn) live.",
 ], size=12.5), accent=GREEN)
-card(s, Inches(6.85), by, Inches(5.75), Inches(1.9), "Built to scale to more data", bullets([
-    "Config-driven multi-deal registry — add a deal as a dict, no code change.",
-    "Durable cache: extract once, then instant; copes with 4yr of monthly tapes.",
-    "Cache lifecycle hardened so a cold rebuild never serves stale results.",
+card(s, Inches(6.85), by, Inches(5.75), Inches(1.9), "Data-agnostic by design", bullets([
+    "Add a deal via data/deals.json — no code change; Green-Lion defaults fill the gaps.",
+    "Proven over 27 months of monthly tapes (2024–2026), not a single snapshot.",
+    "Durable cache: extract once, then instant; deal-context keys resolve per deal.",
 ], size=12.5), accent=TEAL)
 
 # ===========================================================================
@@ -498,8 +498,8 @@ text(s, Inches(1.05), cy+Inches(0.85), Inches(11.2), Inches(1.4),
        (" — extracts a machine-runnable model and computes real numbers, deterministically.", 13.5, RGBColor(0xC7,0xD3,0xE8), False)],
       [("▸  ", 13.5, TEAL, True), ("Trustworthy by construction", 13.5, WHITE, True),
        (" — citations, confidence and human-review routing on every output.", 13.5, RGBColor(0xC7,0xD3,0xE8), False)],
-      [("▸  ", 13.5, TEAL, True), ("Open & extensible", 13.5, WHITE, True),
-       (" — Apache-2.0, config-driven multi-deal, add a primitive in a few lines.", 13.5, RGBColor(0xC7,0xD3,0xE8), False)]],
+      [("▸  ", 13.5, TEAL, True), ("Data-agnostic & extensible", 13.5, WHITE, True),
+       (" — Apache-2.0; add a deal via data/deals.json (no code change), add a primitive in a few lines.", 13.5, RGBColor(0xC7,0xD3,0xE8), False)]],
      line_spacing=1.12, space_after=6)
 
 import os
