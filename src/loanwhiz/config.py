@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import calendar
 import json
 import logging
 from pathlib import Path
@@ -16,12 +17,55 @@ GCP_LOCATION = "us-central1"
 MODEL_FLASH = "gemini-2.5-flash"
 MODEL_PRO = "gemini-2.5-pro"
 
+# 2026 tapes + investor reports live in the current Hackathon repo.
 HF_BASE = "https://huggingface.co/datasets/Algoritmica/green-lion-2026/resolve/main/Hackathon_Data"
+# The 2024–2025 monthly history lives in a *separate* repo with a *different*
+# base — note there is no ``Hackathon_Data/`` path segment here.
+HF_HISTORICAL_BASE = (
+    "https://huggingface.co/datasets/Algoritmica/green-lion-2024-2025/resolve/main"
+)
+
+
+def _month_end(year: int, month: int) -> str:
+    """Return the month-end date as ``YYYY-MM-DD`` (leap-year aware).
+
+    ``calendar.monthrange`` returns ``(weekday, days_in_month)``; the second
+    value is the last day, so Feb-2024 correctly yields ``2024-02-29``.
+    """
+    last_day = calendar.monthrange(year, month)[1]
+    return f"{year:04d}-{month:02d}-{last_day:02d}"
+
+
+def _historical_tape_entries() -> list[dict]:
+    """Build the 24 monthly historical tape entries (2024-01 … 2025-12).
+
+    Every month Jan-2024 through Dec-2025 has a tape in ``HF_HISTORICAL_BASE``
+    named ``green_lion_<YYYYMM>_1_synthetic_loan_tape.csv``, keyed by its
+    month-end date. Built programmatically (a loop) rather than hand-typed.
+    """
+    entries: list[dict] = []
+    for year in (2024, 2025):
+        for month in range(1, 13):
+            stamp = f"{year:04d}{month:02d}"
+            entries.append(
+                {
+                    "date": _month_end(year, month),
+                    "url": (
+                        f"{HF_HISTORICAL_BASE}/"
+                        f"green_lion_{stamp}_1_synthetic_loan_tape.csv"
+                    ),
+                }
+            )
+    return entries
+
 
 GREEN_LION = {
     "deal_name": "Green Lion 2026-1 B.V.",
     "prospectus_url": f"{HF_BASE}/green-lion-2026-1-prospectus.pdf",
-    "tape_urls": [
+    # 27 chronological monthly tapes: 24 historical (2024-01 … 2025-12, from
+    # HF_HISTORICAL_BASE) + the existing 3 for 2026 (Feb/Mar/Apr, from HF_BASE).
+    # Jan-2026 (202601) exists in neither repo and is intentionally absent.
+    "tape_urls": _historical_tape_entries() + [
         {"date": "2026-02-28", "url": f"{HF_BASE}/green_lion_202602_1_synthetic_loan_tape.csv"},
         {"date": "2026-03-31", "url": f"{HF_BASE}/green_lion_202603_1_synthetic_loan_tape.csv"},
         {"date": "2026-04-30", "url": f"{HF_BASE}/green_lion_2026_1_synthetic_loan_tape.csv"},
