@@ -1,7 +1,7 @@
 ---
 id: 2026-06-04-deal-generality-and-27-period-data
 title: deal-generality-and-27-period-data
-status: draft        # draft → decomposed → filed
+status: decomposed   # draft → decomposed → filed
 created: 2026-06-04
 updated: 2026-06-04
 epics: []            # umbrella issue numbers, filled in phase 4
