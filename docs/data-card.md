@@ -23,7 +23,7 @@ Green Lion's loan-tape history now spans **27 monthly ESMA Annex 2 tapes** acros
 - **`Algoritmica/green-lion-2024-2025`** — 24 monthly tapes, one per month from **January 2024 through December 2025**.
 - **`Algoritmica/green-lion-2026`** — 3 monthly tapes for **February, March, and April 2026** (alongside the prospectus and investor reports).
 
-All 27 tapes share the same 71-column ESMA Annex 2 schema. **January 2026 (`202601`) exists in neither dataset** and is an intentional gap in the chronology. The framework loads the tapes in chronological order regardless of which dataset each lives in (`src/loanwhiz/config.py` builds the combined `tape_urls` list).
+All 27 tapes share the same ESMA Annex 2 schema. **January 2026 (`202601`) exists in neither dataset** and is an intentional gap in the chronology. The framework loads the tapes in chronological order regardless of which dataset each lives in (`src/loanwhiz/config.py` builds the combined `tape_urls` list).
 
 ---
 
@@ -108,7 +108,7 @@ ESMA Annex 2 format CSV files, one per monthly snapshot. The 24-month 2024–202
 - `green_lion_202603_1_synthetic_loan_tape.csv` (March 2026)
 - `green_lion_2026_1_synthetic_loan_tape.csv` (April 2026)
 
-All 27 tapes contain loan-level fields per ESMA's Annex 2 specification (71 columns): loan identifiers, outstanding balance, original balance, interest rate, rate type, remaining term, LTV, geographic region, EPC rating, arrears status, and other regulatory disclosure fields.
+All 27 tapes contain loan-level fields per ESMA's Annex 2 specification: loan identifiers, outstanding balance, original balance, interest rate, rate type, remaining term, LTV, geographic region, EPC rating, arrears status, and other regulatory disclosure fields.
 
 ---
 

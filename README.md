@@ -208,7 +208,7 @@ See `GREEN_LION` and `DEAL_REGISTRY` in `config.py` for a fully worked example u
 - **`Algoritmica/green-lion-2024-2025`** — 24 monthly ESMA Annex 2 loan tapes, one per month from January 2024 through December 2025.
 - **`Algoritmica/green-lion-2026`** — the 2026 deal package: 3 monthly ESMA Annex 2 loan tapes (February, March, April 2026), the prospectus PDF (Green Lion 2026-1 B.V.), and 3 monthly investor reports (February, March, April 2026).
 
-That is **27 monthly tapes in total** (24 + 3). All tapes share the same 71-column ESMA Annex 2 schema. January 2026 (`202601`) exists in neither dataset and is an intentional gap in the chronology — the framework simply skips it. `src/loanwhiz/config.py` builds the full chronological `tape_urls` list programmatically (`_historical_tape_entries()` for 2024–2025, plus the three 2026 entries).
+That is **27 monthly tapes in total** (24 + 3). All tapes share the same ESMA Annex 2 schema. January 2026 (`202601`) exists in neither dataset and is an intentional gap in the chronology — the framework simply skips it. `src/loanwhiz/config.py` builds the full chronological `tape_urls` list programmatically (`_historical_tape_entries()` for 2024–2025, plus the three 2026 entries).
 
 This is the primary test and demo dataset for the hackathon submission. All loan-level data is synthetic and was released by Algoritmica.ai specifically for this hackathon. See [docs/data-card.md](docs/data-card.md) for the full data card, including the synthetic-vs-real breakdown.
 
