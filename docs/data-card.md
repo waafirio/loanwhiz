@@ -110,6 +110,8 @@ ESMA Annex 2 format CSV files, one per monthly snapshot. The 24-month 2024–202
 
 All 27 tapes contain loan-level fields per ESMA's Annex 2 specification: loan identifiers, outstanding balance, original balance, interest rate, rate type, remaining term, LTV, geographic region, EPC rating, arrears status, and other regulatory disclosure fields.
 
+**Ingestion is format-agnostic.** The `esma_tape_normaliser` primitive routes each tape by its URL/path suffix — `.parquet`/`.pq` via `pandas.read_parquet`, anything else as CSV — so a tape published in either format works unchanged. The `Algoritmica/green-lion-2024-2025` dataset additionally ships a combined `Overall_2024_2025_all_months.parquet` (all 24 months in one file); the loader can slice a single reporting period out of such a combined multi-month parquet by `reporting_date`.
+
 ---
 
 ## Intended Use

@@ -458,8 +458,8 @@ card(s, Inches(0.7), by, Inches(5.95), Inches(1.9), "End-to-end, verified", bull
 ], size=12.5), accent=GREEN)
 card(s, Inches(6.85), by, Inches(5.75), Inches(1.9), "Data-agnostic by design", bullets([
     "Add a deal via data/deals.json — no code change; Green-Lion defaults fill the gaps.",
-    "Proven over 27 months of monthly tapes (2024–2026), not a single snapshot.",
-    "Durable cache: extract once, then instant; deal-context keys resolve per deal.",
+    "Format-agnostic tapes: CSV or parquet (incl. a combined multi-month file), 27 months proven.",
+    "Per-deal keys resolve from context (capital structure, pool balance, triggers); cached.",
 ], size=12.5), accent=TEAL)
 
 # ===========================================================================
@@ -499,7 +499,7 @@ text(s, Inches(1.05), cy+Inches(0.85), Inches(11.2), Inches(1.4),
       [("▸  ", 13.5, TEAL, True), ("Trustworthy by construction", 13.5, WHITE, True),
        (" — citations, confidence and human-review routing on every output.", 13.5, RGBColor(0xC7,0xD3,0xE8), False)],
       [("▸  ", 13.5, TEAL, True), ("Data-agnostic & extensible", 13.5, WHITE, True),
-       (" — Apache-2.0; add a deal via data/deals.json (no code change), add a primitive in a few lines.", 13.5, RGBColor(0xC7,0xD3,0xE8), False)]],
+       (" — Apache-2.0; add a deal via data/deals.json (no code change), CSV or parquet tapes, add a primitive in a few lines.", 13.5, RGBColor(0xC7,0xD3,0xE8), False)]],
      line_spacing=1.12, space_after=6)
 
 import os
