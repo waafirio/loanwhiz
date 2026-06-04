@@ -16,8 +16,15 @@ from fastapi.testclient import TestClient
 
 from loanwhiz.agent.executor import ExecutionResult, ValidationStatus
 from loanwhiz.api import app
+from loanwhiz.config import GREEN_LION
 
 client = TestClient(app)
+
+# The Green Lion deal context references one ESMA tape per monthly reporting
+# period; the deal endpoints fan out across all of them. Drive count
+# expectations off the config (currently 27 tapes) rather than a hardcoded
+# literal so the suite tracks the deal's real tape history.
+GREEN_LION_TAPE_COUNT = len(GREEN_LION["tape_urls"])
 
 
 # ---------------------------------------------------------------------------
@@ -381,7 +388,7 @@ def test_deal_compliance_runs_monitor():
     assert resp.status_code == 200
     assert resp.json() == compliance_dump
     # One normalise call per tape in the deal context.
-    assert MockNorm.return_value.execute.call_count == 3
+    assert MockNorm.return_value.execute.call_count == GREEN_LION_TAPE_COUNT
     MockMon.return_value.execute.assert_called_once()
 
 
@@ -711,6 +718,33 @@ def _tape_output_dump(reporting_date: str, pool_balance: float) -> dict:
     }
 
 
+def _tape_dump_for(tape: dict) -> dict:
+    """A normalised-tape dump for one config tape, derived from its date.
+
+    Gives each tape a distinct, deterministic ``reporting_date`` (the tape's
+    own config date) and a balance that declines monotonically over the pool's
+    life, so per-period assertions stay meaningful without hardcoding a fixed
+    set of three tapes.
+    """
+    index = GREEN_LION["tape_urls"].index(tape)
+    pool_balance = 1_050_000_000.0 - index * 1_000_000.0
+    return _tape_output_dump(tape["date"], pool_balance)
+
+
+def _by_url_normaliser_side_effect():
+    """A ``side_effect`` mapping each tape URL to its dump.
+
+    The endpoint normalises ``EsmaTapeInput(file_url=url)`` per tape and the
+    per-tape cache is keyed by URL, so keying the fake off ``inp.file_url``
+    returns one consistent result per tape regardless of call order or caching.
+    """
+    by_url = {
+        tape["url"]: _FakeResult(_tape_dump_for(tape))
+        for tape in GREEN_LION["tape_urls"]
+    }
+    return lambda inp: by_url[inp.file_url]
+
+
 @pytest.fixture
 def _isolated_tape_cache(tmp_path):
     """Point the tape-analytics cache at a clean tmp dir and empty memo.
@@ -730,27 +764,20 @@ def _isolated_tape_cache(tmp_path):
 
 
 def test_deal_tape_analytics_returns_periods(_isolated_tape_cache):
-    dumps = [
-        _tape_output_dump("2026-02-28", 1_050_000_000.0),
-        _tape_output_dump("2026-03-31", 1_040_000_000.0),
-        _tape_output_dump("2026-04-30", 1_033_412_063.0),
-    ]
-    results = iter(_FakeResult(d) for d in dumps)
+    tapes = GREEN_LION["tape_urls"]
 
     with patch("loanwhiz.api.main.EsmaTapeNormaliser") as MockNorm:
-        MockNorm.return_value.execute.side_effect = lambda _inp: next(results)
+        MockNorm.return_value.execute.side_effect = _by_url_normaliser_side_effect()
         resp = client.get("/deal/green-lion-2026-1/tape-analytics")
 
     assert resp.status_code == 200
     body = resp.json()
     # One analytics object per tape in the deal context, chronological order.
-    assert len(body) == 3
-    assert MockNorm.return_value.execute.call_count == 3
-    assert [p["tape_date"] for p in body] == ["2026-02-28", "2026-03-31", "2026-04-30"]
+    assert len(body) == GREEN_LION_TAPE_COUNT
+    assert MockNorm.return_value.execute.call_count == GREEN_LION_TAPE_COUNT
+    assert [p["tape_date"] for p in body] == [t["date"] for t in tapes]
     assert [p["pool_balance_eur"] for p in body] == [
-        1_050_000_000.0,
-        1_040_000_000.0,
-        1_033_412_063.0,
+        _tape_dump_for(t)["pool_balance_eur"] for t in tapes
     ]
     # Each period carries the expected analytics keys.
     expected_keys = {
@@ -778,19 +805,12 @@ def test_deal_tape_analytics_unknown_returns_404():
 def test_deal_tape_analytics_computes_each_tape_once_across_calls(_isolated_tape_cache):
     """Repeated /tape-analytics calls normalise each tape exactly once.
 
-    Two requests over a 3-tape deal would, without caching, run the normaliser
-    6 times. With the keyed cache (memo + on-disk JSON), each tape is computed
+    Two requests over an N-tape deal would, without caching, run the normaliser
+    2N times. With the keyed cache (memo + on-disk JSON), each tape is computed
     once: total execute() calls == number of tapes, not 2× that.
     """
-    dumps = [
-        _tape_output_dump("2026-02-28", 1_050_000_000.0),
-        _tape_output_dump("2026-03-31", 1_040_000_000.0),
-        _tape_output_dump("2026-04-30", 1_033_412_063.0),
-    ]
-    results = iter(_FakeResult(d) for d in dumps)
-
     with patch("loanwhiz.api.main.EsmaTapeNormaliser") as MockNorm:
-        MockNorm.return_value.execute.side_effect = lambda _inp: next(results)
+        MockNorm.return_value.execute.side_effect = _by_url_normaliser_side_effect()
         first = client.get("/deal/green-lion-2026-1/tape-analytics")
         second = client.get("/deal/green-lion-2026-1/tape-analytics")
 
@@ -799,7 +819,7 @@ def test_deal_tape_analytics_computes_each_tape_once_across_calls(_isolated_tape
     # Both responses identical (served from cache the second time).
     assert first.json() == second.json()
     # One compute per tape across BOTH requests — not two.
-    assert MockNorm.return_value.execute.call_count == 3
+    assert MockNorm.return_value.execute.call_count == GREEN_LION_TAPE_COUNT
 
 
 def test_deal_tape_analytics_on_disk_cache_survives_fresh_process(_isolated_tape_cache):
@@ -812,18 +832,12 @@ def test_deal_tape_analytics_on_disk_cache_survives_fresh_process(_isolated_tape
     """
     from loanwhiz.api import main as api_main
 
-    dumps = [
-        _tape_output_dump("2026-02-28", 1_050_000_000.0),
-        _tape_output_dump("2026-03-31", 1_040_000_000.0),
-        _tape_output_dump("2026-04-30", 1_033_412_063.0),
-    ]
-    results = iter(_FakeResult(d) for d in dumps)
     with patch("loanwhiz.api.main.EsmaTapeNormaliser") as MockNorm:
-        MockNorm.return_value.execute.side_effect = lambda _inp: next(results)
+        MockNorm.return_value.execute.side_effect = _by_url_normaliser_side_effect()
         primed = client.get("/deal/green-lion-2026-1/tape-analytics")
     assert primed.status_code == 200
     # On-disk artifacts written, one per tape.
-    assert len(list(_isolated_tape_cache.glob("*.json"))) == 3
+    assert len(list(_isolated_tape_cache.glob("*.json"))) == GREEN_LION_TAPE_COUNT
 
     # Simulate a fresh process: memo empty, but on-disk cache present.
     api_main._TAPE_ANALYTICS_MEMO.clear()
@@ -1053,7 +1067,7 @@ def test_deal_tape_analytics_integration():
     resp = client.get("/deal/green-lion-2026-1/tape-analytics")
     assert resp.status_code == 200
     body = resp.json()
-    assert len(body) == 3
+    assert len(body) == GREEN_LION_TAPE_COUNT
     for period in body:
         assert period["loan_count"] > 0
         assert period["pool_balance_eur"] > 0
