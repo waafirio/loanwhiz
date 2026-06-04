@@ -1,8 +1,9 @@
 """ESMA loan-level tape normaliser primitive.
 
-Loads a CSV from a URL (HuggingFace or local), auto-detects the ESMA Annex
-schema (Annex 2 RMBS, Annex 5 Auto, Annex 8 SME, etc.), and computes a
-comprehensive set of pool analytics:
+Loads a loan tape from a URL (HuggingFace or local) in either **CSV or
+parquet** format — the loader is format-agnostic and dispatches on the URL
+extension — auto-detects the ESMA Annex schema (Annex 2 RMBS, Annex 5 Auto,
+Annex 8 SME, etc.), and computes a comprehensive set of pool analytics:
 
 - Balance-weighted averages: coupon, LTV, seasoning, remaining term.
 - Multi-bucket arrears breakdown: current, <29 days, 180+ days, default.
@@ -68,6 +69,66 @@ _DEDUCT_UNKNOWN_ANNEX = 0.2
 # Minimum fraction of missing balance values that triggers the quality deduction.
 _MISSING_BALANCE_THRESHOLD = 0.05
 
+# URL/path suffixes that route the loader to ``pd.read_parquet`` rather than
+# ``pd.read_csv``. Matched case-insensitively against the URL path component
+# (query string stripped).
+_PARQUET_SUFFIXES = (".parquet", ".pq")
+
+
+def _load_tape(file_url: str, period: str | None) -> pd.DataFrame:
+    """Load a loan tape from *file_url* as a DataFrame, format-agnostically.
+
+    Detects the format from the URL/path extension: a ``.parquet``/``.pq``
+    suffix is read via :func:`pandas.read_parquet`; anything else falls back to
+    :func:`pandas.read_csv` (the historical default, with ``low_memory=False``).
+
+    Combined multi-month tapes (e.g. ``Overall_2024_2025_all_months.parquet``)
+    carry many ``reporting_date`` values in one file. Since the LoanWhiz model
+    is one-tape-per-period, *period* selects a single reporting cut-off: when
+    set and a ``reporting_date`` column is present, the frame is filtered to
+    rows whose ``reporting_date`` (string-cast) equals *period*. Selecting a
+    period absent from the file is an error.
+
+    Parameters
+    ----------
+    file_url:
+        URL or path to the tape (CSV or parquet).
+    period:
+        Optional reporting-date selector for combined multi-month tapes. When
+        ``None`` the whole frame is returned unchanged (the historical path).
+
+    Returns
+    -------
+    pandas.DataFrame
+        The loaded tape, sliced to *period* when requested.
+
+    Raises
+    ------
+    ValueError
+        When *period* is set but matches no rows in the tape.
+    """
+    # Strip any query string before matching the extension so signed URLs
+    # (``...parquet?token=...``) still route to the parquet reader.
+    path = file_url.split("?", 1)[0]
+    if path.lower().endswith(_PARQUET_SUFFIXES):
+        df = pd.read_parquet(file_url)
+    else:
+        df = pd.read_csv(file_url, low_memory=False)
+
+    if period is not None:
+        col_map = {c.lower(): c for c in df.columns}
+        if "reporting_date" in col_map:
+            rd_col = col_map["reporting_date"]
+            mask = df[rd_col].astype(str) == period
+            df = df[mask]
+            if df.empty:
+                raise ValueError(
+                    f"period={period!r} matched no rows in tape {file_url!r}; "
+                    "no such reporting_date in the (combined) file."
+                )
+
+    return df
+
 
 # ---------------------------------------------------------------------------
 # I/O models
@@ -78,20 +139,41 @@ class EsmaTapeInput(BaseInput):
     """Input schema for the ESMA tape normaliser.
 
     Attributes:
-        file_url:        Direct URL to the ESMA loan tape CSV (HuggingFace or
-                         local ``file://`` path).
+        file_url:        Direct URL to the ESMA loan tape, in CSV or parquet
+                         format (HuggingFace or local ``file://`` path). The
+                         loader dispatches on the URL extension.
         reporting_date:  Override for the reporting date (ISO 8601, e.g.
-                         ``"2026-04-30"``). Only needed when the tape CSV does
+                         ``"2026-04-30"``). Only needed when the tape does
                          not carry a ``reporting_date`` column, or when you
-                         want to pin a different cut-off.
+                         want to pin a different cut-off. This is a *label*
+                         override — it does NOT filter rows; use ``period``
+                         to slice a combined file.
+        period:          Reporting-date selector for a **combined multi-month**
+                         tape (e.g. ``Overall_2024_2025_all_months.parquet``).
+                         When set, the loaded frame is filtered to rows whose
+                         ``reporting_date`` equals this value, and the output
+                         reporting_date is pinned to it — yielding the
+                         per-period slice the one-tape-per-period model
+                         expects. ``None`` (default) leaves the frame whole.
     """
 
-    file_url: str = Field(..., description="URL or path to the ESMA loan tape CSV.")
+    file_url: str = Field(
+        ..., description="URL or path to the ESMA loan tape (CSV or parquet)."
+    )
     reporting_date: str | None = Field(
         default=None,
         description=(
-            "Reporting date override (ISO 8601). If None, the value is read "
-            "from the tape's ``reporting_date`` column (first non-null value)."
+            "Reporting date label override (ISO 8601). If None, the value is "
+            "read from the tape's ``reporting_date`` column (first non-null "
+            "value). Does not filter rows — use ``period`` for that."
+        ),
+    )
+    period: str | None = Field(
+        default=None,
+        description=(
+            "Reporting-date selector for a combined multi-month tape. When "
+            "set, rows are filtered to ``reporting_date == period`` and the "
+            "output reporting_date is pinned to it. None reads the whole file."
         ),
     )
 
@@ -282,7 +364,7 @@ class EsmaTapeNormaliser(Primitive[EsmaTapeInput, EsmaTapeOutput]):
         # -----------------------------------------------------------------
         # Load tape
         # -----------------------------------------------------------------
-        df = pd.read_csv(input.file_url, low_memory=False)
+        df = _load_tape(input.file_url, input.period)
         cols: set[str] = set(df.columns)
 
         # -----------------------------------------------------------------
@@ -303,6 +385,11 @@ class EsmaTapeNormaliser(Primitive[EsmaTapeInput, EsmaTapeOutput]):
         if input.reporting_date is not None:
             reporting_date = input.reporting_date
             date_overridden = True
+        elif input.period is not None:
+            # The frame was sliced to exactly this reporting period by
+            # ``_load_tape``; pin it as the output cut-off (not a low-confidence
+            # override — it is the authoritative period of this slice).
+            reporting_date = input.period
         elif "reporting_date" in cols_lower:
             orig_col = col_map["reporting_date"]
             non_null = df[orig_col].dropna()
