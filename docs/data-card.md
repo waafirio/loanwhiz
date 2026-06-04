@@ -10,11 +10,20 @@
 | Field | Value |
 |---|---|
 | **Dataset name** | Green Lion 2026-1 B.V. |
-| **HuggingFace identifier** | `Algoritmica/green-lion-2026` |
+| **HuggingFace identifiers** | `Algoritmica/green-lion-2026` (2026 deal package) · `Algoritmica/green-lion-2024-2025` (24-month 2024–2025 loan-tape history) |
 | **Provider** | Algoritmica.ai |
 | **Version** | As of 2026-06-03 (no version tag; use commit hash for reproducibility) |
 | **License** | Available on HuggingFace; see dataset repository for terms |
-| **URL** | https://huggingface.co/datasets/Algoritmica/green-lion-2026 |
+| **URLs** | https://huggingface.co/datasets/Algoritmica/green-lion-2026 · https://huggingface.co/datasets/Algoritmica/green-lion-2024-2025 |
+
+### Multi-period coverage (27 months)
+
+Green Lion's loan-tape history now spans **27 monthly ESMA Annex 2 tapes** across the two datasets:
+
+- **`Algoritmica/green-lion-2024-2025`** — 24 monthly tapes, one per month from **January 2024 through December 2025**.
+- **`Algoritmica/green-lion-2026`** — 3 monthly tapes for **February, March, and April 2026** (alongside the prospectus and investor reports).
+
+All 27 tapes share the same ESMA Annex 2 schema. **January 2026 (`202601`) exists in neither dataset** and is an intentional gap in the chronology. The framework loads the tapes in chronological order regardless of which dataset each lives in (`src/loanwhiz/config.py` builds the combined `tape_urls` list).
 
 ---
 
@@ -65,13 +74,16 @@ The synthetic loan tapes are identified in the HuggingFace dataset by the `_synt
 
 ## Time Period
 
-| Snapshot | Date | Type |
-|---|---|---|
-| February 2026 | 2026-02-28 | Loan tape (SYNTHETIC) + Investor report (REAL) |
-| March 2026 | 2026-03-31 | Loan tape (SYNTHETIC) + Investor report (REAL) |
-| April 2026 | 2026-04-30 | Loan tape (SYNTHETIC) + Investor report (REAL) |
+The dataset provides **27 monthly loan-tape snapshots** in total, spanning January 2024 through April 2026 (with January 2026 absent):
 
-Three monthly snapshots covering February through April 2026.
+| Period | Source dataset | Coverage | Type |
+|---|---|---|---|
+| Jan 2024 – Dec 2025 (24 months) | `Algoritmica/green-lion-2024-2025` | One month-end tape per month | Loan tape (SYNTHETIC) |
+| February 2026 (2026-02-28) | `Algoritmica/green-lion-2026` | — | Loan tape (SYNTHETIC) + Investor report (REAL) |
+| March 2026 (2026-03-31) | `Algoritmica/green-lion-2026` | — | Loan tape (SYNTHETIC) + Investor report (REAL) |
+| April 2026 (2026-04-30) | `Algoritmica/green-lion-2026` | — | Loan tape (SYNTHETIC) + Investor report (REAL) |
+
+That is 24 monthly historical tapes (2024–2025) plus 3 for 2026 = **27 monthly tapes**. **January 2026 is an intentional gap** — no tape exists for it in either dataset. The three 2026 periods are the ones accompanied by real investor reports; the 24-month 2024–2025 history is loan tapes only.
 
 ---
 
@@ -91,12 +103,12 @@ Monthly investor reports for February, March, and April 2026. These contain peri
 
 ### Loan Tapes (SYNTHETIC)
 
-ESMA Annex 2 format CSV files, one per monthly snapshot:
+ESMA Annex 2 format CSV files, one per monthly snapshot. The 24-month 2024–2025 history (in `Algoritmica/green-lion-2024-2025`) follows the naming pattern `green_lion_<YYYYMM>_1_synthetic_loan_tape.csv`, one file per month from `202401` through `202512`. The 2026 tapes (in `Algoritmica/green-lion-2026`) are:
 - `green_lion_202602_1_synthetic_loan_tape.csv` (February 2026)
 - `green_lion_202603_1_synthetic_loan_tape.csv` (March 2026)
 - `green_lion_2026_1_synthetic_loan_tape.csv` (April 2026)
 
-These files contain loan-level fields per ESMA's Annex 2 specification: loan identifiers, outstanding balance, original balance, interest rate, rate type, remaining term, LTV, geographic region, EPC rating, arrears status, and other regulatory disclosure fields.
+All 27 tapes contain loan-level fields per ESMA's Annex 2 specification: loan identifiers, outstanding balance, original balance, interest rate, rate type, remaining term, LTV, geographic region, EPC rating, arrears status, and other regulatory disclosure fields.
 
 ---
 
@@ -125,7 +137,7 @@ The dataset is **not intended** for:
 | **Single asset class** | Dutch RMBS only. CLOs, CMBS, US RMBS, ABS, and other asset classes are not represented. |
 | **Synthetic loan performance** | No real default history. Arrears rates, default rates, and prepayment rates in the loan tapes reflect synthetic generation assumptions, not observed market behaviour. |
 | **Netherlands jurisdiction only** | Dutch law, Dutch mortgage market conventions, Dutch EPC rating system. Not representative of other European or non-European RMBS markets. |
-| **Three monthly snapshots** | Insufficient for time-series modelling or prepayment/default speed estimation. |
+| **Synthetic time series** | A 27-month monthly history (Jan 2024 – Apr 2026, January 2026 excepted) is now available, enabling time-series views and multi-period waterfall runs. The series is still synthetically generated, so prepayment/default speeds estimated from it reflect the generation process, not observed market behaviour. |
 | **No amendments or supplements** | The prospectus is the original offering document. Any amendments, supplements, or side letters issued after closing are not included. |
 
 ---
