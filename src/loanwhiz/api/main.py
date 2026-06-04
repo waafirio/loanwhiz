@@ -44,7 +44,12 @@ from loanwhiz.primitives.collections_aggregator import (
     CollectionsAggregator,
     CollectionsInput,
 )
-from loanwhiz.primitives.covenant_monitor import CovenantInput, CovenantMonitor
+from loanwhiz.primitives.base import Citation
+from loanwhiz.primitives.covenant_monitor import (
+    CovenantInput,
+    CovenantMonitor,
+    TriggerDefinition,
+)
 from loanwhiz.primitives.esma_tape_normaliser import (
     EsmaTapeInput,
     EsmaTapeNormaliser,
@@ -147,6 +152,23 @@ class ProjectRequest(BaseModel):
 # assembler's durable default (#132 moved it from /tmp to the committed
 # data/deals/) so the writer and this reader never diverge.
 DEAL_MODEL_CACHE_DIR = str(DEFAULT_DEAL_CACHE_DIR)
+
+
+def _load_cached_deal_model(deal: dict) -> DealModel | None:
+    """Read the cached extracted :class:`DealModel` for a deal, or ``None``.
+
+    Reads the assembler's on-disk cache at
+    ``{DEAL_MODEL_CACHE_DIR}/{slug(deal_name)}.json`` and validates it into a
+    :class:`DealModel`. **Never triggers a cold extraction** — a cache miss
+    (no file) returns ``None`` rather than invoking the ~10min Docling
+    pipeline. Shared by ``/deal/{id}/model`` (serves it to the frontend) and
+    ``/deal/{id}/compliance`` (feeds the deal's own triggers to the monitor)
+    so both read the cache identically.
+    """
+    cache_path = Path(DEAL_MODEL_CACHE_DIR) / f"{_slug(deal['deal_name'])}.json"
+    if not cache_path.exists():
+        return None
+    return DealModel.model_validate_json(cache_path.read_text(encoding="utf-8"))
 
 
 class DealModelResponse(BaseModel):
@@ -299,14 +321,12 @@ def deal_model(deal_id: str) -> DealModelResponse:
         extraction_status="not_cached",
     )
 
-    # Check the cache file directly (do NOT call extract_deal_model — a cache
-    # miss there would synchronously run the ~10min Docling pipeline). The path
-    # mirrors the assembler's: {cache_dir}/{slug(deal_name)}.json.
-    cache_path = Path(DEAL_MODEL_CACHE_DIR) / f"{_slug(deal['deal_name'])}.json"
-    if not cache_path.exists():
+    # Read the cache directly (do NOT call extract_deal_model — a cache miss
+    # there would synchronously run the ~10min Docling pipeline).
+    model = _load_cached_deal_model(deal)
+    if model is None:
         return base
 
-    model = DealModel.model_validate_json(cache_path.read_text(encoding="utf-8"))
     base.extraction_status = "cached"
     base.completeness_score = model.metadata.completeness_score
     base.trigger_names = model.trigger_names
@@ -314,16 +334,84 @@ def deal_model(deal_id: str) -> DealModelResponse:
     return base
 
 
+def _map_extracted_trigger(raw: dict) -> TriggerDefinition:
+    """Map one extracted-trigger dict onto a covenant_monitor ``TriggerDefinition``.
+
+    ``raw`` is an ``ExtractedTrigger.model_dump()`` (from the cached deal
+    model's ``covenants.triggers``) carrying ``name, display_name, description,
+    metric, threshold, threshold_unit, direction, consequence,
+    section_reference, citation``.
+
+    Schema bridge:
+    - ``name / metric / threshold / description / consequence`` pass through.
+    - ``direction``: the extractor's ``"non_zero"`` (any positive debit balance
+      fires, e.g. a PDL) maps to ``direction="above"`` with ``threshold=None`` —
+      the convention ``covenant_monitor`` already uses (``threshold is None`` →
+      any positive value triggers). ``"above"`` / ``"below"`` pass through.
+    - ``threshold_unit`` has no slot on ``TriggerDefinition`` (the monitor
+      reasons numerically from metric + threshold + direction only); it is
+      intentionally not forwarded.
+    - ``citation`` is a free-form dict in the extracted schema; rebuild a
+      :class:`Citation`, falling back to the trigger's ``section_reference`` /
+      ``display_name`` when individual keys are absent.
+    """
+    direction = raw.get("direction", "above")
+    threshold = raw.get("threshold")
+    if direction == "non_zero":
+        direction = "above"
+        threshold = None  # any positive (debit) balance fires the trigger
+
+    citation_raw = raw.get("citation") or {}
+    citation = Citation(
+        document=citation_raw.get("document") or "prospectus",
+        page_or_row=citation_raw.get("page_or_row") or raw.get("section_reference"),
+        excerpt=citation_raw.get("excerpt") or raw.get("display_name") or raw["name"],
+    )
+
+    return TriggerDefinition(
+        name=raw["name"],
+        description=raw.get("description") or raw.get("display_name") or raw["name"],
+        metric=raw["metric"],
+        threshold=threshold,
+        direction=direction,
+        consequence=raw.get("consequence", ""),
+        citation=citation,
+    )
+
+
+def _extracted_triggers_to_definitions(deal: dict) -> list[TriggerDefinition]:
+    """Return the deal's extracted triggers as ``TriggerDefinition`` objects.
+
+    Reads the cached deal model (never a live extraction) and maps each
+    ``covenants.triggers`` entry onto a ``TriggerDefinition``. Returns an empty
+    list when the deal has no cached model or its model carries no triggers —
+    the caller then falls back to ``CovenantMonitor.DEFAULT_TRIGGERS``.
+    """
+    model = _load_cached_deal_model(deal)
+    if model is None:
+        return []
+    raw_triggers = model.covenants.get("triggers") or []
+    return [_map_extracted_trigger(raw) for raw in raw_triggers]
+
+
 @app.get("/deal/{deal_id}/compliance")
 def deal_compliance(deal_id: str) -> dict:
     """Run covenant compliance across all reporting periods for the deal.
 
     Normalises every ESMA tape the deal references, then runs the covenant
-    monitor over the per-period pool analytics using the monitor's default
-    trigger set. The ``original_pool_balance`` denominator (clean-up-call
-    proximity and cumulative-loss-rate) is resolved from the deal context,
-    defaulting to the Green Lion closing balance when the deal carries none —
-    so the route is deal-generic without a registry-schema migration.
+    monitor over the per-period pool analytics. The trigger set comes from the
+    deal model's *extracted* triggers (the cached ``covenants.triggers``,
+    mapped onto the monitor's schema) so each deal is checked against its own
+    thresholds and directions; it falls back to the monitor's hardcoded
+    ``DEFAULT_TRIGGERS`` only when the deal has no cached model or no extracted
+    triggers (Green Lion's extracted triggers match the defaults, so its
+    behaviour is unchanged). Reading the cache never triggers a live
+    extraction.
+
+    The ``original_pool_balance`` denominator (clean-up-call proximity and
+    cumulative-loss-rate) is resolved from the deal context, defaulting to the
+    Green Lion closing balance when the deal carries none — so the route is
+    deal-generic without a registry-schema migration.
     """
     deal = _require_deal(deal_id)
     normaliser = EsmaTapeNormaliser()
@@ -331,6 +419,10 @@ def deal_compliance(deal_id: str) -> dict:
         normaliser.execute(EsmaTapeInput(file_url=tape["url"])).output.model_dump()
         for tape in deal["tape_urls"]
     ]
+    # Trigger set from the deal model's extracted triggers, falling back to the
+    # monitor's defaults when the deal has no cached model or no extracted
+    # triggers.
+    triggers = _extracted_triggers_to_definitions(deal) or CovenantMonitor.DEFAULT_TRIGGERS
     # Original pool balance from the deal context, defaulting to Green Lion's
     # when the deal carries none (mirrors the capital-structure resolution in
     # ``deal_waterfall``). Drives the clean-up-call trigger and loss-rate.
@@ -341,7 +433,7 @@ def deal_compliance(deal_id: str) -> dict:
     result = monitor.execute(
         CovenantInput(
             periods=periods,
-            triggers=CovenantMonitor.DEFAULT_TRIGGERS,
+            triggers=triggers,
             original_pool_balance=original_pool_balance,
         )
     )
@@ -756,11 +848,21 @@ def deal_project(deal_id: str, req: ProjectRequest) -> dict:
     For each scenario, runs the deal's payment waterfall on the base-case
     capital structure with the scenario's collection stress factor applied,
     returning the per-tranche distributions and any shortfall.
+
+    The projection base (pool balance + capital structure) is resolved from
+    the deal context — a deal may carry its own ``projection_base`` in the
+    registry, otherwise the Green Lion default applies. This mirrors the
+    deal-context resolution of ``/waterfall`` (#151) so projections track the
+    *selected* deal rather than always Green Lion; Green Lion (no
+    ``projection_base`` key) is unchanged.
     """
-    _require_deal(deal_id)
+    deal = _require_deal(deal_id)
     runner = WaterfallRunner()
 
-    base = _GREEN_LION_PROJECTION_BASE
+    # Projection base from the deal context, defaulting to Green Lion's when
+    # the deal carries none — keeps the route deal-generic without a registry
+    # schema migration (mirrors the /waterfall capital-structure resolution).
+    base = deal.get("projection_base", _GREEN_LION_PROJECTION_BASE)
     # Assume collections roughly track the pool balance over the horizon; this
     # is the base-case revenue/principal split a dedicated projector would
     # refine per period.
