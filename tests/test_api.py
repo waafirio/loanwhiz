@@ -521,6 +521,106 @@ def test_deal_project_unknown_returns_404():
     assert resp.status_code == 404
 
 
+def test_deal_project_default_base_is_green_lion():
+    """With no ``projection_base`` on the deal, the projection uses the Green
+    Lion base (unchanged default branch)."""
+    from loanwhiz.api import main as api_main
+
+    waterfall_dump = {
+        "reporting_period": "projection+12m (base)",
+        "revenue_waterfall": [],
+        "redemption_waterfall": [],
+        "tranche_distributions": [],
+        "total_distributed": 0.0,
+        "shortfall": 0.0,
+    }
+    with patch("loanwhiz.api.main.WaterfallRunner") as MockRunner:
+        MockRunner.return_value.execute.return_value = _FakeResult(waterfall_dump)
+        resp = client.post(
+            "/deal/green-lion-2026-1/project",
+            json={"scenarios": ["base"], "months": 12},
+        )
+
+    assert resp.status_code == 200
+    # The waterfall ran on the Green Lion projection base (default branch).
+    gl = api_main._GREEN_LION_PROJECTION_BASE
+    wf_input = MockRunner.return_value.execute.call_args.args[0]
+    assert wf_input.class_a_balance == gl["class_a_balance"]
+    assert wf_input.class_b_balance == gl["class_b_balance"]
+    assert wf_input.class_c_balance == gl["class_c_balance"]
+    assert wf_input.class_a_rate_pct == gl["class_a_rate_pct"]
+    assert wf_input.reserve_account_balance == gl["reserve_account_balance"]
+    assert wf_input.reserve_account_target == gl["reserve_account_target"]
+
+
+def test_deal_project_uses_resolved_deal_base():
+    """The projection runs against the *selected* deal's projection base.
+
+    Regression for #160: ``deal_project`` previously always read the
+    module-level ``_GREEN_LION_PROJECTION_BASE``, so projections ignored the
+    selected deal's own capital structure / pool balance. With a second deal
+    registered carrying an explicit ``projection_base``, the ``WaterfallRunner``
+    must be driven by *that* deal's base — not Green Lion's.
+    """
+    from loanwhiz.api import main as api_main
+
+    sponsor_base = {
+        "current_pool_balance": 500_000_000.0,
+        "class_a_balance": 480_000_000.0,
+        "class_b_balance": 15_000_000.0,
+        "class_c_balance": 5_000_000.0,
+        "class_a_rate_pct": 4.10,
+        "reserve_account_balance": 5_000_000.0,
+        "reserve_account_target": 5_000_000.0,
+    }
+    sponsor = {
+        "deal_name": "Sponsor Deal 2025-1 B.V.",
+        "prospectus_url": "https://example.test/sponsor-2025-1-prospectus.pdf",
+        "tape_urls": [
+            {"date": "2025-12-31", "url": "https://example.test/sponsor-202512.csv"},
+        ],
+        "investor_report_urls": [],
+        "projection_base": sponsor_base,
+    }
+    augmented = {**api_main.DEALS, "sponsor-2025-1": sponsor}
+
+    waterfall_dump = {
+        "reporting_period": "projection+12m (base)",
+        "revenue_waterfall": [],
+        "redemption_waterfall": [],
+        "tranche_distributions": [],
+        "total_distributed": 0.0,
+        "shortfall": 0.0,
+    }
+    with patch.object(api_main, "DEALS", augmented), patch(
+        "loanwhiz.api.main.WaterfallRunner"
+    ) as MockRunner:
+        MockRunner.return_value.execute.return_value = _FakeResult(waterfall_dump)
+        resp = client.post(
+            "/deal/sponsor-2025-1/project",
+            json={"scenarios": ["base"], "months": 12},
+        )
+
+    assert resp.status_code == 200
+    assert resp.json()["deal_id"] == "sponsor-2025-1"
+
+    # The waterfall ran on the sponsor's projection base, not Green Lion's.
+    wf_input = MockRunner.return_value.execute.call_args.args[0]
+    assert wf_input.class_a_balance == 480_000_000.0
+    assert wf_input.class_b_balance == 15_000_000.0
+    assert wf_input.class_c_balance == 5_000_000.0
+    assert wf_input.class_a_rate_pct == 4.10
+    assert wf_input.reserve_account_balance == 5_000_000.0
+    assert wf_input.reserve_account_target == 5_000_000.0
+    # And the collection sizing derives from the sponsor's pool balance.
+    assert wf_input.available_revenue_funds == pytest.approx(
+        500_000_000.0 * 0.04 * (12 / 12.0)
+    )
+    assert wf_input.available_principal_funds == pytest.approx(
+        500_000_000.0 * 0.10 * (12 / 12.0)
+    )
+
+
 # ---------------------------------------------------------------------------
 # Waterfall (primitives mocked)
 # ---------------------------------------------------------------------------

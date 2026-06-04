@@ -734,11 +734,21 @@ def deal_project(deal_id: str, req: ProjectRequest) -> dict:
     For each scenario, runs the deal's payment waterfall on the base-case
     capital structure with the scenario's collection stress factor applied,
     returning the per-tranche distributions and any shortfall.
+
+    The projection base (pool balance + capital structure) is resolved from
+    the deal context — a deal may carry its own ``projection_base`` in the
+    registry, otherwise the Green Lion default applies. This mirrors the
+    deal-context resolution of ``/waterfall`` (#151) so projections track the
+    *selected* deal rather than always Green Lion; Green Lion (no
+    ``projection_base`` key) is unchanged.
     """
-    _require_deal(deal_id)
+    deal = _require_deal(deal_id)
     runner = WaterfallRunner()
 
-    base = _GREEN_LION_PROJECTION_BASE
+    # Projection base from the deal context, defaulting to Green Lion's when
+    # the deal carries none — keeps the route deal-generic without a registry
+    # schema migration (mirrors the /waterfall capital-structure resolution).
+    base = deal.get("projection_base", _GREEN_LION_PROJECTION_BASE)
     # Assume collections roughly track the pool balance over the horizon; this
     # is the base-case revenue/principal split a dedicated projector would
     # refine per period.
