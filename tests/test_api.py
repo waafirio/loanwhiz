@@ -387,6 +387,64 @@ def test_deal_compliance_runs_monitor(tmp_path):
     MockMon.return_value.execute.assert_called_once()
 
 
+def test_deal_compliance_uses_green_lion_pool_balance_by_default():
+    """A deal with no ``original_pool_balance`` key falls back to Green Lion's.
+
+    The denominator drives the clean-up-call trigger and cumulative-loss-rate;
+    Green Lion (no key in its registry context) must keep the closing balance
+    of €1,063,600,000 so existing behaviour is unchanged.
+    """
+    compliance_dump = {"trigger_statuses": [], "summary": "ok"}
+
+    with patch(
+        "loanwhiz.api.main.EsmaTapeNormaliser"
+    ) as MockNorm, patch("loanwhiz.api.main.CovenantMonitor") as MockMon:
+        MockNorm.return_value.execute.return_value = _FakeResult({"row_count": 1})
+        MockMon.DEFAULT_TRIGGERS = []
+        MockMon.return_value.execute.return_value = _FakeResult(compliance_dump)
+
+        resp = client.get("/deal/green-lion-2026-1/compliance")
+
+    assert resp.status_code == 200
+    covenant_input = MockMon.return_value.execute.call_args.args[0]
+    assert covenant_input.original_pool_balance == 1_063_600_000.0
+
+
+def test_deal_compliance_resolves_pool_balance_from_deal_context():
+    """A deal carrying ``original_pool_balance`` overrides the Green Lion default.
+
+    Mirrors the #151 ``capital_structure`` resolution: a deal added as data can
+    supply its own pool balance, and ``/compliance`` threads it into the
+    covenant monitor as the loss-rate / clean-up-call denominator.
+    """
+    from loanwhiz.api import main as api_main
+
+    sponsor = {
+        "deal_name": "Sponsor Deal 2025-1 B.V.",
+        "prospectus_url": "https://example.test/sponsor-2025-1-prospectus.pdf",
+        "tape_urls": [
+            {"date": "2025-12-31", "url": "https://example.test/sponsor-202512.csv"},
+        ],
+        "investor_report_urls": [],
+        "original_pool_balance": 500_000_000.0,
+    }
+    augmented = {**api_main.DEALS, "sponsor-2025-1": sponsor}
+    compliance_dump = {"trigger_statuses": [], "summary": "ok"}
+
+    with patch.object(api_main, "DEALS", augmented), patch(
+        "loanwhiz.api.main.EsmaTapeNormaliser"
+    ) as MockNorm, patch("loanwhiz.api.main.CovenantMonitor") as MockMon:
+        MockNorm.return_value.execute.return_value = _FakeResult({"row_count": 1})
+        MockMon.DEFAULT_TRIGGERS = []
+        MockMon.return_value.execute.return_value = _FakeResult(compliance_dump)
+
+        resp = client.get("/deal/sponsor-2025-1/compliance")
+
+    assert resp.status_code == 200
+    covenant_input = MockMon.return_value.execute.call_args.args[0]
+    assert covenant_input.original_pool_balance == 500_000_000.0
+
+
 def _seed_cached_deal_model_with_triggers(cache_dir: str, triggers: list[dict]) -> None:
     """Seed a cached Green Lion DealModel whose covenants carry ``triggers``."""
     model = _seed_cached_deal_model(cache_dir)

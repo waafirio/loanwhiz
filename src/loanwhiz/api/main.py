@@ -407,6 +407,11 @@ def deal_compliance(deal_id: str) -> dict:
     triggers (Green Lion's extracted triggers match the defaults, so its
     behaviour is unchanged). Reading the cache never triggers a live
     extraction.
+
+    The ``original_pool_balance`` denominator (clean-up-call proximity and
+    cumulative-loss-rate) is resolved from the deal context, defaulting to the
+    Green Lion closing balance when the deal carries none — so the route is
+    deal-generic without a registry-schema migration.
     """
     deal = _require_deal(deal_id)
     normaliser = EsmaTapeNormaliser()
@@ -414,9 +419,24 @@ def deal_compliance(deal_id: str) -> dict:
         normaliser.execute(EsmaTapeInput(file_url=tape["url"])).output.model_dump()
         for tape in deal["tape_urls"]
     ]
+    # Trigger set from the deal model's extracted triggers, falling back to the
+    # monitor's defaults when the deal has no cached model or no extracted
+    # triggers.
     triggers = _extracted_triggers_to_definitions(deal) or CovenantMonitor.DEFAULT_TRIGGERS
+    # Original pool balance from the deal context, defaulting to Green Lion's
+    # when the deal carries none (mirrors the capital-structure resolution in
+    # ``deal_waterfall``). Drives the clean-up-call trigger and loss-rate.
+    original_pool_balance = deal.get(
+        "original_pool_balance", _GREEN_LION_ORIGINAL_POOL_BALANCE
+    )
     monitor = CovenantMonitor()
-    result = monitor.execute(CovenantInput(periods=periods, triggers=triggers))
+    result = monitor.execute(
+        CovenantInput(
+            periods=periods,
+            triggers=triggers,
+            original_pool_balance=original_pool_balance,
+        )
+    )
     return result.output.model_dump()
 
 
@@ -438,6 +458,15 @@ _GREEN_LION_CLASS_A_BALANCE = 1_000_000_000.0
 _GREEN_LION_CLASS_A_RATE_PCT = 3.62
 _GREEN_LION_CLASS_B_BALANCE = 53_100_000.0
 _GREEN_LION_CLASS_C_BALANCE = 10_500_000.0
+
+# Green Lion 2026-1 original pool balance at closing (EUR). The denominator for
+# cumulative-loss-rate and the clean-up-call trigger proximity. A deal may carry
+# its own ``original_pool_balance`` in its registry context; ``deal_compliance``
+# resolves it from the deal and falls back to this Green Lion default (mirroring
+# the ``capital_structure`` resolution), so the route is deal-generic without a
+# registry-schema migration. Green Lion (no ``original_pool_balance`` key) is
+# unchanged.
+_GREEN_LION_ORIGINAL_POOL_BALANCE = 1_063_600_000.0
 
 # Default capital structure for a deal whose registry context does not carry its
 # own. The deal-context dict (loanwhiz.config.DEAL_REGISTRY entries) may include
