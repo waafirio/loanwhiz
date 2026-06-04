@@ -9,6 +9,9 @@ Two categories:
 
 from __future__ import annotations
 
+from pathlib import Path
+
+import pandas as pd
 import pytest
 
 from loanwhiz.config import GREEN_LION
@@ -16,6 +19,7 @@ from loanwhiz.primitives.esma_tape_normaliser import (
     EsmaTapeInput,
     EsmaTapeNormaliser,
     _detect_annex,
+    _load_tape,
 )
 from loanwhiz.primitives.registry import PRIMITIVE_REGISTRY
 
@@ -93,6 +97,162 @@ class TestPrimitiveRegistration:
         assert meta.version == "0.1.0"
         assert meta.input_schema, "input_schema must not be empty"
         assert meta.output_schema, "output_schema must not be empty"
+
+
+# ---------------------------------------------------------------------------
+# Unit tests — format-agnostic loading (CSV or parquet) and per-period split
+#
+# All fixtures are tiny synthetic frames written to ``tmp_path`` — no network.
+# ---------------------------------------------------------------------------
+
+
+def _rmbs_frame(reporting_date: str, *, balances: list[float]) -> pd.DataFrame:
+    """Return a minimal synthetic RMBS (Annex 2) tape with the given balances."""
+    n = len(balances)
+    return pd.DataFrame(
+        {
+            "current_balance": balances,
+            "current_interest_rate_pct": [3.5] * n,
+            "cltomv_current": [70.0] * n,
+            "seasoning_months": [24] * n,
+            "remaining_term_months": [300] * n,
+            "epc_label": ["A", "B", "C", "D"][:n],
+            "property_type": ["House", "Apartment", "House", "Apartment"][:n],
+            "arrears_bucket": ["Performing"] * n,
+            "default_crr_flag": ["N"] * n,
+            "province": ["NL-NH", "NL-ZH", "NL-NH", "NL-ZH"][:n],
+            "transaction_name": ["Synthetic Deal"] * n,
+            "reporting_date": [reporting_date] * n,
+        }
+    )
+
+
+class TestFormatAgnosticLoading:
+    """``_load_tape`` and ``execute`` accept both CSV and parquet URLs."""
+
+    def test_single_period_parquet_normalises(self, tmp_path: Path) -> None:
+        df = _rmbs_frame("2026-04-30", balances=[100_000.0, 200_000.0])
+        parquet_path = tmp_path / "single_period.parquet"
+        df.to_parquet(parquet_path)
+
+        result = EsmaTapeNormaliser().execute(
+            EsmaTapeInput(file_url=f"file://{parquet_path}")
+        )
+
+        assert result.output.loan_count == 2
+        assert result.output.reporting_date == "2026-04-30"
+        assert result.output.pool_balance_eur == pytest.approx(300_000.0)
+        assert result.output.annex_detected == "Annex 2 (RMBS)"
+        assert result.output.transaction_name == "Synthetic Deal"
+
+    def test_csv_path_still_works(self, tmp_path: Path) -> None:
+        # Regression guard: the historical CSV path is unchanged.
+        df = _rmbs_frame("2026-04-30", balances=[100_000.0, 200_000.0])
+        csv_path = tmp_path / "tape.csv"
+        df.to_csv(csv_path, index=False)
+
+        result = EsmaTapeNormaliser().execute(
+            EsmaTapeInput(file_url=f"file://{csv_path}")
+        )
+
+        assert result.output.loan_count == 2
+        assert result.output.reporting_date == "2026-04-30"
+        assert result.output.pool_balance_eur == pytest.approx(300_000.0)
+        assert result.output.annex_detected == "Annex 2 (RMBS)"
+
+    def test_csv_and_parquet_produce_identical_output(self, tmp_path: Path) -> None:
+        # The format is purely an ingestion detail; analytics must match.
+        df = _rmbs_frame("2026-04-30", balances=[150_000.0, 250_000.0, 350_000.0])
+        csv_path = tmp_path / "tape.csv"
+        parquet_path = tmp_path / "tape.parquet"
+        df.to_csv(csv_path, index=False)
+        df.to_parquet(parquet_path)
+
+        csv_out = EsmaTapeNormaliser().execute(
+            EsmaTapeInput(file_url=f"file://{csv_path}")
+        ).output
+        parquet_out = EsmaTapeNormaliser().execute(
+            EsmaTapeInput(file_url=f"file://{parquet_path}")
+        ).output
+
+        assert csv_out.loan_count == parquet_out.loan_count
+        assert csv_out.pool_balance_eur == pytest.approx(parquet_out.pool_balance_eur)
+        assert csv_out.pool_stats == parquet_out.pool_stats
+        assert csv_out.arrears_breakdown == parquet_out.arrears_breakdown
+
+    def test_query_string_routes_to_parquet_reader(self, tmp_path: Path) -> None:
+        # A signed-URL-style query suffix must not defeat extension detection.
+        df = _rmbs_frame("2026-04-30", balances=[100_000.0])
+        parquet_path = tmp_path / "signed.parquet"
+        df.to_parquet(parquet_path)
+
+        loaded = _load_tape(f"file://{parquet_path}?token=abc123", period=None)
+        assert len(loaded) == 1
+
+
+class TestCombinedParquetSplit:
+    """A combined multi-month parquet is split by ``reporting_date``."""
+
+    def _combined_path(self, tmp_path: Path) -> Path:
+        jan = _rmbs_frame("2024-01-31", balances=[100_000.0, 200_000.0])
+        feb = _rmbs_frame("2024-02-29", balances=[300_000.0, 400_000.0])
+        mar = _rmbs_frame("2024-03-31", balances=[500_000.0])
+        combined = pd.concat([jan, feb, mar], ignore_index=True)
+        path = tmp_path / "Overall_2024_all_months.parquet"
+        combined.to_parquet(path)
+        return path
+
+    def test_period_selects_single_month_slice(self, tmp_path: Path) -> None:
+        path = self._combined_path(tmp_path)
+
+        result = EsmaTapeNormaliser().execute(
+            EsmaTapeInput(file_url=f"file://{path}", period="2024-02-29")
+        )
+
+        # Only the February slice (2 loans, 300k + 400k) participates.
+        assert result.output.loan_count == 2
+        assert result.output.reporting_date == "2024-02-29"
+        assert result.output.pool_balance_eur == pytest.approx(700_000.0)
+
+    def test_each_period_is_independently_addressable(self, tmp_path: Path) -> None:
+        path = self._combined_path(tmp_path)
+        url = f"file://{path}"
+
+        jan = EsmaTapeNormaliser().execute(
+            EsmaTapeInput(file_url=url, period="2024-01-31")
+        ).output
+        mar = EsmaTapeNormaliser().execute(
+            EsmaTapeInput(file_url=url, period="2024-03-31")
+        ).output
+
+        assert jan.loan_count == 2
+        assert jan.pool_balance_eur == pytest.approx(300_000.0)
+        assert mar.loan_count == 1
+        assert mar.pool_balance_eur == pytest.approx(500_000.0)
+
+    def test_load_tape_slices_frame_directly(self, tmp_path: Path) -> None:
+        path = self._combined_path(tmp_path)
+
+        sliced = _load_tape(f"file://{path}", period="2024-01-31")
+
+        assert len(sliced) == 2
+        assert set(sliced["reporting_date"].astype(str)) == {"2024-01-31"}
+
+    def test_absent_period_raises_value_error(self, tmp_path: Path) -> None:
+        path = self._combined_path(tmp_path)
+
+        with pytest.raises(ValueError, match="matched no rows"):
+            EsmaTapeNormaliser().execute(
+                EsmaTapeInput(file_url=f"file://{path}", period="2099-12-31")
+            )
+
+    def test_no_period_reads_whole_combined_file(self, tmp_path: Path) -> None:
+        # Backward-compatible path: unset period reads every row.
+        path = self._combined_path(tmp_path)
+
+        result = EsmaTapeNormaliser().execute(EsmaTapeInput(file_url=f"file://{path}"))
+
+        assert result.output.loan_count == 5  # 2 + 2 + 1 across all months
 
 
 # ---------------------------------------------------------------------------

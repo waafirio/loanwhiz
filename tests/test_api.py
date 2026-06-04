@@ -17,6 +17,7 @@ from fastapi.testclient import TestClient
 from loanwhiz.agent.executor import ExecutionResult, ValidationStatus
 from loanwhiz.api import app
 from loanwhiz.config import GREEN_LION
+from loanwhiz.primitives.covenant_monitor import CovenantMonitor
 
 client = TestClient(app)
 
@@ -367,7 +368,7 @@ class _FakeResult:
         return self._dump
 
 
-def test_deal_compliance_runs_monitor():
+def test_deal_compliance_runs_monitor(tmp_path):
     tape_dump = {"row_count": 100, "field_coverage": 0.98}
     compliance_dump = {
         "trigger_statuses": [],
@@ -376,7 +377,8 @@ def test_deal_compliance_runs_monitor():
         "summary": "All covenants within limits.",
     }
 
-    with patch(
+    # Empty cache dir → no extracted triggers → fall back to DEFAULT_TRIGGERS.
+    with patch("loanwhiz.api.main.DEAL_MODEL_CACHE_DIR", str(tmp_path)), patch(
         "loanwhiz.api.main.EsmaTapeNormaliser"
     ) as MockNorm, patch("loanwhiz.api.main.CovenantMonitor") as MockMon:
         MockNorm.return_value.execute.return_value = _FakeResult(tape_dump)
@@ -390,6 +392,168 @@ def test_deal_compliance_runs_monitor():
     # One normalise call per tape in the deal context.
     assert MockNorm.return_value.execute.call_count == GREEN_LION_TAPE_COUNT
     MockMon.return_value.execute.assert_called_once()
+
+
+def test_deal_compliance_uses_green_lion_pool_balance_by_default():
+    """A deal with no ``original_pool_balance`` key falls back to Green Lion's.
+
+    The denominator drives the clean-up-call trigger and cumulative-loss-rate;
+    Green Lion (no key in its registry context) must keep the closing balance
+    of €1,063,600,000 so existing behaviour is unchanged.
+    """
+    compliance_dump = {"trigger_statuses": [], "summary": "ok"}
+
+    with patch(
+        "loanwhiz.api.main.EsmaTapeNormaliser"
+    ) as MockNorm, patch("loanwhiz.api.main.CovenantMonitor") as MockMon:
+        MockNorm.return_value.execute.return_value = _FakeResult({"row_count": 1})
+        MockMon.DEFAULT_TRIGGERS = []
+        MockMon.return_value.execute.return_value = _FakeResult(compliance_dump)
+
+        resp = client.get("/deal/green-lion-2026-1/compliance")
+
+    assert resp.status_code == 200
+    covenant_input = MockMon.return_value.execute.call_args.args[0]
+    assert covenant_input.original_pool_balance == 1_063_600_000.0
+
+
+def test_deal_compliance_resolves_pool_balance_from_deal_context():
+    """A deal carrying ``original_pool_balance`` overrides the Green Lion default.
+
+    Mirrors the #151 ``capital_structure`` resolution: a deal added as data can
+    supply its own pool balance, and ``/compliance`` threads it into the
+    covenant monitor as the loss-rate / clean-up-call denominator.
+    """
+    from loanwhiz.api import main as api_main
+
+    sponsor = {
+        "deal_name": "Sponsor Deal 2025-1 B.V.",
+        "prospectus_url": "https://example.test/sponsor-2025-1-prospectus.pdf",
+        "tape_urls": [
+            {"date": "2025-12-31", "url": "https://example.test/sponsor-202512.csv"},
+        ],
+        "investor_report_urls": [],
+        "original_pool_balance": 500_000_000.0,
+    }
+    augmented = {**api_main.DEALS, "sponsor-2025-1": sponsor}
+    compliance_dump = {"trigger_statuses": [], "summary": "ok"}
+
+    with patch.object(api_main, "DEALS", augmented), patch(
+        "loanwhiz.api.main.EsmaTapeNormaliser"
+    ) as MockNorm, patch("loanwhiz.api.main.CovenantMonitor") as MockMon:
+        MockNorm.return_value.execute.return_value = _FakeResult({"row_count": 1})
+        MockMon.DEFAULT_TRIGGERS = []
+        MockMon.return_value.execute.return_value = _FakeResult(compliance_dump)
+
+        resp = client.get("/deal/sponsor-2025-1/compliance")
+
+    assert resp.status_code == 200
+    covenant_input = MockMon.return_value.execute.call_args.args[0]
+    assert covenant_input.original_pool_balance == 500_000_000.0
+
+
+def _seed_cached_deal_model_with_triggers(cache_dir: str, triggers: list[dict]) -> None:
+    """Seed a cached Green Lion DealModel whose covenants carry ``triggers``."""
+    model = _seed_cached_deal_model(cache_dir)
+    from loanwhiz.config import GREEN_LION
+    from loanwhiz.extraction.assembler import _slug
+
+    model["covenants"]["triggers"] = triggers
+    slug = _slug(GREEN_LION["deal_name"])
+    (Path(cache_dir) / f"{slug}.json").write_text(json.dumps(model), encoding="utf-8")
+
+
+def test_deal_compliance_uses_extracted_triggers(tmp_path):
+    """When the cached deal model carries extracted triggers, the monitor is
+    fed those (mapped onto TriggerDefinition), NOT the hardcoded defaults."""
+    extracted = [
+        {
+            "name": "custom_loss_trigger",
+            "display_name": "Custom Loss Trigger",
+            "description": "Fires when the cumulative loss rate exceeds 3.5%.",
+            "metric": "default_pct",
+            "threshold": 3.5,
+            "threshold_unit": "percentage",
+            "direction": "above",
+            "consequence": "Principal switches to sequential.",
+            "section_reference": "Section 6.1",
+            "citation": {
+                "document": "Custom Deal Prospectus",
+                "page_or_row": "Section 6.1",
+                "excerpt": "If the loss rate exceeds 3.5% ...",
+            },
+        },
+        {
+            "name": "custom_pdl_trigger",
+            "display_name": "Custom PDL Trigger",
+            "description": "Any debit balance on the PDL fires the trigger.",
+            "metric": "pdl_class_a",
+            "threshold": None,
+            "threshold_unit": None,
+            "direction": "non_zero",
+            "consequence": "Distributions diverted to cure the PDL.",
+            "section_reference": "Section 6.2",
+            "citation": {},
+        },
+    ]
+    _seed_cached_deal_model_with_triggers(str(tmp_path), extracted)
+
+    captured: dict = {}
+
+    class _SpyMonitor:
+        DEFAULT_TRIGGERS = CovenantMonitor.DEFAULT_TRIGGERS
+
+        def execute(self, input):  # noqa: A002 - mirror primitive signature
+            captured["triggers"] = input.triggers
+            return _FakeResult({"summary": "ok"})
+
+    with patch("loanwhiz.api.main.DEAL_MODEL_CACHE_DIR", str(tmp_path)), patch(
+        "loanwhiz.api.main.EsmaTapeNormaliser"
+    ) as MockNorm, patch("loanwhiz.api.main.CovenantMonitor", _SpyMonitor):
+        MockNorm.return_value.execute.return_value = _FakeResult({"row_count": 1})
+        resp = client.get("/deal/green-lion-2026-1/compliance")
+
+    assert resp.status_code == 200
+    fed = captured["triggers"]
+    # The deal's own extracted triggers reached the monitor — not the defaults.
+    assert [t.name for t in fed] == ["custom_loss_trigger", "custom_pdl_trigger"]
+    assert {t.name for t in fed} != {
+        t.name for t in CovenantMonitor.DEFAULT_TRIGGERS
+    }
+    # Mapping: "above"/threshold pass through; "non_zero" → above + None.
+    loss, pdl = fed
+    assert loss.direction == "above" and loss.threshold == 3.5
+    assert loss.metric == "default_pct"
+    assert pdl.direction == "above" and pdl.threshold is None
+    # Citation rebuilt from the (empty) dict using section_reference / display.
+    assert pdl.citation.document == "prospectus"
+    assert pdl.citation.page_or_row == "Section 6.2"
+    assert pdl.citation.excerpt == "Custom PDL Trigger"
+
+
+def test_deal_compliance_falls_back_when_no_extracted_triggers(tmp_path):
+    """Empty covenants.triggers (and cache miss) → fall back to DEFAULT_TRIGGERS."""
+    # Seeded model exists but carries an empty triggers list.
+    _seed_cached_deal_model(str(tmp_path))
+
+    captured: dict = {}
+
+    class _SpyMonitor:
+        DEFAULT_TRIGGERS = CovenantMonitor.DEFAULT_TRIGGERS
+
+        def execute(self, input):  # noqa: A002
+            captured["triggers"] = input.triggers
+            return _FakeResult({"summary": "ok"})
+
+    with patch("loanwhiz.api.main.DEAL_MODEL_CACHE_DIR", str(tmp_path)), patch(
+        "loanwhiz.api.main.EsmaTapeNormaliser"
+    ) as MockNorm, patch("loanwhiz.api.main.CovenantMonitor", _SpyMonitor):
+        MockNorm.return_value.execute.return_value = _FakeResult({"row_count": 1})
+        resp = client.get("/deal/green-lion-2026-1/compliance")
+
+    assert resp.status_code == 200
+    # Fell back to the monitor's hardcoded Green Lion defaults.
+    assert captured["triggers"] == CovenantMonitor.DEFAULT_TRIGGERS
 
 
 def test_deal_compliance_unknown_returns_404():
@@ -526,6 +690,106 @@ def test_deal_project_wal_zero_when_no_class_a_principal():
 def test_deal_project_unknown_returns_404():
     resp = client.post("/deal/unknown/project", json={})
     assert resp.status_code == 404
+
+
+def test_deal_project_default_base_is_green_lion():
+    """With no ``projection_base`` on the deal, the projection uses the Green
+    Lion base (unchanged default branch)."""
+    from loanwhiz.api import main as api_main
+
+    waterfall_dump = {
+        "reporting_period": "projection+12m (base)",
+        "revenue_waterfall": [],
+        "redemption_waterfall": [],
+        "tranche_distributions": [],
+        "total_distributed": 0.0,
+        "shortfall": 0.0,
+    }
+    with patch("loanwhiz.api.main.WaterfallRunner") as MockRunner:
+        MockRunner.return_value.execute.return_value = _FakeResult(waterfall_dump)
+        resp = client.post(
+            "/deal/green-lion-2026-1/project",
+            json={"scenarios": ["base"], "months": 12},
+        )
+
+    assert resp.status_code == 200
+    # The waterfall ran on the Green Lion projection base (default branch).
+    gl = api_main._GREEN_LION_PROJECTION_BASE
+    wf_input = MockRunner.return_value.execute.call_args.args[0]
+    assert wf_input.class_a_balance == gl["class_a_balance"]
+    assert wf_input.class_b_balance == gl["class_b_balance"]
+    assert wf_input.class_c_balance == gl["class_c_balance"]
+    assert wf_input.class_a_rate_pct == gl["class_a_rate_pct"]
+    assert wf_input.reserve_account_balance == gl["reserve_account_balance"]
+    assert wf_input.reserve_account_target == gl["reserve_account_target"]
+
+
+def test_deal_project_uses_resolved_deal_base():
+    """The projection runs against the *selected* deal's projection base.
+
+    Regression for #160: ``deal_project`` previously always read the
+    module-level ``_GREEN_LION_PROJECTION_BASE``, so projections ignored the
+    selected deal's own capital structure / pool balance. With a second deal
+    registered carrying an explicit ``projection_base``, the ``WaterfallRunner``
+    must be driven by *that* deal's base — not Green Lion's.
+    """
+    from loanwhiz.api import main as api_main
+
+    sponsor_base = {
+        "current_pool_balance": 500_000_000.0,
+        "class_a_balance": 480_000_000.0,
+        "class_b_balance": 15_000_000.0,
+        "class_c_balance": 5_000_000.0,
+        "class_a_rate_pct": 4.10,
+        "reserve_account_balance": 5_000_000.0,
+        "reserve_account_target": 5_000_000.0,
+    }
+    sponsor = {
+        "deal_name": "Sponsor Deal 2025-1 B.V.",
+        "prospectus_url": "https://example.test/sponsor-2025-1-prospectus.pdf",
+        "tape_urls": [
+            {"date": "2025-12-31", "url": "https://example.test/sponsor-202512.csv"},
+        ],
+        "investor_report_urls": [],
+        "projection_base": sponsor_base,
+    }
+    augmented = {**api_main.DEALS, "sponsor-2025-1": sponsor}
+
+    waterfall_dump = {
+        "reporting_period": "projection+12m (base)",
+        "revenue_waterfall": [],
+        "redemption_waterfall": [],
+        "tranche_distributions": [],
+        "total_distributed": 0.0,
+        "shortfall": 0.0,
+    }
+    with patch.object(api_main, "DEALS", augmented), patch(
+        "loanwhiz.api.main.WaterfallRunner"
+    ) as MockRunner:
+        MockRunner.return_value.execute.return_value = _FakeResult(waterfall_dump)
+        resp = client.post(
+            "/deal/sponsor-2025-1/project",
+            json={"scenarios": ["base"], "months": 12},
+        )
+
+    assert resp.status_code == 200
+    assert resp.json()["deal_id"] == "sponsor-2025-1"
+
+    # The waterfall ran on the sponsor's projection base, not Green Lion's.
+    wf_input = MockRunner.return_value.execute.call_args.args[0]
+    assert wf_input.class_a_balance == 480_000_000.0
+    assert wf_input.class_b_balance == 15_000_000.0
+    assert wf_input.class_c_balance == 5_000_000.0
+    assert wf_input.class_a_rate_pct == 4.10
+    assert wf_input.reserve_account_balance == 5_000_000.0
+    assert wf_input.reserve_account_target == 5_000_000.0
+    # And the collection sizing derives from the sponsor's pool balance.
+    assert wf_input.available_revenue_funds == pytest.approx(
+        500_000_000.0 * 0.04 * (12 / 12.0)
+    )
+    assert wf_input.available_principal_funds == pytest.approx(
+        500_000_000.0 * 0.10 * (12 / 12.0)
+    )
 
 
 # ---------------------------------------------------------------------------
