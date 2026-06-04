@@ -1,10 +1,10 @@
 ---
 id: 2026-06-04-deal-generality-and-27-period-data
 title: deal-generality-and-27-period-data
-status: decomposed   # draft → decomposed → filed
+status: filed        # draft → decomposed → filed
 created: 2026-06-04
 updated: 2026-06-04
-epics: []            # umbrella issue numbers, filled in phase 4
+epics: [157, 158]    # umbrella issue numbers, filled in phase 4
 ---
 
 # deal-generality-and-27-period-data
@@ -187,4 +187,13 @@ new reality. This is a single standalone enrolled issue (no children), gated
 
 ## Filed issues
 
-<Filled in phase 4 — the artifact↔issue link.>
+- Epic "Deal-generality hardening — keep the framework plug-in-able" → umbrella **#157**
+  - #159 original_pool_balance → deal context
+  - #160 /project base → deal context
+  - #161 /compliance uses the deal model's extracted triggers
+  - #162 parquet tape ingestion (CSV or parquet)
+  - #164 document optional deal-context keys + formats (after #159–#162)
+- Epic "Wire Green Lion's 27-month history (2024–2026)" → umbrella **#158**
+  - #163 wire the 27-month tape history into config
+  - #165 verify multi-period behaviour over 27 periods (after #163)
+- Standalone finalisation → **#166** update docs & regenerate the committed presentation (after #157, #158)
