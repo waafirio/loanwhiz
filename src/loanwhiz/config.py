@@ -48,6 +48,35 @@ GREEN_LION = {
 #     "investor_report_urls": [{"period": str, "url": str}, ...],
 #   }
 #
+# ``tape_urls[].url`` may point at a ``.csv`` *or* a ``.parquet``/``.pq`` tape:
+# the ESMA tape loader (:func:`loanwhiz.primitives.esma_tape_normaliser._load_tape`)
+# is format-agnostic and dispatches on the URL suffix. The loader can also slice
+# a single reporting period out of a combined multi-month parquet (its ``period``
+# selector filters rows to ``reporting_date == period``) — a primitive-level
+# capability, not a registry key.
+#
+# Optional deal-context keys
+# --------------------------
+# Beyond the four required keys above, a deal-context dict may carry these
+# OPTIONAL keys. Omitting any of them falls back to the Green Lion defaults
+# (defined in ``loanwhiz.api.main`` as ``_GREEN_LION_*``), so the API stays
+# deal-generic and Green Lion's behaviour is unchanged:
+#
+#   - ``capital_structure``: dict of ``class_a_balance``, ``class_a_rate_pct``,
+#       ``class_b_balance``, ``class_c_balance`` — the tranche figures the
+#       revenue/redemption waterfall runs on. Used by ``/deal/{id}/waterfall``.
+#   - ``original_pool_balance``: float (EUR) — the pool balance at deal closing,
+#       used as the denominator for clean-up-call proximity and the loss-rate.
+#       Used by ``/deal/{id}/compliance``.
+#   - ``projection_base``: dict carrying ``current_pool_balance`` plus the
+#       capital-structure / reserve-account figures the forward projection runs
+#       on. Used by ``/deal/{id}/project``.
+#
+# Covenant TRIGGERS are NOT a deal-context key: ``/deal/{id}/compliance`` reads
+# the deal model's *extracted* ``covenants.triggers`` from the cached deal model
+# (built by the extraction pipeline), falling back to ``CovenantMonitor``'s
+# defaults when the deal has no cached model or no extracted triggers.
+#
 # Green Lion is the in-code default first entry (so the app never depends on a
 # data file being present). Additional deals are added as *data*: drop entries
 # into the sibling ``data/deals.json`` file (a JSON object: deal_id -> context)
