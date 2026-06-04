@@ -16,6 +16,7 @@ from fastapi.testclient import TestClient
 
 from loanwhiz.agent.executor import ExecutionResult, ValidationStatus
 from loanwhiz.api import app
+from loanwhiz.primitives.covenant_monitor import CovenantMonitor
 
 client = TestClient(app)
 
@@ -360,7 +361,7 @@ class _FakeResult:
         return self._dump
 
 
-def test_deal_compliance_runs_monitor():
+def test_deal_compliance_runs_monitor(tmp_path):
     tape_dump = {"row_count": 100, "field_coverage": 0.98}
     compliance_dump = {
         "trigger_statuses": [],
@@ -369,7 +370,8 @@ def test_deal_compliance_runs_monitor():
         "summary": "All covenants within limits.",
     }
 
-    with patch(
+    # Empty cache dir → no extracted triggers → fall back to DEFAULT_TRIGGERS.
+    with patch("loanwhiz.api.main.DEAL_MODEL_CACHE_DIR", str(tmp_path)), patch(
         "loanwhiz.api.main.EsmaTapeNormaliser"
     ) as MockNorm, patch("loanwhiz.api.main.CovenantMonitor") as MockMon:
         MockNorm.return_value.execute.return_value = _FakeResult(tape_dump)
@@ -383,6 +385,110 @@ def test_deal_compliance_runs_monitor():
     # One normalise call per tape in the deal context.
     assert MockNorm.return_value.execute.call_count == 3
     MockMon.return_value.execute.assert_called_once()
+
+
+def _seed_cached_deal_model_with_triggers(cache_dir: str, triggers: list[dict]) -> None:
+    """Seed a cached Green Lion DealModel whose covenants carry ``triggers``."""
+    model = _seed_cached_deal_model(cache_dir)
+    from loanwhiz.config import GREEN_LION
+    from loanwhiz.extraction.assembler import _slug
+
+    model["covenants"]["triggers"] = triggers
+    slug = _slug(GREEN_LION["deal_name"])
+    (Path(cache_dir) / f"{slug}.json").write_text(json.dumps(model), encoding="utf-8")
+
+
+def test_deal_compliance_uses_extracted_triggers(tmp_path):
+    """When the cached deal model carries extracted triggers, the monitor is
+    fed those (mapped onto TriggerDefinition), NOT the hardcoded defaults."""
+    extracted = [
+        {
+            "name": "custom_loss_trigger",
+            "display_name": "Custom Loss Trigger",
+            "description": "Fires when the cumulative loss rate exceeds 3.5%.",
+            "metric": "default_pct",
+            "threshold": 3.5,
+            "threshold_unit": "percentage",
+            "direction": "above",
+            "consequence": "Principal switches to sequential.",
+            "section_reference": "Section 6.1",
+            "citation": {
+                "document": "Custom Deal Prospectus",
+                "page_or_row": "Section 6.1",
+                "excerpt": "If the loss rate exceeds 3.5% ...",
+            },
+        },
+        {
+            "name": "custom_pdl_trigger",
+            "display_name": "Custom PDL Trigger",
+            "description": "Any debit balance on the PDL fires the trigger.",
+            "metric": "pdl_class_a",
+            "threshold": None,
+            "threshold_unit": None,
+            "direction": "non_zero",
+            "consequence": "Distributions diverted to cure the PDL.",
+            "section_reference": "Section 6.2",
+            "citation": {},
+        },
+    ]
+    _seed_cached_deal_model_with_triggers(str(tmp_path), extracted)
+
+    captured: dict = {}
+
+    class _SpyMonitor:
+        DEFAULT_TRIGGERS = CovenantMonitor.DEFAULT_TRIGGERS
+
+        def execute(self, input):  # noqa: A002 - mirror primitive signature
+            captured["triggers"] = input.triggers
+            return _FakeResult({"summary": "ok"})
+
+    with patch("loanwhiz.api.main.DEAL_MODEL_CACHE_DIR", str(tmp_path)), patch(
+        "loanwhiz.api.main.EsmaTapeNormaliser"
+    ) as MockNorm, patch("loanwhiz.api.main.CovenantMonitor", _SpyMonitor):
+        MockNorm.return_value.execute.return_value = _FakeResult({"row_count": 1})
+        resp = client.get("/deal/green-lion-2026-1/compliance")
+
+    assert resp.status_code == 200
+    fed = captured["triggers"]
+    # The deal's own extracted triggers reached the monitor — not the defaults.
+    assert [t.name for t in fed] == ["custom_loss_trigger", "custom_pdl_trigger"]
+    assert {t.name for t in fed} != {
+        t.name for t in CovenantMonitor.DEFAULT_TRIGGERS
+    }
+    # Mapping: "above"/threshold pass through; "non_zero" → above + None.
+    loss, pdl = fed
+    assert loss.direction == "above" and loss.threshold == 3.5
+    assert loss.metric == "default_pct"
+    assert pdl.direction == "above" and pdl.threshold is None
+    # Citation rebuilt from the (empty) dict using section_reference / display.
+    assert pdl.citation.document == "prospectus"
+    assert pdl.citation.page_or_row == "Section 6.2"
+    assert pdl.citation.excerpt == "Custom PDL Trigger"
+
+
+def test_deal_compliance_falls_back_when_no_extracted_triggers(tmp_path):
+    """Empty covenants.triggers (and cache miss) → fall back to DEFAULT_TRIGGERS."""
+    # Seeded model exists but carries an empty triggers list.
+    _seed_cached_deal_model(str(tmp_path))
+
+    captured: dict = {}
+
+    class _SpyMonitor:
+        DEFAULT_TRIGGERS = CovenantMonitor.DEFAULT_TRIGGERS
+
+        def execute(self, input):  # noqa: A002
+            captured["triggers"] = input.triggers
+            return _FakeResult({"summary": "ok"})
+
+    with patch("loanwhiz.api.main.DEAL_MODEL_CACHE_DIR", str(tmp_path)), patch(
+        "loanwhiz.api.main.EsmaTapeNormaliser"
+    ) as MockNorm, patch("loanwhiz.api.main.CovenantMonitor", _SpyMonitor):
+        MockNorm.return_value.execute.return_value = _FakeResult({"row_count": 1})
+        resp = client.get("/deal/green-lion-2026-1/compliance")
+
+    assert resp.status_code == 200
+    # Fell back to the monitor's hardcoded Green Lion defaults.
+    assert captured["triggers"] == CovenantMonitor.DEFAULT_TRIGGERS
 
 
 def test_deal_compliance_unknown_returns_404():
