@@ -135,7 +135,7 @@ What this does, in order:
 
    The extracted deal model is cached as `data/deals/green-lion-2026-1/deal_model.json`. Subsequent runs skip extraction.
 
-3. **Loads the ESMA tapes** — the full 27-month chronology (24 monthly tapes for 2024–2025 plus February, March, and April 2026) via the `esma_tape_normaliser` primitive. Computes pool analytics per period: WAL, arrears breakdown by bucket, EPC distribution, geographic distribution, rate type distribution.
+3. **Loads the ESMA tapes** — the full 27-month chronology (24 monthly tapes for 2024–2025 plus February, March, and April 2026) via the `esma_tape_normaliser` primitive, which reads each tape as **CSV or parquet** (suffix-detected, including a combined multi-month parquet sliced by `reporting_date`). Computes pool analytics per period: WAL, arrears breakdown by bucket, EPC distribution, geographic distribution, rate type distribution.
 
 4. **Runs the waterfall** using the `waterfall_runner` primitive against each month's tape collections. Outputs computed distributions per tranche per period with a full audit trace.
 
@@ -170,7 +170,7 @@ The framework is **data-agnostic by design** — adding a deal is *data*, not co
 }
 ```
 
-A missing or malformed `deals.json` is tolerated — the Green Lion default still loads. A deal may also carry an optional `capital_structure` key (Class A/B/C balances + Class A rate), which `GET /deal/{id}/waterfall` resolves from the deal, falling back to the Green Lion structure when absent. See the README's "How to Run Against a New Deal" for the full deal-context shape.
+A missing or malformed `deals.json` is tolerated — the Green Lion default still loads. A deal may also carry optional keys that the API resolves from the deal (falling back to Green Lion defaults when absent): `capital_structure` (Class A/B/C balances + Class A rate, used by `GET /deal/{id}/waterfall`), `original_pool_balance` (the closing-balance denominator used by `GET /deal/{id}/compliance`), and `projection_base` (the base case for `GET /deal/{id}/project`). Tape URLs may point at CSV or parquet. See the README's "How to Run Against a New Deal" for the full deal-context shape.
 
 All three document types are optional for a partial run — for example, you can extract the deal model from the prospectus alone without supplying tape or investor report URLs. The framework will skip primitives that require missing inputs and log which steps were skipped.
 
