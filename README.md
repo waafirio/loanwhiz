@@ -129,7 +129,7 @@ deal = {
     "deal_name": "My Deal 2026-1",
     "prospectus_url": "https://...",          # URL to the prospectus PDF
     "tape_urls": [
-        {"date": "2026-02-28", "url": "https://..."},   # ESMA Annex 2 CSV per period
+        {"date": "2026-02-28", "url": "https://..."},   # ESMA Annex 2 tape per period (.csv or .parquet)
         {"date": "2026-03-31", "url": "https://..."},
     ],
     "investor_report_urls": [
@@ -139,9 +139,23 @@ deal = {
 }
 ```
 
+Each `tape_urls[].url` may point at a **CSV or parquet** tape — the loader is format-agnostic and dispatches on the URL suffix (`.parquet`/`.pq` → parquet, anything else → CSV). The loader can additionally slice a single reporting period out of a **combined multi-month parquet** (one file holding many `reporting_date`s), so a deal whose tape is published as a single combined file is supported as a primitive-level capability.
+
 Pass this dict to the agent service or the extraction pipeline directly. The framework fetches the documents, runs Docling extraction to build the deal model JSON, and caches the result locally so extraction runs only once per deal.
 
-See `GREEN_LION` in `config.py` for a fully worked example using the publicly available Green Lion 2026-1 dataset.
+### Optional deal-context keys
+
+The four keys above are required. A deal may also carry these **optional** keys to override the deal-specific figures the API routes use. Omitting any of them falls back to the Green Lion defaults, so the framework stays deal-generic without forcing every deal to specify them:
+
+| Key | Shape | Used by | Meaning |
+|-----|-------|---------|---------|
+| `capital_structure` | dict: `class_a_balance`, `class_a_rate_pct`, `class_b_balance`, `class_c_balance` | `/deal/{id}/waterfall` | Tranche balances + Class A rate the payment waterfall runs on. |
+| `original_pool_balance` | float (EUR) | `/deal/{id}/compliance` | Pool balance at closing — denominator for clean-up-call proximity and loss-rate. |
+| `projection_base` | dict: `current_pool_balance` + capital-structure / reserve-account figures | `/deal/{id}/project` | Base case the forward projection runs on. |
+
+Covenant **triggers** are not a deal-context key: `/deal/{id}/compliance` uses the deal model's *extracted* `covenants.triggers` (from the cached deal model the extraction pipeline builds), falling back to the covenant monitor's defaults when no extracted triggers are present.
+
+See `GREEN_LION` and the deal-context schema docstring in `config.py` for a fully worked example using the publicly available Green Lion 2026-1 dataset.
 
 ---
 
@@ -195,6 +209,8 @@ A complete, publicly available structured finance deal package built around a sy
 - 3 monthly investor reports (February, March, April 2026)
 
 This is the primary test and demo dataset for the hackathon submission. All data is synthetic and was released by Algoritmica.ai specifically for this hackathon.
+
+Tape ingestion is format-agnostic: loan tapes may be supplied as **CSV or parquet**, including a single combined multi-month parquet from which the loader selects a reporting period. Green Lion ships as per-period CSV tapes.
 
 ---
 
