@@ -167,6 +167,24 @@ Data references for the implementer:
   add/extend a test that exercises a many-period deal. Sequencing: sequential.
   After the config wiring lands. Paths: `tests/**`, `src/loanwhiz/api/main.py`.
 
+### Finalisation: refresh docs & presentation   (standalone issue, after both epics)
+
+After Epics A and B land, bring the human-facing artefacts up to date with the
+new reality. This is a single standalone enrolled issue (no children), gated
+`After` **both** umbrellas so it runs once the framework and data work is merged.
+
+- **Update docs & regenerate the presentation** — refresh the human-facing
+  artefacts to reflect: the 2024–2026 multi-period dataset (cite the
+  `Algoritmica/green-lion-2024-2025` HF dataset), CSV **and** parquet
+  format-agnostic ingestion, and the deal-generality (the optional deal-context
+  keys). Update `README.md` (Data + "run against a new deal" sections),
+  `docs/data-card.md`, and `docs/model-card.md` / `docs/governance.md` where
+  affected; then **regenerate the committed PowerPoint** by running
+  `presentation/build_deck.py` (→ `presentation/LoanWhiz-Presentation.pptx`) so
+  the deck reflects data-agnostic-by-design, format support, and 27-period
+  temporal coverage. Sequencing: standalone. After #<A-umbrella> and
+  #<B-umbrella>. Paths: `README.md`, `docs/**`, `presentation/**`.
+
 ## Filed issues
 
 <Filled in phase 4 — the artifact↔issue link.>
