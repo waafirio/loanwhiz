@@ -277,8 +277,8 @@ def extract_covenants(
     Conditions of the Notes (formal trigger definitions),
     Issuer Covenants section.
 
-    Caches result to /tmp/loanwhiz_cache/covenants_{deal_name}.json when no
-    explicit ``cache_path`` is provided.
+    Caches result to ``data/extraction_cache/covenants_{deal_name}.json`` when
+    no explicit ``cache_path`` is provided.
 
     Parameters
     ----------
@@ -393,7 +393,11 @@ def extract_covenants(
 # Cache helpers
 # ---------------------------------------------------------------------------
 
-_CACHE_DIR = Path("/tmp/loanwhiz_cache")
+# Co-located under the repo's managed ``data/`` cache tree so the whole
+# extraction cache lifecycle is coherent (a cold ``data/`` wipe clears it too).
+# See waterfall_extractor for the full #152 rationale.
+_REPO_ROOT = Path(__file__).resolve().parents[3]
+_CACHE_DIR = _REPO_ROOT / "data" / "extraction_cache"
 
 
 def _default_cache_path(deal_name: str) -> Path:
