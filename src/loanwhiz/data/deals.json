@@ -1,1 +1,34 @@
-{}
+{
+  "green-lion-2023-1": {
+    "deal_name": "Green Lion 2023-1 B.V.",
+    "prospectus_url": "https://ing.com/binaries/content/assets/documents/files/green-lion-2023-1_-_prospectus.pdf",
+    "tape_urls": [],
+    "investor_report_urls": [
+      {"period": "January 2026", "url": "https://ing.com/binaries/content/assets/documents/fixed-income-bank/monthly-investor-report-green-lion-2023-1-january-2026.pdf"},
+      {"period": "February 2026", "url": "https://ing.com/binaries/content/assets/documents/fixed-income-bank/monthly-investor-report-green-lion-2023-1-february-2026.pdf"},
+      {"period": "March 2026", "url": "https://ing.com/binaries/content/assets/documents/fixed-income-bank/monthly-investor-report-green-lion-2023-1-march-2026.pdf"},
+      {"period": "April 2026", "url": "https://ing.com/binaries/content/assets/documents/fixed-income-bank/monthly-investor-report-green-lion-2023-1-april-2026.pdf"}
+    ],
+    "notes_cash_report_urls": [
+      {"period": "September 2025", "url": "https://ing.com/binaries/content/assets/documents/fixed-income-bank/quarterly-notes--cash-report-green-lion-2023-1-september-2025.pdf"},
+      {"period": "December 2025", "url": "https://ing.com/binaries/content/assets/documents/fixed-income-bank/quarterly-notes--cash-report-green-lion-2023-1-december-2025.pdf"},
+      {"period": "March 2026", "url": "https://ing.com/binaries/content/assets/documents/fixed-income-bank/quarterly-notes--cash-report-green-lion-2023-1-march-2026.pdf"}
+    ]
+  },
+  "green-lion-2024-1": {
+    "deal_name": "Green Lion 2024-1 B.V.",
+    "prospectus_url": "https://ing.com/binaries/content/assets/documents/files/green-lion-2024-1---prospectus.pdf",
+    "tape_urls": [],
+    "investor_report_urls": [
+      {"period": "January 2026", "url": "https://ing.com/binaries/content/assets/documents/fixed-income-bank/monthly-investor-report-green-lion-2024-1-january-2026.pdf"},
+      {"period": "February 2026", "url": "https://ing.com/binaries/content/assets/documents/fixed-income-bank/monthly-investor-report-green-lion-2024-1-february-2026.pdf"},
+      {"period": "March 2026", "url": "https://ing.com/binaries/content/assets/documents/fixed-income-bank/monthly-investor-report-green-lion-2024-1-march-2026.pdf"},
+      {"period": "April 2026", "url": "https://ing.com/binaries/content/assets/documents/fixed-income-bank/monthly-investor-report-green-lion-2024-1-april-2026.pdf"}
+    ],
+    "notes_cash_report_urls": [
+      {"period": "September 2025", "url": "https://ing.com/binaries/content/assets/documents/fixed-income-bank/quarterly-notes--cash-report-green-lion-2024-1-september-2025.pdf"},
+      {"period": "December 2025", "url": "https://ing.com/binaries/content/assets/documents/fixed-income-bank/quarterly-notes--cash-report-green-lion-2024-1-december-2025.pdf"},
+      {"period": "March 2026", "url": "https://ing.com/binaries/content/assets/documents/fixed-income-bank/quarterly-notes--cash-report-green-lion-2024-1-march-2026.pdf"}
+    ]
+  }
+}
