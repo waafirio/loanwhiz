@@ -1,7 +1,7 @@
 ---
 id: 2026-06-05-demo-readiness
 title: demo-readiness
-status: draft        # draft → decomposed → filed
+status: decomposed   # draft → decomposed → filed
 created: 2026-06-05
 updated: 2026-06-05
 epics: []            # umbrella issue numbers, filled in phase 4
@@ -69,7 +69,45 @@ other fixes and the spine actually landed.
 
 ## Decomposition
 
-<Filled in phase 2.>
+### Epic: Demo-readiness — de-potemkin the surface   (umbrella #<N>)
+
+Make every demo-facing claim either genuinely backed or honestly scoped by 10 June.
+Targets the four exposure areas + over-claims from `DEMO-RISKS.md` that the spine
+(#179) and the projection fast-follow don't cover. D1–D5 + D7 are disjoint surfaces
+run in parallel (ranked by demo-exposure); D6 (docs/deck honesty) is sequential and
+LAST so it reflects what actually landed.
+
+- **D1 — Real governance/evidence pack** — thread the true per-tool confidence /
+  citations / duration the primitives already return into the evidence pack so the
+  "auditable agents" sheet stops showing constant 0.9 / 0 ms / no citations, and
+  `human_review_required` can fire; derive or relabel `finos_compliant`.
+  Sequencing: parallel. Paths: `src/loanwhiz/agent/planner.py`,
+  `src/loanwhiz/agent/executor.py`, `src/loanwhiz/governance/evidence_pack.py`,
+  `web/components/evidence-pack-sheet.tsx`.
+- **D2 — Chat grounding** — give the agent a deal-model tool (prospectus-derived
+  terms/triggers/waterfall), access to all 27 tapes, and deal/period selection, so
+  it can answer the obvious questions instead of working off 3 hardcoded URLs. (The
+  reconstructed-ledger tool is a follow-on once the spine lands.) Sequencing: parallel.
+  Paths: `src/loanwhiz/agent/tools.py`, `src/loanwhiz/agent/planner.py`.
+- **D3 — Overview cold-cache** — ship/seed the cached deal model (or make the cold
+  path graceful) so the landing page isn't blank on a clean host. Sequencing: parallel.
+  Paths: `src/loanwhiz/data/deals/**`, `src/loanwhiz/api/main.py`, `scripts/**`.
+- **D4 — Catalogue honesty** — wire `audit_logger` into the REST primitive path (or
+  soften the claim), and mark which catalogued primitives are actually endpoint/agent
+  reachable. Sequencing: parallel. Paths: `src/loanwhiz/api/main.py`,
+  `src/loanwhiz/primitives/audit_logger.py`, `web/app/(routes)/primitives/**`.
+- **D5 — Deal selector robustness** — make the selector correctly handle 1..N deals
+  (no single-option dead control); forward-compatible with the seasoned deals landing
+  later. Sequencing: parallel. Paths: `web/components/deal-selector.tsx`,
+  `web/lib/deal-context.tsx`.
+- **D7 — Demo hygiene** — fix `run_green_lion.py`'s 27-tape mislabelling (assumes 3)
+  and delete the dead `clients/` bytecode. Sequencing: parallel. Paths:
+  `demo/run_green_lion.py`, `clients/**`.
+- **D6 — Docs/deck honesty pass** — align README, `docs/*.md`,
+  `presentation/build_deck.py`, `governance.md`, the model card with what actually
+  runs (the over-claim list in `DEMO-RISKS.md`): soften where unwired, assert where
+  fixed. Runs LAST. Sequencing: sequential. After D1, D2, D3, D4, D5, D7. Paths:
+  `README.md`, `docs/**`, `presentation/**`.
 
 ## Filed issues
 
