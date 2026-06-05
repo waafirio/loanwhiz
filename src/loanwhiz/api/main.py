@@ -502,13 +502,11 @@ def deal_compliance(deal_id: str) -> dict:
     deal-generic without a registry-schema migration.
     """
     deal = _require_deal(deal_id)
-    normaliser = EsmaTapeNormaliser()
-    periods = []
-    for tape in deal["tape_urls"]:
-        tape_input = EsmaTapeInput(file_url=tape["url"])
-        tape_result = normaliser.execute(tape_input)
-        _audit(normaliser, tape_input, tape_result)
-        periods.append(tape_result.output.model_dump())
+    # Per-period tape analytics for the monitor, via the on-disk-cached helper
+    # (the same one /tape-analytics uses). Avoids re-normalising the deal's tapes
+    # on every /compliance request — the returned dict shape is identical to
+    # EsmaTapeOutput.model_dump().
+    periods = [_normalised_tape_output(tape["url"]) for tape in deal["tape_urls"]]
     # Trigger set from the deal model's extracted triggers, falling back to the
     # monitor's defaults when the deal has no cached model or no extracted
     # triggers.
@@ -608,6 +606,21 @@ _GREEN_LION_RESERVE_TARGET = 10_636_000.0
 # determinism (mirrors _TAPE_ANALYTICS_MEMO).
 _RECONSTRUCTION_MEMO: dict[tuple[str, ...], DealStateSeries] = {}
 
+# On-disk cache for the reconstructed series. The cold build fetches each tape's
+# raw loan data (cur + prev per transition, ~4s/tape over the network) and joins
+# per-loan, so a 27-period reconstruction takes minutes. The series is a pure
+# function of the deal's tape URLs, so persist it (mirroring
+# TAPE_ANALYTICS_CACHE_DIR) — built at most once, then instant and restart-safe.
+# Invalidation: delete the dir (a new tape URL hashes to a new path, so a new
+# reporting period never serves a stale series).
+RECONSTRUCTION_CACHE_DIR = "/tmp/loanwhiz_cache/reconstruction"
+
+
+def _reconstruction_cache_path(memo_key: tuple[str, ...]) -> Path:
+    """On-disk cache path for a deal's reconstructed series (keyed by tape URLs)."""
+    digest = hashlib.sha256("\n".join(memo_key).encode("utf-8")).hexdigest()
+    return Path(RECONSTRUCTION_CACHE_DIR) / f"{digest}.json"
+
 
 def _days_between(prev_date: str, cur_date: str) -> int:
     """Day count between two ISO reporting dates (Act/360 accrual basis).
@@ -655,6 +668,14 @@ def _reconstruct_series(deal: dict) -> DealStateSeries:
     if cached is not None:
         return cached
 
+    cache_path = _reconstruction_cache_path(memo_key)
+    if cache_path.exists():
+        series = DealStateSeries.model_validate_json(
+            cache_path.read_text(encoding="utf-8")
+        )
+        _RECONSTRUCTION_MEMO[memo_key] = series
+        return series
+
     cap = deal.get("capital_structure", _GREEN_LION_CAPITAL_STRUCTURE)
     reserve_target = deal.get("reserve_account_target", _GREEN_LION_RESERVE_TARGET)
     original_pool_balance = deal.get(
@@ -694,6 +715,8 @@ def _reconstruct_series(deal: dict) -> DealStateSeries:
         seed_reporting_date=tapes[0]["date"] if tapes else "unknown",
         periods=periods,
     )
+    cache_path.parent.mkdir(parents=True, exist_ok=True)
+    cache_path.write_text(series.model_dump_json(), encoding="utf-8")
     _RECONSTRUCTION_MEMO[memo_key] = series
     return series
 

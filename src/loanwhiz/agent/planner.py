@@ -33,11 +33,10 @@ You have access to the following tools:
   about the deal's structural terms (e.g. "what's the reserve target?", "what
   coupon does the prospectus set for Class A?", "what triggers a breach?").
 - list_deal_tapes: List or select the deal's loan-level tapes and document URLs.
-  The deal has a full monthly history — 27 tapes: the 24 historical months
-  2024-01 through 2025-12, plus 2026 Feb/Mar/Apr (Jan-2026 is intentionally
-  absent). Pass a `period` substring (e.g. "2025-01") to select a specific
-  month's tape. ALWAYS use this to find a tape URL before loading it — never
-  guess or assume URLs, and never assume only the three 2026 tapes exist.
+  Green Lion 2026-1 reports three monthly tapes — 2026 Feb/Mar/Apr (Jan-2026 is
+  intentionally absent). Pass a `period` substring (e.g. "2026-03") to select a
+  specific month's tape. ALWAYS use this to find a tape URL before loading it —
+  never guess or assume URLs.
 - load_esma_tape: Load and analyse an ESMA loan-level tape (pass a URL from
   list_deal_tapes).
 - run_waterfall: Execute the payment waterfall for a period.

@@ -29,8 +29,7 @@ CLIENTS
             +-------- DATA LAYER -----+
       deeploans ETL + MCP server  (ESMA tape ingestion, multi-annex)
       Docling extraction pipeline (prospectus -> deal model JSON)
-      HuggingFace: Algoritmica/green-lion-2026 (2026 deal package)
-                 + Algoritmica/green-lion-2024-2025 (24-month history)
+      HuggingFace: Algoritmica/green-lion-2026 (2026 deal package, 3 tapes)
 ```
 
 ---
@@ -219,14 +218,11 @@ See `GREEN_LION` and `DEAL_REGISTRY` in `config.py` for a fully worked example u
 
 ## Data
 
-**Green Lion 2026-1** — a complete, publicly available structured finance deal package built around a synthetic Dutch RMBS. It spans **27 months of loan-tape history** across two HuggingFace datasets:
+**Green Lion 2026-1** — a publicly available structured finance deal package built around a synthetic Dutch RMBS (~EUR 1bn pool). The deal reports **three monthly ESMA Annex 2 loan tapes** from `Algoritmica/green-lion-2026`: February, March, and April 2026, accompanied by the prospectus PDF (Green Lion 2026-1 B.V.) and 3 monthly investor reports. January 2026 (`202601`) is an intentional gap in the chronology.
 
-- **`Algoritmica/green-lion-2024-2025`** — 24 monthly ESMA Annex 2 loan tapes, one per month from January 2024 through December 2025.
-- **`Algoritmica/green-lion-2026`** — the 2026 deal package: 3 monthly ESMA Annex 2 loan tapes (February, March, April 2026), the prospectus PDF (Green Lion 2026-1 B.V.), and 3 monthly investor reports (February, March, April 2026).
+> **A note on the other Green Lion datasets.** `Algoritmica/green-lion-2024-2025` (and the real ING `green-lion-2023-1` / `green-lion-2024-1` deals) are **separate deals**, not Green Lion 2026-1's pre-history — different deals' loan tapes are not interchangeable (the 2024-2025 dataset is a ~EUR 139bn pool, ~130× this deal). They are therefore not chained into 2026-1's `tape_urls`. Validating the engine against the real seasoned deals' published Notes & Cash reports is tracked separately.
 
-That is **27 monthly tapes in total** (24 + 3). All tapes share the same ESMA Annex 2 schema. January 2026 (`202601`) exists in neither dataset and is an intentional gap in the chronology — the framework simply skips it. `src/loanwhiz/config.py` builds the full chronological `tape_urls` list programmatically (`_historical_tape_entries()` for 2024–2025, plus the three 2026 entries).
-
-These 27 tapes are **synthetic period snapshots, re-sampled each period** — loan identifiers do not persist across months, so the series is a sequence of point-in-time pool snapshots rather than a true longitudinal loan-level panel. Period-to-period collections and losses are therefore derived by net reconciliation to pool movement, not by tracking individual loans over time. The history is real *in count and schema* and drives genuine multi-period views; it is not a tracked-cohort performance record. The three 2026 reporting periods (Feb–Apr) are the ones accompanied by real investor reports.
+The three 2026 tapes are **synthetic period snapshots** — loan identifiers do not persist across months, so period-to-period collections and losses are derived by net reconciliation to pool movement rather than by tracking individual loans. All three 2026 reporting periods are accompanied by real investor reports.
 
 This is the primary test and demo dataset for the hackathon submission. All loan-level data is synthetic and was released by Algoritmica.ai specifically for this hackathon. See [docs/data-card.md](docs/data-card.md) for the full data card, including the synthetic-vs-real breakdown.
 
