@@ -1183,6 +1183,121 @@ def test_primitives_registry_fully_populated():
     } <= names
 
 
+def test_primitives_carry_reachability():
+    """Every catalogue entry carries a valid `reachability` field (#197)."""
+    resp = client.get("/primitives")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body  # non-empty
+    for entry in body:
+        assert "reachability" in entry
+        assert entry["reachability"] in {"live", "library-only"}
+
+
+def test_primitives_reachability_marks_live_vs_library_only():
+    """The live/library-only split is honest (#197).
+
+    The four data primitives — each called by a REST endpoint AND exposed as a
+    LangGraph agent tool — plus `audit_logger` (now wired into the REST primitive
+    path) are marked `live`. `cashflow_projector` / `report_verifier` /
+    `multi_period_waterfall_runner` are registered (so they appear in the
+    catalogue) but reached by no endpoint or agent tool, so they are
+    `library-only` — nothing is advertised as live that a client can't reach.
+    """
+    resp = client.get("/primitives")
+    assert resp.status_code == 200
+    by_name = {entry["name"]: entry["reachability"] for entry in resp.json()}
+
+    for name in (
+        "esma_tape_normaliser",
+        "collections_aggregator",
+        "covenant_monitor",
+        "waterfall_runner",
+        "audit_logger",
+    ):
+        assert by_name[name] == "live", f"{name} should be live"
+
+    for name in (
+        "cashflow_projector",
+        "report_verifier",
+        "multi_period_waterfall_runner",
+    ):
+        assert by_name[name] == "library-only", f"{name} should be library-only"
+
+
+# ---------------------------------------------------------------------------
+# audit_logger wired into the REST primitive path (#197)
+# ---------------------------------------------------------------------------
+
+
+def _read_audit_entries(log_dir: Path) -> list[dict]:
+    """Read every AuditLogEntry JSONL line written under ``log_dir``."""
+    entries: list[dict] = []
+    for jsonl in sorted(log_dir.rglob("*.jsonl")):
+        for line in jsonl.read_text(encoding="utf-8").splitlines():
+            line = line.strip()
+            if line:
+                entries.append(json.loads(line))
+    return entries
+
+
+def test_deal_project_writes_audit_entries(tmp_path):
+    """A real (un-mocked) deterministic REST primitive call emits AuditLogEntry.
+
+    The audit_logger primitive claims "every primitive call gets an audit entry";
+    this drives the un-mocked `/project` waterfall path (pure math, no network)
+    and asserts a real `AuditLogEntry` lands under the patched audit log dir,
+    carrying the provenance fields the catalogue advertises.
+    """
+    with patch("loanwhiz.api.main.API_AUDIT_LOG_DIR", str(tmp_path)):
+        resp = client.post(
+            "/deal/green-lion-2026-1/project",
+            json={"scenarios": ["base", "stress"], "months": 12},
+        )
+    assert resp.status_code == 200
+
+    entries = _read_audit_entries(tmp_path)
+    # One waterfall run per requested scenario → at least two audit entries.
+    assert len(entries) >= 2
+    for entry in entries:
+        assert entry["primitive_name"] == "waterfall_runner"
+        # Full provenance the audit_logger catalogue claim advertises.
+        assert len(entry["input_hash"]) == 64
+        assert len(entry["output_hash"]) == 64
+        assert 0.0 <= entry["confidence"] <= 1.0
+        assert "executed_at" in entry
+        assert isinstance(entry["human_review_required"], bool)
+
+
+def test_audit_side_write_does_not_break_mocked_endpoint(tmp_path):
+    """The best-effort audit wrapper never 500s an endpoint.
+
+    The existing endpoint tests mock the primitive with a `_FakeResult` stand-in
+    that lacks real `confidence`/`citations`; the audit step must swallow that
+    and leave the endpoint response unchanged (no audit entry written).
+    """
+    waterfall_dump = {
+        "reporting_period": "projection+12m (base)",
+        "revenue_waterfall": [],
+        "redemption_waterfall": [],
+        "tranche_distributions": [],
+        "total_distributed": 0.0,
+        "shortfall": 0.0,
+    }
+    with patch("loanwhiz.api.main.API_AUDIT_LOG_DIR", str(tmp_path)), patch(
+        "loanwhiz.api.main.WaterfallRunner"
+    ) as MockRunner:
+        MockRunner.return_value.execute.return_value = _FakeResult(waterfall_dump)
+        resp = client.post(
+            "/deal/green-lion-2026-1/project",
+            json={"scenarios": ["base"], "months": 12},
+        )
+    assert resp.status_code == 200
+    # The stand-in result is not a real PrimitiveResult, so the best-effort
+    # audit wrote nothing — but crucially the endpoint did not error.
+    assert _read_audit_entries(tmp_path) == []
+
+
 # ---------------------------------------------------------------------------
 # Governance evidence pack (#136) — real logger, temp store
 # ---------------------------------------------------------------------------
