@@ -348,6 +348,13 @@ def test_apply_waterfall_reserve_topup_capped_at_target() -> None:
     assert new.reserve_balance == _RESERVE_TARGET  # capped at target
 
 
+def test_apply_waterfall_reserve_over_target_not_clawed_back() -> None:
+    """A balance already above target is not reduced by a zero/partial top-up."""
+    state = _seed().model_copy(update={"reserve_balance": _RESERVE_TARGET + 1_000_000.0})
+    new = state.apply_waterfall_result(WaterfallResult(reserve_payment=0.0))
+    assert new.reserve_balance == _RESERVE_TARGET + 1_000_000.0
+
+
 def test_apply_waterfall_reserve_draw_floored_at_zero() -> None:
     state = _seed().model_copy(update={"reserve_balance": 1_000.0})
     r = WaterfallResult(reserve_draw=5_000.0)  # draw more than present

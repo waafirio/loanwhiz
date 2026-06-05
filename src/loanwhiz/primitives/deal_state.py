@@ -513,10 +513,14 @@ class DealState(BaseModel):
             self.class_c_pdl - min(result.class_c_pdl_replenishment, self.class_c_pdl)
         )
 
-        # Reserve: top up (capped at target), then draw (floored at 0).
-        topped = self.reserve_balance + _clamp_non_negative(result.reserve_payment)
+        # Reserve: top up (the *payment* is capped so it doesn't carry the
+        # balance above target — but an already-over-target balance is never
+        # clawed back), then draw (floored at 0).
+        payment = _clamp_non_negative(result.reserve_payment)
         if self.reserve_target > 0.0:
-            topped = min(topped, self.reserve_target)
+            headroom = _clamp_non_negative(self.reserve_target - self.reserve_balance)
+            payment = min(payment, headroom)
+        topped = self.reserve_balance + payment
         drawn = _clamp_non_negative(topped - _clamp_non_negative(result.reserve_draw))
         updates["reserve_balance"] = drawn
 
