@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+from datetime import date
 from pathlib import Path
 from typing import Any
 
@@ -50,10 +51,14 @@ from loanwhiz.primitives.covenant_monitor import (
     CovenantMonitor,
     TriggerDefinition,
 )
-from loanwhiz.primitives.deal_state import DealState
 from loanwhiz.primitives.esma_tape_normaliser import (
     EsmaTapeInput,
     EsmaTapeNormaliser,
+)
+from loanwhiz.primitives.period_state_machine import (
+    DealStateSeries,
+    PeriodInput,
+    reconstruct_period_series,
 )
 from loanwhiz.primitives.registry import PRIMITIVE_REGISTRY
 from loanwhiz.primitives.waterfall_runner import WaterfallInput, WaterfallRunner
@@ -424,45 +429,24 @@ def deal_compliance(deal_id: str) -> dict:
     # monitor's defaults when the deal has no cached model or no extracted
     # triggers.
     triggers = _extracted_triggers_to_definitions(deal) or CovenantMonitor.DEFAULT_TRIGGERS
-    # Original pool balance from the deal context, defaulting to Green Lion's
-    # when the deal carries none (mirrors the capital-structure resolution in
-    # ``deal_waterfall``). Drives the clean-up-call trigger and loss-rate.
-    original_pool_balance = deal.get(
-        "original_pool_balance", _GREEN_LION_ORIGINAL_POOL_BALANCE
-    )
 
-    # Seed a period-0 ``DealState`` from the deal's resolved structural figures
-    # so the monitor reads REAL structural metrics (PDL, reserve) instead of the
-    # silent scalar defaults (which left PDL permanently 0 and reserve a fake
-    # 100% — the audit's structural-plumbing gap). The seed is the prospectus
-    # opening: PDLs 0, reserve funded at target. Capital structure and reserve
-    # target resolve from the deal context with the Green Lion defaults, exactly
-    # like ``deal_waterfall`` — no registry-schema migration.
-    cap = deal.get("capital_structure", _GREEN_LION_CAPITAL_STRUCTURE)
-    reserve_target = deal.get("reserve_account_target", _GREEN_LION_RESERVE_TARGET)
-    opening_state = DealState.seed_from_prospectus(
-        cap,
-        reserve_target=reserve_target,
-        original_pool_balance=original_pool_balance,
-        reporting_date=(
-            str(periods[0].get("reporting_date", "unknown")) if periods else "unknown"
-        ),
+    # Feed the monitor the REAL per-period structural state from the one
+    # reconstructed ledger (S6), not a single seeded period-0 snapshot. Each
+    # reconstructed ``DealState`` carries that period's amortizing tranche
+    # balances, PDLs, reserve, cumulative loss and pool factor — so the
+    # proximity-across-periods series is a real, non-flat covenant curve rather
+    # than the flat one a constant scalar snapshot produced. The reconstructed
+    # ``states`` align one-to-one with the chronological tape ``periods``
+    # (period-0 seed + one closing state per transition).
+    series = _reconstruct_series(deal)
+    covenant_input = CovenantInput.from_deal_states(
+        series.states,
+        periods=periods if periods else None,
+        triggers=triggers,
     )
 
     monitor = CovenantMonitor()
-    result = monitor.execute(
-        CovenantInput(
-            periods=periods,
-            triggers=triggers,
-            original_pool_balance=original_pool_balance,
-            # Structural metrics from the seeded opening state — honest opening
-            # values (PDL 0, reserve at target) rather than faked defaults.
-            class_a_pdl_balance=opening_state.class_a_pdl,
-            class_b_pdl_balance=opening_state.class_b_pdl,
-            reserve_account_balance=opening_state.reserve_balance,
-            reserve_account_target=opening_state.reserve_target,
-        )
-    )
+    result = monitor.execute(covenant_input)
     return result.output.model_dump()
 
 
@@ -516,6 +500,119 @@ _GREEN_LION_CAPITAL_STRUCTURE = {
 _GREEN_LION_RESERVE_TARGET = 10_636_000.0
 
 
+# ---------------------------------------------------------------------------
+# The ONE reconstructed ledger (S9, #189) — the single source of truth the
+# /waterfall, /compliance and /reconciliation endpoints read.
+#
+# S6 (period_state_machine.reconstruct_period_series) threads the spine's
+# building blocks (S1 DealState, S3 collections, S4 waterfall interpreter, S5
+# trigger engine) across every reporting period to produce the canonical
+# ordered DealState series. This block builds that series from the deal's tapes
+# once and memoises it, so all three endpoints read the SAME amortizing ledger
+# instead of the three divergent hardcoded snapshots they used before
+# (static tranche constants, reserve=0/0, pdl=0/0, a single seeded period-0
+# state). The old MultiPeriodWaterfallRunner / single-period WaterfallRunner
+# snapshot path is retired for these endpoints — WaterfallRunner survives only
+# for the forward /project scenario projector.
+# ---------------------------------------------------------------------------
+
+# In-process memo: tape-URL tuple -> reconstructed DealStateSeries. Keyed by the
+# deal's (immutable, content-stable) tape URLs, so a new reporting period is a
+# new key and never serves a stale series. Module-level so a 27-period
+# reconstruction runs at most once per process; tests clear/patch it for
+# determinism (mirrors _TAPE_ANALYTICS_MEMO).
+_RECONSTRUCTION_MEMO: dict[tuple[str, ...], DealStateSeries] = {}
+
+
+def _days_between(prev_date: str, cur_date: str) -> int:
+    """Day count between two ISO reporting dates (Act/360 accrual basis).
+
+    Used to derive each period's ``days_in_period`` from the tape cadence
+    (Green Lion's tapes are ~monthly). Falls back to 30 when either date is not
+    a parseable ISO date, so a malformed registry date degrades rather than
+    raising.
+    """
+    try:
+        delta = (date.fromisoformat(cur_date) - date.fromisoformat(prev_date)).days
+    except ValueError:
+        return 30
+    return delta if delta > 0 else 30
+
+
+def _reconstruct_series(deal: dict) -> DealStateSeries:
+    """Build (and memoise) the deal's full reconstructed ``DealStateSeries``.
+
+    This is the single entry point onto S6's ``reconstruct_period_series`` — the
+    one ledger ``/waterfall``, ``/compliance`` and ``/reconciliation`` all read.
+
+    Construction, per the spine:
+
+    1. Resolve the prospectus structural figures from the deal context — capital
+       structure, reserve target, original pool balance — with the Green Lion
+       defaults (mirrors the resolution ``/waterfall`` and ``/compliance``
+       already use, so no behaviour change for Green Lion and no registry-schema
+       migration for other deals).
+    2. For each tape in chronological order, run ``CollectionsAggregator`` with
+       the prior tape as ``prev_tape_file_url`` (the per-loan derivation regime —
+       the only one that separates scheduled principal / prepayment / recovery /
+       loss) and map it via ``to_period_collections()`` into a ``PeriodInput``
+       (one per transition after period 0).
+    3. Seed the period-0 opening state from the prospectus capital structure and
+       thread the periods through ``reconstruct_period_series`` (S6), which
+       composes S3/S4/S5/S1 so each closing state is the next period's opening.
+
+    The result is memoised by the deal's tape-URL tuple so the (network-fetching,
+    per-loan-joining) 27-period reconstruction runs at most once per process.
+    """
+    tapes = deal["tape_urls"]
+    memo_key = tuple(t["url"] for t in tapes)
+    cached = _RECONSTRUCTION_MEMO.get(memo_key)
+    if cached is not None:
+        return cached
+
+    cap = deal.get("capital_structure", _GREEN_LION_CAPITAL_STRUCTURE)
+    reserve_target = deal.get("reserve_account_target", _GREEN_LION_RESERVE_TARGET)
+    original_pool_balance = deal.get(
+        "original_pool_balance", _GREEN_LION_ORIGINAL_POOL_BALANCE
+    )
+
+    aggregator = CollectionsAggregator()
+    periods: list[PeriodInput] = []
+    for idx in range(1, len(tapes)):
+        prev_tape = tapes[idx - 1]
+        cur_tape = tapes[idx]
+        days = _days_between(prev_tape["date"], cur_tape["date"])
+        collections = aggregator.execute(
+            CollectionsInput(
+                tape_file_url=cur_tape["url"],
+                reporting_period=cur_tape["date"],
+                prev_tape_file_url=prev_tape["url"],
+                days_in_period=days,
+                class_a_rate_pct=cap["class_a_rate_pct"],
+                class_a_balance=cap["class_a_balance"],
+                class_b_balance=cap["class_b_balance"],
+                class_c_balance=cap["class_c_balance"],
+            )
+        ).output
+        periods.append(
+            PeriodInput(
+                reporting_date=cur_tape["date"],
+                collections=collections.to_period_collections(),
+                days_in_period=days,
+            )
+        )
+
+    series = reconstruct_period_series(
+        capital_structure=cap,
+        reserve_target=reserve_target,
+        original_pool_balance=original_pool_balance,
+        seed_reporting_date=tapes[0]["date"] if tapes else "unknown",
+        periods=periods,
+    )
+    _RECONSTRUCTION_MEMO[memo_key] = series
+    return series
+
+
 class WaterfallStepModel(BaseModel):
     """One priority step in the revenue cascade (mirrors ``WaterfallStep``)."""
 
@@ -558,109 +655,169 @@ class WaterfallResponse(BaseModel):
 
 @app.get("/deal/{deal_id}/waterfall", response_model=WaterfallResponse)
 def deal_waterfall(deal_id: str) -> WaterfallResponse:
-    """Run the revenue waterfall for the deal's latest reported period.
+    """Return the latest reconstructed period's waterfall from the one ledger.
 
-    Aggregates the most recent ESMA tape into Available Revenue / Principal
-    Funds (``CollectionsAggregator``), deriving ``prev_pool_balance`` from the
-    prior period's tape so scheduled principal is the reliable balance-delta
-    path, then runs the Revenue + Redemption Priority of Payments
-    (``WaterfallRunner``) on the deal's capital structure. Both the tapes and
-    the capital structure are resolved from the deal context (mirroring
-    ``/compliance`` and ``/tape-analytics``): a deal may carry its own
-    ``capital_structure`` in the registry, otherwise the Green Lion default
-    applies. Returns the 11-step revenue cascade and the per-tranche
-    distributions.
+    Sources from S6's reconstructed ``DealStateSeries`` (the single source of
+    truth — see ``_reconstruct_series``) instead of re-running a single-period
+    ``WaterfallRunner`` on hardcoded constants. The per-tranche opening/closing
+    balances are the **amortizing** tranche balances of the latest transition's
+    opening and closing ``DealState`` (so balances genuinely move period to
+    period), and the PDL/reserve that gated the cascade come from the
+    reconstructed state — not the old hardcoded ``reserve=0/0`` / ``pdl=0/0``.
+    The 11-step Revenue cascade is the S4 execution trace S6 recorded for that
+    period.
+
+    The old single-period ``WaterfallRunner`` snapshot path is **retired** for
+    this endpoint; ``WaterfallRunner`` now serves only the forward ``/project``
+    scenario projector.
+
+    A deal with a single tape (no transition to reconstruct) has no waterfall
+    period yet → returns an empty cascade for the seed date.
     """
     deal = _require_deal(deal_id)
+    series = _reconstruct_series(deal)
 
-    tapes = deal["tape_urls"]
-    latest = tapes[-1]
-    period = latest["date"]
+    # No transition reconstructed (deal has <2 tapes) → empty cascade at the
+    # seed date. The reconstructed series still carries the seeded opening state.
+    if not series.period_results:
+        seed = series.states[0]
+        return WaterfallResponse(
+            deal_id=deal_id,
+            reporting_period=seed.reporting_date,
+            available_revenue_funds=0.0,
+            available_principal_funds=0.0,
+            revenue_waterfall=[],
+            tranche_distributions=[],
+            total_distributed=0.0,
+            shortfall=0.0,
+        )
 
-    # Capital structure from the deal context, defaulting to Green Lion's when
-    # the deal carries none — keeps the route deal-generic without a registry
-    # schema migration.
-    cap = deal.get("capital_structure", _GREEN_LION_CAPITAL_STRUCTURE)
+    latest = series.period_results[-1]
+    opening = series.states[-2]  # opening state of the latest transition
+    closing = series.states[-1]  # its closing state == final_state
+    collections = closing.collections
 
-    aggregator = CollectionsAggregator()
+    revenue = latest.revenue_execution
+    available_revenue = revenue.steps[0].amount_available if revenue.steps else (
+        collections.interest if collections is not None else 0.0
+    )
+    available_principal = (
+        collections.total_principal + collections.recovery
+        if collections is not None
+        else 0.0
+    )
 
-    # prev_pool_balance from the prior period's tape (reliable balance-delta
-    # path for scheduled principal). None when this is the only period; derived
-    # by aggregating the prior tape's pool balance.
-    prev_pool_balance: float | None = None
-    if len(tapes) >= 2:
-        prev = aggregator.execute(
-            CollectionsInput(
-                tape_file_url=tapes[-2]["url"],
-                reporting_period=tapes[-2]["date"],
-                class_a_rate_pct=cap["class_a_rate_pct"],
-                class_a_balance=cap["class_a_balance"],
-                class_b_balance=cap["class_b_balance"],
-                class_c_balance=cap["class_c_balance"],
+    # Per-tranche distributions from the amortizing reconstructed balances:
+    # opening from the transition's opening state, closing from its closing
+    # state. Principal received is the balance redeemed this period; interest
+    # received is the revenue distributed to that tranche's interest recipient.
+    tranche_keys = ("class_a", "class_b", "class_c")
+    tranche_distributions: list[TrancheDistributionModel] = []
+    for key in tranche_keys:
+        open_bal = getattr(opening, f"{key}_balance")
+        close_bal = getattr(closing, f"{key}_balance")
+        principal_received = max(0.0, open_bal - close_bal)
+        interest_received = revenue.distributed_to(f"{key}_interest")
+        tranche_distributions.append(
+            TrancheDistributionModel(
+                tranche=key,
+                interest_received=interest_received,
+                principal_received=principal_received,
+                total_received=interest_received + principal_received,
+                opening_balance=open_bal,
+                closing_balance=close_bal,
             )
-        ).output
-        prev_pool_balance = prev.pool_balance_eur
-
-    collections = aggregator.execute(
-        CollectionsInput(
-            tape_file_url=latest["url"],
-            reporting_period=period,
-            prev_pool_balance=prev_pool_balance,
-            class_a_rate_pct=cap["class_a_rate_pct"],
-            class_a_balance=cap["class_a_balance"],
-            class_b_balance=cap["class_b_balance"],
-            class_c_balance=cap["class_c_balance"],
         )
-    ).output
 
-    waterfall = WaterfallRunner().execute(
-        WaterfallInput(
-            reporting_period=period,
-            available_revenue_funds=collections.available_revenue_funds,
-            available_principal_funds=collections.available_principal_funds,
-            senior_fees=collections.senior_fees,
-            swap_payment=0.0,
-            class_a_balance=cap["class_a_balance"],
-            class_a_rate_pct=cap["class_a_rate_pct"],
-            class_b_balance=cap["class_b_balance"],
-            class_c_balance=cap["class_c_balance"],
-            reserve_account_balance=0.0,
-            reserve_account_target=0.0,
-            class_a_pdl_balance=0.0,
-            class_b_pdl_balance=0.0,
+    revenue_waterfall = [
+        WaterfallStepModel(
+            priority=step.priority,
+            recipient=step.recipient,
+            amount_available=step.amount_available,
+            amount_distributed=step.amount_distributed,
+            shortfall=step.shortfall,
+            condition=step.condition,
         )
-    ).output
+        for step in revenue.steps
+    ]
 
     return WaterfallResponse(
         deal_id=deal_id,
-        reporting_period=waterfall.reporting_period,
-        available_revenue_funds=collections.available_revenue_funds,
-        available_principal_funds=collections.available_principal_funds,
-        revenue_waterfall=[
-            WaterfallStepModel(
-                priority=step.priority,
-                recipient=step.recipient,
-                amount_available=step.amount_available,
-                amount_distributed=step.amount_distributed,
-                shortfall=step.shortfall,
-                condition=step.condition,
-            )
-            for step in waterfall.revenue_waterfall
-        ],
-        tranche_distributions=[
-            TrancheDistributionModel(
-                tranche=t.tranche,
-                interest_received=t.interest_received,
-                principal_received=t.principal_received,
-                total_received=t.total_received,
-                opening_balance=t.opening_balance,
-                closing_balance=t.closing_balance,
-            )
-            for t in waterfall.tranche_distributions
-        ],
-        total_distributed=waterfall.total_distributed,
-        shortfall=waterfall.shortfall,
+        reporting_period=closing.reporting_date,
+        available_revenue_funds=available_revenue,
+        available_principal_funds=available_principal,
+        revenue_waterfall=revenue_waterfall,
+        tranche_distributions=tranche_distributions,
+        total_distributed=revenue.total_distributed
+        + latest.redemption_execution.total_distributed,
+        shortfall=revenue.total_shortfall + latest.redemption_execution.total_shortfall,
     )
+
+
+# --- reconciliation (#189, S9) -----------------------------------------------
+# Self-contained block (response model + handler) for the read-only
+# reconciliation surface over the one reconstructed ledger. Exposes the
+# headline invariant figures of the deal's reconstructed DealState series so
+# S7's reconciliation harness (#187) has a thin HTTP seam onto the same source
+# of truth /waterfall and /compliance read. Read-only, deterministic, no LLM.
+
+
+class ReconciliationResponse(BaseModel):
+    """Response body for ``GET /deal/{deal_id}/reconciliation``.
+
+    Headline invariant figures of the deal's reconstructed ``DealStateSeries``
+    (S6) at its final period — the single ledger ``/waterfall`` and
+    ``/compliance`` also read. Lets S7's harness assert against the reconstructed
+    state without re-running the reconstruction itself.
+    """
+
+    deal_id: str
+    period_count: int                 # number of reconstructed states (incl. seed)
+    final_reporting_date: str
+    class_a_balance: float
+    class_b_balance: float
+    class_c_balance: float
+    total_pdl: float
+    reserve_balance: float
+    reserve_target: float
+    cumulative_losses: float
+    cumulative_loss_rate_pct: float
+    pool_balance: float
+    pool_factor: float
+    original_pool_balance: float
+
+
+@app.get("/deal/{deal_id}/reconciliation", response_model=ReconciliationResponse)
+def deal_reconciliation(deal_id: str) -> ReconciliationResponse:
+    """Return the reconstructed ledger's headline invariants for the deal.
+
+    Reads the same reconstructed ``DealStateSeries`` (S6) as ``/waterfall`` and
+    ``/compliance`` and surfaces its final state's invariant figures — tranche
+    balances, total PDL, reserve, cumulative losses + loss rate, pool factor —
+    so S7's reconciliation harness can verify against the one ledger over HTTP.
+    """
+    deal = _require_deal(deal_id)
+    series = _reconstruct_series(deal)
+    final = series.final_state
+    return ReconciliationResponse(
+        deal_id=deal_id,
+        period_count=len(series.states),
+        final_reporting_date=final.reporting_date,
+        class_a_balance=final.class_a_balance,
+        class_b_balance=final.class_b_balance,
+        class_c_balance=final.class_c_balance,
+        total_pdl=final.total_pdl,
+        reserve_balance=final.reserve_balance,
+        reserve_target=final.reserve_target,
+        cumulative_losses=final.cumulative_losses,
+        cumulative_loss_rate_pct=final.cumulative_loss_rate_pct,
+        pool_balance=final.pool_balance,
+        pool_factor=final.pool_factor,
+        original_pool_balance=final.original_pool_balance,
+    )
+
+
+# --- end reconciliation (#189, S9) -------------------------------------------
 
 
 # --- tape-analytics (#110) ---------------------------------------------------
