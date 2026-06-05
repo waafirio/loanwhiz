@@ -92,12 +92,19 @@ class StepSpec(BaseModel):
     pari_passu_group:
         An optional group id. Steps sharing a group id rank equally and split a
         shortfall pro-rata by need. ``None`` means the step ranks alone.
+    residual:
+        When ``True`` this step is a *residual sweep* — it distributes whatever
+        funds remain in the pot at its position and never reports a shortfall
+        (its need is, by definition, exactly what is left). Used for terminal
+        steps like "Deferred Purchase Price to Seller". Mutually exclusive with
+        ``pari_passu_group`` in practice (a residual ranks alone).
     """
 
     priority: str
     recipient: str
     condition: str | None = None
     pari_passu_group: str | None = None
+    residual: bool = False
 
     @classmethod
     def from_extracted(cls, step: dict, *, group_prefix: str = "pp") -> "StepSpec":
@@ -471,8 +478,9 @@ def interpret(
     - **Pari-passu groups**: consecutive *or non-consecutive* steps sharing a
       ``pari_passu_group`` are paid together — when ``available`` cannot cover
       the group's combined need, the shortfall is split **pro-rata by need**.
-      The group's funding is resolved at the position of its first member;
-      later members of the same group are skipped (already paid).
+      The group's funding is resolved against the pot at its first member's
+      position; each member is then emitted in its own position with its
+      pro-rata share, so the trace stays 1:1 with the input steps.
 
     Parameters
     ----------
@@ -497,10 +505,7 @@ def interpret(
     ev = evaluator if evaluator is not None else DefaultConditionEvaluator()
     overrides = need_overrides or {}
 
-    # Pre-compute group membership and per-group total need (over non-gated
-    # members). Gating is per-step, so we resolve gating first, then group.
     results: list[StepResult] = []
-    paid_groups: set[str] = set()
 
     def _need_for(spec: StepSpec) -> tuple[float, bool]:
         if spec.recipient in overrides:
@@ -510,24 +515,20 @@ def interpret(
     def _is_gated(spec: StepSpec) -> bool:
         return spec.condition is not None and not ev.evaluate(spec.condition, funds)
 
-    for idx, spec in enumerate(steps):
-        # Already-funded pari-passu group member → record a zero passthrough so
-        # the trace stays 1:1 with the input steps, but don't re-distribute.
-        if spec.pari_passu_group and spec.pari_passu_group in paid_groups:
-            results.append(
-                StepResult(
-                    priority=spec.priority,
-                    recipient=spec.recipient,
-                    condition=spec.condition,
-                    pari_passu_group=spec.pari_passu_group,
-                    amount_available=available,
-                    need=0.0,
-                    amount_distributed=0.0,
-                    shortfall=0.0,
-                )
-            )
-            continue
+    # Pre-compute, per pari-passu group, the pro-rata distribution each member
+    # receives — resolved against the pot available at the group's *first*
+    # member position. A group may be non-contiguous; each member is then
+    # emitted at its own position in the trace using its pre-computed share, so
+    # the trace stays 1:1 with the input steps and ordering is preserved.
+    # ``group_share[id(spec)]`` → (distributed, need, pot_before) per member.
+    group_share: dict[int, tuple[float, float, float]] = {}
+    group_first_idx: dict[str, int] = {}
+    for i, spec in enumerate(steps):
+        g = spec.pari_passu_group
+        if g and g not in group_first_idx and not _is_gated(spec):
+            group_first_idx[g] = i
 
+    for idx, spec in enumerate(steps):
         gated = _is_gated(spec)
         if gated:
             results.append(
@@ -546,51 +547,64 @@ def interpret(
             continue
 
         if spec.pari_passu_group:
-            # Gather all non-gated members of this group (including this one).
-            members = [
-                s
-                for s in steps
-                if s.pari_passu_group == spec.pari_passu_group and not _is_gated(s)
-            ]
-            member_needs: list[tuple[StepSpec, float, bool]] = []
-            total_need = 0.0
-            for m in members:
-                m_need, m_eval = _need_for(m)
-                member_needs.append((m, m_need, m_eval))
-                total_need += m_need
-
-            group_available = available
-            if total_need <= available + _EPS:
-                # Fully fundable — everyone gets their need.
-                fractions = {id(m): 1.0 for m, _, _ in member_needs}
-            elif total_need > _EPS:
-                # Shortfall — split pro-rata by need.
-                ratio = group_available / total_need
-                fractions = {id(m): ratio for m, _, _ in member_needs}
-            else:
-                fractions = {id(m): 0.0 for m, _, _ in member_needs}
-
-            distributed_total = 0.0
-            for m, m_need, m_eval in member_needs:
-                dist = min(m_need, m_need * fractions[id(m)])
-                dist = min(dist, group_available - distributed_total)
-                dist = max(0.0, dist)
-                distributed_total += dist
-                results.append(
-                    StepResult(
-                        priority=m.priority,
-                        recipient=m.recipient,
-                        condition=m.condition,
-                        pari_passu_group=m.pari_passu_group,
-                        amount_available=group_available,
-                        need=m_need,
-                        amount_distributed=dist,
-                        shortfall=max(0.0, m_need - dist),
-                        not_evaluable=not m_eval,
-                    )
+            g = spec.pari_passu_group
+            if group_first_idx.get(g) == idx:
+                # First member of the group: resolve the whole group's split
+                # against the pot available *now*, deduct it once, and stash
+                # each member's share for emission at its own position.
+                members = [
+                    s
+                    for s in steps
+                    if s.pari_passu_group == g and not _is_gated(s)
+                ]
+                pot_before = available
+                needs = [(m, *_need_for(m)) for m in members]
+                total_need = sum(n for _, n, _ in needs)
+                ratio = (
+                    1.0
+                    if total_need <= available + _EPS
+                    else (available / total_need if total_need > _EPS else 0.0)
                 )
-            available = max(0.0, available - distributed_total)
-            paid_groups.add(spec.pari_passu_group)
+                distributed_total = 0.0
+                for m, m_need, _m_eval in needs:
+                    dist = max(0.0, min(m_need, m_need * ratio))
+                    dist = min(dist, available - distributed_total)
+                    distributed_total += dist
+                    group_share[id(m)] = (dist, m_need, pot_before)
+                available = max(0.0, available - distributed_total)
+            dist, need, pot_before = group_share.get(id(spec), (0.0, 0.0, available))
+            _, evaluable = _need_for(spec)
+            results.append(
+                StepResult(
+                    priority=spec.priority,
+                    recipient=spec.recipient,
+                    condition=spec.condition,
+                    pari_passu_group=spec.pari_passu_group,
+                    amount_available=pot_before,
+                    need=need,
+                    amount_distributed=dist,
+                    shortfall=max(0.0, need - dist),
+                    not_evaluable=not evaluable,
+                )
+            )
+            continue
+
+        # Residual sweep: distribute whatever remains, no shortfall.
+        if spec.residual:
+            dist = max(0.0, available)
+            results.append(
+                StepResult(
+                    priority=spec.priority,
+                    recipient=spec.recipient,
+                    condition=spec.condition,
+                    pari_passu_group=spec.pari_passu_group,
+                    amount_available=available,
+                    need=dist,
+                    amount_distributed=dist,
+                    shortfall=0.0,
+                )
+            )
+            available = 0.0
             continue
 
         # Plain single-recipient step.
