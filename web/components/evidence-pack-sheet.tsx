@@ -131,7 +131,14 @@ function PackBody({ pack }: { pack: GovernanceEvidencePack }) {
             <Badge variant="secondary" className="font-normal">
               FINOS compliant
             </Badge>
-          ) : null}
+          ) : (
+            // The compliance flag is now derived from a real consistency check
+            // over the evidence (issue #194), so a false value is a genuine
+            // signal — surface it explicitly rather than silently hiding it.
+            <Badge variant="destructive" className="font-normal">
+              FINOS check failed
+            </Badge>
+          )}
         </div>
         <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 text-xs text-muted-foreground">
           <dt>Model</dt>

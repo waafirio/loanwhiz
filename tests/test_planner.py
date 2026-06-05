@@ -10,12 +10,13 @@ Covers:
 
 from __future__ import annotations
 
+import json
 import tempfile
 from typing import Any
 from unittest.mock import MagicMock, patch
 
 import pytest
-from langchain_core.messages import AIMessage, HumanMessage
+from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 
 from loanwhiz.agent.planner import AgentResponse, create_planner_agent, run_query
 from loanwhiz.governance.evidence_pack import GovernanceEvidencePack
@@ -186,6 +187,150 @@ def test_no_tool_calls_yields_empty_pack_tool_list() -> None:
 
     assert response["evidence_pack"].tool_calls == []
     assert response["evidence_pack"].aggregate_confidence == pytest.approx(1.0)
+
+
+# ---------------------------------------------------------------------------
+# Test 3b — Real per-tool confidence / citations / duration are threaded
+# from the ToolMessage result into the ToolCallRecord (#194).
+# ---------------------------------------------------------------------------
+
+
+def _tool_result_msg(
+    tool_call_id: str,
+    name: str,
+    payload: dict[str, Any],
+) -> ToolMessage:
+    """A ToolMessage carrying a tool's JSON-serialised dict result.
+
+    Mirrors how LangGraph's ToolNode serialises a dict tool return into
+    ``ToolMessage.content`` (``json.dumps``).
+    """
+    return ToolMessage(
+        content=json.dumps(payload),
+        tool_call_id=tool_call_id,
+        name=name,
+    )
+
+
+def test_real_tool_values_threaded_into_record() -> None:
+    """confidence / citations / duration / output_summary come from the result."""
+    ai_with_tool_call = AIMessage(
+        content="",
+        tool_calls=[
+            {
+                "name": "load_esma_tape",
+                "args": {"file_url": "https://example.com/tape.csv"},
+                "id": "tc_001",
+            }
+        ],
+    )
+    citation = {
+        "document": "green_lion tape.csv",
+        "page_or_row": 12,
+        "excerpt": "pool balance 1.03B",
+    }
+    tool_result = _tool_result_msg(
+        "tc_001",
+        "load_esma_tape",
+        {
+            "pool_balance": 1_030_000_000.0,
+            "confidence": 0.55,
+            "citations": [citation],
+            "duration_ms": 123.4,
+        },
+    )
+    final_ai = AIMessage(content="Pool balance is €1.03B.")
+    fake_result = _fake_agent_result(
+        "Pool balance is €1.03B.",
+        [ai_with_tool_call, tool_result, final_ai],
+    )
+
+    mock_agent = MagicMock()
+    mock_agent.invoke.return_value = fake_result
+
+    with patch("loanwhiz.agent.planner.create_planner_agent", return_value=mock_agent), \
+         patch("loanwhiz.agent.planner.EvidencePackLogger"):
+        response = run_query("What is the pool balance?", save_evidence=False)
+
+    rec = response["evidence_pack"].tool_calls[0]
+    # Real values, not the old constants.
+    assert rec.confidence == pytest.approx(0.55)
+    assert rec.confidence != 0.9
+    assert rec.citations == [citation]
+    assert rec.duration_ms == pytest.approx(123.4)
+    # output_summary reflects the real result (governance keys stripped).
+    assert "pool_balance" in rec.output_summary
+    assert "confidence" not in rec.output_summary
+    assert "citations" not in rec.output_summary
+
+
+def test_low_real_confidence_fires_human_review() -> None:
+    """A threaded real confidence < 0.7 makes human_review_required fire (#194)."""
+    ai_tc = AIMessage(
+        content="",
+        tool_calls=[{"name": "run_waterfall", "args": {"reporting_period": "Apr"}, "id": "tc9"}],
+    )
+    tool_result = _tool_result_msg("tc9", "run_waterfall", {"ok": True, "confidence": 0.42})
+    final_ai = AIMessage(content="Done.")
+    fake_result = _fake_agent_result("Done.", [ai_tc, tool_result, final_ai])
+
+    mock_agent = MagicMock()
+    mock_agent.invoke.return_value = fake_result
+
+    with patch("loanwhiz.agent.planner.create_planner_agent", return_value=mock_agent), \
+         patch("loanwhiz.agent.planner.EvidencePackLogger"):
+        response = run_query("Run the waterfall.", save_evidence=False)
+
+    pack = response["evidence_pack"]
+    assert pack.aggregate_confidence == pytest.approx(0.42)
+    assert pack.human_review_required is True
+
+
+def test_missing_tool_result_falls_back_to_honest_defaults() -> None:
+    """A tool call with no matching ToolMessage result uses honest defaults."""
+    ai_tc = AIMessage(
+        content="",
+        tool_calls=[{"name": "load_esma_tape", "args": {"file_url": "u"}, "id": "tc_missing"}],
+    )
+    # No ToolMessage for tc_missing.
+    final_ai = AIMessage(content="No result attached.")
+    fake_result = _fake_agent_result("No result attached.", [ai_tc, final_ai])
+
+    mock_agent = MagicMock()
+    mock_agent.invoke.return_value = fake_result
+
+    with patch("loanwhiz.agent.planner.create_planner_agent", return_value=mock_agent), \
+         patch("loanwhiz.agent.planner.EvidencePackLogger"):
+        response = run_query("q", save_evidence=False)
+
+    rec = response["evidence_pack"].tool_calls[0]
+    assert rec.confidence == pytest.approx(0.9)  # prior default preserved
+    assert rec.citations == []
+    assert rec.duration_ms == pytest.approx(0.0)
+    assert rec.output_summary == ""
+
+
+def test_non_json_tool_result_does_not_raise() -> None:
+    """A tool result that isn't a JSON object falls back without raising."""
+    ai_tc = AIMessage(
+        content="",
+        tool_calls=[{"name": "load_esma_tape", "args": {"file_url": "u"}, "id": "tcx"}],
+    )
+    tool_result = ToolMessage(content="primitive errored: bad url", tool_call_id="tcx", name="load_esma_tape")
+    final_ai = AIMessage(content="err")
+    fake_result = _fake_agent_result("err", [ai_tc, tool_result, final_ai])
+
+    mock_agent = MagicMock()
+    mock_agent.invoke.return_value = fake_result
+
+    with patch("loanwhiz.agent.planner.create_planner_agent", return_value=mock_agent), \
+         patch("loanwhiz.agent.planner.EvidencePackLogger"):
+        response = run_query("q", save_evidence=False)
+
+    rec = response["evidence_pack"].tool_calls[0]
+    assert rec.confidence == pytest.approx(0.9)
+    assert rec.citations == []
+    assert rec.duration_ms == pytest.approx(0.0)
 
 
 # ---------------------------------------------------------------------------
