@@ -25,6 +25,16 @@ Green Lion's loan-tape history now spans **27 monthly ESMA Annex 2 tapes** acros
 
 All 27 tapes share the same ESMA Annex 2 schema. **January 2026 (`202601`) exists in neither dataset** and is an intentional gap in the chronology. The framework loads the tapes in chronological order regardless of which dataset each lives in (`src/loanwhiz/config.py` builds the combined `tape_urls` list).
 
+> **These are period snapshots, not a longitudinal panel.** The 27 tapes are
+> **re-sampled each period** — loan identifiers do not persist across months
+> (the gross balance falls in one period and a similar gross balance rises in
+> the next, netting to a small movement). So the series is a sequence of
+> point-in-time pool snapshots, not a tracked-cohort loan-level time series.
+> Per-period collections and losses are derived by **net reconciliation to
+> pool movement**, not by following individual loans. Any speed estimated
+> from the series (CPR/CDR) reflects the synthetic generation process, not
+> observed cohort behaviour.
+
 ---
 
 ## IMPORTANT: Synthetic vs Real Data
@@ -99,7 +109,14 @@ The prospectus is the primary input to the LoanWhiz Extraction Pipeline. Key sec
 
 ### Investor Reports (Real)
 
-Monthly investor reports for February, March, and April 2026. These contain period-level aggregates: note balances, interest payments, principal payments, reserve account levels, trigger status, and pool performance metrics. They are used by the LoanWhiz Report Verifier primitive to compare computed waterfall distributions against reported actuals.
+Monthly investor reports for February, March, and April 2026. For a Dutch RMBS these are **collateral-side** reports (Portfolio & Performance): pool balance, collections, arrears, and stratifications. The deal's separate quarterly Notes & Cash report — which would carry note-level actuals (per-step waterfall distributions, note balances, reserve/PDL) — does **not** exist for 2026-1 within the Feb–Apr window (it is quarterly, and 2026-1's first such period falls after the demo window). This shapes the reconciliation model below.
+
+#### Reconciliation split (what is reconciled vs reconstructed)
+
+- **Collateral** (pool balance, collections, arrears) is reconstructed from the tapes and **reconciles to the published monthly investor reports to the cent**.
+- **Liabilities** (tranche balances, PDL, reserve account) are **reconstructed from the prospectus and invariant-validated** (conservation, non-negativity, chaining) — *not* reconciled against a report, because no note-level actuals report exists for 2026-1 in-window.
+
+This split is deliberate and honest: liability figures are prospectus-derived and consistency-checked, not matched against an external actuals report. (The seasoned Green Lion deals targeted by epic #206 *do* publish Notes & Cash reports, which is what makes external liability validation possible there.)
 
 ### Loan Tapes (SYNTHETIC)
 
@@ -139,7 +156,7 @@ The dataset is **not intended** for:
 | **Single asset class** | Dutch RMBS only. CLOs, CMBS, US RMBS, ABS, and other asset classes are not represented. |
 | **Synthetic loan performance** | No real default history. Arrears rates, default rates, and prepayment rates in the loan tapes reflect synthetic generation assumptions, not observed market behaviour. |
 | **Netherlands jurisdiction only** | Dutch law, Dutch mortgage market conventions, Dutch EPC rating system. Not representative of other European or non-European RMBS markets. |
-| **Synthetic time series** | A 27-month monthly history (Jan 2024 – Apr 2026, January 2026 excepted) is now available, enabling time-series views and multi-period waterfall runs. The series is still synthetically generated, so prepayment/default speeds estimated from it reflect the generation process, not observed market behaviour. |
+| **Synthetic time series (snapshots, not a panel)** | A 27-month monthly history (Jan 2024 – Apr 2026, January 2026 excepted) is available, enabling time-series views and multi-period waterfall runs. The tapes are **re-sampled each period** — loan IDs do not persist — so the series is a sequence of point-in-time snapshots, not a tracked-cohort longitudinal panel. It is synthetically generated, so prepayment/default speeds estimated from it reflect the generation process, not observed market behaviour. |
 | **No amendments or supplements** | The prospectus is the original offering document. Any amendments, supplements, or side letters issued after closing are not included. |
 
 ---

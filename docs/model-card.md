@@ -50,7 +50,7 @@ The pipeline uses:
 **Intended tasks:**
 - Extracting waterfall rules from Priority of Payments sections for computational execution
 - Extracting covenant and trigger definitions with threshold values and monitoring conditions
-- Building a definitions graph that resolves cross-references within a single deal's documentation
+- Building a definitions graph that resolves cross-references within a single deal's documentation (note: on the validated Green Lion 2026-1 deal this graph resolves 0 terms — see Performance)
 - Assembling a machine-executable deal model as the foundation for downstream analytics (waterfall runner, covenant monitor, cashflow projector, report verifier)
 
 **Expected deployment context:** Decision-support tool within a supervised analytical workflow. All extracted outputs are intended to be reviewed by a qualified professional before use in production calculations.
@@ -81,13 +81,13 @@ Validated on the **Green Lion 2026-1 B.V.** prospectus (Dutch RMBS, Annex 2 ESMA
 |---|---|---|
 | Revenue Priority of Payments (section 5.2) | Correct — 11 steps extracted | All steps correctly identified as ordered, conditionally-specified payment steps with citations |
 | Redemption Priority of Payments | Partially extracted | Sequential ordering correct; some conditional branching requires review |
-| Definitions section | Requires review | Defined terms extracted; cross-reference resolution (defined-term-within-definition chains) may miss nested references |
-| Trigger and covenant thresholds | Partially extracted | Numeric thresholds extracted correctly; some monitoring conditions expressed in natural language require human interpretation |
+| Definitions section | Not populated on this deal | The definitions-graph extractor runs, but on the Green Lion 2026-1 prospectus it resolves **0 terms** into the cached model (`definitions: {}`). The capability exists; the count for this deal is zero. Waterfall steps therefore carry their conditional clauses as prose rather than resolved defined-term references. |
+| Trigger and covenant thresholds | 3 triggers extracted | The cached model extracts **3** triggers — Class A PDL, Class B PDL, and reserve-fund shortfall — with numeric thresholds. Some monitoring conditions expressed in natural language still require human interpretation. |
 | Credit enhancement structure | Partially extracted | Tranche subordination hierarchy correct; reserve account conditions require review |
 
 ### Summary
 
-The extraction pipeline correctly resolves the primary waterfall structure of a Dutch RMBS prospectus in a single zero-shot pass. The Definitions section and cross-reference resolution chain are the primary areas requiring human review before the extracted model is used in production calculations.
+The extraction pipeline correctly resolves the primary waterfall structure of a Dutch RMBS prospectus in a single zero-shot pass. The Definitions section is the weakest surface — on this deal it resolves no terms into the model — and is the primary area requiring human review before the extracted model is used in production calculations.
 
 ---
 
@@ -111,13 +111,20 @@ The extraction pipeline correctly resolves the primary waterfall structure of a 
 
 ## Confidence Scoring
 
-Every extraction primitive produces a confidence score in `[0.0, 1.0]`. The score is a weighted combination of three signals:
+Every extraction primitive produces a confidence score in `[0.0, 1.0]`. The
+score is a **real coverage metric** over what was actually extracted, not a
+fixed weighted blend:
 
-| Signal | Weight | Description |
+| Signal | Computed as | What it measures |
 |---|---|---|
-| **Section coverage** | 40% | Fraction of expected sections found in the document (waterfall, definitions, triggers, tranches) |
-| **Cross-reference resolution rate** | 30% | Fraction of defined-term references that were successfully resolved to a definition |
-| **LLM self-assessment** | 30% | The model's own confidence estimate, elicited via structured output schema alongside the extraction result |
+| **Deal-model completeness** | `‖expected ∩ found‖ / ‖expected‖` (`extraction/assembler.py`) | Fraction of the expected key sections (waterfall, definitions, triggers, tranches) located and extracted. On Green Lion 2026-1 this is **0.75** (3 of 4; the definitions graph extracts 0 terms). |
+| **Per-waterfall coverage** | `non_empty_recipients / len(steps)` (`extraction/waterfall_extractor.py`) | Fraction of a waterfall's ordered steps that resolved to a concrete recipient. |
+
+The pipeline does **not** apply a `0.40·coverage + 0.30·resolution +
+0.30·llm_self_score` weighting, and does not fold an LLM self-rating into the
+final score. See [docs/governance.md](governance.md) §2 for the full
+derivation, including how the agent's evidence pack aggregates per-tool
+confidence as `min(...)`.
 
 **Thresholds:**
 
