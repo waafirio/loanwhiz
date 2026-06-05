@@ -153,22 +153,45 @@ class ProjectRequest(BaseModel):
 # data/deals/) so the writer and this reader never diverge.
 DEAL_MODEL_CACHE_DIR = str(DEFAULT_DEAL_CACHE_DIR)
 
+# Committed seed directory for pre-extracted deal models (#196). Unlike the
+# runtime cache above (``data/deals/*.json`` — gitignored, written by a cold
+# extraction), the seed dir ships *committed* schema-valid ``{slug}.json``
+# artifacts so a clean checkout serves the real extracted model without a
+# ~30min cold Docling+Gemini run. It lives inside the package
+# (``src/loanwhiz/data/deals/seed``) so it is installed and version-controlled
+# with the code. The loader below falls back to it on a runtime-cache miss; a
+# real cold extraction that later writes the runtime cache still takes
+# precedence. Deal-agnostic: any deal whose slug has a committed seed file is
+# served, deals without one degrade gracefully to ``not_cached``. Patchable in
+# tests, mirroring ``DEAL_MODEL_CACHE_DIR``. Generated/refreshed by
+# ``scripts/seed_deal_models.py``.
+DEAL_MODEL_SEED_DIR = str(Path(__file__).resolve().parents[1] / "data" / "deals" / "seed")
+
 
 def _load_cached_deal_model(deal: dict) -> DealModel | None:
     """Read the cached extracted :class:`DealModel` for a deal, or ``None``.
 
-    Reads the assembler's on-disk cache at
-    ``{DEAL_MODEL_CACHE_DIR}/{slug(deal_name)}.json`` and validates it into a
-    :class:`DealModel`. **Never triggers a cold extraction** — a cache miss
-    (no file) returns ``None`` rather than invoking the ~10min Docling
-    pipeline. Shared by ``/deal/{id}/model`` (serves it to the frontend) and
-    ``/deal/{id}/compliance`` (feeds the deal's own triggers to the monitor)
-    so both read the cache identically.
+    Resolves the deal's extracted model in priority order:
+
+    1. the assembler's on-disk runtime cache at
+       ``{DEAL_MODEL_CACHE_DIR}/{slug(deal_name)}.json`` (written by a cold
+       extraction);
+    2. the committed seed at ``{DEAL_MODEL_SEED_DIR}/{slug(deal_name)}.json``
+       (#196 — ships with the repo so a clean host isn't blank).
+
+    The runtime cache wins when both exist, so a fresh cold extraction
+    overrides the shipped seed. **Never triggers a cold extraction** — a miss
+    in *both* locations returns ``None`` rather than invoking the ~30min
+    Docling+Gemini pipeline. Shared by ``/deal/{id}/model`` (serves it to the
+    frontend) and ``/deal/{id}/compliance`` (feeds the deal's own triggers to
+    the monitor) so both read the model identically.
     """
-    cache_path = Path(DEAL_MODEL_CACHE_DIR) / f"{_slug(deal['deal_name'])}.json"
-    if not cache_path.exists():
-        return None
-    return DealModel.model_validate_json(cache_path.read_text(encoding="utf-8"))
+    slug = _slug(deal["deal_name"])
+    for base_dir in (DEAL_MODEL_CACHE_DIR, DEAL_MODEL_SEED_DIR):
+        path = Path(base_dir) / f"{slug}.json"
+        if path.exists():
+            return DealModel.model_validate_json(path.read_text(encoding="utf-8"))
+    return None
 
 
 class DealModelResponse(BaseModel):
