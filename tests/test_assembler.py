@@ -29,6 +29,7 @@ from loanwhiz.extraction.assembler import (
     DEFAULT_DOCLING_CACHE_DIR,
     DealModel,
     DealModelMetadata,
+    _completeness_score,
     _docling_cache_path,
     _download_and_convert,
     _extract_tranches,
@@ -275,64 +276,105 @@ class TestExtractTranches:
 
 
 class TestCompletenessScore:
-    """Verify the completeness formula: found ∩ expected / |expected|."""
+    """Verify the *real* completeness coverage metric (``_completeness_score``).
 
-    def test_zero_sections_found(self) -> None:
-        # No expected sections found → score = 0
-        sections_found: list[str] = []
-        expected = [
-            "definitions",
-            "revenue_priority_of_payments",
-            "conditions_of_notes",
-            "available_funds",
-        ]
-        score = len([s for s in expected if s in sections_found]) / len(expected)
+    The old metric was the fraction of expected section headers found, which
+    could read 1.0 even when every waterfall section was empty. The new score
+    blends section coverage, populated-waterfall coverage (≥1 step), trigger
+    presence and tranche presence — so a header-only-but-empty model scores
+    strictly below 1.0.
+    """
+
+    _ALL_SECTIONS = [
+        "definitions",
+        "revenue_priority_of_payments",
+        "conditions_of_notes",
+        "available_funds",
+    ]
+
+    @staticmethod
+    def _wf(n_steps: int):
+        """A stub waterfall object exposing ``.steps`` of the given length."""
+
+        class _WF:
+            steps = list(range(n_steps))
+
+        return _WF()
+
+    @staticmethod
+    def _covenants(n_triggers: int):
+        class _Cov:
+            triggers = list(range(n_triggers))
+
+        return _Cov()
+
+    def test_fully_populated_model_scores_high(self) -> None:
+        score = _completeness_score(
+            sections_found=self._ALL_SECTIONS,
+            waterfalls={"revenue": self._wf(8), "redemption": self._wf(5)},
+            covenants=self._covenants(3),
+            tranche_structure=[{"name": "A"}, {"name": "B"}],
+        )
+        assert score == pytest.approx(1.0)
+
+    def test_empty_model_scores_zero(self) -> None:
+        score = _completeness_score(
+            sections_found=[],
+            waterfalls={},
+            covenants=self._covenants(0),
+            tranche_structure=[],
+        )
         assert score == 0.0
 
-    def test_all_sections_found(self) -> None:
-        sections_found = [
-            "definitions",
-            "revenue_priority_of_payments",
-            "conditions_of_notes",
-            "available_funds",
-        ]
-        expected = [
-            "definitions",
-            "revenue_priority_of_payments",
-            "conditions_of_notes",
-            "available_funds",
-        ]
-        score = len([s for s in expected if s in sections_found]) / len(expected)
-        assert score == 1.0
+    def test_all_headers_but_zero_steps_scores_below_one(self) -> None:
+        # The headline bug: every section header found, but the waterfalls
+        # extracted ZERO steps. The old metric scored 1.0; the new one must not.
+        score = _completeness_score(
+            sections_found=self._ALL_SECTIONS,
+            waterfalls={"revenue": self._wf(0), "redemption": self._wf(0)},
+            covenants=self._covenants(0),
+            tranche_structure=[],
+        )
+        # Sections fully present (0.30) but nothing else → well below 1.0.
+        assert score < 1.0
+        assert score == pytest.approx(0.30)
 
-    def test_half_sections_found(self) -> None:
-        sections_found = ["definitions", "revenue_priority_of_payments"]
-        expected = [
-            "definitions",
-            "revenue_priority_of_payments",
-            "conditions_of_notes",
-            "available_funds",
-        ]
-        score = len([s for s in expected if s in sections_found]) / len(expected)
-        assert score == 0.5
+    def test_steps_present_raises_score_over_headers_only(self) -> None:
+        headers_only = _completeness_score(
+            sections_found=self._ALL_SECTIONS,
+            waterfalls={"revenue": self._wf(0), "redemption": self._wf(0)},
+            covenants=self._covenants(0),
+            tranche_structure=[],
+        )
+        with_steps = _completeness_score(
+            sections_found=self._ALL_SECTIONS,
+            waterfalls={"revenue": self._wf(6), "redemption": self._wf(4)},
+            covenants=self._covenants(0),
+            tranche_structure=[],
+        )
+        assert with_steps > headers_only
 
-    def test_extra_sections_do_not_raise_score_above_1(self) -> None:
-        # Non-expected sections in sections_found should not affect the score
-        sections_found = [
-            "definitions",
-            "revenue_priority_of_payments",
-            "conditions_of_notes",
-            "available_funds",
-            "some_other_section",
-        ]
-        expected = [
-            "definitions",
-            "revenue_priority_of_payments",
-            "conditions_of_notes",
-            "available_funds",
-        ]
-        score = len([s for s in expected if s in sections_found]) / len(expected)
-        assert score == 1.0
+    def test_score_stays_in_unit_interval(self) -> None:
+        score = _completeness_score(
+            sections_found=self._ALL_SECTIONS + ["some_other_section"],
+            waterfalls={"revenue": self._wf(8), "redemption": self._wf(5)},
+            covenants=self._covenants(5),
+            tranche_structure=[{"name": "A"}],
+        )
+        assert 0.0 <= score <= 1.0
+        assert score == pytest.approx(1.0)
+
+    def test_accepts_dict_shaped_waterfalls(self) -> None:
+        # The helper tolerates already-dumped waterfall dicts (``{"steps": [...]}``)
+        # as well as ExtractedWaterfall objects.
+        score = _completeness_score(
+            sections_found=self._ALL_SECTIONS,
+            waterfalls={"revenue": {"steps": [1, 2]}, "redemption": {"steps": []}},
+            covenants=self._covenants(1),
+            tranche_structure=[{"name": "A"}],
+        )
+        # sections 0.30 + half waterfalls 0.20 + triggers 0.15 + tranches 0.15
+        assert score == pytest.approx(0.80)
 
 
 # ---------------------------------------------------------------------------

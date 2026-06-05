@@ -61,7 +61,47 @@ class ExtractedWaterfall(BaseModel):
     waterfall_type: str     # "revenue", "redemption", "post_enforcement"
     steps: list[WaterfallStep]
     source_section: str     # "Section 5.2" etc.
-    extraction_confidence: float
+    extraction_confidence: float   # 0–1: real step-usability coverage (see _extraction_confidence)
+
+
+def _extraction_confidence(steps: list["WaterfallStep"]) -> float:
+    """Real per-waterfall coverage score in ``[0, 1]`` over extracted steps.
+
+    Replaces the old metric (fraction of steps with a *non-empty recipient*),
+    which was near-tautological — the materialiser strips recipients to a string,
+    so a step almost always has one — and said nothing about whether the step is
+    actually *executable* downstream. A step is only usable by the waterfall
+    interpreter when it names **both** a recipient (who is paid) and an
+    ``amount_formula`` (how much); the score is the fraction of steps that carry
+    both, lightly bonused by citation presence (provenance the step can be
+    audited against).
+
+    Scoring per step (averaged across all steps):
+
+    - 0.7 — has a non-empty ``recipient`` *and* a non-empty ``amount_formula``
+      (the executable core).
+    - +0.3 — additionally carries a non-empty citation (auditable provenance).
+    - 0.35 — has a recipient but no amount formula (named but not yet
+      executable).
+    - 0.0 — no recipient.
+
+    An empty step list scores 0.0 (nothing was extracted).
+    """
+    if not steps:
+        return 0.0
+
+    total = 0.0
+    for s in steps:
+        recipient = (s.recipient or "").strip()
+        formula = (s.amount_formula or "").strip()
+        citation = s.citation if isinstance(s.citation, dict) else {}
+        has_citation = any(str(v).strip() for v in citation.values())
+        if recipient and formula:
+            total += 1.0 if has_citation else 0.7
+        elif recipient:
+            total += 0.35
+        # no recipient → contributes 0.0
+    return total / len(steps)
 
 
 # ---------------------------------------------------------------------------
@@ -513,12 +553,10 @@ def extract_waterfall(
             )
         )
 
-    # Compute extraction confidence as the fraction of steps with non-empty recipients.
-    if steps:
-        non_empty_recipients = sum(1 for s in steps if s.recipient)
-        extraction_confidence = non_empty_recipients / len(steps)
-    else:
-        extraction_confidence = 0.0
+    # Compute extraction confidence as a real per-waterfall coverage metric over
+    # how *usable* the extracted steps are (not merely the near-tautological
+    # fraction with a non-empty recipient). See ``_extraction_confidence``.
+    extraction_confidence = _extraction_confidence(steps)
 
     waterfall = ExtractedWaterfall(
         deal_name=deal_name,

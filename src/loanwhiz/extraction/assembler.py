@@ -82,7 +82,7 @@ class DealModelMetadata(BaseModel):
     extracted_at: str           # ISO 8601
     extraction_duration_sec: float
     sections_found: list[str]
-    completeness_score: float   # 0–1: fraction of expected sections found
+    completeness_score: float   # 0–1: real coverage of extracted content (see _completeness_score)
     cache_path: str
 
 
@@ -129,6 +129,97 @@ _EXPECTED_SECTIONS: list[str] = [
     "conditions_of_notes",
     "available_funds",
 ]
+
+# Waterfall types we expect a complete deal model to carry actual steps for. The
+# completeness score credits a waterfall only when it extracted at least one
+# step — a section header with zero steps is not "complete".
+_EXPECTED_WATERFALL_TYPES: tuple[str, ...] = ("revenue", "redemption")
+
+# Relative weights of the four coverage dimensions the completeness score blends.
+# Sections + waterfalls dominate (they are the load-bearing extracted content);
+# triggers + tranches are presence signals. Weights sum to 1.0.
+_COMPLETENESS_WEIGHTS: dict[str, float] = {
+    "sections": 0.30,
+    "waterfalls": 0.40,
+    "triggers": 0.15,
+    "tranches": 0.15,
+}
+
+
+def _completeness_score(
+    *,
+    sections_found: list[str],
+    waterfalls: dict,
+    covenants,
+    tranche_structure: list[dict],
+) -> float:
+    """Real extraction-coverage score in ``[0, 1]`` over the assembled content.
+
+    This replaces the old metric (fraction of the four expected section
+    *headers* present), which could read ``1.0`` even when every waterfall
+    section was found but yielded **zero** extracted steps — a model that is
+    structurally empty yet scored "complete". The new score blends four coverage
+    dimensions (weights in :data:`_COMPLETENESS_WEIGHTS`):
+
+    - **sections** — fraction of :data:`_EXPECTED_SECTIONS` found (the old
+      signal, retained but down-weighted).
+    - **waterfalls** — fraction of :data:`_EXPECTED_WATERFALL_TYPES` that
+      actually extracted **≥1 step** (the dimension the old metric missed: this
+      is what makes a header-only-but-empty model score < 1.0).
+    - **triggers** — 1.0 when the covenant extraction produced ≥1 trigger, else
+      0.0 (a deal model with no triggers cannot drive the conditional waterfall).
+    - **tranches** — 1.0 when a non-empty tranche structure was derived, else
+      0.0.
+
+    Parameters
+    ----------
+    sections_found:
+        The section keys the router located (``sections_found`` in the caller).
+    waterfalls:
+        ``{waterfall_type: ExtractedWaterfall}`` — the extractor output (each
+        value exposes ``.steps``).
+    covenants:
+        The ``ExtractedCovenants`` object (exposes ``.triggers``).
+    tranche_structure:
+        The derived tranche list (one dict per note class).
+
+    Returns
+    -------
+    float
+        Weighted coverage in ``[0, 1]``.
+    """
+    # Sections coverage.
+    sections = len([s for s in _EXPECTED_SECTIONS if s in sections_found]) / len(
+        _EXPECTED_SECTIONS
+    )
+
+    # Waterfalls coverage — credit only waterfalls that extracted ≥1 step.
+    def _step_count(wf) -> int:
+        steps = getattr(wf, "steps", None)
+        if steps is None and isinstance(wf, dict):
+            steps = wf.get("steps")
+        return len(steps) if steps else 0
+
+    populated = sum(
+        1
+        for wt in _EXPECTED_WATERFALL_TYPES
+        if wt in waterfalls and _step_count(waterfalls[wt]) > 0
+    )
+    waterfalls_cov = populated / len(_EXPECTED_WATERFALL_TYPES)
+
+    # Trigger presence.
+    triggers = getattr(covenants, "triggers", None) or []
+    triggers_cov = 1.0 if len(triggers) > 0 else 0.0
+
+    # Tranche presence.
+    tranches_cov = 1.0 if tranche_structure else 0.0
+
+    return (
+        _COMPLETENESS_WEIGHTS["sections"] * sections
+        + _COMPLETENESS_WEIGHTS["waterfalls"] * waterfalls_cov
+        + _COMPLETENESS_WEIGHTS["triggers"] * triggers_cov
+        + _COMPLETENESS_WEIGHTS["tranches"] * tranches_cov
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -229,12 +320,22 @@ def extract_deal_model(
         section_map, definitions_graph, force_refresh=force_refresh
     )
 
-    # 6. Compute completeness.
-    completeness = len(
-        [s for s in _EXPECTED_SECTIONS if s in sections_found]
-    ) / len(_EXPECTED_SECTIONS)
+    # 6. Derive the tranche structure (needed both for the model and as a real
+    #    coverage signal for the completeness score).
+    tranche_structure = _extract_tranches(section_map, waterfalls)
 
-    # 7. Assemble.
+    # 7. Compute completeness — a *real* coverage metric over extracted content,
+    #    not merely the fraction of expected section headers present (the old
+    #    metric read 1.0 even when a section header was found but yielded zero
+    #    extracted steps). See ``_completeness_score``.
+    completeness = _completeness_score(
+        sections_found=sections_found,
+        waterfalls=waterfalls,
+        covenants=covenants,
+        tranche_structure=tranche_structure,
+    )
+
+    # 8. Assemble.
     model = DealModel(
         metadata=DealModelMetadata(
             deal_name=deal_name,
@@ -254,11 +355,11 @@ def extract_deal_model(
         },
         waterfalls={k: v.model_dump() for k, v in waterfalls.items()},
         covenants=covenants.model_dump(),
-        tranche_structure=_extract_tranches(section_map, waterfalls),
+        tranche_structure=tranche_structure,
         trigger_names=[t.name for t in covenants.triggers],
     )
 
-    # 8. Cache to disk.
+    # 9. Cache to disk.
     cache_path.parent.mkdir(parents=True, exist_ok=True)
     cache_path.write_text(model.model_dump_json(indent=2), encoding="utf-8")
 
