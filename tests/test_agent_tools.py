@@ -13,6 +13,8 @@ from loanwhiz.agent import SF_TOOL_NODE, SF_TOOLS, list_available_tools
 from loanwhiz.agent.tools import (
     aggregate_collections,
     check_covenants,
+    get_deal_model,
+    list_deal_tapes,
     load_esma_tape,
     run_waterfall,
 )
@@ -512,6 +514,133 @@ def test_aggregate_collections_passes_prev_pool_balance():
 
 
 # ---------------------------------------------------------------------------
+# get_deal_model — reads the cached extracted DealModel (deal grounding)
+# ---------------------------------------------------------------------------
+
+
+def _make_deal_model() -> "object":
+    """Build a minimal valid DealModel for the cache-hit path."""
+    from loanwhiz.extraction.assembler import DealModel, DealModelMetadata
+
+    return DealModel(
+        metadata=DealModelMetadata(
+            deal_name="Green Lion 2026-1 B.V.",
+            prospectus_url="https://example.com/prospectus.pdf",
+            extracted_at="2026-04-30T00:00:00+00:00",
+            extraction_duration_sec=12.3,
+            sections_found=["definitions", "revenue_priority_of_payments"],
+            completeness_score=0.75,
+            cache_path="/tmp/green-lion.json",
+        ),
+        definitions={"Reserve Account Target": {"definition": "1.5% of balance",
+                                                "page_or_section": "§4"}},
+        waterfalls={"revenue": {"steps": []}},
+        covenants={"triggers": [{"name": "cumulative_loss_trigger"}]},
+        tranche_structure=[{"name": "Class A", "size_eur": 1_000_000_000.0,
+                            "rating": "AAA", "rate": "3.62%", "seniority": 1}],
+        trigger_names=["cumulative_loss_trigger"],
+    )
+
+
+def test_get_deal_model_cache_hit_returns_extracted_fields():
+    """On a cache hit the tool surfaces tranches/triggers/waterfalls/definitions."""
+    from loanwhiz.agent import tools as tools_mod
+
+    fake = _make_deal_model()
+    with patch.object(tools_mod, "_read_cached_deal_model", return_value=fake):
+        result = get_deal_model.invoke({"deal_id": "green-lion-2026-1"})
+
+    assert result["extraction_status"] == "cached"
+    assert result["deal_name"] == "Green Lion 2026-1 B.V."
+    assert result["completeness_score"] == 0.75
+    assert result["trigger_names"] == ["cumulative_loss_trigger"]
+    assert result["tranche_structure"][0]["name"] == "Class A"
+    assert "Reserve Account Target" in result["definitions"]
+    assert result["covenants"]["triggers"][0]["name"] == "cumulative_loss_trigger"
+    assert "revenue" in result["waterfalls"]
+
+
+def test_get_deal_model_cache_miss_degrades_without_extraction():
+    """A cache miss returns a not_cached payload and NEVER triggers extraction."""
+    from loanwhiz.agent import tools as tools_mod
+
+    with patch.object(tools_mod, "_read_cached_deal_model", return_value=None) as mock_read, \
+         patch("loanwhiz.extraction.assembler.extract_deal_model") as mock_extract:
+        result = get_deal_model.invoke({"deal_id": "green-lion-2026-1"})
+
+    mock_read.assert_called_once()
+    mock_extract.assert_not_called()  # cold extraction must never run
+    assert result["extraction_status"] == "not_cached"
+    assert result["deal_id"] == "green-lion-2026-1"
+    assert "note" in result
+    assert "list_deal_tapes" in result["note"]
+
+
+def test_get_deal_model_unknown_deal_returns_error():
+    result = get_deal_model.invoke({"deal_id": "no-such-deal"})
+    assert "error" in result
+    assert "green-lion-2026-1" in result["available_deals"]
+
+
+def test_get_deal_model_defaults_to_green_lion():
+    """Called with no deal_id, the tool resolves the default deal."""
+    from loanwhiz.agent import tools as tools_mod
+
+    with patch.object(tools_mod, "_read_cached_deal_model", return_value=None):
+        result = get_deal_model.invoke({})
+    assert result["deal_id"] == "green-lion-2026-1"
+
+
+# ---------------------------------------------------------------------------
+# list_deal_tapes — tape registry access + deal/period selection
+# ---------------------------------------------------------------------------
+
+
+def test_list_deal_tapes_returns_all_27_for_default_deal():
+    """The agent can see all 27 tapes, not just the 3 hardcoded 2026 URLs."""
+    result = list_deal_tapes.invoke({})
+    assert result["deal_id"] == "green-lion-2026-1"
+    assert result["tape_count"] == 27
+    assert len(result["tape_urls"]) == 27
+    # Historical (2024-2025) tapes are now reachable.
+    dates = {t["date"] for t in result["tape_urls"]}
+    assert "2024-01-31" in dates
+    assert "2025-12-31" in dates
+    assert "prospectus_url" in result
+    assert "investor_report_urls" in result
+
+
+def test_list_deal_tapes_period_substring_selects_one_month():
+    result = list_deal_tapes.invoke({"period": "2025-01"})
+    assert result["tape_count"] == 1
+    assert result["period_filter"] == "2025-01"
+    # Exactly one match → a directly-usable selected_url.
+    assert "selected_url" in result
+    assert result["tape_urls"][0]["date"] == "2025-01-31"
+    assert result["selected_url"] == result["tape_urls"][0]["url"]
+
+
+def test_list_deal_tapes_period_year_selects_twelve_months():
+    result = list_deal_tapes.invoke({"period": "2025"})
+    assert result["tape_count"] == 12
+    # Ambiguous (>1 match) → no selected_url.
+    assert "selected_url" not in result
+
+
+def test_list_deal_tapes_missing_period_notes_jan_2026_gap():
+    result = list_deal_tapes.invoke({"period": "2026-01"})
+    assert result["tape_count"] == 0
+    assert "selected_url" not in result
+    assert "note" in result
+
+
+def test_list_deal_tapes_unknown_deal_returns_error():
+    result = list_deal_tapes.invoke({"deal_id": "no-such-deal"})
+    assert "error" in result
+    assert result["available_deals"] == ["green-lion-2026-1"]
+
+
+# ---------------------------------------------------------------------------
 # SF_TOOLS membership and structure
 # ---------------------------------------------------------------------------
 
@@ -523,11 +652,13 @@ def test_sf_tools_has_expected_tools():
         "run_waterfall",
         "check_covenants",
         "aggregate_collections",
+        "get_deal_model",
+        "list_deal_tapes",
     ]
 
 
-def test_sf_tools_has_exactly_four_tools():
-    assert len(SF_TOOLS) == 4
+def test_sf_tools_has_exactly_six_tools():
+    assert len(SF_TOOLS) == 6
 
 
 def test_sf_tool_node_is_tool_node_instance():
@@ -555,7 +686,7 @@ def test_sf_tools_all_have_invoke_method():
 def test_list_available_tools_returns_list_of_dicts():
     result = list_available_tools()
     assert isinstance(result, list)
-    assert len(result) == 4
+    assert len(result) == 6
 
 
 def test_list_available_tools_has_name_and_description():
@@ -605,3 +736,32 @@ def test_agent_init_exports():
     assert SF_TOOLS is not None
     assert SF_TOOL_NODE is not None
     assert callable(list_available_tools)
+
+
+def test_grounding_tools_importable_from_tools_module():
+    """The new grounding tools are importable from loanwhiz.agent.tools."""
+    from loanwhiz.agent.tools import get_deal_model, list_deal_tapes
+
+    assert get_deal_model is not None
+    assert list_deal_tapes is not None
+
+
+# ---------------------------------------------------------------------------
+# System prompt grounding (the regrounded planner prompt)
+# ---------------------------------------------------------------------------
+
+
+def test_system_prompt_is_regrounded():
+    """The prompt must name the new tools and drop the 3 hardcoded tape URLs."""
+    from loanwhiz.agent.planner import SYSTEM_PROMPT
+
+    # New grounding tools are documented.
+    assert "get_deal_model" in SYSTEM_PROMPT
+    assert "list_deal_tapes" in SYSTEM_PROMPT
+    # The previously-hardcoded Feb/Mar/Apr-2026 tape CSV URLs are gone — the
+    # agent must resolve tapes via list_deal_tapes, not memorised URLs.
+    assert "green_lion_202602_1_synthetic_loan_tape.csv" not in SYSTEM_PROMPT
+    assert "green_lion_202603_1_synthetic_loan_tape.csv" not in SYSTEM_PROMPT
+    assert "green_lion_2026_1_synthetic_loan_tape.csv" not in SYSTEM_PROMPT
+    # The agent is told the full history exists (27 tapes incl. 2024-2025).
+    assert "27" in SYSTEM_PROMPT
