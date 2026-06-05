@@ -27,6 +27,7 @@ from loanwhiz.primitives.base import (
     Primitive,
     PrimitiveResult,
 )
+from loanwhiz.primitives.deal_state import DealState
 from loanwhiz.primitives.registry import register_primitive
 
 # ---------------------------------------------------------------------------
@@ -39,6 +40,65 @@ _NEAR_MISS_FLOOR = 80.0  # i.e. within 20% of the threshold
 
 # Clean-up call: optional redemption when pool balance < 10% of original.
 _CLEANUP_CALL_PCT = 10.0  # percent of original pool balance
+
+# ---------------------------------------------------------------------------
+# Metric-vocabulary alias map (the extractor↔monitor mismatch fix)
+# ---------------------------------------------------------------------------
+#
+# The covenant *extractor* (``extraction.covenant_extractor``) emits metric
+# names from Gemini's own vocabulary — ``cumulative_loss_rate_pct``,
+# ``pdl_debit_balance``, ``reserve_fund_balance``, ``pool_balance_fraction``.
+# The monitor's ``_extract_metric`` understands a *different* set of canonical
+# sentinels — ``default_pct``, ``pdl_class_a`` / ``pdl_class_b``,
+# ``reserve_fund_ratio``, ``pool_balance_pct``. Before this map, an extracted
+# trigger whose ``metric`` matched no sentinel fell through to a silent
+# ``0.0`` — so a deal's *own* extracted triggers evaluated against a constant
+# and never fired (the Covenant audit's metric-vocabulary mismatch).
+#
+# This map normalises the extractor vocabulary (and a few common synonyms) onto
+# the canonical sentinels at the single resolution point in ``_extract_metric``.
+# It is the only place the two vocabularies are reconciled; add a row here
+# rather than scattering name handling. Keys are matched case-insensitively.
+_METRIC_ALIASES: dict[str, str] = {
+    # Cumulative / realised loss-rate → the default_pct proxy.
+    "cumulative_loss_rate_pct": "cumulative_loss_rate_pct",
+    "cumulative_net_loss_rate": "cumulative_loss_rate_pct",
+    "cumulative_loss_rate": "cumulative_loss_rate_pct",
+    "net_loss_rate_pct": "cumulative_loss_rate_pct",
+    "loss_rate_pct": "cumulative_loss_rate_pct",
+    # PDL debit balance. The generic extractor name maps to the Class A ledger
+    # (the senior PDL the sequential/PDL trigger keys on); explicit per-class
+    # names map to their own sentinel.
+    "pdl_debit_balance": "pdl_class_a",
+    "pdl_balance": "pdl_class_a",
+    "principal_deficiency_ledger": "pdl_class_a",
+    "class_a_pdl": "pdl_class_a",
+    "class_a_pdl_balance": "pdl_class_a",
+    "class_a_pdl_debit_balance": "pdl_class_a",
+    "class_b_pdl": "pdl_class_b",
+    "class_b_pdl_balance": "pdl_class_b",
+    "class_b_pdl_debit_balance": "pdl_class_b",
+    # Reserve fund → the funded-ratio sentinel.
+    "reserve_fund_balance": "reserve_fund_ratio",
+    "reserve_account_balance": "reserve_fund_ratio",
+    "reserve_fund_amount": "reserve_fund_ratio",
+    "reserve_ratio": "reserve_fund_ratio",
+    # Pool balance as a fraction/factor of original → the pct sentinel.
+    "pool_balance_fraction": "pool_balance_pct",
+    "pool_factor": "pool_balance_pct",
+    "pool_balance_ratio": "pool_balance_pct",
+}
+
+
+def _canonical_metric(metric: str) -> str:
+    """Resolve an extracted/synonym metric name to its canonical sentinel.
+
+    Looks the name up in :data:`_METRIC_ALIASES` (case-insensitively). A name
+    that is already canonical, or that has no alias, is returned unchanged — so
+    period-dict tape metrics (``default_pct`` and friends) and the canonical
+    sentinels pass straight through.
+    """
+    return _METRIC_ALIASES.get(metric.strip().lower(), metric)
 
 
 # ---------------------------------------------------------------------------
@@ -78,25 +138,38 @@ class TriggerStatus(BaseModel):
     Attributes:
         trigger_name:  Name of the trigger (matches ``TriggerDefinition.name``).
         period:        Reporting period identifier (e.g. ``"2026-02-28"``).
-        metric_value:  Observed metric value for this period.
+        metric_value:  Observed metric value for this period. ``None`` when the
+                       metric could not be resolved (``evaluable`` is False).
         threshold:     Threshold at which the trigger fires (mirrors definition).
-        is_triggered:  Whether the trigger is currently breached.
+        is_triggered:  Whether the trigger is currently breached. Always False
+                       when ``evaluable`` is False.
         proximity_pct: How close to the threshold (0–100). 100 = at threshold,
                        > 100 = beyond threshold (triggered). For "above"
                        triggers: ``metric_value / threshold * 100`` when
                        threshold > 0. For "below" triggers:
                        ``threshold / metric_value * 100`` when metric_value > 0.
+                       ``None`` when not evaluable — so an honest "couldn't
+                       measure this" reads differently from a genuine 0.
         direction:     Trend vs prior period: ``"improving"`` | ``"deteriorating"``
                        | ``"stable"`` | ``"n/a"`` (first period or no threshold).
+        evaluable:     ``False`` when the metric could not be resolved (unknown
+                       metric name, missing structural input). A not-evaluable
+                       status is excluded from active/near-miss tallies so the
+                       proximity output stays honest — not-evaluable is NOT 0.
+        not_evaluable_reason: One-line reason when ``evaluable`` is False
+                       (e.g. ``"metric 'foo' not resolvable from period or
+                       structural state"``); ``None`` otherwise.
     """
 
     trigger_name: str
     period: str
-    metric_value: float
+    metric_value: float | None
     threshold: float | None
     is_triggered: bool
-    proximity_pct: float  # 0–100+: 100 = at threshold
+    proximity_pct: float | None  # 0–100+: 100 = at threshold; None = not evaluable
     direction: str  # "improving" | "deteriorating" | "stable" | "n/a"
+    evaluable: bool = True
+    not_evaluable_reason: str | None = None
 
 
 class CovenantInput(BaseInput):
@@ -128,6 +201,54 @@ class CovenantInput(BaseInput):
     reserve_account_balance: float = 0.0
     reserve_account_target: float = 0.0
     original_pool_balance: float = 0.0
+    # Optional per-period canonical structural state (S1's ``DealState``). When
+    # provided — one entry per ``periods`` entry, same order — the monitor reads
+    # the structural metrics (PDL, reserve, cumulative loss, pool factor) from
+    # the matching ``DealState`` for that period instead of the single scalar
+    # fields above. This is what makes PDL/reserve a real, non-flat series
+    # rather than permanently 0 / 100% (the audit's structural-plumbing gap).
+    # When absent the scalar fields are used (backward compatible).
+    period_states: list[DealState] | None = None
+
+    @classmethod
+    def from_deal_states(
+        cls,
+        deal_states: list[DealState],
+        *,
+        periods: list[dict[str, Any]] | None = None,
+        triggers: list[TriggerDefinition] | None = None,
+    ) -> "CovenantInput":
+        """Build a ``CovenantInput`` from a chain of canonical ``DealState``s.
+
+        Convenience constructor for the S6 multi-period path (and tests): the
+        structural metrics for every period come from ``deal_states`` (PDL,
+        reserve, cumulative loss, pool factor), so the resulting proximity
+        series is driven by real state rather than a single scalar snapshot.
+
+        ``periods`` (the ESMA-tape dicts) is optional — when omitted, a minimal
+        period dict carrying the ``reporting_date`` and ``pool_balance_eur`` is
+        synthesised from each ``DealState`` so tape-sourced metrics
+        (``default_pct``) and the clean-up-call pool metric still resolve. The
+        ``original_pool_balance`` denominator is taken from the first state.
+        """
+        if not deal_states:
+            return cls(periods=periods or [], triggers=triggers or [])
+        synthesised: list[dict[str, Any]] = []
+        for st in deal_states:
+            synthesised.append(
+                {
+                    "reporting_date": st.reporting_date,
+                    "pool_balance_eur": st.pool_balance,
+                    "cumulative_loss_rate_pct": st.cumulative_loss_rate_pct,
+                }
+            )
+        resolved_periods = periods if periods is not None else synthesised
+        return cls(
+            periods=resolved_periods,
+            triggers=triggers or [],
+            period_states=list(deal_states),
+            original_pool_balance=deal_states[0].original_pool_balance,
+        )
 
 
 class CovenantOutput(BaseModel):
@@ -140,12 +261,17 @@ class CovenantOutput(BaseModel):
         near_miss_triggers: Names of triggers approaching but not yet at their
                             threshold (``80 <= proximity_pct < 100``) and not
                             yet triggered, in the latest period.
+        unevaluable_triggers: Names of triggers whose metric could not be
+                            resolved in the latest period (``evaluable`` False).
+                            Surfaced separately so the dashboard can show
+                            "couldn't measure" distinctly from "compliant".
         summary:           Plain English compliance summary.
     """
 
     trigger_statuses: list[TriggerStatus]
     active_triggers: list[str]
     near_miss_triggers: list[str]
+    unevaluable_triggers: list[str] = Field(default_factory=list)
     summary: str
 
 
@@ -214,54 +340,91 @@ def _extract_metric(
     period: dict[str, Any],
     metric: str,
     input: CovenantInput,
-) -> float:
-    """Extract the relevant metric value from a period dict or input scalars.
+    state: DealState | None = None,
+) -> float | None:
+    """Resolve a trigger's metric to a value, or ``None`` if not evaluable.
 
-    Special metric sentinels handled:
-    - ``"pdl_class_a"``       → ``input.class_a_pdl_balance``
-    - ``"pdl_class_b"``       → ``input.class_b_pdl_balance``
-    - ``"reserve_fund_ratio"`` → ``input.reserve_account_balance /
-                                   input.reserve_account_target * 100``
-                                   (percent of target; trigger fires below 100)
-    - ``"pool_balance_pct"``  → ``period["pool_balance_eur"] /
-                                   input.original_pool_balance * 100``
-                                   (percent of original; trigger fires below 10)
+    The metric name is first normalised through :func:`_canonical_metric` (the
+    extractor↔monitor alias map) so an extracted name like ``pdl_debit_balance``
+    or ``reserve_fund_balance`` resolves onto the canonical sentinel rather than
+    silently missing.
 
-    For all other metrics the value is read from the period dict as a float.
-    Missing keys default to 0.0.
+    Structural sentinels prefer the per-period ``DealState`` (``state``) when
+    one is supplied — so PDL/reserve/pool are a real per-period series — and
+    fall back to the ``input`` scalar fields otherwise:
+
+    - ``"pdl_class_a"``        → ``state.class_a_pdl`` else ``input.class_a_pdl_balance``
+    - ``"pdl_class_b"``        → ``state.class_b_pdl`` else ``input.class_b_pdl_balance``
+    - ``"reserve_fund_ratio"`` → reserve balance / target * 100 (percent funded)
+    - ``"pool_balance_pct"``   → current pool / original pool * 100
+    - ``"cumulative_loss_rate_pct"`` → ``state.cumulative_loss_rate_pct`` else
+      the value from the period dict (the ``default_pct`` loss proxy).
+
+    Returns ``None`` (NOT ``0.0``) when the metric genuinely cannot be resolved
+    — unknown name, or a structural sentinel with neither a ``DealState`` nor a
+    usable scalar input. The caller turns ``None`` into an honest *not-evaluable*
+    status so "couldn't measure" never masquerades as a healthy 0.
     """
-    if metric == "pdl_class_a":
+    canonical = _canonical_metric(metric)
+
+    if canonical == "pdl_class_a":
+        if state is not None:
+            return float(state.class_a_pdl)
         return float(input.class_a_pdl_balance)
-    if metric == "pdl_class_b":
+    if canonical == "pdl_class_b":
+        if state is not None:
+            return float(state.class_b_pdl)
         return float(input.class_b_pdl_balance)
-    if metric == "reserve_fund_ratio":
+    if canonical == "reserve_fund_ratio":
+        if state is not None:
+            target = float(state.reserve_target)
+            if target == 0.0:
+                return None  # no reserve target known → not evaluable
+            return round(float(state.reserve_balance) / target * 100.0, 4)
         target = float(input.reserve_account_target)
         if target == 0.0:
-            return 100.0  # no target set → assume fully funded
+            return None  # no reserve target supplied → not evaluable (not a fake 100%)
         return round(float(input.reserve_account_balance) / target * 100.0, 4)
-    if metric == "pool_balance_pct":
+    if canonical == "pool_balance_pct":
+        if state is not None:
+            return round(state.pool_factor * 100.0, 4)
         original = float(input.original_pool_balance)
         if original == 0.0:
-            return 100.0  # original unknown → assume well above trigger
-        pool_bal = float(period.get("pool_balance_eur", 0.0))
-        return round(pool_bal / original * 100.0, 4)
+            return None  # original pool unknown → not evaluable
+        pool_bal = period.get("pool_balance_eur")
+        if pool_bal is None:
+            return None
+        return round(float(pool_bal) / original * 100.0, 4)
+    if canonical == "cumulative_loss_rate_pct":
+        if state is not None:
+            return round(state.cumulative_loss_rate_pct, 4)
+        # fall through to the period-dict lookup below (the default_pct proxy)
 
     # Generic tape metric — expected to live in the period dict directly
-    # or nested under "arrears_breakdown".
-    if metric in period:
-        return float(period[metric])
-    arrears = period.get("arrears_breakdown", {})
-    if metric in arrears:
-        return float(arrears[metric])
-    # Try pool_stats dict
-    pool_stats = period.get("pool_stats", {})
-    if metric in pool_stats:
-        return float(pool_stats[metric])
-    return 0.0
+    # or nested under "arrears_breakdown" / "pool_stats". We look up BOTH the
+    # canonical name and the original (pre-alias) name so a tape that uses the
+    # raw extractor vocabulary still resolves.
+    for name in (canonical, metric):
+        if name in period:
+            return float(period[name])
+        arrears = period.get("arrears_breakdown", {})
+        if name in arrears:
+            return float(arrears[name])
+        pool_stats = period.get("pool_stats", {})
+        if name in pool_stats:
+            return float(pool_stats[name])
+    return None
 
 
-def _is_triggered(metric_value: float, threshold: float | None, direction: str) -> bool:
-    """Return True when the trigger condition is met."""
+def _is_triggered(
+    metric_value: float | None, threshold: float | None, direction: str
+) -> bool:
+    """Return True when the trigger condition is met.
+
+    A ``None`` metric (not evaluable) never fires — there is nothing to compare.
+    """
+    if metric_value is None:
+        return False
     if threshold is None:
         # PDL check: any positive (debit) balance fires the trigger.
         return metric_value > 0.0
@@ -269,6 +432,61 @@ def _is_triggered(metric_value: float, threshold: float | None, direction: str) 
         return metric_value > threshold
     else:  # "below"
         return metric_value < threshold
+
+
+def _evaluate_one(
+    trigger: TriggerDefinition,
+    period: dict[str, Any],
+    input: CovenantInput,
+    state: DealState | None,
+    prior_proximity: float | None,
+    period_label: str | None = None,
+) -> TriggerStatus:
+    """Evaluate one trigger against one period of state — the evaluation core.
+
+    Resolves the trigger's metric (alias-normalised, preferring ``state`` for
+    structural sentinels), then computes ``is_triggered`` / ``proximity_pct`` /
+    trend ``direction``. When the metric cannot be resolved the result is an
+    honest *not-evaluable* status (``evaluable=False``, ``metric_value`` and
+    ``proximity_pct`` both ``None``, ``is_triggered=False``) rather than a fake
+    0. This is the single function both :meth:`CovenantMonitor.execute` and the
+    public :func:`evaluate_triggers` (S4's predicate seam) delegate to.
+    """
+    label = period_label if period_label is not None else str(
+        period.get("reporting_date", "unknown")
+    )
+    metric_value = _extract_metric(period, trigger.metric, input, state)
+
+    if metric_value is None:
+        return TriggerStatus(
+            trigger_name=trigger.name,
+            period=label,
+            metric_value=None,
+            threshold=trigger.threshold,
+            is_triggered=False,
+            proximity_pct=None,
+            direction="n/a",
+            evaluable=False,
+            not_evaluable_reason=(
+                f"metric '{trigger.metric}' not resolvable from period data "
+                "or structural state"
+            ),
+        )
+
+    triggered = _is_triggered(metric_value, trigger.threshold, trigger.direction)
+    prox = _compute_proximity(metric_value, trigger.threshold, trigger.direction)
+    dir_label = _compute_direction(prox, prior_proximity)
+    return TriggerStatus(
+        trigger_name=trigger.name,
+        period=label,
+        metric_value=metric_value,
+        threshold=trigger.threshold,
+        is_triggered=triggered,
+        proximity_pct=prox,
+        direction=dir_label,
+        evaluable=True,
+        not_evaluable_reason=None,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -432,62 +650,64 @@ class CovenantMonitor(Primitive[CovenantInput, CovenantOutput]):
         )
 
         all_statuses: list[TriggerStatus] = []
-        # Maps trigger_name → list of proximity_pct values across periods
-        # (in chronological order) for direction computation.
-        proximity_history: dict[str, list[float]] = {t.name: [] for t in triggers}
+        # Maps trigger_name → last evaluable proximity_pct (in chronological
+        # order) for direction computation. A not-evaluable period contributes
+        # no point, so the trend skips over gaps rather than treating them as 0.
+        proximity_history: dict[str, float | None] = {t.name: None for t in triggers}
 
-        for period in input.periods:
+        for idx, period in enumerate(input.periods):
             period_label = str(period.get("reporting_date", "unknown"))
+            state = (
+                input.period_states[idx]
+                if input.period_states is not None and idx < len(input.period_states)
+                else None
+            )
 
             for trigger in triggers:
-                metric_value = _extract_metric(period, trigger.metric, input)
-                triggered = _is_triggered(metric_value, trigger.threshold, trigger.direction)
-
-                prox = _compute_proximity(metric_value, trigger.threshold, trigger.direction)
-
-                history = proximity_history[trigger.name]
-                prior_prox = history[-1] if history else None
-                dir_label = _compute_direction(prox, prior_prox)
-
-                history.append(prox)
-
-                all_statuses.append(
-                    TriggerStatus(
-                        trigger_name=trigger.name,
-                        period=period_label,
-                        metric_value=metric_value,
-                        threshold=trigger.threshold,
-                        is_triggered=triggered,
-                        proximity_pct=prox,
-                        direction=dir_label,
-                    )
+                prior_prox = proximity_history[trigger.name]
+                status = _evaluate_one(
+                    trigger, period, input, state, prior_prox, period_label
                 )
+                if status.evaluable:
+                    proximity_history[trigger.name] = status.proximity_pct
+                all_statuses.append(status)
 
-        # Latest-period summary: determine active and near-miss triggers.
+        # Latest-period summary: determine active, near-miss, and not-evaluable
+        # triggers. Not-evaluable triggers are kept OUT of active/near-miss so
+        # the proximity output stays honest.
         active_triggers: list[str] = []
         near_miss_triggers: list[str] = []
+        unevaluable_triggers: list[str] = []
 
         if input.periods:
             latest_label = str(input.periods[-1].get("reporting_date", "unknown"))
             for status in all_statuses:
                 if status.period != latest_label:
                     continue
-                if status.is_triggered:
+                if not status.evaluable:
+                    unevaluable_triggers.append(status.trigger_name)
+                elif status.is_triggered:
                     active_triggers.append(status.trigger_name)
                 elif (
                     status.threshold is not None
+                    and status.proximity_pct is not None
                     and _NEAR_MISS_FLOOR <= status.proximity_pct < 100.0
                 ):
                     near_miss_triggers.append(status.trigger_name)
 
         summary = _build_summary(
-            active_triggers, near_miss_triggers, len(input.periods), triggers
+            active_triggers,
+            near_miss_triggers,
+            unevaluable_triggers,
+            len(input.periods),
+            triggers,
         )
 
         output = CovenantOutput(
             trigger_statuses=all_statuses,
             active_triggers=active_triggers,
             near_miss_triggers=near_miss_triggers,
+            unevaluable_triggers=unevaluable_triggers,
             summary=summary,
         )
 
@@ -517,17 +737,30 @@ class CovenantMonitor(Primitive[CovenantInput, CovenantOutput]):
 def _build_summary(
     active: list[str],
     near_miss: list[str],
+    unevaluable: list[str],
     n_periods: int,
     triggers: list[TriggerDefinition],
 ) -> str:
-    """Build a plain-English compliance summary."""
+    """Build a plain-English compliance summary.
+
+    Not-evaluable triggers are reported separately (and never folded into the
+    "all clear" count) so the summary distinguishes "compliant" from "couldn't
+    measure".
+    """
     n_triggers = len(triggers)
     period_word = "period" if n_periods == 1 else "periods"
 
+    unevaluable_clause = ""
+    if unevaluable:
+        joined = ", ".join(f"'{t}'" for t in unevaluable)
+        unevaluable_clause = f" NOT EVALUABLE (metric unresolved): {joined}."
+
     if not active and not near_miss:
+        n_clear = n_triggers - len(unevaluable)
         return (
-            f"All {n_triggers} covenant triggers are within compliance across "
-            f"{n_periods} reporting {period_word}. No breaches or near-misses detected."
+            f"{n_clear} of {n_triggers} covenant triggers are within compliance "
+            f"across {n_periods} reporting {period_word}. No breaches or "
+            f"near-misses detected.{unevaluable_clause}"
         )
 
     parts: list[str] = []
@@ -542,4 +775,116 @@ def _build_summary(
         f"Covenant compliance across {n_periods} reporting {period_word} — "
         + "; ".join(parts)
         + "."
+        + unevaluable_clause
     )
+
+
+# ---------------------------------------------------------------------------
+# Predicate interface — the seam S4 (#184, the waterfall interpreter) consumes
+# ---------------------------------------------------------------------------
+
+
+class TriggerEvaluation(BaseModel):
+    """Trigger state for one ``DealState``, keyed by trigger name.
+
+    This is the **predicate interface** the waterfall interpreter (S4 / #184)
+    calls to gate conditional waterfall steps: a step whose free-text
+    ``condition`` references a named trigger (e.g. "if Sequential Pay Trigger is
+    in effect") resolves to a boolean via :meth:`is_triggered`. S5 produces this
+    state; S4 consumes it.
+
+    Attributes:
+        period:    The reporting date / period label evaluated.
+        statuses:  ``{trigger_name: TriggerStatus}`` for every trigger.
+    """
+
+    period: str
+    statuses: dict[str, TriggerStatus]
+
+    def is_triggered(self, trigger_name: str) -> bool:
+        """Whether ``trigger_name`` is currently breached.
+
+        Returns ``False`` for an unknown trigger name and for a not-evaluable
+        trigger (a step gated on a trigger we couldn't measure does not fire —
+        the caller can additionally consult :meth:`evaluable` to branch on the
+        not-evaluable case explicitly).
+        """
+        status = self.statuses.get(trigger_name)
+        return bool(status and status.evaluable and status.is_triggered)
+
+    def evaluable(self, trigger_name: str) -> bool:
+        """Whether ``trigger_name`` could be evaluated (metric resolved)."""
+        status = self.statuses.get(trigger_name)
+        return bool(status and status.evaluable)
+
+    @property
+    def active(self) -> list[str]:
+        """Names of all currently-breached, evaluable triggers."""
+        return [
+            name
+            for name, st in self.statuses.items()
+            if st.evaluable and st.is_triggered
+        ]
+
+
+def evaluate_triggers(
+    deal_state: DealState,
+    triggers: list[TriggerDefinition] | None = None,
+    *,
+    period: dict[str, Any] | None = None,
+) -> TriggerEvaluation:
+    """Evaluate triggers as predicates over a single canonical ``DealState``.
+
+    The clean entry point for callers that hold one ``DealState`` and want
+    per-trigger truth — principally S4 (#184), which gates conditional waterfall
+    steps on named triggers. Structural metrics (PDL, reserve, cumulative loss,
+    pool factor) are read directly from ``deal_state``; the tape-sourced loss
+    proxy (``default_pct``) is read from ``period`` when one is supplied.
+
+    Parameters
+    ----------
+    deal_state:
+        The period's canonical structural state.
+    triggers:
+        Trigger definitions to evaluate. Defaults to
+        :data:`CovenantMonitor.DEFAULT_TRIGGERS` when ``None``.
+    period:
+        Optional ESMA-tape period dict for tape-only metrics (e.g.
+        ``default_pct``). A minimal dict is synthesised from ``deal_state`` when
+        omitted (carrying ``reporting_date``, ``pool_balance_eur`` and the
+        state's ``cumulative_loss_rate_pct``).
+
+    Returns
+    -------
+    TriggerEvaluation
+        Per-trigger :class:`TriggerStatus` keyed by name, plus the
+        ``is_triggered`` / ``evaluable`` predicates S4 consumes.
+    """
+    resolved_triggers = (
+        triggers if triggers is not None else CovenantMonitor.DEFAULT_TRIGGERS
+    )
+    resolved_period = period if period is not None else {
+        "reporting_date": deal_state.reporting_date,
+        "pool_balance_eur": deal_state.pool_balance,
+        "cumulative_loss_rate_pct": deal_state.cumulative_loss_rate_pct,
+    }
+    # A single-state evaluation has no prior period, so direction is "n/a" and
+    # the structural metrics come from the state. The scalar-field fallbacks on
+    # the synthesised input are never reached because ``state`` is non-None.
+    eval_input = CovenantInput(
+        periods=[resolved_period],
+        triggers=resolved_triggers,
+        period_states=[deal_state],
+        original_pool_balance=deal_state.original_pool_balance,
+    )
+    statuses = {
+        trigger.name: _evaluate_one(
+            trigger,
+            resolved_period,
+            eval_input,
+            deal_state,
+            prior_proximity=None,
+        )
+        for trigger in resolved_triggers
+    }
+    return TriggerEvaluation(period=deal_state.reporting_date, statuses=statuses)

@@ -25,6 +25,16 @@ from loanwhiz.primitives.base import (
     PrimitiveMetadata,
     PrimitiveResult,
 )
+from loanwhiz.primitives.covenant_monitor import (
+    CovenantInput,
+    CovenantMonitor,
+    CovenantOutput,
+    TriggerDefinition,
+    TriggerEvaluation,
+    TriggerStatus,
+    evaluate_triggers,
+)
+from loanwhiz.primitives.deal_state import DealState
 from loanwhiz.primitives.esma_tape_normaliser import (
     EsmaTapeInput,
     EsmaTapeNormaliser,
@@ -36,6 +46,10 @@ __all__ = [
     "AuditEntry",
     "BaseInput",
     "Citation",
+    "CovenantInput",
+    "CovenantMonitor",
+    "CovenantOutput",
+    "DealState",
     "EsmaTapeInput",
     "EsmaTapeNormaliser",
     "EsmaTapeOutput",
@@ -43,5 +57,9 @@ __all__ = [
     "PrimitiveMetadata",
     "PrimitiveResult",
     "PRIMITIVE_REGISTRY",
+    "TriggerDefinition",
+    "TriggerEvaluation",
+    "TriggerStatus",
+    "evaluate_triggers",
     "register_primitive",
 ]

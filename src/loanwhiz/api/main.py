@@ -50,6 +50,7 @@ from loanwhiz.primitives.covenant_monitor import (
     CovenantMonitor,
     TriggerDefinition,
 )
+from loanwhiz.primitives.deal_state import DealState
 from loanwhiz.primitives.esma_tape_normaliser import (
     EsmaTapeInput,
     EsmaTapeNormaliser,
@@ -429,12 +430,37 @@ def deal_compliance(deal_id: str) -> dict:
     original_pool_balance = deal.get(
         "original_pool_balance", _GREEN_LION_ORIGINAL_POOL_BALANCE
     )
+
+    # Seed a period-0 ``DealState`` from the deal's resolved structural figures
+    # so the monitor reads REAL structural metrics (PDL, reserve) instead of the
+    # silent scalar defaults (which left PDL permanently 0 and reserve a fake
+    # 100% — the audit's structural-plumbing gap). The seed is the prospectus
+    # opening: PDLs 0, reserve funded at target. Capital structure and reserve
+    # target resolve from the deal context with the Green Lion defaults, exactly
+    # like ``deal_waterfall`` — no registry-schema migration.
+    cap = deal.get("capital_structure", _GREEN_LION_CAPITAL_STRUCTURE)
+    reserve_target = deal.get("reserve_account_target", _GREEN_LION_RESERVE_TARGET)
+    opening_state = DealState.seed_from_prospectus(
+        cap,
+        reserve_target=reserve_target,
+        original_pool_balance=original_pool_balance,
+        reporting_date=(
+            str(periods[0].get("reporting_date", "unknown")) if periods else "unknown"
+        ),
+    )
+
     monitor = CovenantMonitor()
     result = monitor.execute(
         CovenantInput(
             periods=periods,
             triggers=triggers,
             original_pool_balance=original_pool_balance,
+            # Structural metrics from the seeded opening state — honest opening
+            # values (PDL 0, reserve at target) rather than faked defaults.
+            class_a_pdl_balance=opening_state.class_a_pdl,
+            class_b_pdl_balance=opening_state.class_b_pdl,
+            reserve_account_balance=opening_state.reserve_balance,
+            reserve_account_target=opening_state.reserve_target,
         )
     )
     return result.output.model_dump()
@@ -480,6 +506,14 @@ _GREEN_LION_CAPITAL_STRUCTURE = {
     "class_b_balance": _GREEN_LION_CLASS_B_BALANCE,
     "class_c_balance": _GREEN_LION_CLASS_C_BALANCE,
 }
+
+# Green Lion 2026-1 reserve account target (EUR) — the reserve opens funded at
+# this level (mirrors ``_GREEN_LION_PROJECTION_BASE``). A deal may carry its own
+# ``reserve_account_target`` in the registry; ``deal_compliance`` resolves it
+# from the deal and falls back to this default so the seeded ``DealState`` has a
+# real reserve target (and the reserve trigger is honestly evaluable) without a
+# registry-schema migration.
+_GREEN_LION_RESERVE_TARGET = 10_636_000.0
 
 
 class WaterfallStepModel(BaseModel):

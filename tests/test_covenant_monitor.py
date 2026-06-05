@@ -718,11 +718,12 @@ class TestExtractMetric:
         val = _extract_metric(period, "pool_balance_pct", inp)
         assert val == pytest.approx(10.0)
 
-    def test_missing_key_defaults_to_zero(self) -> None:
+    def test_missing_key_returns_none_not_zero(self) -> None:
+        # Honest not-evaluable: an unresolvable metric is None, never a fake 0.
         period: dict = {}
         inp = CovenantInput(periods=[period])
         val = _extract_metric(period, "nonexistent_metric", inp)
-        assert val == 0.0
+        assert val is None
 
 
 # ---------------------------------------------------------------------------
