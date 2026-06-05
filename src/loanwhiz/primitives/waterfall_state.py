@@ -1,5 +1,21 @@
 """Stateful multi-period waterfall runner — PDL and reserve tracking.
 
+.. deprecated:: S6 (#186)
+    ``MultiPeriodWaterfallRunner`` is **superseded** by
+    ``loanwhiz.primitives.period_state_machine`` — the canonical
+    ``DealState``-based period-by-period state machine (the S6 integrator that
+    threads S1's ``DealState`` opening→closing across periods, gated by the S5
+    trigger engine). This module carries forward only the thin three-scalar
+    ``WaterfallState`` (Class A/B PDL + reserve) and never reads the full
+    canonical state; it was the never-wired "dead state machine" called out in
+    ``docs/spike-S0-ground-truth-consistency.md`` and ``MODELING-GAPS.md``.
+
+    It is left in place **only** because the API (``loanwhiz.api.main``) still
+    imports it; rewiring those call sites onto ``period_state_machine`` is S9's
+    job (endpoint wiring). Do not build new multi-period logic on this runner —
+    use ``period_state_machine.reconstruct_period_series`` instead. There must
+    be exactly one live multi-period state machine, and that is the new one.
+
 Extends the single-period ``WaterfallRunner`` with a ``WaterfallState``
 object that carries forward:
 
