@@ -23,13 +23,52 @@ from loanwhiz.primitives.covenant_monitor import (
     CovenantMonitor,
     CovenantOutput,
     TriggerDefinition,
+    TriggerEvaluation,
     TriggerStatus,
+    _canonical_metric,
     _compute_direction,
     _compute_proximity,
     _extract_metric,
     _is_triggered,
+    evaluate_triggers,
 )
+from loanwhiz.primitives.deal_state import DealState
 from loanwhiz.primitives.registry import PRIMITIVE_REGISTRY
+
+
+# ---------------------------------------------------------------------------
+# Shared DealState helper for the predicate-over-DealState tests
+# ---------------------------------------------------------------------------
+
+
+def _deal_state(
+    reporting_date: str = "2026-04-30",
+    *,
+    class_a_pdl: float = 0.0,
+    class_b_pdl: float = 0.0,
+    reserve_balance: float = 10_000_000.0,
+    reserve_target: float = 10_000_000.0,
+    cumulative_losses: float = 0.0,
+    pool_balance: float = 1_000_000_000.0,
+    original_pool_balance: float = 1_000_000_000.0,
+    period_index: int = 0,
+) -> DealState:
+    """Build a DealState directly (bypassing the seed) for trigger tests."""
+    return DealState(
+        reporting_date=reporting_date,
+        period_index=period_index,
+        class_a_balance=1_000_000_000.0,
+        class_b_balance=53_100_000.0,
+        class_c_balance=10_500_000.0,
+        class_a_pdl=class_a_pdl,
+        class_b_pdl=class_b_pdl,
+        reserve_balance=reserve_balance,
+        reserve_target=reserve_target,
+        cumulative_losses=cumulative_losses,
+        pool_balance=pool_balance,
+        pool_factor=pool_balance / original_pool_balance,
+        original_pool_balance=original_pool_balance,
+    )
 
 # ---------------------------------------------------------------------------
 # Shared fixtures and synthetic period helpers
@@ -754,3 +793,315 @@ class TestIsTriggered:
 
     def test_none_threshold_not_fires_on_zero(self) -> None:
         assert _is_triggered(0.0, None, "above") is False
+
+
+# ---------------------------------------------------------------------------
+# 15 — Metric-vocabulary alias resolution (the extractor↔monitor mismatch fix)
+# ---------------------------------------------------------------------------
+
+
+class TestMetricAliasResolution:
+    """Extractor vocabulary must resolve onto the canonical monitor sentinels."""
+
+    def test_canonical_metric_passthrough(self) -> None:
+        # Already-canonical sentinels are unchanged.
+        assert _canonical_metric("pdl_class_a") == "pdl_class_a"
+        assert _canonical_metric("reserve_fund_ratio") == "reserve_fund_ratio"
+        # An unknown/unaliased name passes through verbatim.
+        assert _canonical_metric("some_tape_field") == "some_tape_field"
+
+    def test_default_pct_canonicalises_to_loss_rate(self) -> None:
+        # The sequential-pay proxy resolves to the structural loss rate, so a
+        # DealState drives it; the period-dict default_pct still resolves via
+        # the dual-name lookup in _extract_metric.
+        assert _canonical_metric("default_pct") == "cumulative_loss_rate_pct"
+
+    @pytest.mark.parametrize(
+        "extracted, canonical",
+        [
+            ("pdl_debit_balance", "pdl_class_a"),
+            ("class_b_pdl_balance", "pdl_class_b"),
+            ("reserve_fund_balance", "reserve_fund_ratio"),
+            ("pool_balance_fraction", "pool_balance_pct"),
+            ("pool_factor", "pool_balance_pct"),
+            ("cumulative_loss_rate_pct", "cumulative_loss_rate_pct"),
+            ("cumulative_net_loss_rate", "cumulative_loss_rate_pct"),
+        ],
+    )
+    def test_alias_maps_extractor_to_sentinel(self, extracted, canonical) -> None:
+        assert _canonical_metric(extracted) == canonical
+
+    def test_alias_is_case_insensitive(self) -> None:
+        assert _canonical_metric("PDL_Debit_Balance") == "pdl_class_a"
+
+    def test_extracted_pdl_metric_resolves_not_silent_zero(self) -> None:
+        """An extracted ``pdl_debit_balance`` metric reads the structural state."""
+        state = _deal_state(class_a_pdl=250_000.0)
+        val = _extract_metric({}, "pdl_debit_balance", CovenantInput(periods=[{}]), state)
+        assert val == pytest.approx(250_000.0)
+
+    def test_extracted_reserve_metric_resolves(self) -> None:
+        state = _deal_state(reserve_balance=8_000_000.0, reserve_target=10_000_000.0)
+        val = _extract_metric(
+            {}, "reserve_fund_balance", CovenantInput(periods=[{}]), state
+        )
+        assert val == pytest.approx(80.0)
+
+    def test_extracted_trigger_with_aliased_metric_fires(self) -> None:
+        """End-to-end: an extracted trigger whose metric is the extractor name
+        evaluates against real state rather than a silent 0.0."""
+        trigger = TriggerDefinition(
+            name="class_a_pdl_trigger",
+            description="Class A PDL debit.",
+            metric="pdl_debit_balance",  # extractor vocabulary, not a sentinel
+            threshold=None,
+            direction="above",
+            consequence="PDL cure.",
+            citation=Citation(document="P", page_or_row="5.3", excerpt="PDL"),
+        )
+        state = _deal_state(class_a_pdl=100_000.0)
+        monitor = CovenantMonitor()
+        result = monitor.execute(
+            CovenantInput(
+                periods=[{"reporting_date": "2026-04-30"}],
+                triggers=[trigger],
+                period_states=[state],
+            )
+        )
+        assert "class_a_pdl_trigger" in result.output.active_triggers
+
+
+# ---------------------------------------------------------------------------
+# 16 — Not-evaluable distinguished from a genuine 0
+# ---------------------------------------------------------------------------
+
+
+class TestNotEvaluable:
+    """An unresolvable metric is honestly not-evaluable, never a fake 0."""
+
+    def test_unknown_metric_marked_not_evaluable(self) -> None:
+        trigger = TriggerDefinition(
+            name="mystery",
+            description="Unknown metric.",
+            metric="totally_unknown_metric",
+            threshold=5.0,
+            direction="above",
+            consequence="?",
+            citation=Citation(document="P", page_or_row="x", excerpt="x"),
+        )
+        monitor = CovenantMonitor()
+        result = monitor.execute(
+            CovenantInput(periods=[{"reporting_date": "2026-04-30"}], triggers=[trigger])
+        )
+        status = result.output.trigger_statuses[0]
+        assert status.evaluable is False
+        assert status.metric_value is None
+        assert status.proximity_pct is None
+        assert status.is_triggered is False
+        assert status.not_evaluable_reason is not None
+
+    def test_not_evaluable_excluded_from_active_and_near_miss(self) -> None:
+        trigger = TriggerDefinition(
+            name="mystery",
+            description="Unknown metric.",
+            metric="totally_unknown_metric",
+            threshold=5.0,
+            direction="above",
+            consequence="?",
+            citation=Citation(document="P", page_or_row="x", excerpt="x"),
+        )
+        monitor = CovenantMonitor()
+        result = monitor.execute(
+            CovenantInput(periods=[{"reporting_date": "2026-04-30"}], triggers=[trigger])
+        )
+        assert "mystery" not in result.output.active_triggers
+        assert "mystery" not in result.output.near_miss_triggers
+        assert "mystery" in result.output.unevaluable_triggers
+
+    def test_reserve_with_no_target_is_not_evaluable_not_fake_100(self) -> None:
+        """The old code returned a fake 100% when no target was set; now None."""
+        val = _extract_metric(
+            {}, "reserve_fund_ratio", CovenantInput(periods=[{}])
+        )
+        assert val is None
+
+    def test_summary_distinguishes_not_evaluable_from_compliant(self) -> None:
+        trigger = TriggerDefinition(
+            name="mystery",
+            description="Unknown metric.",
+            metric="totally_unknown_metric",
+            threshold=5.0,
+            direction="above",
+            consequence="?",
+            citation=Citation(document="P", page_or_row="x", excerpt="x"),
+        )
+        monitor = CovenantMonitor()
+        result = monitor.execute(
+            CovenantInput(periods=[{"reporting_date": "2026-04-30"}], triggers=[trigger])
+        )
+        assert "not evaluable" in result.output.summary.lower()
+
+
+# ---------------------------------------------------------------------------
+# 17 — Each trigger as a predicate over DealState
+# ---------------------------------------------------------------------------
+
+
+class TestTriggersOverDealState:
+    """Sequential-pay/loss, PDL A/B, reserve, clean-up evaluated over DealState."""
+
+    def test_class_a_pdl_fires_from_state(self) -> None:
+        state = _deal_state(class_a_pdl=50_000.0)
+        ev = evaluate_triggers(state)
+        assert ev.is_triggered("pdl_class_a")
+
+    def test_class_a_pdl_clean_when_zero(self) -> None:
+        ev = evaluate_triggers(_deal_state(class_a_pdl=0.0))
+        assert not ev.is_triggered("pdl_class_a")
+
+    def test_class_b_pdl_fires_from_state(self) -> None:
+        ev = evaluate_triggers(_deal_state(class_b_pdl=25_000.0))
+        assert ev.is_triggered("pdl_class_b")
+
+    def test_reserve_fund_fires_below_target(self) -> None:
+        state = _deal_state(reserve_balance=8_000_000.0, reserve_target=10_000_000.0)
+        ev = evaluate_triggers(state)
+        assert ev.is_triggered("reserve_fund_trigger")
+
+    def test_reserve_fund_clean_at_target(self) -> None:
+        state = _deal_state(reserve_balance=10_000_000.0, reserve_target=10_000_000.0)
+        ev = evaluate_triggers(state)
+        assert not ev.is_triggered("reserve_fund_trigger")
+
+    def test_clean_up_call_fires_below_10pct(self) -> None:
+        state = _deal_state(pool_balance=80_000_000.0, original_pool_balance=1_000_000_000.0)
+        ev = evaluate_triggers(state)
+        assert ev.is_triggered("clean_up_call")
+
+    def test_clean_up_call_clean_above_10pct(self) -> None:
+        state = _deal_state(pool_balance=900_000_000.0, original_pool_balance=1_000_000_000.0)
+        ev = evaluate_triggers(state)
+        assert not ev.is_triggered("clean_up_call")
+
+    def test_cumulative_loss_sequential_pay_fires_from_state(self) -> None:
+        # 2% cumulative loss rate > 1.5% threshold → sequential-pay trigger.
+        state = _deal_state(
+            cumulative_losses=20_000_000.0, original_pool_balance=1_000_000_000.0
+        )
+        ev = evaluate_triggers(state)
+        assert ev.is_triggered("cumulative_loss_trigger")
+
+    def test_cumulative_loss_clean_below_threshold(self) -> None:
+        state = _deal_state(
+            cumulative_losses=5_000_000.0, original_pool_balance=1_000_000_000.0
+        )
+        ev = evaluate_triggers(state)
+        assert not ev.is_triggered("cumulative_loss_trigger")
+
+
+# ---------------------------------------------------------------------------
+# 18 — Predicate interface (the S4 seam)
+# ---------------------------------------------------------------------------
+
+
+class TestTriggerEvaluationInterface:
+    """evaluate_triggers / TriggerEvaluation — the interface S4 (#184) consumes."""
+
+    def test_returns_status_per_trigger_keyed_by_name(self) -> None:
+        ev = evaluate_triggers(_deal_state())
+        assert isinstance(ev, TriggerEvaluation)
+        names = {t.name for t in CovenantMonitor.DEFAULT_TRIGGERS}
+        assert set(ev.statuses.keys()) == names
+
+    def test_is_triggered_unknown_name_is_false(self) -> None:
+        ev = evaluate_triggers(_deal_state())
+        assert ev.is_triggered("no_such_trigger") is False
+
+    def test_evaluable_predicate(self) -> None:
+        ev = evaluate_triggers(_deal_state())
+        assert ev.evaluable("pdl_class_a") is True
+
+    def test_active_lists_only_breached_evaluable(self) -> None:
+        state = _deal_state(class_a_pdl=10_000.0)
+        ev = evaluate_triggers(state)
+        assert "pdl_class_a" in ev.active
+        assert "reserve_fund_trigger" not in ev.active
+
+    def test_custom_triggers_respected(self) -> None:
+        custom = TriggerDefinition(
+            name="only_one",
+            description="x",
+            metric="pdl_class_a",
+            threshold=None,
+            direction="above",
+            consequence="x",
+            citation=Citation(document="P", page_or_row="x", excerpt="x"),
+        )
+        ev = evaluate_triggers(_deal_state(class_a_pdl=1.0), triggers=[custom])
+        assert set(ev.statuses.keys()) == {"only_one"}
+        assert ev.is_triggered("only_one")
+
+
+# ---------------------------------------------------------------------------
+# 19 — Non-flat proximity series from per-period DealState
+# ---------------------------------------------------------------------------
+
+
+class TestNonFlatProximitySeries:
+    """Per-period DealStates produce a real, moving proximity series."""
+
+    def test_reserve_proximity_is_not_flat(self) -> None:
+        # Reserve draws down over three periods: 100% → 90% → 80% funded.
+        states = [
+            _deal_state("2026-02-28", reserve_balance=10_000_000.0, reserve_target=10_000_000.0, period_index=0),
+            _deal_state("2026-03-31", reserve_balance=9_000_000.0, reserve_target=10_000_000.0, period_index=1),
+            _deal_state("2026-04-30", reserve_balance=8_000_000.0, reserve_target=10_000_000.0, period_index=2),
+        ]
+        periods = [{"reporting_date": s.reporting_date} for s in states]
+        monitor = CovenantMonitor()
+        result = monitor.execute(
+            CovenantInput(periods=periods, period_states=states)
+        )
+        reserve_series = [
+            s.proximity_pct
+            for s in result.output.trigger_statuses
+            if s.trigger_name == "reserve_fund_trigger"
+        ]
+        # Three distinct values — not a flat line.
+        assert len(reserve_series) == 3
+        assert len(set(reserve_series)) == 3
+        # Deteriorating: proximity rises as the reserve drains toward breach.
+        assert reserve_series[0] < reserve_series[1] < reserve_series[2]
+
+    def test_pdl_proximity_moves_with_state(self) -> None:
+        states = [
+            _deal_state("2026-02-28", class_a_pdl=0.0, period_index=0),
+            _deal_state("2026-03-31", class_a_pdl=100_000.0, period_index=1),
+        ]
+        periods = [{"reporting_date": s.reporting_date} for s in states]
+        monitor = CovenantMonitor()
+        result = monitor.execute(CovenantInput(periods=periods, period_states=states))
+        pdl_statuses = [
+            s for s in result.output.trigger_statuses if s.trigger_name == "pdl_class_a"
+        ]
+        # First period clean, second period breached — real movement.
+        assert pdl_statuses[0].is_triggered is False
+        assert pdl_statuses[1].is_triggered is True
+
+    def test_from_deal_states_constructor(self) -> None:
+        states = [
+            _deal_state("2026-02-28", cumulative_losses=0.0, period_index=0),
+            _deal_state("2026-03-31", cumulative_losses=20_000_000.0, period_index=1),
+        ]
+        inp = CovenantInput.from_deal_states(states)
+        assert inp.period_states is not None
+        assert len(inp.periods) == 2
+        assert inp.original_pool_balance == 1_000_000_000.0
+        monitor = CovenantMonitor()
+        result = monitor.execute(inp)
+        loss_statuses = [
+            s for s in result.output.trigger_statuses
+            if s.trigger_name == "cumulative_loss_trigger"
+        ]
+        assert loss_statuses[0].is_triggered is False
+        assert loss_statuses[1].is_triggered is True

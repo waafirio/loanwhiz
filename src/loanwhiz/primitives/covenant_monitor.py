@@ -60,7 +60,13 @@ _CLEANUP_CALL_PCT = 10.0  # percent of original pool balance
 # It is the only place the two vocabularies are reconciled; add a row here
 # rather than scattering name handling. Keys are matched case-insensitively.
 _METRIC_ALIASES: dict[str, str] = {
-    # Cumulative / realised loss-rate → the default_pct proxy.
+    # Cumulative / realised loss-rate. ``default_pct`` is the tape-arrears proxy
+    # the default sequential-pay trigger keys on; it canonicalises to the
+    # structural loss-rate so that — when a ``DealState`` is present — the
+    # trigger reads ``DealState.cumulative_loss_rate_pct`` (the real realised
+    # loss rate), and otherwise falls back to the period dict's own
+    # ``default_pct`` key (handled by the dual-name lookup in ``_extract_metric``).
+    "default_pct": "cumulative_loss_rate_pct",
     "cumulative_loss_rate_pct": "cumulative_loss_rate_pct",
     "cumulative_net_loss_rate": "cumulative_loss_rate_pct",
     "cumulative_loss_rate": "cumulative_loss_rate_pct",
