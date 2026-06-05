@@ -1,10 +1,10 @@
 ---
 id: 2026-06-05-model-builder-spine
 title: model-builder-spine
-status: decomposed   # draft → decomposed → filed
+status: filed        # draft → decomposed → filed
 created: 2026-06-05
 updated: 2026-06-05
-epics: []            # umbrella issue numbers, filled in phase 4
+epics: [179]         # umbrella issue numbers, filled in phase 4
 ---
 
 # model-builder-spine
@@ -175,4 +175,14 @@ Forward projection is explicitly a separate fast-follow epic, not here.
 
 ## Filed issues
 
-<Filled in phase 4 — the artifact↔issue link.>
+- Epic "Provably-correct deal model-builder (the spine)" → umbrella **#179**
+  - #180 S0 — Ground-truth consistency spike (GATE)
+  - #181 S1 — Canonical DealState + period-transition schema (after #180)
+  - #182 S2 — Investor-report ingestion → ground-truth ledger (after #181)
+  - #183 S3 — Collections & loss engine from the tape (after #181)
+  - #184 S4 — Model-driven waterfall interpreter (after #181)
+  - #185 S5 — Trigger/covenant evaluation engine (after #181)
+  - #186 S6 — Period-by-period state machine (after #182–#185)
+  - #187 S7 — Reconciliation harness (after #186)
+  - #188 S8 — Comprehensiveness invariants (after #186)
+  - #189 S9 — Unify endpoints on the one ledger (after #186)
