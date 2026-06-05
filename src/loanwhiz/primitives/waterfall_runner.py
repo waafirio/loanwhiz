@@ -374,9 +374,14 @@ class WaterfallRunner(Primitive[WaterfallInput, WaterfallOutput]):
         # B can receive principal under pro-rata instead of Class A always
         # taking 100%. Step (d) sweeps the residual.
 
+        # Green Lion's redemption waterfall repays only Class A and Class B from
+        # principal (Class C is redeemed from revenue, step (j)); restrict the
+        # sequential-pay allocation to the classes that actually have a
+        # redemption step so the residual (step (d)) is correct.
         principal_alloc = allocate_principal(
             funds,
             available=input.available_principal_funds,
+            classes=("class_a", "class_b"),
             evaluator=evaluator,
         )
         red_execution = interpret(
@@ -387,7 +392,6 @@ class WaterfallRunner(Primitive[WaterfallInput, WaterfallOutput]):
             need_overrides={
                 "class_a_principal": principal_alloc["class_a"],
                 "class_b_principal": principal_alloc["class_b"],
-                "class_c_principal": principal_alloc["class_c"],
             },
         )
         red_steps = _to_output_steps(red_execution)

@@ -292,6 +292,29 @@ class TestSequentialPayBranch:
         assert seq["class_b"] == pytest.approx(0.0)
         assert pro["class_b"] > 0.0
 
+    def test_classes_restriction_excludes_unlisted_class(self):
+        """Restricting `classes` keeps principal off classes with no redemption step.
+
+        Green Lion repays only Class A/B from principal (Class C from revenue);
+        the runner restricts the allocation accordingly so the residual is
+        correct and Class C principal is not silently lost.
+        """
+        funds = _funds(
+            class_a_balance=2_000_000.0,
+            class_b_balance=3_000_000.0,
+            class_c_balance=1_000_000.0,
+            sequential_pay=True,
+        )
+        alloc = allocate_principal(
+            funds, available=10_000_000.0, classes=("class_a", "class_b")
+        )
+        assert alloc["class_a"] == pytest.approx(2_000_000.0)
+        assert alloc["class_b"] == pytest.approx(3_000_000.0)
+        # Class C has no allocation key — it is excluded entirely.
+        assert "class_c" not in alloc
+        # Only €5M allocated; the remaining €5M is the caller's residual.
+        assert sum(alloc.values()) == pytest.approx(5_000_000.0)
+
     def test_allocation_capped_at_balance(self):
         """No class is repaid more than its outstanding balance."""
         funds = _funds(
