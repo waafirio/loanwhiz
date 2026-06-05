@@ -1,7 +1,7 @@
 ---
 id: 2026-06-05-model-builder-spine
 title: model-builder-spine
-status: draft        # draft → decomposed → filed
+status: decomposed   # draft → decomposed → filed
 created: 2026-06-05
 updated: 2026-06-05
 epics: []            # umbrella issue numbers, filled in phase 4
@@ -118,7 +118,60 @@ links in the decomposition.
 
 ## Decomposition
 
-<Filled in phase 2.>
+### Epic: Provably-correct deal model-builder (the spine)   (umbrella #<N>)
+
+Reconstruct a single deterministic per-period `DealState` ledger from actual
+data and prove it against the investor reports + invariants. Single deal
+(Green Lion 2026-1); engines built data-driven so generalisation is free.
+Forward projection is explicitly a separate fast-follow epic, not here.
+
+- **S0 — Ground-truth consistency spike** — determine whether the 3 investor
+  reports' figures (tranche balances/distributions, PDL, reserve, pool balance)
+  reconcile to the loan tapes via the waterfall, and recommend reports-vs-tapes
+  as the authoritative spec. Sequencing: sequential. Paths: `scripts/**`, `docs/**`.
+  _(Gate: produces a findings + recommendation the operator approves before S2/S3/S7.)_
+- **S1 — Canonical DealState + period-transition schema** — define the single
+  per-period `DealState` (tranche balances, per-class PDL ledgers, reserve
+  balance+target, cumulative losses, pool factor, revolving flag) and the
+  opening→closing transition contract every engine and endpoint reads.
+  Sequencing: sequential. After S0. Paths: `src/loanwhiz/primitives/waterfall_state.py`.
+- **S2 — Investor-report ingestion → ground-truth ledger** — parse the 3 monthly
+  investor reports into structured per-period actuals usable as both the
+  period-0 seed and the reconciliation target. Sequencing: parallel. After S1.
+  (Soft dep: shaped by S0's reports-vs-tapes decision.) Paths:
+  `src/loanwhiz/primitives/report_verifier.py`, `src/loanwhiz/extraction/**`.
+- **S3 — Collections & loss engine from the tape** — derive per-period interest
+  (ex-arrears/defaults), scheduled principal, prepayment, recovery, and realized
+  losses from the ESMA tape, properly separated, as waterfall inputs.
+  Sequencing: parallel. After S1. (Soft dep: S0 decision.) Paths:
+  `src/loanwhiz/primitives/collections_aggregator.py`, `src/loanwhiz/primitives/esma_tape_normaliser.py`.
+- **S4 — Model-driven waterfall interpreter** — replace the hardcoded runner with
+  a generic interpreter over `DealModel.waterfalls[*].steps`: recipient→need
+  registry, condition→predicate eval, pari-passu groups (the reusable core).
+  Sequencing: parallel. After S1. Paths: `src/loanwhiz/primitives/waterfall_runner.py`.
+- **S5 — Trigger/covenant evaluation engine** — evaluate triggers as predicates
+  over `DealState` (sequential-pay, PDL, reserve, clean-up, cumulative-loss),
+  fixing the extractor↔monitor metric vocabulary and plumbing structural state;
+  drives both conditional waterfall steps and `/compliance`. Sequencing: parallel.
+  After S1. Paths: `src/loanwhiz/primitives/covenant_monitor.py`, `src/loanwhiz/api/main.py`.
+- **S6 — Period-by-period state machine** — wire & correct
+  `MultiPeriodWaterfallRunner` to thread opening→collections(S3)→waterfall(S4,
+  gated by S5)→loss/PDL/reserve updates→closing across all periods, seeded from
+  the report (per S0). Sequencing: sequential. After S2, S3, S4, S5. Paths:
+  `src/loanwhiz/primitives/waterfall_state.py`, `src/loanwhiz/api/main.py`.
+- **S7 — Reconciliation harness (the proof of correctness)** — compare the
+  reconstructed state to investor-report actuals per reported period within
+  tolerances → PASS/FAIL discrepancy report; wire `ReportVerifier`, fix its
+  pool/reserve figures. Sequencing: parallel. After S6. Paths:
+  `src/loanwhiz/primitives/report_verifier.py`, `tests/**`, `src/loanwhiz/api/main.py`.
+- **S8 — Comprehensiveness invariants** — assert every extracted step executed,
+  conservation of funds, non-negative PDL/balances, closing[N]==opening[N+1];
+  replace the fake `completeness_score`/`extraction_confidence` with real coverage
+  metrics. Sequencing: parallel. After S6. Paths: `src/loanwhiz/primitives/**`, `tests/**`.
+- **S9 — Unify endpoints on the one ledger** — make `/waterfall` and
+  `/compliance` (incl. the proximity-across-periods chart) read the single
+  reconstructed `DealState` instead of divergent constants. Sequencing: parallel.
+  After S6. Paths: `src/loanwhiz/api/main.py`, `web/**`.
 
 ## Filed issues
 
