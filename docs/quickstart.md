@@ -115,8 +115,6 @@ The `GCP_LOCATION` should be a region where Gemini 2.5 Flash and Pro are availab
 
 The Green Lion 2026-1 deal is a complete, publicly available Dutch synthetic RMBS package. It spans **27 months of ESMA Annex 2 loan tapes** — 24 monthly historical tapes for January 2024 through December 2025 (`Algoritmica/green-lion-2024-2025`) plus 3 for February, March, and April 2026 (`Algoritmica/green-lion-2026`), the latter accompanied by the prospectus PDF and three monthly investor reports. January 2026 is an intentional gap. It is the primary demo dataset for this hackathon.
 
-> **Note:** `demo/run_green_lion.py` is in progress and not yet runnable — the primitives it orchestrates are still being implemented. This section documents the intended behaviour of the demo once complete.
-
 Run the end-to-end demo:
 
 ```bash
@@ -139,11 +137,11 @@ What this does, in order:
 
 4. **Runs the waterfall** using the `waterfall_runner` primitive against each month's tape collections. Outputs computed distributions per tranche per period with a full audit trace.
 
-5. **Verifies against investor reports** using the `report_verifier` primitive. Compares computed distributions to the reported figures from each monthly investor report. Flags line items where computed and reported values diverge.
+5. **Reconciles against the investor reports.** Collateral (pool balance, collections, arrears) reconciles to the published monthly investor reports to the cent; liabilities (tranche/PDL/reserve) are reconstructed from the prospectus and invariant-validated, since 2026-1 has no in-window note-level actuals report (see [docs/data-card.md](data-card.md)).
 
-6. **Monitors covenants** using the `covenant_monitor` primitive. Checks each trigger threshold (e.g. cumulative loss rate, PDL balance) per period and reports proximity to breach.
+6. **Monitors covenants** using the `covenant_monitor` primitive. Checks each extracted trigger threshold (Class A/B PDL, reserve-fund shortfall) per period and reports proximity to breach.
 
-7. **Projects forward cashflows** using the `cashflow_projector` primitive under base and stress (2x default rate) scenarios for 12 months.
+7. **Runs a forward stress sensitivity.** The waterfall is re-run on the base-case capital structure under base vs stressed collection factors (a single-period sensitivity, exposed via `POST /deal/{id}/project`). This is a stress sensitivity, not a multi-month CPR/CDR projection — the dedicated `cashflow_projector` is implemented as a library primitive but not yet wired into the route.
 
 8. **Prints a structured summary** of each stage to stdout, with citations back to the prospectus for extracted values.
 
@@ -151,7 +149,7 @@ What this does, in order:
 
 ## Running Against a New Deal
 
-The framework is **data-agnostic by design** — adding a deal is *data*, not code. Drop a `src/loanwhiz/data/deals.json` file next to `config.py`; it is a JSON object mapping each `deal_id` to a deal-context dict and is merged over the in-code Green Lion default at import time (no Python edit required):
+The framework is **data-driven by design** — adding a deal is *data*, not code (the waterfall interpreter executes each deal's extracted model rather than hardcoded logic). Drop a `src/loanwhiz/data/deals.json` file next to `config.py`; it is a JSON object mapping each `deal_id` to a deal-context dict and is merged over the in-code Green Lion default at import time (no Python edit required). End-to-end validation so far covers exactly one deal — Green Lion 2026-1; multi-deal validation is in progress (epic #206):
 
 ```json
 {
@@ -178,24 +176,27 @@ All three document types are optional for a partial run — for example, you can
 
 ## Running the REST API
 
-Start the FastAPI service (in progress — tracked in issue #22):
+Start the FastAPI service:
 
 ```bash
-uvicorn loanwhiz.api:app --reload
+uvicorn loanwhiz.api.main:app --reload
 ```
 
-Endpoints (planned):
+Endpoints:
 
-- `POST /query` — natural language query against a loaded deal
+- `POST /query` — natural language query against a loaded deal (returns a governance evidence pack)
 - `GET /deal/{id}/model` — retrieve the extracted deal model JSON
-- `GET /deal/{id}/compliance` — covenant monitor results
-- `POST /deal/{id}/project` — cashflow projection under a scenario
+- `GET /deal/{id}/compliance` — covenant monitor results across periods
+- `POST /deal/{id}/project` — single-period waterfall stress sensitivity under base/stress scenarios
+- `GET /primitives` — the primitive catalogue with per-primitive reachability (`live` / `library-only`)
+
+See `src/loanwhiz/api/README.md` for the full endpoint reference and curl examples.
 
 ---
 
 ## Next Steps
 
 - Read [Contributing a New Primitive](../README.md#how-to-contribute-a-new-primitive) in the README.
-- Explore the primitives in `src/loanwhiz/primitives/` once they are implemented.
+- Explore the primitives in `src/loanwhiz/primitives/`.
 - Check the `tests/` directory for usage examples of each primitive.
 - File issues or PRs at [github.com/waafirio/loanwhiz](https://github.com/waafirio/loanwhiz).

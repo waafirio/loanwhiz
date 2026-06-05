@@ -85,7 +85,7 @@ Then open http://localhost:3000. The dashboard shares one loaded deal across fiv
 2. **Pool & Performance** — 3-period pool analytics and arrears / EPC / geographic distributions.
 3. **Waterfall** — the revenue priority cascade and per-tranche distributions for the latest period.
 4. **Compliance & Covenants** — the live covenant monitor across reporting periods.
-5. **Projection** — base vs stress forward projections, including Class A WAL.
+5. **Projection** — a single-period **stress sensitivity**: the waterfall re-run on the base-case capital structure under base vs stressed collection factors, with Class A WAL. (This is a sensitivity, not a multi-month CPR/CDR projection — the dedicated forward `cashflow_projector` is not yet wired.)
 
 The docked chat panel answers ad-hoc deal questions grounded in the loaded deal model and tapes.
 
@@ -123,7 +123,15 @@ The docked chat panel answers ad-hoc deal questions grounded in the loaded deal 
 
 ## How to Run Against a New Deal
 
-The framework is **data-agnostic by design**: adding a deal is *data*, not code. The canonical deal registry (`DEAL_REGISTRY` in `src/loanwhiz/config.py`) starts from the in-code Green Lion default and merges in any extra deals from the optional data file `src/loanwhiz/data/deals.json` at import time — so you add a deal **without editing any Python**. The API sources its `DEALS` from this registry, and the `/deal/{deal_id}/...` routes are keyed by the `deal_id` you choose.
+The framework is **data-driven by design**: adding a deal is *data*, not code. The canonical deal registry (`DEAL_REGISTRY` in `src/loanwhiz/config.py`) starts from the in-code Green Lion default and merges in any extra deals from the optional data file `src/loanwhiz/data/deals.json` at import time — so you add a deal **without editing any Python**. The API sources its `DEALS` from this registry, and the `/deal/{deal_id}/...` routes are keyed by the `deal_id` you choose, and the waterfall interpreter executes the deal's *extracted* model rather than hardcoded logic.
+
+> **Scope of validation.** The pipeline is data-driven, but it has been
+> end-to-end **validated on exactly one deal so far — Green Lion 2026-1**.
+> Real multi-deal validation (seasoned Green Lion 2023-1 / 2024-1 against
+> their own published Notes & Cash and investor reports) is **in progress**
+> (epic #206), not complete. Treat "add any RMBS, it just works" as the
+> design intent demonstrated on one deal — not a proven claim across
+> arbitrary deals today.
 
 Create `src/loanwhiz/data/deals.json` as a JSON object mapping each `deal_id` to a deal-context dict (same shape as the in-code `GREEN_LION`):
 
@@ -170,7 +178,7 @@ See `GREEN_LION` and `DEAL_REGISTRY` in `config.py` for a fully worked example u
 
 ## How to Contribute a New Primitive
 
-1. **Subclass `Primitive`** from `src/loanwhiz/primitives/base.py` (in progress — tracked in issue #4):
+1. **Subclass `Primitive`** from `src/loanwhiz/primitives/base.py`:
    ```python
    from loanwhiz.primitives.base import Primitive, register_primitive
 
@@ -189,21 +197,23 @@ See `GREEN_LION` and `DEAL_REGISTRY` in `config.py` for a fully worked example u
 
 4. **Add tests** under `tests/` covering at least the happy path, one edge case, and the citation/confidence output structure.
 
-5. Look at existing primitives in `src/loanwhiz/primitives/` as worked examples once they are implemented.
+5. Look at the existing primitives in `src/loanwhiz/primitives/` as worked examples.
 
 ---
 
 ## Primitives
 
-| Name | Description | Version | Status |
-|------|-------------|---------|--------|
-| `esma_tape_normaliser` | Normalises ESMA Annex 2–8 loan tapes; computes pool analytics (WAL, arrears breakdown, EPC/geo/rate distributions) | 0.1.0 | In progress |
-| `waterfall_runner` | Executes the extracted waterfall against monthly tape collections; returns computed distributions per tranche with full audit trace | 0.1.0 | In progress |
-| `covenant_monitor` | Checks tape metrics against extracted trigger thresholds; tracks breach proximity over time | 0.1.0 | In progress |
-| `report_verifier` | Compares waterfall-computed distributions against investor report actuals; flags discrepancies | 0.1.0 | In progress |
-| `cashflow_projector` | Projects forward cashflows under base and stress scenarios using the waterfall runner | 0.1.0 | In progress |
-| `audit_logger` | Wraps every primitive call with provenance: input hash, output, confidence score, citations, timestamp, model version, human review flag | 0.1.0 | In progress |
-| `collections_aggregator` | Aggregates monthly collections (interest, principal, prepayments, recoveries) from ESMA tapes into waterfall-ready inputs | 0.1.0 | In progress |
+**Reachability** marks how each primitive is reached, and is surfaced verbatim by `GET /primitives`. **Live** = called by a REST endpoint and/or exposed as a LangGraph agent tool; **library-only** = registered (so it appears in the catalogue) and importable as library code, but not yet reached by an endpoint or agent tool. Nothing is advertised as live that a judge can't reach.
+
+| Name | Description | Version | Reachability |
+|------|-------------|---------|--------------|
+| `esma_tape_normaliser` | Normalises ESMA Annex 2–8 loan tapes; computes pool analytics (WAL, arrears breakdown, EPC/geo/rate distributions) | 0.1.0 | Live |
+| `collections_aggregator` | Aggregates monthly collections (interest, principal, prepayments, recoveries) from ESMA tapes into waterfall-ready inputs | 0.1.0 | Live |
+| `waterfall_runner` | Executes the model-driven waterfall against a period's tape collections; returns computed distributions per tranche with full audit trace | 0.1.0 | Live |
+| `covenant_monitor` | Checks tape metrics against extracted trigger thresholds; tracks breach proximity over time | 0.1.0 | Live |
+| `audit_logger` | Wraps every primitive call with provenance: input hash, output, confidence score, citations, timestamp, model version, human review flag | 0.1.0 | Live |
+| `report_verifier` | Compares waterfall-computed distributions against investor-report actuals; flags discrepancies | 0.1.0 | Library-only |
+| `cashflow_projector` | Iterates the waterfall runner forward under base/stress scenarios (a future dedicated projector; the live `/project` route uses the waterfall runner as a single-period stress sensitivity) | 0.1.0 | Library-only |
 
 ---
 
@@ -215,6 +225,8 @@ See `GREEN_LION` and `DEAL_REGISTRY` in `config.py` for a fully worked example u
 - **`Algoritmica/green-lion-2026`** — the 2026 deal package: 3 monthly ESMA Annex 2 loan tapes (February, March, April 2026), the prospectus PDF (Green Lion 2026-1 B.V.), and 3 monthly investor reports (February, March, April 2026).
 
 That is **27 monthly tapes in total** (24 + 3). All tapes share the same ESMA Annex 2 schema. January 2026 (`202601`) exists in neither dataset and is an intentional gap in the chronology — the framework simply skips it. `src/loanwhiz/config.py` builds the full chronological `tape_urls` list programmatically (`_historical_tape_entries()` for 2024–2025, plus the three 2026 entries).
+
+These 27 tapes are **synthetic period snapshots, re-sampled each period** — loan identifiers do not persist across months, so the series is a sequence of point-in-time pool snapshots rather than a true longitudinal loan-level panel. Period-to-period collections and losses are therefore derived by net reconciliation to pool movement, not by tracking individual loans over time. The history is real *in count and schema* and drives genuine multi-period views; it is not a tracked-cohort performance record. The three 2026 reporting periods (Feb–Apr) are the ones accompanied by real investor reports.
 
 This is the primary test and demo dataset for the hackathon submission. All loan-level data is synthetic and was released by Algoritmica.ai specifically for this hackathon. See [docs/data-card.md](docs/data-card.md) for the full data card, including the synthetic-vs-real breakdown.
 

@@ -63,34 +63,53 @@ Confidence scoring is mandatory on all LoanWhiz primitives. A primitive that doe
 
 ### Scoring Method (Extraction Pipeline)
 
-The confidence score for an extraction primitive is a weighted combination of three signals:
+Extraction confidence is a **real coverage metric**, derived directly from
+what the pipeline actually resolved against the source document — not a
+synthetic blend or a bare LLM self-rating.
 
-| Signal | Weight | Description |
+| Signal | Where it is computed | What it measures |
 |---|---|---|
-| **Section coverage** | 40% | Fraction of expected sections found in the source document |
-| **Cross-reference resolution rate** | 30% | Fraction of defined-term references successfully resolved |
-| **LLM self-assessment** | 30% | Model's own confidence estimate, elicited via structured output schema |
+| **Deal-model completeness** | `extraction/assembler.py` — `completeness_score = ‖expected ∩ found‖ / ‖expected‖` | Fraction of the expected key SF sections (waterfall, definitions, triggers, tranches) actually located and extracted from the prospectus. |
+| **Per-waterfall coverage** | `extraction/waterfall_extractor.py` — `extraction_confidence = non_empty_recipients / len(steps)` | Fraction of a waterfall's ordered steps that resolved to a concrete recipient (rather than an unparsed prose stub). |
 
-```python
-def compute_confidence(
-    sections_found: int,
-    sections_expected: int,
-    refs_resolved: int,
-    refs_total: int,
-    llm_self_score: float,
-) -> float:
-    coverage = sections_found / max(sections_expected, 1)
-    resolution = refs_resolved / max(refs_total, 1)
-    return 0.40 * coverage + 0.30 * resolution + 0.30 * llm_self_score
-```
+These are concrete ratios over the extracted artefact, so a thin extraction
+scores low *because it is thin*. On the validated Green Lion 2026-1 deal the
+deal-model `completeness_score` is **0.75** (3 of the 4 expected sections
+resolved; the definitions graph extracts 0 terms — see the model card's
+extraction-results table).
+
+> The pipeline does **not** apply a fixed `0.40·coverage + 0.30·resolution +
+> 0.30·llm_self_score` weighting. Confidence is the coverage ratios above; the
+> LLM is not asked to self-grade the final score.
 
 ### Scoring Method (Computational Primitives)
 
-For non-extraction primitives (waterfall runner, covenant monitor, report verifier, cashflow projector), confidence reflects:
+For non-extraction primitives (waterfall runner, covenant monitor), each
+`PrimitiveResult` carries a `confidence` derived from the run itself —
+input completeness (fraction of expected input fields populated) and
+output coverage (fraction of expected output items produced and passing
+the primitive's internal consistency checks). This per-primitive
+confidence is what the agent's governance evidence pack aggregates (§2,
+Agent-Query Scoring).
 
-- **Input completeness** — fraction of expected input fields populated (not null/missing)
-- **Validation pass rate** — fraction of output values that pass internal consistency checks
-- **Coverage** — fraction of expected output items successfully produced
+### Scoring Method (Agent Query / Evidence Pack)
+
+When the LangGraph agent answers a query it emits a **governance evidence
+pack** (`governance/evidence_pack.py`) whose confidence fields are derived,
+not asserted:
+
+- `aggregate_confidence = min(per-tool confidence)` over the tools the
+  agent actually called (`1.0` for a no-tool answer) — a conservative
+  floor, so any single low-confidence primitive pulls the whole answer down.
+- `human_review_required = aggregate_confidence < 0.70`.
+- `all_citations` is the order-preserving deduplicated union of the tool
+  calls' own citations (no dropped or invented sources).
+- `finos_compliant` is the result of a **real consistency check**
+  (`_check_finos_compliant`) over the above — every per-tool confidence a
+  valid probability, the aggregate equal to the `min`, the citation trail
+  exactly the dedup union, and the review flag matching the threshold
+  rule. It is no longer a hardcoded `True`; a pack with inconsistent
+  evidence is reported as non-compliant.
 
 ### Human Review Routing
 
@@ -234,7 +253,7 @@ It does not apply to:
 | FINOS Pattern | LoanWhiz Implementation |
 |---|---|
 | Audit trail | `AuditEntry` per primitive call (§1) |
-| Confidence scoring | Mandatory confidence score on all primitives (§2) |
+| Confidence scoring | Coverage-derived confidence on every primitive; agent answers aggregate it as `min(per-tool confidence)` (§2) |
 | Citations | Verbatim citations on all extracted facts (§3) |
 | Replayability | Input hash + model version in every `AuditEntry` (§4) |
 | Human review routing | `human_review_required` flag; confidence < 0.7 triggers mandatory review (§5) |
