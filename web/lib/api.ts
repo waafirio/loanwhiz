@@ -492,6 +492,14 @@ export interface PrimitiveCatalogueEntry {
   author: string;
   tags: string[];
   class_name: string;
+  /**
+   * Whether the primitive is reachable in the live path: `"live"` (called by a
+   * REST endpoint and/or exposed as an agent tool) or `"library-only"`
+   * (registered and importable, but reached by no endpoint or agent tool).
+   * Optional so the page degrades gracefully against an older API that omits
+   * the field — the catalogue then treats it as `library-only`.
+   */
+  reachability?: "live" | "library-only";
   input_schema: JsonSchema;
   output_schema: JsonSchema;
   confidence: string;

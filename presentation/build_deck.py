@@ -335,7 +335,7 @@ card(s, Inches(0.7)+cw+gap2, yy, cw, Inches(2.45), "Zero-shot, no training", bul
 ], size=12.5), accent=TEAL)
 card(s, Inches(0.7)+2*(cw+gap2), yy, cw, Inches(2.45), "Cited & cached", bullets([
     "Every step, term and threshold carries a verbatim source excerpt.",
-    "Confidence = coverage · cross-ref resolution · LLM self-score.",
+    "Confidence is a real coverage metric — sections resolved / steps with a recipient.",
     "Extracted once, cached durably under data/ — query time is instant.",
 ], size=12.5), accent=BLUE)
 
@@ -352,8 +352,8 @@ prims = [
     ("waterfall_runner", "Execute the extracted waterfall against a period's collections; per-tranche distributions + trace."),
     ("multi_period_waterfall_runner", "Run the waterfall across periods with persistent PDL and reserve-account state."),
     ("covenant_monitor", "Check tape metrics against extracted trigger thresholds; track breach proximity over time."),
-    ("report_verifier", "Reconcile computed distributions against investor-report actuals; flag discrepancies."),
-    ("cashflow_projector", "Project 12-month cashflows under base and stress scenarios; Class-A WAL."),
+    ("report_verifier", "Reconcile reconstructed collateral against the investor reports to the cent; flag discrepancies."),
+    ("cashflow_projector", "Single-period stress sensitivity: re-run the waterfall under base/stress collection factors; Class-A WAL."),
     ("audit_logger", "Wrap every call with FINOS provenance: input/output hashes, confidence, citations, model version."),
 ]
 cols, rows = 2, 4
@@ -380,7 +380,7 @@ text(s, Inches(0.7), Inches(1.7), Inches(11.9), Inches(0.55),
      line_spacing=1.08)
 items = [
     ("Audit trail", "Append-only AuditEntry per call: input/output hashes, model version, timestamp, duration."),
-    ("Confidence scoring", "Mandatory on every primitive — coverage · cross-ref resolution · LLM self-assessment."),
+    ("Confidence scoring", "Real coverage metric per primitive; agent answers aggregate it as min(per-tool confidence)."),
     ("Verbatim citations", "Every fact grounded to a section + verbatim excerpt; a reviewer can locate the source."),
     ("Replayability", "Input hash + model version identify each request; runs are comparable for drift."),
     ("Human-review routing", "Confidence < 0.70 → human_review_required = True; output can't be used until signed off."),
@@ -430,12 +430,12 @@ text(s, Inches(0.7), Inches(6.62), Inches(11.9), Inches(0.4),
 # ===========================================================================
 # 9 — PROOF ON GREEN LION
 # ===========================================================================
-s = slide(); page_chrome(s, 9, "Proven on Green Lion 2026-1", kicker="Results")
+s = slide(); page_chrome(s, 9, "Demonstrated on Green Lion 2026-1", kicker="Results")
 text(s, Inches(0.7), Inches(1.7), Inches(11.9), Inches(0.5),
-     [[("A complete synthetic Dutch RMBS released for the hackathon: prospectus + 27 months of ESMA tapes (2024–2026) + 3 investor reports.", 13.5, SLATE, False)]])
+     [[("A synthetic Dutch RMBS released for the hackathon: prospectus + 27 monthly ESMA tape snapshots (2024–2026) + 3 investor reports.", 13.5, SLATE, False)]])
 # metric tiles
 mets = [
-    ("27", "monthly tapes", "Jan 2024 – Apr 2026 ESMA history (Jan-2026 gap)"),
+    ("27", "monthly tapes", "Synthetic snapshots, Jan 2024 – Apr 2026 (Jan-2026 gap)"),
     ("11", "revenue steps", "Full Revenue Priority of Payments (a)–(k), cited"),
     ("3", "waterfalls", "Revenue · Redemption · Post-Enforcement"),
     ("3", "live triggers", "Class A & B PDL + reserve-fund shortfall"),
@@ -452,15 +452,15 @@ for i, (big, lab, sub) in enumerate(mets):
 # bottom proof bar
 by = Inches(4.65)
 card(s, Inches(0.7), by, Inches(5.95), Inches(1.9), "End-to-end, verified", bullets([
-    "Prospectus → deal model → waterfall execution → reconciliation runs clean.",
-    "Confidence 0.75 with every tranche, step and trigger source-cited.",
-    "Chat answers grounded numbers (e.g. pool balance €1.03bn) live.",
-], size=12.5), accent=GREEN)
-card(s, Inches(6.85), by, Inches(5.75), Inches(1.9), "Data-agnostic by design", bullets([
-    "Add a deal via data/deals.json — no code change; Green-Lion defaults fill the gaps.",
-    "Format-agnostic tapes: CSV or parquet (incl. a combined multi-month file), 27 months proven.",
-    "Per-deal keys resolve from context (capital structure, pool balance, triggers); cached.",
-], size=12.5), accent=TEAL)
+    "Prospectus → extracted model → model-driven waterfall → multi-period state.",
+    "Collateral reconciles to the investor reports to the cent; liabilities reconstructed from the prospectus + invariant-validated.",
+    "Chat answers grounded numbers (e.g. pool balance ~€1bn) live.",
+], size=12), accent=GREEN)
+card(s, Inches(6.85), by, Inches(5.75), Inches(1.9), "Data-driven by design", bullets([
+    "Add a deal via data/deals.json — no code change; the interpreter executes its extracted model.",
+    "Format-agnostic tapes: CSV or parquet (incl. a combined multi-month file).",
+    "Validated on Green Lion 2026-1; real multi-deal validation underway (#206).",
+], size=12), accent=TEAL)
 
 # ===========================================================================
 # 10 — STACK + CLOSE
@@ -498,8 +498,8 @@ text(s, Inches(1.05), cy+Inches(0.85), Inches(11.2), Inches(1.4),
        (" — extracts a machine-runnable model and computes real numbers, deterministically.", 13.5, RGBColor(0xC7,0xD3,0xE8), False)],
       [("▸  ", 13.5, TEAL, True), ("Trustworthy by construction", 13.5, WHITE, True),
        (" — citations, confidence and human-review routing on every output.", 13.5, RGBColor(0xC7,0xD3,0xE8), False)],
-      [("▸  ", 13.5, TEAL, True), ("Data-agnostic & extensible", 13.5, WHITE, True),
-       (" — Apache-2.0; add a deal via data/deals.json (no code change), CSV or parquet tapes, add a primitive in a few lines.", 13.5, RGBColor(0xC7,0xD3,0xE8), False)]],
+      [("▸  ", 13.5, TEAL, True), ("Data-driven & extensible", 13.5, WHITE, True),
+       (" — Apache-2.0; add a deal via data/deals.json (no code change), CSV or parquet tapes, add a primitive in a few lines. Demonstrated on Green Lion 2026-1; multi-deal validation underway.", 13.5, RGBColor(0xC7,0xD3,0xE8), False)]],
      line_spacing=1.12, space_after=6)
 
 import os

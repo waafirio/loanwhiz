@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import json
 from datetime import datetime, timezone
-from typing import TypedDict
+from typing import Any, TypedDict
 
+from langchain_core.messages import ToolMessage
 from langchain_google_vertexai import ChatVertexAI
 from langgraph.graph.state import CompiledStateGraph
 from langgraph.prebuilt import create_react_agent
@@ -23,21 +25,31 @@ from loanwhiz.governance.evidence_pack import (
 
 SYSTEM_PROMPT = """You are LoanWhiz, a structured finance analyst specialising in ABS/RMBS deal analysis.
 
-You have access to the following tools for analysing the Green Lion 2026-1 Dutch RMBS deal:
-- load_esma_tape: Load and analyse ESMA loan-level tape data
-- run_waterfall: Execute the payment waterfall for a period
-- check_covenants: Check covenant compliance against trigger thresholds
-- aggregate_collections: Aggregate tape data into waterfall-ready inputs
+You analyse the Green Lion 2026-1 Dutch RMBS deal (deal_id "green-lion-2026-1").
+You have access to the following tools:
+- get_deal_model: Read the prospectus-derived deal model — tranche structure,
+  coupons, covenant triggers and thresholds, the payment waterfall, the reserve
+  target, the clean-up call, and defined terms. Use this FIRST for any question
+  about the deal's structural terms (e.g. "what's the reserve target?", "what
+  coupon does the prospectus set for Class A?", "what triggers a breach?").
+- list_deal_tapes: List or select the deal's loan-level tapes and document URLs.
+  The deal has a full monthly history — 27 tapes: the 24 historical months
+  2024-01 through 2025-12, plus 2026 Feb/Mar/Apr (Jan-2026 is intentionally
+  absent). Pass a `period` substring (e.g. "2025-01") to select a specific
+  month's tape. ALWAYS use this to find a tape URL before loading it — never
+  guess or assume URLs, and never assume only the three 2026 tapes exist.
+- load_esma_tape: Load and analyse an ESMA loan-level tape (pass a URL from
+  list_deal_tapes).
+- run_waterfall: Execute the payment waterfall for a period.
+- check_covenants: Check covenant compliance against trigger thresholds.
+- aggregate_collections: Aggregate tape data into waterfall-ready inputs.
 
 Answer the user's question precisely using the available tools. Always:
-1. Call the relevant tools to get current data
-2. Cite specific numbers and periods
-3. Explain what the numbers mean in plain English
-
-Green Lion 2026-1 data URLs:
-- Feb 2026 tape: https://huggingface.co/datasets/Algoritmica/green-lion-2026/resolve/main/Hackathon_Data/green_lion_202602_1_synthetic_loan_tape.csv
-- Mar 2026 tape: https://huggingface.co/datasets/Algoritmica/green-lion-2026/resolve/main/Hackathon_Data/green_lion_202603_1_synthetic_loan_tape.csv
-- Apr 2026 tape: https://huggingface.co/datasets/Algoritmica/green-lion-2026/resolve/main/Hackathon_Data/green_lion_2026_1_synthetic_loan_tape.csv"""
+1. For deal-structure questions, call get_deal_model. For pool/period data, use
+   list_deal_tapes to resolve the right tape URL, then load_esma_tape.
+2. Call the relevant tools to get current data — do not rely on memorised URLs.
+3. Cite specific numbers and periods.
+4. Explain what the numbers mean in plain English."""
 
 
 # ---------------------------------------------------------------------------
@@ -122,6 +134,50 @@ def _content_to_text(content: object) -> str:
     return str(content)
 
 
+def _tool_result_payload(msg: ToolMessage) -> dict[str, Any]:
+    """Parse a ``ToolMessage``'s content back into the dict the tool returned.
+
+    LangGraph's ``ToolNode`` serialises a tool's ``dict`` return value to a
+    JSON string in ``ToolMessage.content`` (``langgraph.prebuilt.tool_node.
+    msg_content_output`` → ``json.dumps``). Re-parse it so the per-tool
+    governance values the primitive already computed — ``confidence``,
+    ``citations``, ``duration_ms`` — can be threaded into the evidence pack
+    instead of being discarded.
+
+    Returns an empty dict when the content isn't a JSON object (e.g. a tool
+    that errored and returned a plain string), so callers fall back to honest
+    defaults rather than raising.
+    """
+    content = msg.content
+    if isinstance(content, str):
+        try:
+            parsed = json.loads(content)
+        except (ValueError, TypeError):
+            return {}
+        return parsed if isinstance(parsed, dict) else {}
+    # Newer message-content shapes (list of content-part dicts) don't carry the
+    # tool's JSON payload in a re-parseable form here; treat as no payload.
+    return {}
+
+
+def _summarise_tool_output(payload: dict[str, Any]) -> str:
+    """Build a compact, human-readable summary of a tool's output dict.
+
+    Drops the governance side-channel keys (``confidence`` / ``citations`` /
+    ``duration_ms``) so the summary reflects the actual analytical result, then
+    truncates to keep the evidence pack compact (mirrors ``input_summary``'s
+    200-char bound). Empty payloads yield an empty string.
+    """
+    if not payload:
+        return ""
+    visible = {
+        k: v
+        for k, v in payload.items()
+        if k not in ("confidence", "citations", "duration_ms")
+    }
+    return str(visible)[:200]
+
+
 def run_query(question: str, save_evidence: bool = True) -> AgentResponse:
     """Run a structured finance question through the planner agent.
 
@@ -154,23 +210,56 @@ def run_query(question: str, save_evidence: bool = True) -> AgentResponse:
     # pack.
     answer: str = _content_to_text(result["messages"][-1].content)
 
+    # Index the tool *results* by their tool_call_id. Each tool request lives
+    # on an AIMessage's .tool_calls; its result lands in a later ToolMessage
+    # whose .tool_call_id matches the request's id. The result carries the
+    # *real* per-tool confidence / citations / duration the primitive computed
+    # (see loanwhiz.agent.tools), so we thread those into the evidence pack
+    # rather than stamping constants.
+    results_by_id: dict[str, ToolMessage] = {}
+    for msg in result["messages"]:
+        if isinstance(msg, ToolMessage):
+            results_by_id[msg.tool_call_id] = msg
+
     # Walk the message history and extract ToolCallRecord entries from every
-    # AI message that carries a non-empty .tool_calls list.
+    # AI message that carries a non-empty .tool_calls list, pulling the real
+    # output values from the matching ToolMessage result.
     tool_calls: list[ToolCallRecord] = []
     for msg in result["messages"]:
         raw_tool_calls = getattr(msg, "tool_calls", None)
         if not raw_tool_calls:
             continue
         for tc in raw_tool_calls:
+            result_msg = results_by_id.get(tc.get("id", ""))
+            payload = _tool_result_payload(result_msg) if result_msg else {}
+            # Honest defaults when a result is genuinely absent (no matching
+            # ToolMessage) or the tool omitted a field: confidence falls back
+            # to the prior 0.9, citations to [], duration to 0.0.
+            raw_confidence = payload.get("confidence", 0.9)
+            confidence = (
+                float(raw_confidence)
+                if isinstance(raw_confidence, (int, float))
+                else 0.9
+            )
+            raw_citations = payload.get("citations", [])
+            citations = [c for c in raw_citations if isinstance(c, dict)] if isinstance(
+                raw_citations, list
+            ) else []
+            raw_duration = payload.get("duration_ms", 0.0)
+            duration_ms = (
+                float(raw_duration)
+                if isinstance(raw_duration, (int, float))
+                else 0.0
+            )
             tool_calls.append(
                 ToolCallRecord(
                     call_index=len(tool_calls),
                     tool_name=tc["name"],
                     input_summary=str(tc["args"])[:200],
-                    output_summary="",  # tool result is not attached to the AI msg
-                    confidence=0.9,
-                    citations=[],
-                    duration_ms=0,
+                    output_summary=_summarise_tool_output(payload),
+                    confidence=confidence,
+                    citations=citations,
+                    duration_ms=duration_ms,
                     timestamp=datetime.now(timezone.utc).isoformat(),
                 )
             )

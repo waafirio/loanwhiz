@@ -293,6 +293,48 @@ def test_agent_init_exports_executor_symbols() -> None:
 
 
 # ---------------------------------------------------------------------------
+# Test 11 — end-to-end: a real low tool confidence threaded by the planner
+# fires the executor's human-review gate (#194). Unlike the fabricated-pack
+# tests above, this drives the *real* run_query path with only the LLM agent
+# faked, so it proves the threaded value actually reaches the gate.
+# ---------------------------------------------------------------------------
+
+
+def test_real_threaded_low_confidence_fires_executor_review() -> None:
+    """A ToolMessage carrying confidence 0.4 → executor NEEDS_REVIEW end-to-end."""
+    import json
+
+    from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
+
+    ai_tc = AIMessage(
+        content="",
+        tool_calls=[{"name": "check_covenants", "args": {"periods_json": "[]"}, "id": "tcL"}],
+    )
+    tool_result = ToolMessage(
+        content=json.dumps({"summary": "near breach", "confidence": 0.4}),
+        tool_call_id="tcL",
+        name="check_covenants",
+    )
+    final_ai = AIMessage(content="Covenant proximity is high.")
+    fake_result = {
+        "messages": [HumanMessage(content="q"), ai_tc, tool_result, final_ai]
+    }
+
+    mock_agent = MagicMock()
+    mock_agent.invoke.return_value = fake_result
+
+    # Patch at the planner's agent boundary so the *real* run_query runs and
+    # threads the real confidence; the executor calls the unpatched run_query.
+    with patch("loanwhiz.agent.planner.create_planner_agent", return_value=mock_agent), \
+         patch("loanwhiz.agent.planner.EvidencePackLogger"):
+        result = DAGExecutor().execute("q")
+
+    assert result.aggregate_confidence == pytest.approx(0.4)
+    assert result.human_review_required is True
+    assert result.overall_status == ValidationStatus.NEEDS_REVIEW
+
+
+# ---------------------------------------------------------------------------
 # Integration test — real Gemini call (skipped unless -m integration)
 # ---------------------------------------------------------------------------
 

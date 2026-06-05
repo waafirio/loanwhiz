@@ -21,6 +21,24 @@ from loanwhiz.primitives.covenant_monitor import CovenantMonitor
 
 client = TestClient(app)
 
+
+@pytest.fixture(autouse=True)
+def _isolate_deal_model_seed_dir(tmp_path_factory):
+    """Point ``DEAL_MODEL_SEED_DIR`` at an empty dir for every test by default.
+
+    The committed deal-model seed (#196) makes ``_load_cached_deal_model`` fall
+    back to a shipped model on a runtime-cache miss. Tests that exercise the
+    *cold* path (``not_cached`` / ``DEFAULT_TRIGGERS`` fallback) assume a miss
+    means "no model", so without this fixture the real Green Lion seed would
+    leak in and flip them to ``cached``. Isolating the seed dir to an empty
+    per-session tmp path preserves those tests' cold semantics; the seed-aware
+    tests override this patch with their own populated dir (or the real dir).
+    """
+    empty = tmp_path_factory.mktemp("empty_seed_dir")
+    with patch("loanwhiz.api.main.DEAL_MODEL_SEED_DIR", str(empty)):
+        yield
+
+
 # The Green Lion deal context references one ESMA tape per monthly reporting
 # period; the deal endpoints fan out across all of them. Drive count
 # expectations off the config (currently 27 tapes) rather than a hardcoded
@@ -295,6 +313,116 @@ def test_deal_model_unknown_returns_404():
     resp = client.get("/deal/unknown/model")
     assert resp.status_code == 404
     assert resp.json()["detail"] == "Deal unknown not found"
+
+
+# ---------------------------------------------------------------------------
+# Committed deal-model seed fallback (#196 — Overview cold-cache)
+# ---------------------------------------------------------------------------
+
+
+def test_deal_model_served_from_seed_when_runtime_cache_cold(tmp_path):
+    """A cold runtime cache + a committed seed → the endpoint serves the seed.
+
+    This is the clean-checkout case: ``data/deals/*.json`` is gitignored and
+    empty, but the committed seed under ``src/loanwhiz/data/deals/seed`` lets
+    the Overview render Capital Structure / Triggers / Completeness instead of
+    a blank 'not extracted' screen. The runtime cache dir is empty; the seed
+    dir carries a Green Lion model.
+    """
+    cache_dir = tmp_path / "cache"
+    seed_dir = tmp_path / "seed"
+    cache_dir.mkdir()
+    seeded = _seed_cached_deal_model(str(seed_dir))
+
+    with patch("loanwhiz.api.main.DEAL_MODEL_CACHE_DIR", str(cache_dir)), patch(
+        "loanwhiz.api.main.DEAL_MODEL_SEED_DIR", str(seed_dir)
+    ):
+        resp = client.get("/deal/green-lion-2026-1/model")
+
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["extraction_status"] == "cached"
+    assert body["completeness_score"] == seeded["metadata"]["completeness_score"]
+    assert body["trigger_names"] == seeded["trigger_names"]
+    assert body["deal_model"] is not None
+    assert body["deal_model"]["tranche_structure"] == seeded["tranche_structure"]
+
+
+def test_runtime_cache_wins_over_seed(tmp_path):
+    """When both the runtime cache and the seed have the deal, the runtime cache
+    wins — a fresh cold extraction must override the shipped seed."""
+    cache_dir = tmp_path / "cache"
+    seed_dir = tmp_path / "seed"
+    cached = _seed_cached_deal_model(str(cache_dir))
+    # Give the seed a distinguishable completeness so we can tell which won.
+    seeded = _seed_cached_deal_model(str(seed_dir))
+    seed_path = seed_dir / "green-lion-2026-1-bv.json"
+    seeded["metadata"]["completeness_score"] = 0.25
+    seed_path.write_text(json.dumps(seeded), encoding="utf-8")
+
+    with patch("loanwhiz.api.main.DEAL_MODEL_CACHE_DIR", str(cache_dir)), patch(
+        "loanwhiz.api.main.DEAL_MODEL_SEED_DIR", str(seed_dir)
+    ):
+        resp = client.get("/deal/green-lion-2026-1/model")
+
+    assert resp.status_code == 200
+    # The runtime cache's completeness (0.75), not the seed's overridden 0.25.
+    assert resp.json()["completeness_score"] == cached["metadata"][
+        "completeness_score"
+    ]
+
+
+def test_deal_model_not_cached_when_no_seed_and_cold_cache(tmp_path):
+    """With both the runtime cache AND the seed dir empty, the endpoint still
+    degrades gracefully — ``not_cached`` / ``deal_model=None``, no extraction.
+
+    Guards that a deal without a committed seed keeps the original cold-path
+    behaviour rather than 500-ing on a missing seed file."""
+    cache_dir = tmp_path / "cache"
+    seed_dir = tmp_path / "seed"
+    cache_dir.mkdir()
+    seed_dir.mkdir()
+
+    with patch("loanwhiz.api.main.DEAL_MODEL_CACHE_DIR", str(cache_dir)), patch(
+        "loanwhiz.api.main.DEAL_MODEL_SEED_DIR", str(seed_dir)
+    ), patch("loanwhiz.extraction.assembler.extract_deal_model") as mock_extract:
+        resp = client.get("/deal/green-lion-2026-1/model")
+
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["extraction_status"] == "not_cached"
+    assert body["deal_model"] is None
+    mock_extract.assert_not_called()
+
+
+def test_committed_green_lion_seed_exists_and_validates():
+    """The committed Green Lion seed artifact ships and validates as a DealModel.
+
+    This is the artifact a clean checkout serves; if it stops being tracked (an
+    over-broad ``.gitignore`` rule) or drifts from the schema, the Overview goes
+    blank again. Validating it against the real ``DEAL_MODEL_SEED_DIR`` and the
+    live ``DealModel`` is the regression guard.
+    """
+    from loanwhiz.api import main as api_main
+    from loanwhiz.config import GREEN_LION
+    from loanwhiz.extraction.assembler import DealModel, _slug
+
+    # Resolve the *real* committed seed dir from the package layout — the
+    # autouse fixture patches ``api_main.DEAL_MODEL_SEED_DIR`` to an empty tmp
+    # dir, so reading the attribute here would point at the wrong place.
+    real_seed_dir = (
+        Path(api_main.__file__).resolve().parents[1] / "data" / "deals" / "seed"
+    )
+    seed_path = real_seed_dir / f"{_slug(GREEN_LION['deal_name'])}.json"
+    assert seed_path.exists(), f"committed seed missing: {seed_path}"
+
+    model = DealModel.model_validate_json(seed_path.read_text(encoding="utf-8"))
+    assert model.metadata.deal_name == GREEN_LION["deal_name"]
+    assert model.tranche_structure, "seed has no tranche structure"
+    assert model.trigger_names, "seed has no trigger names"
+    assert 0.0 <= model.metadata.completeness_score <= 1.0
+    # The committed seed must carry no host-specific absolute path.
+    assert not Path(model.metadata.cache_path).is_absolute()
 
 
 # ---------------------------------------------------------------------------
@@ -1233,6 +1361,121 @@ def test_primitives_registry_fully_populated():
         "cashflow_projector",
         "audit_logger",
     } <= names
+
+
+def test_primitives_carry_reachability():
+    """Every catalogue entry carries a valid `reachability` field (#197)."""
+    resp = client.get("/primitives")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body  # non-empty
+    for entry in body:
+        assert "reachability" in entry
+        assert entry["reachability"] in {"live", "library-only"}
+
+
+def test_primitives_reachability_marks_live_vs_library_only():
+    """The live/library-only split is honest (#197).
+
+    The four data primitives — each called by a REST endpoint AND exposed as a
+    LangGraph agent tool — plus `audit_logger` (now wired into the REST primitive
+    path) are marked `live`. `cashflow_projector` / `report_verifier` /
+    `multi_period_waterfall_runner` are registered (so they appear in the
+    catalogue) but reached by no endpoint or agent tool, so they are
+    `library-only` — nothing is advertised as live that a client can't reach.
+    """
+    resp = client.get("/primitives")
+    assert resp.status_code == 200
+    by_name = {entry["name"]: entry["reachability"] for entry in resp.json()}
+
+    for name in (
+        "esma_tape_normaliser",
+        "collections_aggregator",
+        "covenant_monitor",
+        "waterfall_runner",
+        "audit_logger",
+    ):
+        assert by_name[name] == "live", f"{name} should be live"
+
+    for name in (
+        "cashflow_projector",
+        "report_verifier",
+        "multi_period_waterfall_runner",
+    ):
+        assert by_name[name] == "library-only", f"{name} should be library-only"
+
+
+# ---------------------------------------------------------------------------
+# audit_logger wired into the REST primitive path (#197)
+# ---------------------------------------------------------------------------
+
+
+def _read_audit_entries(log_dir: Path) -> list[dict]:
+    """Read every AuditLogEntry JSONL line written under ``log_dir``."""
+    entries: list[dict] = []
+    for jsonl in sorted(log_dir.rglob("*.jsonl")):
+        for line in jsonl.read_text(encoding="utf-8").splitlines():
+            line = line.strip()
+            if line:
+                entries.append(json.loads(line))
+    return entries
+
+
+def test_deal_project_writes_audit_entries(tmp_path):
+    """A real (un-mocked) deterministic REST primitive call emits AuditLogEntry.
+
+    The audit_logger primitive claims "every primitive call gets an audit entry";
+    this drives the un-mocked `/project` waterfall path (pure math, no network)
+    and asserts a real `AuditLogEntry` lands under the patched audit log dir,
+    carrying the provenance fields the catalogue advertises.
+    """
+    with patch("loanwhiz.api.main.API_AUDIT_LOG_DIR", str(tmp_path)):
+        resp = client.post(
+            "/deal/green-lion-2026-1/project",
+            json={"scenarios": ["base", "stress"], "months": 12},
+        )
+    assert resp.status_code == 200
+
+    entries = _read_audit_entries(tmp_path)
+    # One waterfall run per requested scenario → at least two audit entries.
+    assert len(entries) >= 2
+    for entry in entries:
+        assert entry["primitive_name"] == "waterfall_runner"
+        # Full provenance the audit_logger catalogue claim advertises.
+        assert len(entry["input_hash"]) == 64
+        assert len(entry["output_hash"]) == 64
+        assert 0.0 <= entry["confidence"] <= 1.0
+        assert "executed_at" in entry
+        assert isinstance(entry["human_review_required"], bool)
+
+
+def test_audit_side_write_does_not_break_mocked_endpoint(tmp_path):
+    """The best-effort audit wrapper never 500s an endpoint.
+
+    The existing endpoint tests mock the primitive with a `_FakeResult` stand-in
+    that lacks real `confidence`/`citations`; the audit step must swallow that
+    and leave the endpoint response unchanged (no audit entry written).
+    """
+    waterfall_dump = {
+        "reporting_period": "projection+12m (base)",
+        "revenue_waterfall": [],
+        "redemption_waterfall": [],
+        "tranche_distributions": [],
+        "total_distributed": 0.0,
+        "shortfall": 0.0,
+    }
+    with patch("loanwhiz.api.main.API_AUDIT_LOG_DIR", str(tmp_path)), patch(
+        "loanwhiz.api.main.WaterfallRunner"
+    ) as MockRunner:
+        MockRunner.return_value.execute.return_value = _FakeResult(waterfall_dump)
+        resp = client.post(
+            "/deal/green-lion-2026-1/project",
+            json={"scenarios": ["base"], "months": 12},
+        )
+    assert resp.status_code == 200
+    # The stand-in result is not a real PrimitiveResult, so the best-effort
+    # audit wrote nothing — but crucially the endpoint did not error.
+    assert _read_audit_entries(tmp_path) == []
 
 
 # ---------------------------------------------------------------------------

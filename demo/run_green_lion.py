@@ -15,6 +15,7 @@ from __future__ import annotations
 import os
 import sys
 import time
+from datetime import datetime
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
@@ -53,6 +54,52 @@ CAPITAL_STRUCTURE = {
     "reserve_account_target": 5_000_000.0,
     "senior_fees_estimate": 50_000.0,
 }
+
+
+# ---------------------------------------------------------------------------
+# Reporting-tape selection
+# ---------------------------------------------------------------------------
+#
+# ``GREEN_LION["tape_urls"]`` is now the full 27-month chronological history
+# (24 historical 2024-01…2025-12 tapes + the 3 for 2026). The demo's analytics,
+# covenant, and projection sections are written around the deal's three 2026
+# *reporting* periods (Feb / Mar / Apr 2026) — running them over all 27 tapes
+# would download 27 CSVs and (worse) mislabel the columns, e.g. printing
+# Jan-2024 data under a hardcoded "Feb 2026" header. So the demo deliberately
+# slices to the reporting tapes and derives its period labels from the actual
+# tape dates rather than hardcoding month names.
+
+REPORTING_PERIOD_START = "2026-01-01"
+N_REPORTING_TAPES = 3
+
+
+def reporting_tapes() -> list[dict]:
+    """Return the deal's reporting tapes (the 2026 Feb/Mar/Apr entries).
+
+    Selects the ``tape_urls`` entries dated on/after ``REPORTING_PERIOD_START``
+    (the 2026 reporting periods), in chronological order. If that predicate
+    yields fewer than ``N_REPORTING_TAPES`` (e.g. a future config with no 2026
+    tapes), falls back to the last ``N_REPORTING_TAPES`` tapes — so a live run
+    always shows a sensible, correctly-labelled window and never misattributes
+    a period to the wrong date.
+    """
+    tapes = sorted(GREEN_LION["tape_urls"], key=lambda e: e["date"])
+    selected = [e for e in tapes if e["date"] >= REPORTING_PERIOD_START]
+    if len(selected) < N_REPORTING_TAPES:
+        selected = tapes[-N_REPORTING_TAPES:]
+    return selected
+
+
+def _period_label(date: str) -> str:
+    """Map an ISO ``YYYY-MM-DD`` tape date to a ``"Mon YYYY"`` period label.
+
+    e.g. ``"2026-02-28" -> "Feb 2026"``. Falls back to the raw date string if
+    it isn't a parseable ISO date, so a malformed config never crashes the demo.
+    """
+    try:
+        return datetime.strptime(date, "%Y-%m-%d").strftime("%b %Y")
+    except ValueError:
+        return date
 
 
 # ---------------------------------------------------------------------------
@@ -150,8 +197,16 @@ def _compute_tape_metrics(df: pd.DataFrame, date: str) -> dict:
 
 
 def section_esma_analytics() -> dict[str, dict]:
-    """Load all 3 ESMA tapes, compute metrics, print comparison table."""
-    section("2. ESMA TAPE ANALYTICS (Feb / Mar / Apr 2026)")
+    """Load the deal's reporting tapes, compute metrics, print comparison table.
+
+    The full config carries 27 monthly tapes; the demo deliberately slices to
+    the reporting periods (``reporting_tapes()`` — the 2026 Feb/Mar/Apr entries)
+    and labels every column from the actual tape date, so a live run is never
+    mislabelled and never downloads the full history.
+    """
+    tapes = reporting_tapes()
+    labels = [_period_label(e["date"]) for e in tapes]
+    section(f"2. ESMA TAPE ANALYTICS ({' / '.join(labels)})")
     if _HAS_DATA_MODULE:
         print("  [data] loanwhiz.data.green_lion module available")
     else:
@@ -159,10 +214,10 @@ def section_esma_analytics() -> dict[str, dict]:
 
     metrics: dict[str, dict] = {}
 
-    for entry in GREEN_LION["tape_urls"]:
+    for entry in tapes:
         date = entry["date"]
         url = entry["url"]
-        print(f"\n  Loading tape {date} ...", end="", flush=True)
+        print(f"\n  Loading tape {date} ({_period_label(date)}) ...", end="", flush=True)
         t0 = time.time()
         df = pd.read_csv(url)
         elapsed = time.time() - t0
@@ -171,44 +226,52 @@ def section_esma_analytics() -> dict[str, dict]:
         # Stash the URL so downstream sections can reuse it without re-deriving.
         metrics[date]["url"] = url
 
-    # Summary table
-    print("\n" + "  " + "-" * 72)
-    print(
-        f"  {'Metric':<32}  {'Feb 2026':>12}  {'Mar 2026':>12}  {'Apr 2026':>12}"
-    )
-    print("  " + "-" * 72)
-
     dates = list(metrics.keys())
 
-    def row(label: str, vals: list, fmt=None) -> None:
-        fmt = fmt or (lambda x: f"{x:,.0f}" if isinstance(x, float) else str(x))
-        fmted = [fmt(metrics[d][label]) for d in dates]
-        print(f"  {label:<32}  {fmted[0]:>12}  {fmted[1]:>12}  {fmted[2]:>12}")
+    # Summary table — one column per reporting period, labelled from its date.
+    print("\n" + "  " + "-" * 72)
+    header = f"  {'Metric':<32}"
+    for lbl in labels:
+        header += f"  {lbl:>12}"
+    print(header)
+    print("  " + "-" * 72)
 
-    row("loan_count", dates, fmt=lambda x: f"{int(x):,}")
-    row("total_balance", dates, fmt=lambda x: _fmt_eur(x))
-    row("wa_ltv_pct", dates, fmt=lambda x: f"{x:.2f}%")
-    row("arrears_pct", dates, fmt=lambda x: f"{x:.3f}%")
-    row("arrears_balance", dates, fmt=lambda x: _fmt_eur(x))
-    row("wa_seasoning_months", dates, fmt=lambda x: f"{x:.1f} mo")
+    def row(label: str, fmt=None) -> None:
+        fmt = fmt or (lambda x: f"{x:,.0f}" if isinstance(x, float) else str(x))
+        line = f"  {label:<32}"
+        for d in dates:
+            line += f"  {fmt(metrics[d][label]):>12}"
+        print(line)
+
+    row("loan_count", fmt=lambda x: f"{int(x):,}")
+    row("total_balance", fmt=lambda x: _fmt_eur(x))
+    row("wa_ltv_pct", fmt=lambda x: f"{x:.2f}%")
+    row("arrears_pct", fmt=lambda x: f"{x:.3f}%")
+    row("arrears_balance", fmt=lambda x: _fmt_eur(x))
+    row("wa_seasoning_months", fmt=lambda x: f"{x:.1f} mo")
 
     print("  " + "-" * 72)
 
-    # Period-over-period changes
-    print("\n  Period-over-period changes (Feb→Mar / Mar→Apr):")
+    # Period-over-period changes (each consecutive pair of reporting periods).
+    transitions = " / ".join(
+        f"{labels[i]}→{labels[i + 1]}" for i in range(len(labels) - 1)
+    )
+    print(f"\n  Period-over-period changes ({transitions}):")
     for label, fmt in [
         ("loan_count", lambda x: f"{int(x):+,}"),
         ("total_balance", lambda x: _fmt_eur(x) if x >= 0 else f"-{_fmt_eur(-x)}"),
         ("arrears_pct", lambda x: f"{x:+.3f}pp"),
         ("wa_ltv_pct", lambda x: f"{x:+.2f}pp"),
     ]:
-        d1 = metrics[dates[1]][label] - metrics[dates[0]][label]
-        d2 = metrics[dates[2]][label] - metrics[dates[1]][label]
-        print(f"    {label:<30} {fmt(d1):>12}  {fmt(d2):>12}")
+        line = f"    {label:<30}"
+        for i in range(1, len(dates)):
+            delta = metrics[dates[i]][label] - metrics[dates[i - 1]][label]
+            line += f" {fmt(delta):>12} "
+        print(line)
 
-    # EPC distribution for most recent tape
-    latest = metrics[dates[2]]
-    print(f"\n  EPC distribution (Apr 2026, % pool balance):")
+    # EPC distribution for the most recent reporting tape.
+    latest = metrics[dates[-1]]
+    print(f"\n  EPC distribution ({labels[-1]}, % pool balance):")
     for label in sorted(latest["epc_dist"]):
         bar_width = int(latest["epc_dist"][label] / 2)
         bar = "#" * bar_width
@@ -332,19 +395,20 @@ def section_waterfall_execution(metrics: dict[str, dict]) -> dict | None:
     from loanwhiz.primitives.waterfall_runner import WaterfallInput, WaterfallRunner
 
     dates = list(metrics.keys())
-    apr = metrics[dates[2]]
-    mar = metrics[dates[1]]
-    apr_url = apr["url"]
-    prev_pool_balance = float(mar["total_balance"])
+    latest = metrics[dates[-1]]
+    prev = metrics[dates[-2]]
+    latest_label = _period_label(dates[-1])
+    latest_url = latest["url"]
+    prev_pool_balance = float(prev["total_balance"])
 
-    print(f"\n  Aggregating April 2026 tape → waterfall inputs")
+    print(f"\n  Aggregating {latest_label} tape → waterfall inputs")
     print(f"  (CollectionsAggregator: interest accrual + scheduled principal)")
 
     coll = CollectionsAggregator()
     coll_result = coll.execute(
         CollectionsInput(
-            tape_file_url=apr_url,
-            reporting_period="April 2026",
+            tape_file_url=latest_url,
+            reporting_period=latest_label,
             prev_pool_balance=prev_pool_balance,
             class_a_rate_pct=CAPITAL_STRUCTURE["class_a_rate_pct"],
             class_a_balance=CAPITAL_STRUCTURE["class_a_balance"],
@@ -371,7 +435,7 @@ def section_waterfall_execution(metrics: dict[str, dict]) -> dict | None:
     runner = WaterfallRunner()
     wf_result = runner.execute(
         WaterfallInput(
-            reporting_period="April 2026",
+            reporting_period=latest_label,
             available_revenue_funds=coll_out.available_revenue_funds,
             available_principal_funds=coll_out.available_principal_funds,
             senior_fees=coll_out.senior_fees,
@@ -399,7 +463,7 @@ def section_waterfall_execution(metrics: dict[str, dict]) -> dict | None:
         )
     print("  " + "-" * 64)
 
-    print(f"\n  Per-tranche distributions (April 2026):")
+    print(f"\n  Per-tranche distributions ({latest_label}):")
     print(
         f"    {'Tranche':<10}  {'Interest':>12}  {'Principal':>12}  {'Total':>12}"
     )
@@ -517,16 +581,22 @@ def section_covenant_monitor(metrics: dict[str, dict]) -> None:
         EsmaTapeInput,
     )
 
+    tapes = reporting_tapes()
     print(
-        "\n  Normalising all 3 ESMA tapes (EsmaTapeNormaliser) and evaluating the\n"
-        "  Green Lion trigger thresholds across each period (CovenantMonitor)."
+        f"\n  Normalising the {len(tapes)} reporting ESMA tapes (EsmaTapeNormaliser)\n"
+        "  and evaluating the Green Lion trigger thresholds across each period\n"
+        "  (CovenantMonitor)."
     )
 
     normaliser = EsmaTapeNormaliser()
     periods: list[dict] = []
-    for entry in GREEN_LION["tape_urls"]:
+    for entry in tapes:
         url = metrics[entry["date"]]["url"]
-        print(f"\n  Normalising tape {entry['date']} ...", end="", flush=True)
+        print(
+            f"\n  Normalising tape {entry['date']} ({_period_label(entry['date'])}) ...",
+            end="",
+            flush=True,
+        )
         res = normaliser.execute(
             EsmaTapeInput(file_url=url, reporting_date=entry["date"])
         )
@@ -604,7 +674,7 @@ def section_cashflow_projection(metrics: dict[str, dict]) -> None:
     )
 
     dates = list(metrics.keys())
-    current_pool = float(metrics[dates[2]]["total_balance"])
+    current_pool = float(metrics[dates[-1]]["total_balance"])
 
     print(
         "\n  12-month forward projection (CashflowProjector) under base and stress\n"
@@ -659,8 +729,10 @@ def section_nlq(metrics: dict[str, dict]) -> None:
 
     # Build a concise context from computed tape metrics
     dates = list(metrics.keys())
+    first_label = _period_label(dates[0])
+    last_label = _period_label(dates[-1])
     context_lines = [
-        "Green Lion 2026-1 B.V. — ESMA Loan Tape Summary (Feb–Apr 2026)",
+        f"Green Lion 2026-1 B.V. — ESMA Loan Tape Summary ({first_label}–{last_label})",
         "",
     ]
     for d in dates:
@@ -686,7 +758,7 @@ def section_nlq(metrics: dict[str, dict]) -> None:
 
     question = (
         "What is the current arrears profile of the Green Lion pool "
-        "and how has it evolved from February to April 2026? "
+        f"and how has it evolved from {first_label} to {last_label}? "
         "Be specific about the numbers."
     )
 
@@ -726,14 +798,16 @@ def section_nlq(metrics: dict[str, dict]) -> None:
         print(f"  [Gemini unavailable in this environment: {exc}]")
         print()
         print("  Answering from tape data directly:")
-        m0, m2 = metrics[dates[0]], metrics[dates[2]]
+        m0, m2 = metrics[dates[0]], metrics[dates[-1]]
         delta_arr = m2["arrears_pct"] - m0["arrears_pct"]
+        n_steps = len(dates) - 1
+        span = f"{n_steps}-month period" if n_steps != 1 else "one-month period"
         print(
             f"\n  The Green Lion pool had arrears of {m0['arrears_pct']:.3f}% "
-            f"({_fmt_eur(m0['arrears_balance'])}) in February 2026.\n"
-            f"  By April 2026 this moved to {m2['arrears_pct']:.3f}% "
+            f"({_fmt_eur(m0['arrears_balance'])}) in {first_label}.\n"
+            f"  By {last_label} this moved to {m2['arrears_pct']:.3f}% "
             f"({_fmt_eur(m2['arrears_balance'])}), a change of "
-            f"{delta_arr:+.3f}pp over the two-month period.\n"
+            f"{delta_arr:+.3f}pp over the {span}.\n"
             f"  The sequential pay trigger threshold is 2.00%; the pool is "
             f"well inside that boundary.\n"
         )

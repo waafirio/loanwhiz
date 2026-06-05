@@ -91,7 +91,79 @@ class TestGovernanceEvidencePackCreation:
         pack = _sample_pack()
         assert pack.model_used == "gemini-2.5-flash"
         assert pack.framework_version == "loanwhiz-0.1.0"
+        # finos_compliant is now derived; a well-formed pack is compliant.
         assert pack.finos_compliant is True
+
+
+# ---------------------------------------------------------------------------
+# Test 1b — finos_compliant is DERIVED by a real check, not a constant (#194)
+# ---------------------------------------------------------------------------
+
+
+class TestFinosComplianceDerivation:
+    def test_wellformed_pack_is_compliant(self) -> None:
+        """A pack created via the factory has consistent evidence → compliant."""
+        pack = _sample_pack([0.9, 0.6, 0.8])
+        assert pack.finos_compliant is True
+
+    def test_no_tool_pack_is_compliant(self) -> None:
+        """An empty-tool pack (aggregate 1.0, no citations, no review) is compliant."""
+        pack = GovernanceEvidencePack.create(query="q", answer="a", tool_calls=[])
+        assert pack.finos_compliant is True
+
+    def test_check_rejects_wrong_aggregate(self) -> None:
+        """The derivation actually computes: a mismatched aggregate is non-compliant."""
+        tcs = [_make_tool_call(0, 0.9), _make_tool_call(1, 0.6)]
+        # Real aggregate is 0.6; assert the check flags an inconsistent 0.9.
+        assert (
+            GovernanceEvidencePack._check_finos_compliant(
+                tool_calls=tcs,
+                aggregate_confidence=0.9,  # wrong — should be min = 0.6
+                all_citations=[],
+                human_review_required=True,
+            )
+            is False
+        )
+
+    def test_check_rejects_wrong_review_flag(self) -> None:
+        """A review flag inconsistent with the threshold is non-compliant."""
+        tcs = [_make_tool_call(0, 0.5)]  # aggregate 0.5 < 0.7 → review SHOULD be True
+        assert (
+            GovernanceEvidencePack._check_finos_compliant(
+                tool_calls=tcs,
+                aggregate_confidence=0.5,
+                all_citations=[],
+                human_review_required=False,  # wrong
+            )
+            is False
+        )
+
+    def test_check_rejects_out_of_range_confidence(self) -> None:
+        """A per-tool confidence outside [0,1] is non-compliant."""
+        tcs = [_make_tool_call(0, 1.5)]
+        assert (
+            GovernanceEvidencePack._check_finos_compliant(
+                tool_calls=tcs,
+                aggregate_confidence=1.5,
+                all_citations=[],
+                human_review_required=False,
+            )
+            is False
+        )
+
+    def test_check_rejects_dropped_citations(self) -> None:
+        """An all_citations that doesn't match the tool citations is non-compliant."""
+        cite = {"document": "tape.csv", "page_or_row": 1, "excerpt": "x"}
+        tcs = [_make_tool_call(0, 0.9, citations=[cite])]
+        assert (
+            GovernanceEvidencePack._check_finos_compliant(
+                tool_calls=tcs,
+                aggregate_confidence=0.9,
+                all_citations=[],  # dropped the real citation
+                human_review_required=False,
+            )
+            is False
+        )
 
 
 # ---------------------------------------------------------------------------

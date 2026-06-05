@@ -25,6 +25,10 @@ from pathlib import Path
 from pydantic import BaseModel
 
 
+# Aggregate confidence below this triggers the human-review flag.
+REVIEW_THRESHOLD = 0.7
+
+
 # ---------------------------------------------------------------------------
 # ToolCallRecord — one agent tool call within a query
 # ---------------------------------------------------------------------------
@@ -55,6 +59,24 @@ class ToolCallRecord(BaseModel):
     timestamp: str
 
 
+def _dedupe_citations(tool_calls: list[ToolCallRecord]) -> list[dict]:
+    """Order-preserving (first-seen-wins) dedup of every tool call's citations.
+
+    Shared by ``GovernanceEvidencePack.create`` (to build ``all_citations``)
+    and ``_check_finos_compliant`` (to verify the trail) so the two can never
+    disagree on what the deduplicated citation set is.
+    """
+    seen: list[str] = []
+    deduped: list[dict] = []
+    for tc in tool_calls:
+        for citation in tc.citations:
+            key = json.dumps(citation, sort_keys=True)
+            if key not in seen:
+                seen.append(key)
+                deduped.append(citation)
+    return deduped
+
+
 # ---------------------------------------------------------------------------
 # GovernanceEvidencePack — complete governance evidence for one query
 # ---------------------------------------------------------------------------
@@ -82,7 +104,10 @@ class GovernanceEvidencePack(BaseModel):
         human_review_required:   True when aggregate_confidence < 0.7.
         model_used:              LLM backbone for this query.
         framework_version:       LoanWhiz framework version string.
-        finos_compliant:         Whether this pack follows FINOS templates.
+        finos_compliant:         Whether the pack's governance evidence is
+                                 internally consistent — derived by
+                                 ``_check_finos_compliant`` in ``create``, not
+                                 a hardcoded constant.
     """
 
     pack_id: str = ""
@@ -98,7 +123,64 @@ class GovernanceEvidencePack(BaseModel):
     # Governance metadata
     model_used: str = "gemini-2.5-flash"
     framework_version: str = "loanwhiz-0.1.0"
+    # Derived in `create()` by `_check_finos_compliant`, not a constant — a
+    # pack is FINOS-compliant only when its governance evidence is internally
+    # consistent (aggregate confidence, citation trail, and review flag all
+    # correctly computed from the tool calls). The default here is the
+    # validation fallback for packs constructed directly (e.g. round-tripped
+    # from JSONL); `create()` always overrides it with the real check.
     finos_compliant: bool = True
+
+    # ------------------------------------------------------------------
+    # FINOS compliance check
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _check_finos_compliant(
+        tool_calls: list[ToolCallRecord],
+        aggregate_confidence: float,
+        all_citations: list[dict],
+        human_review_required: bool,
+    ) -> bool:
+        """Return whether the pack's governance evidence is internally consistent.
+
+        This is the *real* FINOS-compliance check that replaces the old
+        hardcoded ``finos_compliant = True``. A pack is compliant only when the
+        derived governance fields actually hold against the framework's
+        requirements (see the class docstring):
+
+        - **Confidence scoring** — ``aggregate_confidence`` is the ``min`` of
+          the per-tool confidences (or ``1.0`` for a no-tool answer), and every
+          per-tool confidence is a valid probability in ``[0.0, 1.0]``.
+        - **Citation trail** — ``all_citations`` is exactly the deduplicated
+          union of the tool calls' citations (no dropped or invented sources).
+        - **Human review flag** — ``human_review_required`` matches the
+          ``aggregate_confidence < REVIEW_THRESHOLD`` rule.
+
+        A pack that fails any of these is *not* compliant — surfacing a genuine
+        evidence defect rather than asserting compliance unconditionally.
+        """
+        # Confidence scoring: every per-tool score is a valid probability.
+        if any(not (0.0 <= tc.confidence <= 1.0) for tc in tool_calls):
+            return False
+
+        # Aggregate confidence is the conservative min (1.0 with no tools).
+        expected_aggregate = (
+            min(tc.confidence for tc in tool_calls) if tool_calls else 1.0
+        )
+        if abs(aggregate_confidence - expected_aggregate) > 1e-9:
+            return False
+
+        # Citation trail is exactly the order-preserving dedup of tool citations.
+        expected_citations = _dedupe_citations(tool_calls)
+        if all_citations != expected_citations:
+            return False
+
+        # Human-review flag matches the threshold rule.
+        if human_review_required != (aggregate_confidence < REVIEW_THRESHOLD):
+            return False
+
+        return True
 
     # ------------------------------------------------------------------
     # Factory
@@ -121,7 +203,9 @@ class GovernanceEvidencePack(BaseModel):
         - ``all_citations`` — deduplicated union (preserving first-seen
           order) of every tool call's citation list.
         - ``human_review_required`` — ``True`` when
-          ``aggregate_confidence < 0.7``.
+          ``aggregate_confidence < REVIEW_THRESHOLD`` (0.7).
+        - ``finos_compliant`` — derived by :meth:`_check_finos_compliant` from
+          the consistency of the evidence above; not a hardcoded constant.
 
         Parameters
         ----------
@@ -141,16 +225,18 @@ class GovernanceEvidencePack(BaseModel):
             aggregate_confidence = 1.0
 
         # Deduplicate citations preserving order (first-seen wins).
-        seen: list[str] = []
-        all_citations: list[dict] = []
-        for tc in tool_calls:
-            for citation in tc.citations:
-                key = json.dumps(citation, sort_keys=True)
-                if key not in seen:
-                    seen.append(key)
-                    all_citations.append(citation)
+        all_citations = _dedupe_citations(tool_calls)
 
-        human_review_required = aggregate_confidence < 0.7
+        human_review_required = aggregate_confidence < REVIEW_THRESHOLD
+
+        # Derive FINOS compliance from a real check over the evidence, rather
+        # than asserting it unconditionally.
+        finos_compliant = cls._check_finos_compliant(
+            tool_calls=tool_calls,
+            aggregate_confidence=aggregate_confidence,
+            all_citations=all_citations,
+            human_review_required=human_review_required,
+        )
 
         return cls(
             pack_id=pack_id,
@@ -161,6 +247,7 @@ class GovernanceEvidencePack(BaseModel):
             aggregate_confidence=aggregate_confidence,
             all_citations=all_citations,
             human_review_required=human_review_required,
+            finos_compliant=finos_compliant,
         )
 
     # ------------------------------------------------------------------

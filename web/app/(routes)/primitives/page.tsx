@@ -42,7 +42,7 @@ export default function PrimitivesPage() {
     <div className="space-y-6">
       <PageHeader
         title="Framework"
-        description="The SF primitive registry — every registered primitive with its typed input/output contract, version, and tags. This is the framework the challenge judges."
+        description="The SF primitive registry — every registered primitive with its typed input/output contract, version, and tags. This is the framework the challenge judges. The reachability badge marks which primitives are live (reachable via a REST endpoint and/or agent tool) versus library-only (registered and importable, but reached by no endpoint or agent tool)."
       />
       {error ? (
         <ErrorState title="Could not load the primitive catalogue" message={error} />
@@ -66,7 +66,10 @@ function PrimitiveCard({ primitive }: { primitive: PrimitiveCatalogueEntry }) {
     <Card>
       <CardHeader className="space-y-2">
         <div className="flex flex-wrap items-baseline justify-between gap-2">
-          <CardTitle className="font-mono text-base">{primitive.name}</CardTitle>
+          <div className="flex items-center gap-2">
+            <CardTitle className="font-mono text-base">{primitive.name}</CardTitle>
+            <ReachabilityBadge reachability={primitive.reachability} />
+          </div>
           <span className="text-xs text-muted-foreground">
             v{primitive.version} · {primitive.author}
           </span>
@@ -91,6 +94,32 @@ function PrimitiveCard({ primitive }: { primitive: PrimitiveCatalogueEntry }) {
         <p className="text-xs text-muted-foreground">{primitive.confidence}</p>
       </CardContent>
     </Card>
+  );
+}
+
+/**
+ * Reachability badge — marks a primitive as `live` (reachable via a REST
+ * endpoint and/or agent tool) or `library-only` (registered/importable but
+ * reached by no endpoint or agent tool). An absent value (older API) is
+ * treated as `library-only`, the conservative honest default.
+ */
+function ReachabilityBadge({
+  reachability,
+}: {
+  reachability?: "live" | "library-only";
+}) {
+  const isLive = reachability === "live";
+  return (
+    <Badge
+      variant={isLive ? "default" : "outline"}
+      title={
+        isLive
+          ? "Reachable via a REST endpoint and/or agent tool."
+          : "Registered and importable, but reached by no endpoint or agent tool."
+      }
+    >
+      {isLive ? "live" : "library-only"}
+    </Badge>
   );
 }
 

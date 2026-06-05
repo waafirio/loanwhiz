@@ -1,0 +1,445 @@
+{
+  "metadata": {
+    "deal_name": "Green Lion 2026-1 B.V.",
+    "prospectus_url": "https://huggingface.co/datasets/Algoritmica/green-lion-2026/resolve/main/Hackathon_Data/green-lion-2026-1-prospectus.pdf",
+    "extracted_at": "2026-06-03T21:50:47.732844+00:00",
+    "extraction_duration_sec": 3.7757956981658936,
+    "sections_found": [
+      "definitions",
+      "revenue_priority_of_payments",
+      "redemption_priority_of_payments",
+      "post_enforcement_priority",
+      "credit_enhancement",
+      "eligibility_criteria",
+      "available_funds"
+    ],
+    "completeness_score": 0.75,
+    "cache_path": "data/deals/green-lion-2026-1-bv.json"
+  },
+  "definitions": {},
+  "waterfalls": {
+    "revenue": {
+      "deal_name": "Green Lion 2026-1 B.V.",
+      "waterfall_type": "revenue",
+      "steps": [
+        {
+          "priority": "(a)",
+          "recipient": "security_trustee_fees",
+          "description": "first , any fees, expenses or other amounts or liabilities which are due and payable to the Security Trustee on such Notes Payment Date;",
+          "amount_formula": "due and payable",
+          "condition": null,
+          "is_pari_passu": false,
+          "citation": {
+            "page_or_row": "Revenue Priority of Payments",
+            "document": "Green Lion 2026-1 Prospectus",
+            "excerpt": "first , any fees, expenses or other amounts or liabilities which are due and payable to the Security Trustee on such Notes Payment Date;"
+          }
+        },
+        {
+          "priority": "(b)",
+          "recipient": "various_fees_and_expenses",
+          "description": "second , on a pari passu and pro rata basis, any fees, expenses or other amounts or liabilities due and payable to any of (1) the Paying Agent, (2) the Servicer, (3) the Issuer Administrator, (4) the Issuer Account Bank, (5) the Directors, (6) any stock exchange on which the Class A Notes are listed, (7) the Issuer's auditors, legal counsel and tax advisers, (8) the Credit Rating Agencies, (9) any independent accountant or independent calculation agent appointed under the Swap Agreement, (10) any custodian, (11) any taxing authority having power and authority to tax the Issuer (to the extent such amounts cannot be paid out of item (i) of the Available Revenue Funds), (12) any Benchmark Rate Modification Costs (if applicable), (13) the fees and expenses due and payable to the Data Key Trustee under the Deposit Agreement and (14) any other creditor (other than the Swap Counterparty) from time to time of the Issuer, such as the STS Verification Agent and ESG opinion provider, which has been notified to the Issuer Administrator in accordance with the Administration Agreement, in each case on such Notes Payment Date;",
+          "amount_formula": "due and payable",
+          "condition": null,
+          "is_pari_passu": true,
+          "citation": {
+            "page_or_row": "Revenue Priority of Payments",
+            "document": "Green Lion 2026-1 Prospectus",
+            "excerpt": "second , on a pari passu and pro rata basis, any fees, expenses or other amounts or liabilities due and payable to any of (1) the Paying Agent, (2) the Se"
+          }
+        },
+        {
+          "priority": "(c)",
+          "recipient": "swap_counterparty_payments",
+          "description": "third, to the extent not paid from amounts standing to the credit of the relevant Swap Collateral Account or debited from the Swap Replacement Ledger, any amounts, except for any Excluded Swap Amounts, due and payable to the Swap Counterparty other than Subordinated Swap Payments;",
+          "amount_formula": "due and payable",
+          "condition": "to the extent not paid from amounts standing to the credit of the relevant Swap Collateral Account or debited from the Swap Replacement Ledger",
+          "is_pari_passu": false,
+          "citation": {
+            "document": "Green Lion 2026-1 Prospectus",
+            "page_or_row": "Revenue Priority of Payments",
+            "excerpt": "third, to the extent not paid from amounts standing to the credit of the relevant Swap Collateral Account or debited from the Swap Replacement Ledger, any"
+          }
+        },
+        {
+          "priority": "(d)",
+          "recipient": "class_a_interest",
+          "description": "fourth , on a pari passu and pro rata basis, all interest due (or accrued due) and payable on the Class A Notes;",
+          "amount_formula": "all interest due (or accrued due) and payable",
+          "condition": null,
+          "is_pari_passu": true,
+          "citation": {
+            "excerpt": "fourth , on a pari passu and pro rata basis, all interest due (or accrued due) and payable on the Class A Notes;",
+            "document": "Green Lion 2026-1 Prospectus",
+            "page_or_row": "Revenue Priority of Payments"
+          }
+        },
+        {
+          "priority": "(e)",
+          "recipient": "class_a_pdl_replenishment",
+          "description": "fifth , the amount required to replenish any shortfall reflected in the Class A Principal Deficiency Ledger until the debit balance, if any, on the Class A Principal Deficiency Ledger is reduced to nil;",
+          "amount_formula": "amount required to replenish any shortfall reflected in the Class A Principal Deficiency Ledger until the debit balance is reduced to nil",
+          "condition": null,
+          "is_pari_passu": false,
+          "citation": {
+            "excerpt": "fifth , the amount required to replenish any shortfall reflected in the Class A Principal Deficiency Ledger until the debit balance, if any, on the Class ",
+            "document": "Green Lion 2026-1 Prospectus",
+            "page_or_row": "Revenue Priority of Payments"
+          }
+        },
+        {
+          "priority": "(f)",
+          "recipient": "reserve_account_replenishment",
+          "description": "sixth , the amount required to replenish the Reserve Account up to the Reserve Account Target Level;",
+          "amount_formula": "amount required to replenish the Reserve Account up to the Reserve Account Target Level",
+          "condition": null,
+          "is_pari_passu": false,
+          "citation": {
+            "document": "Green Lion 2026-1 Prospectus",
+            "page_or_row": "Revenue Priority of Payments",
+            "excerpt": "sixth , the amount required to replenish the Reserve Account up to the Reserve Account Target Level;"
+          }
+        },
+        {
+          "priority": "(g)",
+          "recipient": "issuer_expense_account_replenishment",
+          "description": "seventh , the amount required to replenish the Issuer Expense Account to the Minimum Required Expense Account Amount (if any);",
+          "amount_formula": "amount required to replenish the Issuer Expense Account to the Minimum Required Expense Account Amount",
+          "condition": null,
+          "is_pari_passu": false,
+          "citation": {
+            "excerpt": "seventh , the amount required to replenish the Issuer Expense Account to the Minimum Required Expense Account Amount (if any);",
+            "document": "Green Lion 2026-1 Prospectus",
+            "page_or_row": "Revenue Priority of Payments"
+          }
+        },
+        {
+          "priority": "(h)",
+          "recipient": "class_b_pdl_replenishment",
+          "description": "eighth , the amount required to replenish any shortfall reflected in the Class B Principal Deficiency Ledger until the debit balance, if any, on the Class B Principal Deficiency Ledger is reduced to nil;",
+          "amount_formula": "amount required to replenish any shortfall reflected in the Class B Principal Deficiency Ledger until the debit balance is reduced to nil",
+          "condition": null,
+          "is_pari_passu": false,
+          "citation": {
+            "excerpt": "eighth , the amount required to replenish any shortfall reflected in the Class B Principal Deficiency Ledger until the debit balance, if any, on the Class",
+            "page_or_row": "Revenue Priority of Payments",
+            "document": "Green Lion 2026-1 Prospectus"
+          }
+        },
+        {
+          "priority": "(i)",
+          "recipient": "subordinated_swap_payments",
+          "description": "ninth , to the extent not paid from amounts standing to the credit of any Swap Collateral Account or debited from the Swap Replacement Ledger, Subordinated Swap Payments due and payable under the Swap Agreement;",
+          "amount_formula": "due and payable under the Swap Agreement",
+          "condition": "to the extent not paid from amounts standing to the credit of any Swap Collateral Account or debited from the Swap Replacement Ledger",
+          "is_pari_passu": false,
+          "citation": {
+            "page_or_row": "Revenue Priority of Payments",
+            "document": "Green Lion 2026-1 Prospectus",
+            "excerpt": "ninth , to the extent not paid from amounts standing to the credit of any Swap Collateral Account or debited from the Swap Replacement Ledger, Subordin"
+          }
+        },
+        {
+          "priority": "(j)",
+          "recipient": "class_c_notes_principal",
+          "description": "tenth , as from the earlier of (i) the Notes Payment Date on which all amounts of interest on the Class A Notes and principal on the Secured Green Collateralised Notes will have been paid and (ii) the First Optional Redemption Date, in or towards satisfaction of principal amounts due on the Class C Notes;",
+          "amount_formula": "principal amounts due",
+          "condition": "as from the earlier of (i) the Notes Payment Date on which all amounts of interest on the Class A Notes and principal on the Secured Green Collateralised Notes will have been paid and (ii) the First Optional Redemption Date",
+          "is_pari_passu": false,
+          "citation": {
+            "excerpt": "tenth , as from the earlier of (i) the Notes Payment Date on which all amounts of interest on the Class A Notes and principal on the Secured Green Collat",
+            "page_or_row": "Revenue Priority of Payments",
+            "document": "Green Lion 2026-1 Prospectus"
+          }
+        },
+        {
+          "priority": "(k)",
+          "recipient": "deferred_purchase_price_instalment",
+          "description": "eleventh , any Deferred Purchase Price Instalment to the Seller.",
+          "amount_formula": "any Deferred Purchase Price Instalment",
+          "condition": null,
+          "is_pari_passu": false,
+          "citation": {
+            "excerpt": "eleventh , any Deferred Purchase Price Instalment to the Seller.",
+            "page_or_row": "Revenue Priority of Payments",
+            "document": "Green Lion 2026-1 Prospectus"
+          }
+        }
+      ],
+      "source_section": "Revenue Priority of Payments",
+      "extraction_confidence": 1.0
+    },
+    "redemption": {
+      "deal_name": "Green Lion 2026-1 B.V.",
+      "waterfall_type": "redemption",
+      "steps": [
+        {
+          "priority": "(a)",
+          "recipient": "initial_purchase_price_of_new_mortgage_receivables",
+          "description": "first, during the Revolving Period, in or towards satisfaction of the Initial Purchase Price of any New Mortgage Receivables, subject to the Additional Purchase Conditions being met, up to the New Mortgage Receivables Available Amount",
+          "amount_formula": "up to the New Mortgage Receivables Available Amount",
+          "condition": "during the Revolving Period, subject to the Additional Purchase Conditions being met",
+          "is_pari_passu": false,
+          "citation": {
+            "page_or_row": "Redemption Priority of Payments (a)",
+            "excerpt": "first, during the Revolving Period, in or towards satisfaction of the Initial Purchase Price of any New Mortgage Receivables, subject to the Additional P",
+            "document": "Green Lion 2026-1 Prospectus"
+          }
+        },
+        {
+          "priority": "(b)",
+          "recipient": "class_a_notes_principal",
+          "description": "second , in or towards , on a pari passu and pro rata basis, satisfaction of principal amounts due and payable on the Class A Notes, until fully redeemed in accordance with the Conditions",
+          "amount_formula": "principal amounts due and payable",
+          "condition": null,
+          "is_pari_passu": true,
+          "citation": {
+            "excerpt": "second , in or towards , on a pari passu and pro rata basis, satisfaction of principal amounts due and payable on the Class A Notes, until fully red",
+            "document": "Green Lion 2026-1 Prospectus",
+            "page_or_row": "Redemption Priority of Payments (b)"
+          }
+        },
+        {
+          "priority": "(c)",
+          "recipient": "class_b_notes_principal",
+          "description": "third , in or towards, on a pari passu and pro rata basis satisfaction of principal amounts due and payable on the Class B Notes, until fully redeemed in accordance with the Conditions",
+          "amount_formula": "principal amounts due and payable",
+          "condition": null,
+          "is_pari_passu": true,
+          "citation": {
+            "excerpt": "third , in or towards, on a pari passu and pro rata basis satisfaction of principal amounts due and payable on the Class B Notes, until fully redeeme",
+            "document": "Green Lion 2026-1 Prospectus",
+            "page_or_row": "Redemption Priority of Payments (c)"
+          }
+        },
+        {
+          "priority": "(d)",
+          "recipient": "deferred_purchase_price_instalment_to_seller",
+          "description": "fourth , to pay any Deferred Purchase Price Instalment to the Seller.",
+          "amount_formula": "any Deferred Purchase Price Instalment",
+          "condition": null,
+          "is_pari_passu": false,
+          "citation": {
+            "excerpt": "fourth , to pay any Deferred Purchase Price Instalment to the Seller.",
+            "document": "Green Lion 2026-1 Prospectus",
+            "page_or_row": "Redemption Priority of Payments (d)"
+          }
+        }
+      ],
+      "source_section": "Redemption Priority of Payments",
+      "extraction_confidence": 1.0
+    },
+    "post_enforcement": {
+      "deal_name": "Green Lion 2026-1 B.V.",
+      "waterfall_type": "post_enforcement",
+      "steps": [
+        {
+          "priority": "(a)",
+          "recipient": "security_trustee_fees",
+          "description": "first , any fees, expenses or other amounts or liabilities which are due and payable to the Security Trustee on such date;",
+          "amount_formula": "due and payable",
+          "condition": null,
+          "is_pari_passu": false,
+          "citation": {
+            "page_or_row": "Post-Enforcement Priority of Payments (a)",
+            "document": "Green Lion 2026-1 Prospectus",
+            "excerpt": "first , any fees, expenses or other amounts or liabilities which are due and payable to the Security Trustee on such date;"
+          }
+        },
+        {
+          "priority": "(b)",
+          "recipient": "various_agents_and_creditors",
+          "description": "second , on a pari passu and pro rata basis, any fees, expenses or other amounts or liabilities which are due and payable to any of (1) the Paying Agent, (2) the Servicer, (3) the Issuer Administrator, (4) the Account Bank, (5) the Directors, (6) any stock exchange on which the Class A Notes are listed, (7) the Issuer's auditors, legal counsel and tax advisers, (8) the Credit Rating Agencies, (9) any independent accountant or independent calculation agent appointed under the Swap Agreement, (10) any custodian, (11) any taxing authority having power and authority to tax the Issuer (to the extent such amounts cannot be paid out of item (i) of the Available Revenue Funds), (12) any Benchmark Rate Modification Costs (if applicable), (13) the fees and expenses due and payable to the Data Key Trustee under the Deposit Agreement and (14) any other creditor (other than the Swap Counterparty) from time to time of the Issuer, such as the STS Verification Agent and ESG opinion provider, which has been notified to the Issuer Administrator in accordance with the Administration Agreement, on such date and which are (indirectly through the Parallel Debt) secured by the Security;",
+          "amount_formula": "due and payable",
+          "condition": null,
+          "is_pari_passu": true,
+          "citation": {
+            "document": "Green Lion 2026-1 Prospectus",
+            "excerpt": "second , on a pari passu and pro rata basis, any fees, expenses or other amounts or liabilities which are due and payable to any of (1) the Paying Agent",
+            "page_or_row": "Post-Enforcement Priority of Payments (b)"
+          }
+        },
+        {
+          "priority": "(c)",
+          "recipient": "swap_counterparty",
+          "description": "third , to the extent not paid from amounts standing to the credit of any Swap Collateral Account, any amounts, except for any Excluded Swap Amounts, due and payable to the Swap Counterparty other than Subordinated Swap Payments;",
+          "amount_formula": "due and payable",
+          "condition": "to the extent not paid from amounts standing to the credit of any Swap Collateral Account",
+          "is_pari_passu": false,
+          "citation": {
+            "page_or_row": "Post-Enforcement Priority of Payments (c)",
+            "excerpt": "third , to the extent not paid from amounts standing to the credit of any Swap Collateral Account, any amounts, except for any Excluded Swap Amounts, due",
+            "document": "Green Lion 2026-1 Prospectus"
+          }
+        },
+        {
+          "priority": "(d)",
+          "recipient": "class_a_notes_principal_and_interest",
+          "description": "fourth , on a pari passu and pro rata basis according to the amounts payable, all principal and interest then due (or accrued due) and payable on the Class A Notes;",
+          "amount_formula": "all principal and interest then due (or accrued due) and payable",
+          "condition": null,
+          "is_pari_passu": true,
+          "citation": {
+            "document": "Green Lion 2026-1 Prospectus",
+            "excerpt": "fourth , on a pari passu and pro rata basis according to the amounts payable, all principal and interest then due (or accrued due) and payable on the Clas",
+            "page_or_row": "Post-Enforcement Priority of Payments (d)"
+          }
+        },
+        {
+          "priority": "(e)",
+          "recipient": "class_b_notes_principal",
+          "description": "fifth , on a pari passu and pro rata basis according to the amounts payable, all principal then due and payable on the Class B Notes;",
+          "amount_formula": "all principal then due and payable",
+          "condition": null,
+          "is_pari_passu": true,
+          "citation": {
+            "excerpt": "fifth , on a pari passu and pro rata basis according to the amounts payable, all principal then due and payable on the Class B Notes;",
+            "document": "Green Lion 2026-1 Prospectus",
+            "page_or_row": "Post-Enforcement Priority of Payments (e)"
+          }
+        },
+        {
+          "priority": "(f)",
+          "recipient": "subordinated_swap_payments",
+          "description": "sixth , to the extent not paid from amounts standing to the credit of any Swap Collateral Account, Subordinated Swap Payments due and payable under the Swap Agreement;",
+          "amount_formula": "due and payable",
+          "condition": "to the extent not paid from amounts standing to the credit of any Swap Collateral Account",
+          "is_pari_passu": false,
+          "citation": {
+            "page_or_row": "Post-Enforcement Priority of Payments (f)",
+            "excerpt": "sixth , to the extent not paid from amounts standing to the credit of any Swap Collateral Account, Subordinated Swap Payments due and payable under the S",
+            "document": "Green Lion 2026-1 Prospectus"
+          }
+        },
+        {
+          "priority": "(g)",
+          "recipient": "class_c_notes_principal",
+          "description": "seventh , on a pari passu and pro rata basis according to the amounts payable, all principal then due and payable on the Class C Notes; and",
+          "amount_formula": "all principal then due and payable",
+          "condition": null,
+          "is_pari_passu": true,
+          "citation": {
+            "page_or_row": "Post-Enforcement Priority of Payments (g)",
+            "excerpt": "seventh , on a pari passu and pro rata basis according to the amounts payable, all principal then due and payable on the Class C Notes; and",
+            "document": "Green Lion 2026-1 Prospectus"
+          }
+        },
+        {
+          "priority": "(h)",
+          "recipient": "deferred_purchase_price_instalment",
+          "description": "eighth , any Deferred Purchase Price Instalment to the Seller.",
+          "amount_formula": "any Deferred Purchase Price Instalment",
+          "condition": null,
+          "is_pari_passu": false,
+          "citation": {
+            "page_or_row": "Post-Enforcement Priority of Payments (h)",
+            "excerpt": "eighth , any Deferred Purchase Price Instalment to the Seller.",
+            "document": "Green Lion 2026-1 Prospectus"
+          }
+        }
+      ],
+      "source_section": "Post-Enforcement Priority of Payments",
+      "extraction_confidence": 1.0
+    }
+  },
+  "covenants": {
+    "deal_name": "PROSPECTUS DATED 27 FEBRUARY 2026",
+    "triggers": [
+      {
+        "name": "class_a_pdl_trigger",
+        "display_name": "Class A Principal Deficiency Ledger Trigger",
+        "description": "Trigger fires if there is a debit balance on the Class A Principal Deficiency Ledger, indicating a shortfall in principal.",
+        "metric": "pdl_debit_balance",
+        "threshold": 0.0,
+        "threshold_unit": "eur",
+        "direction": "non_zero",
+        "consequence": "Available revenue funds are used to replenish the Class A PDL until the debit balance is reduced to nil.",
+        "section_reference": "Revenue Priority of Payments",
+        "citation": {
+          "document": "prospectus",
+          "page_or_row": "Revenue Priority of Payments",
+          "excerpt": "the amount required to replenish any shortfall reflected in the Class A Principal Deficiency Ledger until the debit balance, if any, on the Class A Principal Deficiency Ledger is reduced to nil"
+        }
+      },
+      {
+        "name": "class_b_pdl_trigger",
+        "display_name": "Class B Principal Deficiency Ledger Trigger",
+        "description": "Trigger fires if there is a debit balance on the Class B Principal Deficiency Ledger, indicating a shortfall in principal.",
+        "metric": "pdl_debit_balance",
+        "threshold": 0.0,
+        "threshold_unit": "eur",
+        "direction": "non_zero",
+        "consequence": "Available revenue funds are used to replenish the Class B PDL after higher priority payments are made.",
+        "section_reference": "Revenue Priority of Payments",
+        "citation": {
+          "excerpt": "the amount required to replenish any shortfall reflected in the Class B Principal Deficiency Ledger until the debit balance, if any, on the Class B Principal Deficiency Ledger is reduced to nil",
+          "document": "prospectus",
+          "page_or_row": "Revenue Priority of Payments"
+        }
+      },
+      {
+        "name": "reserve_fund_shortfall_trigger",
+        "display_name": "Reserve Fund Shortfall Trigger",
+        "description": "Trigger fires if the Reserve Account balance is below the Reserve Account Target Level.",
+        "metric": "reserve_fund_balance",
+        "threshold": null,
+        "threshold_unit": null,
+        "direction": "below",
+        "consequence": "Available revenue funds are used to replenish the Reserve Account up to the Reserve Account Target Level.",
+        "section_reference": "Revenue Priority of Payments",
+        "citation": {
+          "excerpt": "the amount required to replenish the Reserve Account up to the Reserve Account Target Level",
+          "page_or_row": "Revenue Priority of Payments",
+          "document": "prospectus"
+        }
+      }
+    ],
+    "issuer_covenants": [
+      "carry out any business other than as described in the Prospectus and as contemplated in the Transaction Documents;",
+      "incur any indebtedness in respect of borrowed money whatsoever or give any guarantee or indemnity in respect of any indebtedness except as contemplated in the Transaction Documents;",
+      "create or promise to create any mortgage, charge, pledge, lien or other security interest whatsoever over any of its assets, or use, invest, sell, transfer or otherwise dispose of or grant any options or rights to any part of its assets except as contemplated by the Transaction Documents;",
+      "consolidate or merge with any other person or convey or transfer its properties or assets substantially or as an entirety to any person;",
+      "permit the validity or effectiveness of the Transaction Documents, or the priority of the security created thereby or pursuant thereto to be amended, terminated, waived, postponed or discharged, or permit any person whose obligations form part of such security rights to be released from such obligations or consent to any waiver except as contemplated in the Transaction Documents;",
+      "have any employees or premises or have any subsidiary or subsidiary undertaking;",
+      "own any assets other than those described in this Prospectus;",
+      "have an interest in any bank account other than the Issuer Accounts and any Swap Collateral Account unless all rights in relation to such account will have been pledged to the Security Trustee as provided in Condition 2(c)(ii);",
+      "take any action which will cause its 'centre of main interest' within the meaning of the Recast Insolvency Regulation to be located outside The Netherlands;",
+      "amend, supplement or otherwise modify or waive any terms of its articles of association, other constitutive documents or the Transaction Documents;",
+      "pay any dividend or make any other distribution to its shareholder(s), other than any profit amount resulting from deductible item (i) of the Available Revenue Funds remaining after payment of taxes, or issue any further shares;",
+      "engage in any activity whatsoever which is not incidental to or necessary in connection with, any of the activities which the relevant Transaction Documents provide or envisage that the Issuer will engage in;",
+      "enter into derivative contracts (other than a replacement swap transaction following termination of the Swap Transaction), except as provided for in the Transaction Documents;",
+      "terminate, repudiate, rescind or discharge any Transaction Document and/or the Notes;",
+      "vary, novate, amend, modify or waive any material provision of any Transaction Document and/or the Notes;",
+      "permit any person who has obligations under the Transaction Documents to be released from such obligations,"
+    ],
+    "extraction_confidence": 0.7
+  },
+  "tranche_structure": [
+    {
+      "name": "Class A",
+      "size_eur": 1000000000.0,
+      "rating": "AAA",
+      "rate": "3m EURIBOR + 0.43",
+      "seniority": 0
+    },
+    {
+      "name": "Class B",
+      "size_eur": 53100000.0,
+      "rating": null,
+      "rate": null,
+      "seniority": 1
+    },
+    {
+      "name": "Class C",
+      "size_eur": 10500000.0,
+      "rating": null,
+      "rate": null,
+      "seniority": 2
+    }
+  ],
+  "trigger_names": [
+    "class_a_pdl_trigger",
+    "class_b_pdl_trigger",
+    "reserve_fund_shortfall_trigger"
+  ]
+}

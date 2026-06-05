@@ -24,6 +24,12 @@ import { DEFAULT_DEAL_ID, getDeals, type DealSummary } from "@/lib/api";
  * first available deal so the UI never points at a deal the backend doesn't
  * serve. With no backend reachable the context still works — `dealId` stays
  * at the default and the selector simply shows that single entry.
+ *
+ * This provider is deal-count-agnostic: it exposes whatever `/deals` returns
+ * (1..N) and the top-bar `DealSelector` decides how to render it — a static
+ * label for a single deal, a dropdown for two or more (see #198 and
+ * web/components/deal-selector.tsx). Nothing here changes when the seasoned
+ * deals land; the list simply grows.
  */
 
 interface DealContextValue {
