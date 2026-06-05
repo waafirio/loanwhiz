@@ -1,10 +1,10 @@
 ---
 id: 2026-06-05-seasoned-deal-validation
 title: seasoned-deal-validation
-status: decomposed   # draft → decomposed → filed
+status: filed        # draft → decomposed → filed
 created: 2026-06-05
 updated: 2026-06-05
-epics: []            # umbrella issue numbers, filled in phase 4
+epics: [206]         # umbrella issue numbers, filled in phase 4
 ---
 
 # seasoned-deal-validation
@@ -122,4 +122,10 @@ generality. **Stretch after the spine; hard-depends on the interpreter S4 (#184)
 
 ## Filed issues
 
-<Filled in phase 4 — the artifact↔issue link.>
+- Epic "Seasoned-deal validation (real Green Lion 2023-1 / 2024-1)" → umbrella **#206**
+  - #207 V1 — Register the seasoned deals
+  - #208 V2 — Extract the seasoned deal models (after #207)
+  - #209 V3 — Notes & Cash report parser (after #207)
+  - #210 V4 — Engine-validation harness (after #184, #208, #209)
+  - #211 V5 — Pool-level full pipeline (after #184, #208, #209)
+  - #212 V6 — UI: selectable deals + validation view (after #210)
