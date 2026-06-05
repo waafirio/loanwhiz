@@ -1,10 +1,10 @@
 ---
 id: 2026-06-05-demo-readiness
 title: demo-readiness
-status: decomposed   # draft → decomposed → filed
+status: filed        # draft → decomposed → filed
 created: 2026-06-05
 updated: 2026-06-05
-epics: []            # umbrella issue numbers, filled in phase 4
+epics: [193]         # umbrella issue numbers, filled in phase 4
 ---
 
 # demo-readiness
@@ -111,4 +111,11 @@ LAST so it reflects what actually landed.
 
 ## Filed issues
 
-<Filled in phase 4 — the artifact↔issue link.>
+- Epic "Demo-readiness — de-potemkin the surface" → umbrella **#193**
+  - #194 D1 — Real governance/evidence pack
+  - #195 D2 — Chat grounding
+  - #196 D3 — Overview cold-cache
+  - #197 D4 — Catalogue honesty
+  - #198 D5 — Deal selector robustness
+  - #199 D7 — Demo hygiene
+  - #200 D6 — Docs/deck honesty pass (after #194–#199)
