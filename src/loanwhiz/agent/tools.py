@@ -314,10 +314,9 @@ def list_deal_tapes(deal_id: str = DEFAULT_DEAL_ID, period: str | None = None) -
     """List (and optionally select) the deal's loan-level tapes and documents.
 
     Use this to find the right tape URL BEFORE calling ``load_esma_tape`` or
-    ``aggregate_collections`` — do not guess or hardcode URLs. The deal has a
-    full chronological history of monthly tapes (Green Lion 2026-1: 27 tapes —
-    24 historical months 2024-01…2025-12 plus 2026 Feb/Mar/Apr; Jan-2026 is
-    intentionally absent), each keyed by its month-end ``date``.
+    ``aggregate_collections`` — do not guess or hardcode URLs. Green Lion 2026-1
+    reports three monthly tapes (2026 Feb/Mar/Apr; Jan-2026 is intentionally
+    absent), each keyed by its month-end ``date``.
 
     Parameters
     ----------
@@ -325,8 +324,8 @@ def list_deal_tapes(deal_id: str = DEFAULT_DEAL_ID, period: str | None = None) -
         Registry deal id (defaults to the Green Lion demo deal).
     period:
         Optional substring matched against each tape's ``date`` (``YYYY-MM-DD``).
-        ``"2025-01"`` selects Jan-2025; ``"2025"`` selects all of 2025; a full
-        ``"2025-01-31"`` selects exactly that month. Omit to list every tape.
+        ``"2026-03"`` selects Mar-2026; ``"2026"`` selects all of 2026; a full
+        ``"2026-03-31"`` selects exactly that month. Omit to list every tape.
 
     Returns ``tape_urls`` (all matching ``{date, url}`` entries), plus
     ``prospectus_url`` and ``investor_report_urls``. When a ``period`` filter

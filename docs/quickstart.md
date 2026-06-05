@@ -113,7 +113,7 @@ The `GCP_LOCATION` should be a region where Gemini 2.5 Flash and Pro are availab
 
 ## Run Against the Green Lion Demo
 
-The Green Lion 2026-1 deal is a complete, publicly available Dutch synthetic RMBS package. It spans **27 months of ESMA Annex 2 loan tapes** — 24 monthly historical tapes for January 2024 through December 2025 (`Algoritmica/green-lion-2024-2025`) plus 3 for February, March, and April 2026 (`Algoritmica/green-lion-2026`), the latter accompanied by the prospectus PDF and three monthly investor reports. January 2026 is an intentional gap. It is the primary demo dataset for this hackathon.
+The Green Lion 2026-1 deal is a publicly available Dutch synthetic RMBS package (~EUR 1bn pool). It reports **three monthly ESMA Annex 2 loan tapes** — February, March, and April 2026 (`Algoritmica/green-lion-2026`) — accompanied by the prospectus PDF and three monthly investor reports. January 2026 is an intentional gap. (The separate `Algoritmica/green-lion-2024-2025` dataset is a *different* deal, not this deal's history, and is not loaded here.) It is the primary demo dataset for this hackathon.
 
 Run the end-to-end demo:
 
@@ -123,7 +123,7 @@ python demo/run_green_lion.py
 
 What this does, in order:
 
-1. **Fetches the deal package** from HuggingFace (`Algoritmica/green-lion-2026` for the 2026 deal documents and `Algoritmica/green-lion-2024-2025` for the 24-month historical tapes). Documents are downloaded on first run and cached locally under `data/deals/green-lion-2026-1/`.
+1. **Fetches the deal package** from HuggingFace (`Algoritmica/green-lion-2026` — the prospectus, 3 monthly tapes, and 3 investor reports). Documents are downloaded on first run and cached locally under `data/deals/green-lion-2026-1/`.
 
 2. **Extracts the deal model** using Docling + Gemini 2.5 Pro. The prospectus PDF is parsed into structured sections, and key deal components are extracted:
    - Revenue Priority of Payments (waterfall, 11 ordered steps from section 5.2)
@@ -133,7 +133,7 @@ What this does, in order:
 
    The extracted deal model is cached as `data/deals/green-lion-2026-1/deal_model.json`. Subsequent runs skip extraction.
 
-3. **Loads the ESMA tapes** — the full 27-month chronology (24 monthly tapes for 2024–2025 plus February, March, and April 2026) via the `esma_tape_normaliser` primitive, which reads each tape as **CSV or parquet** (suffix-detected, including a combined multi-month parquet sliced by `reporting_date`). Computes pool analytics per period: WAL, arrears breakdown by bucket, EPC distribution, geographic distribution, rate type distribution.
+3. **Loads the ESMA tapes** — the deal's three 2026 monthly tapes (February, March, April) via the `esma_tape_normaliser` primitive, which reads each tape as **CSV or parquet** (suffix-detected, including a combined multi-month parquet sliced by `reporting_date`). Computes pool analytics per period: WAL, arrears breakdown by bucket, EPC distribution, geographic distribution, rate type distribution.
 
 4. **Runs the waterfall** using the `waterfall_runner` primitive against each month's tape collections. Outputs computed distributions per tranche per period with a full audit trace.
 

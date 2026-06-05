@@ -10,30 +10,25 @@
 | Field | Value |
 |---|---|
 | **Dataset name** | Green Lion 2026-1 B.V. |
-| **HuggingFace identifiers** | `Algoritmica/green-lion-2026` (2026 deal package) · `Algoritmica/green-lion-2024-2025` (24-month 2024–2025 loan-tape history) |
+| **HuggingFace identifier** | `Algoritmica/green-lion-2026` (prospectus, 3 monthly tapes, 3 investor reports) |
 | **Provider** | Algoritmica.ai |
 | **Version** | As of 2026-06-03 (no version tag; use commit hash for reproducibility) |
 | **License** | Available on HuggingFace; see dataset repository for terms |
-| **URLs** | https://huggingface.co/datasets/Algoritmica/green-lion-2026 · https://huggingface.co/datasets/Algoritmica/green-lion-2024-2025 |
+| **URL** | https://huggingface.co/datasets/Algoritmica/green-lion-2026 |
 
-### Multi-period coverage (27 months)
+### Reporting periods (3 monthly tapes)
 
-Green Lion's loan-tape history now spans **27 monthly ESMA Annex 2 tapes** across the two datasets:
+Green Lion 2026-1 (~EUR 1bn pool) reports **3 monthly ESMA Annex 2 tapes** from `Algoritmica/green-lion-2026` — **February, March, and April 2026** — each with a matching real investor report. **January 2026 (`202601`) is an intentional gap** in the chronology.
 
-- **`Algoritmica/green-lion-2024-2025`** — 24 monthly tapes, one per month from **January 2024 through December 2025**.
-- **`Algoritmica/green-lion-2026`** — 3 monthly tapes for **February, March, and April 2026** (alongside the prospectus and investor reports).
+> **Separate deals are not interchangeable.** `Algoritmica/green-lion-2024-2025` (~EUR 139bn pool, ~130× this deal) and the real ING `green-lion-2023-1` / `green-lion-2024-1` deals are **different deals**, not Green Lion 2026-1's pre-history. Their loan tapes are **not** chained into this deal's `tape_urls` — doing so would splice unrelated pools. Validating the engine against the real seasoned deals' published Notes & Cash reports is tracked separately.
 
-All 27 tapes share the same ESMA Annex 2 schema. **January 2026 (`202601`) exists in neither dataset** and is an intentional gap in the chronology. The framework loads the tapes in chronological order regardless of which dataset each lives in (`src/loanwhiz/config.py` builds the combined `tape_urls` list).
-
-> **These are period snapshots, not a longitudinal panel.** The 27 tapes are
+> **These are period snapshots, not a longitudinal panel.** The three tapes are
 > **re-sampled each period** — loan identifiers do not persist across months
 > (the gross balance falls in one period and a similar gross balance rises in
 > the next, netting to a small movement). So the series is a sequence of
 > point-in-time pool snapshots, not a tracked-cohort loan-level time series.
 > Per-period collections and losses are derived by **net reconciliation to
-> pool movement**, not by following individual loans. Any speed estimated
-> from the series (CPR/CDR) reflects the synthetic generation process, not
-> observed cohort behaviour.
+> pool movement**, not by following individual loans.
 
 ---
 
@@ -84,16 +79,15 @@ The synthetic loan tapes are identified in the HuggingFace dataset by the `_synt
 
 ## Time Period
 
-The dataset provides **27 monthly loan-tape snapshots** in total, spanning January 2024 through April 2026 (with January 2026 absent):
+Green Lion 2026-1 provides **3 monthly loan-tape snapshots** — February, March, and April 2026 (January 2026 absent):
 
-| Period | Source dataset | Coverage | Type |
-|---|---|---|---|
-| Jan 2024 – Dec 2025 (24 months) | `Algoritmica/green-lion-2024-2025` | One month-end tape per month | Loan tape (SYNTHETIC) |
-| February 2026 (2026-02-28) | `Algoritmica/green-lion-2026` | — | Loan tape (SYNTHETIC) + Investor report (REAL) |
-| March 2026 (2026-03-31) | `Algoritmica/green-lion-2026` | — | Loan tape (SYNTHETIC) + Investor report (REAL) |
-| April 2026 (2026-04-30) | `Algoritmica/green-lion-2026` | — | Loan tape (SYNTHETIC) + Investor report (REAL) |
+| Period | Source dataset | Type |
+|---|---|---|
+| February 2026 (2026-02-28) | `Algoritmica/green-lion-2026` | Loan tape (SYNTHETIC) + Investor report (REAL) |
+| March 2026 (2026-03-31) | `Algoritmica/green-lion-2026` | Loan tape (SYNTHETIC) + Investor report (REAL) |
+| April 2026 (2026-04-30) | `Algoritmica/green-lion-2026` | Loan tape (SYNTHETIC) + Investor report (REAL) |
 
-That is 24 monthly historical tapes (2024–2025) plus 3 for 2026 = **27 monthly tapes**. **January 2026 is an intentional gap** — no tape exists for it in either dataset. The three 2026 periods are the ones accompanied by real investor reports; the 24-month 2024–2025 history is loan tapes only.
+That is **3 monthly tapes** for Green Lion 2026-1, each with a matching real investor report. **January 2026 is an intentional gap** — no tape exists for it in the dataset.
 
 ---
 
@@ -120,14 +114,14 @@ This split is deliberate and honest: liability figures are prospectus-derived an
 
 ### Loan Tapes (SYNTHETIC)
 
-ESMA Annex 2 format CSV files, one per monthly snapshot. The 24-month 2024–2025 history (in `Algoritmica/green-lion-2024-2025`) follows the naming pattern `green_lion_<YYYYMM>_1_synthetic_loan_tape.csv`, one file per month from `202401` through `202512`. The 2026 tapes (in `Algoritmica/green-lion-2026`) are:
+ESMA Annex 2 format CSV files, one per monthly reporting period. Green Lion 2026-1's three tapes (in `Algoritmica/green-lion-2026`) are:
 - `green_lion_202602_1_synthetic_loan_tape.csv` (February 2026)
 - `green_lion_202603_1_synthetic_loan_tape.csv` (March 2026)
 - `green_lion_2026_1_synthetic_loan_tape.csv` (April 2026)
 
-All 27 tapes contain loan-level fields per ESMA's Annex 2 specification: loan identifiers, outstanding balance, original balance, interest rate, rate type, remaining term, LTV, geographic region, EPC rating, arrears status, and other regulatory disclosure fields.
+All three tapes contain loan-level fields per ESMA's Annex 2 specification: loan identifiers, outstanding balance, original balance, interest rate, rate type, remaining term, LTV, geographic region, EPC rating, arrears status, and other regulatory disclosure fields.
 
-**Ingestion is format-agnostic.** The `esma_tape_normaliser` primitive routes each tape by its URL/path suffix — `.parquet`/`.pq` via `pandas.read_parquet`, anything else as CSV — so a tape published in either format works unchanged. The `Algoritmica/green-lion-2024-2025` dataset additionally ships a combined `Overall_2024_2025_all_months.parquet` (all 24 months in one file); the loader can slice a single reporting period out of such a combined multi-month parquet by `reporting_date`.
+**Ingestion is format-agnostic.** The `esma_tape_normaliser` primitive routes each tape by its URL/path suffix — `.parquet`/`.pq` via `pandas.read_parquet`, anything else as CSV — so a tape published in either format works unchanged. The loader can also slice a single reporting period out of a combined multi-month parquet by `reporting_date`.
 
 ---
 
@@ -156,7 +150,7 @@ The dataset is **not intended** for:
 | **Single asset class** | Dutch RMBS only. CLOs, CMBS, US RMBS, ABS, and other asset classes are not represented. |
 | **Synthetic loan performance** | No real default history. Arrears rates, default rates, and prepayment rates in the loan tapes reflect synthetic generation assumptions, not observed market behaviour. |
 | **Netherlands jurisdiction only** | Dutch law, Dutch mortgage market conventions, Dutch EPC rating system. Not representative of other European or non-European RMBS markets. |
-| **Synthetic time series (snapshots, not a panel)** | A 27-month monthly history (Jan 2024 – Apr 2026, January 2026 excepted) is available, enabling time-series views and multi-period waterfall runs. The tapes are **re-sampled each period** — loan IDs do not persist — so the series is a sequence of point-in-time snapshots, not a tracked-cohort longitudinal panel. It is synthetically generated, so prepayment/default speeds estimated from it reflect the generation process, not observed market behaviour. |
+| **Synthetic time series (snapshots, not a panel)** | The deal's three 2026 monthly tapes enable time-series views and multi-period waterfall runs. The tapes are **re-sampled each period** — loan IDs do not persist — so the series is a sequence of point-in-time snapshots, not a tracked-cohort longitudinal panel. It is synthetically generated, so prepayment/default speeds estimated from it reflect the generation process, not observed market behaviour. |
 | **No amendments or supplements** | The prospectus is the original offering document. Any amendments, supplements, or side letters issued after closing are not included. |
 
 ---
