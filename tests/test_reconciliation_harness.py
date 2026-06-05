@@ -120,18 +120,30 @@ def _state(
     )
 
 
+def _full_reduction(extract: dict[str, Any]) -> float:
+    """The report's full pool reduction = balance_begin - balance_end.
+
+    Per spike S0 this is what the reconstructed ``DealState.pool_balance`` delta
+    (``collections.total_principal``) ties to — NOT ``repayments + prepayments``,
+    which differs by the report's ``other_balance_change`` line.
+    """
+    return extract["balance_begin"] - extract["balance_end"]
+
+
 def _matching_series() -> DealStateSeries:
     """A reconstructed series that ties to the report ledger to the cent.
 
     Includes a period-0 seed state (no matching report) to confirm a
-    reconstructed-only period does not fail the proof.
+    reconstructed-only period does not fail the proof. Principal collected is the
+    FULL pool reduction (the tape balance delta that advances the state), which
+    S0 proved ties to the report roll-forward exactly.
     """
     states = [
         # period-0 prospectus seed — opening balance, no report period for it.
         _state("2026-01-31", _ORIGINAL_POOL, 0.0, period_index=0, collections=False),
-        _state("2026-02-28", _FEB["balance_end"], _FEB["repayments"] + _FEB["prepayments"], period_index=1),
-        _state("2026-03-31", _MAR["balance_end"], _MAR["repayments"] + _MAR["prepayments"], period_index=2),
-        _state("2026-04-30", _APR["balance_end"], _APR["repayments"] + _APR["prepayments"], period_index=3),
+        _state("2026-02-28", _FEB["balance_end"], _full_reduction(_FEB), period_index=1),
+        _state("2026-03-31", _MAR["balance_end"], _full_reduction(_MAR), period_index=2),
+        _state("2026-04-30", _APR["balance_end"], _full_reduction(_APR), period_index=3),
     ]
     return DealStateSeries(states=states, period_results=[])
 
@@ -211,6 +223,31 @@ class TestReconcilePass:
         for period in report.periods:
             assert period.roll_forward_consistent is True
             assert abs(period.roll_forward_residual) <= DEFAULT_TOLERANCE_EUR
+
+    def test_principal_collected_uses_full_pool_reduction_not_repay_plus_prepay(self):
+        # Regression for the other_balance_change subtlety (spike S0): the
+        # reconstructed total_principal is the FULL tape balance delta, which
+        # ties to balance_begin - balance_end, NOT repayments + prepayments. The
+        # two differ by exactly the report's other_balance_change every period, so
+        # a reconciliation that compared against repayments+prepayments would
+        # falsely FAIL. This series (full-reduction) PASSES.
+        report = reconcile_collateral(_matching_series(), _ledger())
+        for ext, date in (
+            (_FEB, "2026-02-28"),
+            (_MAR, "2026-03-31"),
+            (_APR, "2026-04-30"),
+        ):
+            # confirm the test data actually exercises a non-zero other line
+            assert abs(ext["other_balance_change"]) > 0.0
+            period = next(p for p in report.periods if p.reporting_date == date)
+            pc = next(
+                c for c in period.line_checks if c.line_item == "principal_collected"
+            )
+            assert pc.reported_value == pytest.approx(
+                ext["balance_begin"] - ext["balance_end"]
+            )
+            assert pc.match is True
+        assert report.overall_pass is True
 
     def test_period0_seed_is_reconstructed_only_not_a_failure(self):
         # The 2026-01-31 seed state has no report period; it must show up as

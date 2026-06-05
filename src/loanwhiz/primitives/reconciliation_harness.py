@@ -239,19 +239,31 @@ def _reconcile_period(
         )
     ]
 
-    # Principal collected: the reconstructed state's collections (set by
-    # ``apply_collections`` during the transition that produced this closing
-    # state) vs the report's repayments + prepayments. A state with no
-    # collections recorded (e.g. the period-0 seed) contributes 0.0 here; such a
-    # state normally has no matching ledger period anyway.
+    # Principal collected: the reconstructed state's collections
+    # (``total_principal`` = scheduled + prepayment, set by ``apply_collections``
+    # during the transition that produced this closing state) vs the report's
+    # **full pool reduction** (``pool_balance_begin − pool_balance_end``).
+    #
+    # The report figure is the FULL net reduction, NOT ``repayments +
+    # prepayments`` alone: spike S0 (#180) proved the tape's month-on-month
+    # balance delta (which is exactly what advances ``DealState.pool_balance``
+    # via ``apply_collections``) ties to the report's full roll-forward to the
+    # cent, while ``repayments + prepayments`` alone leaves a residual equal to
+    # the report's ``other_balance_change`` line (construction-deposit / other
+    # non-principal movements the report itemises separately). Comparing against
+    # ``repayments + prepayments`` would therefore manufacture a false mismatch
+    # of exactly ``other_balance_change`` every period. A state with no
+    # collections recorded (e.g. the period-0 seed) contributes 0.0; such a state
+    # normally has no matching ledger period anyway.
     reconstructed_principal = (
         state.collections.total_principal if state.collections is not None else 0.0
     )
+    reported_pool_reduction = period.pool_balance_begin - period.pool_balance_end
     line_checks.append(
         _build_line_check(
             "principal_collected",
             reconstructed_principal,
-            period.principal_collected,
+            reported_pool_reduction,
             tolerance_eur,
         )
     )
