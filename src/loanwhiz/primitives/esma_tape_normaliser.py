@@ -254,6 +254,57 @@ def _pct_distribution(series: pd.Series) -> dict[str, float]:
     return {str(k): round(float(v) / total * 100, 4) for k, v in counts.items()}
 
 
+def _default_mask(df: pd.DataFrame) -> pd.Series:
+    """Boolean mask of defaulted loans (``default_crr_flag == "Y"``).
+
+    Falls back to an all-``False`` mask when the ``default_crr_flag`` column is
+    absent. Expects lower-cased column names (the ``df_lower`` frame).
+    """
+    if "default_crr_flag" in df.columns:
+        return df["default_crr_flag"].astype(str).str.upper() == "Y"
+    return pd.Series([False] * len(df), index=df.index)
+
+
+def _arrears_180d_mask(df: pd.DataFrame) -> pd.Series:
+    """Boolean mask of loans 180+ days in arrears (``arrears_bucket == "180+d"``).
+
+    Falls back to an all-``False`` mask when the ``arrears_bucket`` column is
+    absent. Expects lower-cased column names.
+    """
+    if "arrears_bucket" in df.columns:
+        return df["arrears_bucket"] == "180+d"
+    return pd.Series([False] * len(df), index=df.index)
+
+
+def non_performing_mask(df: pd.DataFrame) -> pd.Series:
+    """Boolean mask of **non-performing** loans for a lower-cased tape frame.
+
+    A loan is non-performing when it is in default (``default_crr_flag == "Y"``)
+    **or** 180+ days in arrears (``arrears_bucket == "180+d"``) — the loans that
+    do not pay interest in the period. This is the single shared definition the
+    arrears breakdown and the collections engine's arrears-aware interest base
+    both read from, so the two never drift.
+
+    Parameters
+    ----------
+    df:
+        Tape DataFrame with **lower-cased** column names. Missing arrears/default
+        columns degrade to "all performing" (an empty non-performing set).
+
+    Returns
+    -------
+    pandas.Series
+        Boolean mask aligned to ``df.index``; ``True`` = non-performing.
+    """
+    return _default_mask(df) | _arrears_180d_mask(df)
+
+
+def performing_mask(df: pd.DataFrame) -> pd.Series:
+    """Boolean mask of **performing** loans — the complement of
+    :func:`non_performing_mask`. Expects lower-cased column names."""
+    return ~non_performing_mask(df)
+
+
 def _extract_arrears(df: pd.DataFrame) -> dict[str, float]:
     """Compute multi-bucket arrears breakdown as percentages.
 
@@ -276,20 +327,11 @@ def _extract_arrears(df: pd.DataFrame) -> dict[str, float]:
         }
 
     has_arrears_col = "arrears_bucket" in df.columns
-    has_default_col = "default_crr_flag" in df.columns
 
-    # Priority 1: defaulted (highest)
-    default_mask = (
-        df["default_crr_flag"].str.upper() == "Y"
-        if has_default_col
-        else pd.Series([False] * n, index=df.index)
-    )
+    # Priority 1: defaulted (highest) — shared with the collections engine.
+    default_mask = _default_mask(df)
     # Priority 2: 180+ days arrears (not also flagged as default)
-    arrears_180d_mask = (
-        (df["arrears_bucket"] == "180+d") & ~default_mask
-        if has_arrears_col
-        else pd.Series([False] * n, index=df.index)
-    )
+    arrears_180d_mask = _arrears_180d_mask(df) & ~default_mask
     # Priority 3: <29 days arrears (not also flagged as default or 180+d)
     arrears_1_2m_mask = (
         (df["arrears_bucket"] == "<29d") & ~default_mask
