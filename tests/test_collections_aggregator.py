@@ -77,6 +77,19 @@ def _make_synthetic_tape(
     return buf.getvalue()
 
 
+def _tape_from_rows(rows: list[dict]) -> str:
+    """Return a local CSV path for an explicit list of per-loan row dicts.
+
+    Each row dict may carry ``loan_id``, ``current_balance``,
+    ``current_interest_rate_pct``, ``scheduled_monthly_payment``,
+    ``arrears_bucket``, ``default_crr_flag``.
+    """
+    df = pd.DataFrame(rows)
+    buf = io.StringIO()
+    df.to_csv(buf, index=False)
+    return _tape_url_from_string(buf.getvalue())
+
+
 def _tape_url_from_string(csv_str: str) -> str:
     """Write the CSV to a temp file and return a local path.
 
@@ -129,7 +142,7 @@ class TestCollectionsAggregatorUnit:
     def test_registry_metadata(self) -> None:
         reg = PRIMITIVE_REGISTRY.get("collections_aggregator")
         assert reg is not None
-        assert reg.version == "0.1.0"
+        assert reg.version == "0.2.0"
         assert "waterfall" in reg.tags
 
     # ------------------------------------------------------------------
@@ -310,7 +323,7 @@ class TestCollectionsAggregatorUnit:
     def test_audit_entry_present(self) -> None:
         result, _ = self._run()
         assert result.audit_entry.primitive_name == "collections_aggregator"
-        assert result.audit_entry.version == "0.1.0"
+        assert result.audit_entry.version == "0.2.0"
         assert len(result.audit_entry.input_hash) == 64
 
     def test_citation_present(self) -> None:
@@ -345,6 +358,221 @@ class TestCollectionsAggregatorUnit:
     def test_output_is_collections_output(self) -> None:
         result, output = self._run()
         assert isinstance(output, CollectionsOutput)
+
+
+def _loan(
+    loan_id: str,
+    balance: float,
+    *,
+    rate: float = 3.0,
+    payment: float = 0.0,
+    arrears: str = "Performing",
+    default: str = "N",
+) -> dict:
+    """Build one tape row dict (helper for the per-loan derivation tests)."""
+    return {
+        "loan_id": loan_id,
+        "current_balance": balance,
+        "current_interest_rate_pct": rate,
+        "scheduled_monthly_payment": payment,
+        "arrears_bucket": arrears,
+        "default_crr_flag": default,
+    }
+
+
+# ---------------------------------------------------------------------------
+# Per-loan derivation — the S3 engine (prev_tape_file_url join)
+# ---------------------------------------------------------------------------
+
+
+class TestPerLoanDerivation:
+    """Two-period synthetic tapes exercise the separated collection legs."""
+
+    def _run(self, prev_rows: list[dict], cur_rows: list[dict], **kw):
+        prev_path = _tape_from_rows(prev_rows)
+        cur_path = _tape_from_rows(cur_rows)
+        inp = CollectionsInput(
+            tape_file_url=cur_path,
+            reporting_period="Cur",
+            prev_tape_file_url=prev_path,
+            days_in_period=kw.pop("days_in_period", 30),
+            **kw,
+        )
+        return CollectionsAggregator().execute(inp)
+
+    # --- regime selection / confidence ---------------------------------
+
+    def test_derivation_is_per_loan_with_prev_tape(self) -> None:
+        prev = [_loan("A", 100_000.0, payment=600.0)]
+        cur = [_loan("A", 99_500.0, payment=600.0)]
+        out = self._run(prev, cur).output
+        assert out.derivation == "per-loan"
+
+    def test_confidence_highest_with_prev_tape(self) -> None:
+        prev = [_loan("A", 100_000.0, payment=600.0)]
+        cur = [_loan("A", 99_500.0, payment=600.0)]
+        assert math.isclose(self._run(prev, cur).confidence, 0.9, rel_tol=1e-9)
+
+    # --- scheduled amortisation ----------------------------------------
+
+    def test_scheduled_amortisation_only(self) -> None:
+        """A small contractual paydown (no exits) is all scheduled principal."""
+        # payment 600/mo over 30d on a 100k @ 3% loan: interest ≈ 250, so
+        # scheduled principal portion ≈ 350. Balance falls by exactly that.
+        prev = [_loan("A", 100_000.0, rate=3.0, payment=600.0)]
+        cur = [_loan("A", 99_650.0, rate=3.0, payment=600.0)]
+        out = self._run(prev, cur).output
+        # Net reduction is 350; scheduled portion ≈ 350, prepay ≈ 0.
+        assert math.isclose(out.scheduled_principal, 350.0, abs_tol=1.0)
+        assert out.unscheduled_principal < 1.0
+        assert out.recoveries == 0.0
+        assert out.realized_losses == 0.0
+
+    def test_scheduled_capped_at_actual_reduction(self) -> None:
+        """Scheduled never exceeds the actual (net) balance reduction."""
+        # Huge instalment but the balance only fell by 100 → scheduled ≤ 100.
+        prev = [_loan("A", 100_000.0, rate=3.0, payment=50_000.0)]
+        cur = [_loan("A", 99_900.0, rate=3.0, payment=50_000.0)]
+        out = self._run(prev, cur).output
+        assert out.scheduled_principal <= 100.0 + 1e-6
+        assert math.isclose(
+            out.scheduled_principal + out.unscheduled_principal, 100.0, abs_tol=1.0
+        )
+
+    # --- prepayment ----------------------------------------------------
+
+    def test_partial_prepayment(self) -> None:
+        """Reduction beyond scheduled amortisation is prepayment."""
+        # payment 600 → scheduled ≈ 350; balance fell by 5_350 → prepay ≈ 5_000.
+        prev = [_loan("A", 100_000.0, rate=3.0, payment=600.0)]
+        cur = [_loan("A", 94_650.0, rate=3.0, payment=600.0)]
+        out = self._run(prev, cur).output
+        assert math.isclose(out.scheduled_principal, 350.0, abs_tol=1.0)
+        assert math.isclose(out.unscheduled_principal, 5_000.0, abs_tol=1.0)
+
+    def test_full_prepayment_on_performing_exit(self) -> None:
+        """A performing loan that leaves the pool is a full prepayment."""
+        prev = [
+            _loan("A", 100_000.0, payment=600.0),
+            _loan("B", 80_000.0, payment=500.0),
+        ]
+        cur = [_loan("A", 99_650.0, payment=600.0)]  # B redeemed in full
+        out = self._run(prev, cur).output
+        # B's full 80k is prepayment; A contributes ~350 scheduled.
+        assert math.isclose(out.unscheduled_principal, 80_000.0, abs_tol=1.0)
+        assert out.realized_losses == 0.0
+
+    # --- recovery ------------------------------------------------------
+
+    def test_recovery_on_surviving_defaulted_loan(self) -> None:
+        """Balance reduction on a previously-defaulted survivor is a recovery."""
+        prev = [_loan("A", 100_000.0, payment=0.0, default="Y")]
+        cur = [_loan("A", 96_000.0, payment=0.0, default="Y")]
+        out = self._run(prev, cur).output
+        assert math.isclose(out.recoveries, 4_000.0, abs_tol=1.0)
+        assert out.scheduled_principal == 0.0
+        assert out.unscheduled_principal == 0.0
+        assert out.realized_losses == 0.0
+
+    # --- realized loss -------------------------------------------------
+
+    def test_realized_loss_on_defaulted_exit(self) -> None:
+        """A defaulted loan that leaves the pool is a realized loss."""
+        prev = [
+            _loan("A", 100_000.0, payment=600.0),
+            _loan("D", 50_000.0, payment=0.0, default="Y"),
+        ]
+        cur = [_loan("A", 99_650.0, payment=600.0)]  # D written off
+        out = self._run(prev, cur).output
+        assert math.isclose(out.realized_losses, 50_000.0, abs_tol=1.0)
+        assert out.recoveries == 0.0
+
+    def test_180d_arrears_exit_is_realized_loss(self) -> None:
+        """180+d arrears (non-performing, not flagged default) exit → loss."""
+        prev = [
+            _loan("A", 100_000.0, payment=600.0),
+            _loan("X", 30_000.0, payment=0.0, arrears="180+d"),
+        ]
+        cur = [_loan("A", 99_650.0, payment=600.0)]
+        out = self._run(prev, cur).output
+        assert math.isclose(out.realized_losses, 30_000.0, abs_tol=1.0)
+
+    # --- arrears-aware interest ----------------------------------------
+
+    def test_interest_excludes_defaulted_loans(self) -> None:
+        """A defaulted loan contributes zero interest."""
+        # One performing 100k @ 3%, one defaulted 100k @ 3%. Interest accrues
+        # only on the performing 100k.
+        prev = [_loan("A", 100_000.0, rate=3.0)]
+        cur = [
+            _loan("A", 100_000.0, rate=3.0),
+            _loan("D", 100_000.0, rate=3.0, default="Y"),
+        ]
+        out = self._run(prev, cur).output
+        expected = 100_000.0 * 3.0 / 100.0 * 30 / 360.0  # performing only
+        assert math.isclose(out.interest_collected, expected, rel_tol=1e-6)
+
+    def test_interest_excludes_180d_arrears(self) -> None:
+        prev = [_loan("A", 100_000.0, rate=3.0)]
+        cur = [
+            _loan("A", 100_000.0, rate=3.0),
+            _loan("X", 100_000.0, rate=3.0, arrears="180+d"),
+        ]
+        out = self._run(prev, cur).output
+        expected = 100_000.0 * 3.0 / 100.0 * 30 / 360.0
+        assert math.isclose(out.interest_collected, expected, rel_tol=1e-6)
+
+    # --- reconciliation & PeriodCollections hand-off -------------------
+
+    def test_legs_reconcile_to_apf(self) -> None:
+        out = self._run(
+            [_loan("A", 100_000.0, payment=600.0), _loan("B", 80_000.0)],
+            [_loan("A", 94_650.0, payment=600.0)],
+        ).output
+        assert math.isclose(
+            out.available_principal_funds,
+            out.scheduled_principal + out.unscheduled_principal + out.recoveries,
+            rel_tol=1e-9,
+        )
+
+    def test_to_period_collections_shape(self) -> None:
+        out = self._run(
+            [_loan("A", 100_000.0, payment=600.0, default="Y")],
+            [_loan("A", 96_000.0, payment=600.0, default="Y")],
+        ).output
+        pc = out.to_period_collections()
+        from loanwhiz.primitives.deal_state import PeriodCollections
+
+        assert isinstance(pc, PeriodCollections)
+        assert math.isclose(pc.interest, out.interest_collected, rel_tol=1e-9)
+        assert math.isclose(pc.recovery, out.recoveries, rel_tol=1e-9)
+        assert math.isclose(pc.scheduled_principal, out.scheduled_principal, rel_tol=1e-9)
+        assert math.isclose(pc.prepayment, out.unscheduled_principal, rel_tol=1e-9)
+        assert math.isclose(pc.realized_loss, out.realized_losses, rel_tol=1e-9)
+        # All legs non-negative (PeriodCollections enforces ge=0 — no raise).
+        assert pc.total_principal >= 0.0
+
+    def test_to_period_collections_feeds_dealstate(self) -> None:
+        """The adapter output drives a real DealState transition without error."""
+        from loanwhiz.primitives.deal_state import DealState
+
+        out = self._run(
+            [_loan("A", 100_000.0, payment=600.0), _loan("B", 80_000.0)],
+            [_loan("A", 94_650.0, payment=600.0)],
+        ).output
+        pc = out.to_period_collections()
+        opening = DealState.seed_from_prospectus(
+            {"class_a_balance": 150_000.0, "class_b_balance": 20_000.0, "class_c_balance": 10_000.0},
+            reserve_target=5_000.0,
+            original_pool_balance=180_000.0,
+            opening_pool_balance=180_000.0,
+            reporting_date="2026-02-28",
+        )
+        closing = opening.apply_collections(pc)
+        # Pool falls by total principal (scheduled + prepayment), recovery aside.
+        assert math.isclose(
+            closing.pool_balance, 180_000.0 - pc.total_principal, abs_tol=1.0
+        )
 
 
 # ---------------------------------------------------------------------------

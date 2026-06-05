@@ -319,11 +319,15 @@ export function getTapeAnalytics(
 export interface TriggerStatus {
   trigger_name: string;
   period: string;
-  metric_value: number;
+  /** `null` when the metric could not be resolved (`evaluable` false). */
+  metric_value: number | null;
   threshold: number | null;
   is_triggered: boolean;
-  /** 0–100+: 100 = at threshold, >100 = breached. */
-  proximity_pct: number;
+  /**
+   * 0–100+: 100 = at threshold, >100 = breached. `null` when not evaluable —
+   * an honest "couldn't measure" reads differently from a genuine 0.
+   */
+  proximity_pct: number | null;
   /** "improving" | "deteriorating" | "stable" | "n/a" */
   direction: string;
 }
