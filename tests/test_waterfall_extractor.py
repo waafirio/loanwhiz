@@ -31,6 +31,7 @@ from loanwhiz.extraction.waterfall_extractor import (
     ExtractedWaterfall,
     WaterfallStep,
     _cache_path_for,
+    _extraction_confidence,
     _waterfall_from_dict,
     _waterfall_to_dict,
     extract_all_waterfalls,
@@ -108,6 +109,61 @@ def _write_cache(waterfall: ExtractedWaterfall, path: Path) -> None:
         json.dumps(_waterfall_to_dict(waterfall), ensure_ascii=False, indent=2),
         encoding="utf-8",
     )
+
+
+# ---------------------------------------------------------------------------
+# Unit tests — extraction confidence (real step-usability coverage)
+# ---------------------------------------------------------------------------
+
+
+class TestExtractionConfidence:
+    """``_extraction_confidence`` scores how *usable* extracted steps are.
+
+    The old metric was the fraction of steps with a non-empty recipient (near
+    tautological). The new metric credits a step only when it carries both a
+    recipient and an ``amount_formula`` (the executable core), bonused by
+    citation presence.
+    """
+
+    def test_empty_step_list_scores_zero(self) -> None:
+        assert _extraction_confidence([]) == 0.0
+
+    def test_fully_usable_steps_score_one(self) -> None:
+        # _make_step defaults carry recipient + amount_formula + citation.
+        steps = [_make_step(priority=f"({c})") for c in "abc"]
+        assert _extraction_confidence(steps) == pytest.approx(1.0)
+
+    # An empty-of-content citation. ``_make_step`` substitutes its rich default
+    # whenever ``citation`` is falsy (``{}``), so to model "no citation" we pass
+    # a dict whose values are all blank — which the score treats as no provenance.
+    _EMPTY_CITATION = {"document": "", "page_or_row": "", "excerpt": ""}
+
+    def test_recipient_without_amount_formula_scores_partial(self) -> None:
+        steps = [_make_step(amount_formula="", citation=self._EMPTY_CITATION)]
+        # recipient present, no formula → 0.35
+        assert _extraction_confidence(steps) == pytest.approx(0.35)
+
+    def test_recipient_and_formula_without_citation_scores_mid(self) -> None:
+        steps = [
+            _make_step(
+                amount_formula="EUR accrued interest", citation=self._EMPTY_CITATION
+            )
+        ]
+        # recipient + formula, no citation → 0.70
+        assert _extraction_confidence(steps) == pytest.approx(0.70)
+
+    def test_missing_recipient_scores_zero_for_that_step(self) -> None:
+        steps = [
+            _make_step(recipient="", amount_formula="x", citation=self._EMPTY_CITATION)
+        ]
+        assert _extraction_confidence(steps) == 0.0
+
+    def test_is_average_across_steps(self) -> None:
+        usable = _make_step(amount_formula="EUR x", citation=self._EMPTY_CITATION)  # 0.70
+        bare = _make_step(
+            recipient="", amount_formula="", citation=self._EMPTY_CITATION
+        )  # 0.00
+        assert _extraction_confidence([usable, bare]) == pytest.approx(0.35)
 
 
 # ---------------------------------------------------------------------------
