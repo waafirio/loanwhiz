@@ -102,6 +102,45 @@ def test_prospectus_extraction_fast_no_cache(tmp_path, monkeypatch, capsys):
     assert "Skipping live extraction" in out
 
 
+def test_reporting_tapes_selects_three_2026_periods():
+    """``reporting_tapes()`` slices the 27-tape config to the 3 2026 reporting
+    periods, in chronological order — never the full history."""
+    tapes = demo.reporting_tapes()
+    assert len(tapes) == 3
+    dates = [e["date"] for e in tapes]
+    assert dates == ["2026-02-28", "2026-03-31", "2026-04-30"]
+    # All selected tapes are in the 2026 reporting window, and sorted ascending.
+    assert all(d >= demo.REPORTING_PERIOD_START for d in dates)
+    assert dates == sorted(dates)
+
+
+def test_reporting_tapes_fallback_to_last_n(monkeypatch):
+    """When no tape is in the 2026 reporting window, fall back to the last N
+    tapes (chronological) rather than returning an empty/short window."""
+    fake = {
+        "tape_urls": [
+            {"date": "2024-01-31", "url": "u1"},
+            {"date": "2024-02-29", "url": "u2"},
+            {"date": "2024-03-31", "url": "u3"},
+            {"date": "2024-04-30", "url": "u4"},
+        ]
+    }
+    monkeypatch.setattr(demo, "GREEN_LION", fake, raising=True)
+    tapes = demo.reporting_tapes()
+    assert len(tapes) == demo.N_REPORTING_TAPES
+    assert [e["date"] for e in tapes] == ["2024-02-29", "2024-03-31", "2024-04-30"]
+
+
+def test_period_label_maps_iso_date_to_month_year():
+    """``_period_label`` turns an ISO tape date into a ``"Mon YYYY"`` label, and
+    passes through an unparseable date unchanged (no crash)."""
+    assert demo._period_label("2026-02-28") == "Feb 2026"
+    assert demo._period_label("2026-04-30") == "Apr 2026"
+    assert demo._period_label("2024-01-31") == "Jan 2024"
+    # Malformed input falls back to the raw string rather than raising.
+    assert demo._period_label("not-a-date") == "not-a-date"
+
+
 def test_proximity_marker_logic():
     """🟢/🟡/🔴 marker reflects triggered / near-miss / safe states."""
 
