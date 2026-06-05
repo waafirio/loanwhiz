@@ -1,7 +1,7 @@
 ---
 id: 2026-06-05-seasoned-deal-validation
 title: seasoned-deal-validation
-status: draft        # draft → decomposed → filed
+status: decomposed   # draft → decomposed → filed
 created: 2026-06-05
 updated: 2026-06-05
 epics: []            # umbrella issue numbers, filled in phase 4
@@ -84,7 +84,41 @@ notes-cash parser (parallel) → engine-validation harness + pool-level pipeline
 
 ## Decomposition
 
-<Filled in phase 2.>
+### Epic: Seasoned-deal validation (real Green Lion 2023-1 / 2024-1)   (umbrella #<N>)
+
+Load the real seasoned deals as first-class selectable deals and validate the model
+against their own published Notes & Cash reports — gold-standard external proof of the
+waterfall engine on real liability actuals, and a genuine demonstration of multi-deal
+generality. **Stretch after the spine; hard-depends on the interpreter S4 (#184).**
+
+- **V1 — Register the seasoned deals** — add Green Lion 2023-1 & 2024-1 to the deal
+  registry with their prospectus, monthly collateral-report, and quarterly notes-cash
+  report URLs. Sequencing: sequential. Paths: `src/loanwhiz/data/deals.json`,
+  `src/loanwhiz/config.py`.
+- **V2 — Extract the seasoned deal models** — run prospectus extraction for 2023-1 &
+  2024-1 (waterfall/tranches/triggers/definitions), proving the extraction pipeline is
+  genuinely data-agnostic. Sequencing: parallel. After V1. Paths:
+  `src/loanwhiz/extraction/**`, `src/loanwhiz/data/deals/**`.
+- **V3 — Notes & Cash report parser** — parse the DSA Notes & Cash report format
+  (Bond Report → note balances; Revenue & Redemption PoP → per-step distributions;
+  Issuer Transaction Accounts → reserve/cash; Transaction Triggers) into structured
+  per-period liability actuals. Sequencing: parallel. After V1. Paths:
+  `src/loanwhiz/primitives/**`, `src/loanwhiz/extraction/**`.
+- **V4 — Engine-validation harness (the headline proof)** — feed each notes-cash
+  period's own published available funds into the model-driven interpreter using the
+  extracted model, and reconcile to the report's own published per-step distributions
+  across the full quarterly history (PASS/FAIL, to the cent). Sequencing: sequential.
+  After #184. After V2. After V3. Paths: `src/loanwhiz/primitives/**`, `tests/**`,
+  `src/loanwhiz/api/main.py`.
+- **V5 — Pool-level full pipeline** — reconstruct collateral state from the pool-level
+  monthly collateral reports and run the waterfall end-to-end, comparing to the
+  notes-cash actuals (labelled as coarser, pool-level not loan-level). Sequencing:
+  sequential. After #184. After V2. After V3. Paths: `src/loanwhiz/primitives/**`,
+  `src/loanwhiz/api/main.py`.
+- **V6 — UI: selectable seasoned deals + validation view** — register 2023-1 & 2024-1
+  as selectable deals in the UI and add a validation view ("engine reproduces 2024-1's
+  published PoP, N periods, to the cent"). Sequencing: sequential. After V4. Paths:
+  `web/**`, `src/loanwhiz/api/main.py`.
 
 ## Filed issues
 
