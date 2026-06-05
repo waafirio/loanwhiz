@@ -8,12 +8,15 @@ Covers the deliverables of issue #186 — the integrator that connects S1–S5:
    per-period ``DealState`` series with ``closing[N] == opening[N+1]``; pool
    amortises, tranche balances redeem, PDL/reserve evolve, and cumulative losses
    accumulate monotonically under injected losses.
-3. **Real-tape chain (offline)** — the full multi-period chain over the deal's
-   *real* cached tape analytics (pool balances from
-   ``/tmp/loanwhiz_cache/tape_analytics/``, pool-delta collections), seeded from
-   the Green-Lion prospectus capital structure. Pool balances tie to the cached
-   tape values to the cent. No network, no Gemini — the test skips cleanly if the
-   warm cache is absent.
+3. **Real-tape chain (offline)** — the multi-period chain over the deal's *real*
+   cached tape analytics (pool balances from
+   ``/tmp/loanwhiz_cache/tape_analytics/``, pool-delta collections per the S3
+   net-pool-movement finding), seeded from the Green-Lion prospectus capital
+   structure. The meaningful chain is the three 2026 reporting tapes (the deal
+   spike S0 reconciled); a separate guard threads the full 27-tape history to
+   prove the integrator scales. Pool balances tie to the cached tape values to
+   the cent. No network, no Gemini — the tests skip cleanly if the warm cache is
+   absent.
 
 Green Lion 2026-1 figures are used as a *concrete* deal, supplied as data to the
 engine (never hardcoded into the module under test):
@@ -311,58 +314,78 @@ def test_run_period_uses_real_trigger_engine() -> None:
 # ===========================================================================
 
 
-def _real_tape_pool_balances() -> list[tuple[str, float]] | None:
-    """(reporting_date, pool_balance) per cached tape, chronological. None on miss."""
+# The deal's tapes mix two series: 24 historical 2024-2025 monthly tapes of a
+# DIFFERENT, much larger Green-Lion vintage (~€110-140B pool) and the 3 actual
+# 2026 reporting tapes of THIS deal (~€1.05B pool, the one spike S0 reconciled).
+# The "Green Lion 2026-1" deal whose prospectus seeds the liability side is the
+# 2026 series, so the meaningful real-tape reconstruction chains those three.
+_GREEN_LION_2026_DATES = ("2026-02-28", "2026-03-31", "2026-04-30")
+
+
+def _cached_pool_balances(dates: tuple[str, ...]) -> list[tuple[str, float]] | None:
+    """(reporting_date, pool_balance) for the named dates, chronological.
+
+    Returns None if any tape is missing from the warm cache (so the test skips
+    offline rather than failing).
+    """
+    by_date = {t["date"]: t["url"] for t in GREEN_LION["tape_urls"]}
     out: list[tuple[str, float]] = []
-    for tape in GREEN_LION["tape_urls"]:
-        pb = _cached_pool_balance(tape["url"])
+    for date in dates:
+        url = by_date.get(date)
+        if url is None:
+            return None
+        pb = _cached_pool_balance(url)
         if pb is None:
             return None
-        out.append((tape["date"], pb))
+        out.append((date, pb))
     return out
 
 
-def test_real_tape_chain_ties_to_cached_pool_balances() -> None:
-    """Full per-period chain over the REAL tapes, seeded from the prospectus.
+def _pool_delta_periods(tapes: list[tuple[str, float]]) -> list[PeriodInput]:
+    """Build pool-delta collections from consecutive cached pool balances.
 
-    Drives the loop with pool-delta collections (S3's net-pool-movement regime,
-    which spike S0 proved ties to the report roll-forward to the cent), seeded at
-    period 0 from the Green-Lion prospectus capital structure. Asserts the
-    reconstructed series' pool balances match the cached tape ``pool_balance_eur``
-    to the cent, the series length equals the driven period count, and the
-    closing→opening identity holds end-to-end.
+    Each period's scheduled principal is the prior→current net pool reduction
+    (the S3 net-pool-movement regime spike S0 proved ties to the report
+    roll-forward to the cent). The first tape is the seed (period-0 opening).
     """
-    tapes = _real_tape_pool_balances()
-    if tapes is None:
-        pytest.skip("warm tape-analytics cache absent; real-tape chain not runnable offline")
-
-    # Period 0 is the seed (the first tape's pool is the opening pool). Each
-    # subsequent tape's pool-delta is that period's scheduled principal (the
-    # pool-delta regime — chain on NET pool movement, per the S3 finding).
-    seed_date, seed_pool = tapes[0]
     periods: list[PeriodInput] = []
-    for prev, cur in zip(tapes, tapes[1:]):
-        _, prev_pool = prev
-        cur_date, cur_pool = cur
-        net_principal = max(0.0, prev_pool - cur_pool)
+    for (_, prev_pool), (cur_date, cur_pool) in zip(tapes, tapes[1:]):
         periods.append(
             PeriodInput(
                 reporting_date=cur_date,
-                collections=PeriodCollections(scheduled_principal=net_principal),
+                collections=PeriodCollections(
+                    scheduled_principal=max(0.0, prev_pool - cur_pool)
+                ),
                 days_in_period=30,
             )
         )
+    return periods
 
+
+def test_real_2026_tape_chain_ties_to_cached_pool_balances() -> None:
+    """The Green Lion 2026 deal chain over its REAL reporting tapes.
+
+    Seeds period 0 from the 2026 prospectus capital structure (and the deal's
+    €1.0636B original pool), then chains the three real 2026 reporting tapes via
+    pool-delta collections. Asserts the reconstructed pool balances match the
+    cached tape ``pool_balance_eur`` to the cent (the S0 reconciliation), that the
+    closing→opening identity holds end-to-end, and that the pool genuinely
+    amortises across the chain.
+    """
+    tapes = _cached_pool_balances(_GREEN_LION_2026_DATES)
+    if tapes is None:
+        pytest.skip("warm 2026 tape-analytics cache absent; real-tape chain not runnable offline")
+
+    seed_date, seed_pool = tapes[0]
     series = reconstruct_period_series(
         capital_structure=_CAP_STRUCTURE,
         reserve_target=_RESERVE_TARGET,
         original_pool_balance=_ORIGINAL_POOL,
         opening_pool_balance=seed_pool,
         seed_reporting_date=seed_date,
-        periods=periods,
+        periods=_pool_delta_periods(tapes),
     )
 
-    # One seed + one closing per period == the full tape count.
     assert len(series.states) == len(tapes)
 
     # Closing→opening identity end-to-end.
@@ -376,5 +399,42 @@ def test_real_tape_chain_ties_to_cached_pool_balances() -> None:
             f"pool mismatch at {date}: {state.pool_balance} != {pool}"
         )
 
-    # Pool factor tracks the amortisation (final factor < 1.0 at par seed).
+    # The pool genuinely amortises across the real chain (distinct, decreasing).
+    pools = [s.pool_balance for s in series.states]
+    assert pools == sorted(pools, reverse=True)
+    assert len(set(pools)) == len(pools)
+    # Pool factor < 1.0 (amortised below the seed) and the loss-rate denominator
+    # is the prospectus original pool, so the factor is economically meaningful.
     assert series.states[-1].pool_factor < 1.0
+
+
+def test_full_tape_history_chain_preserves_identity() -> None:
+    """The engine threads the deal's FULL tape history without breaking.
+
+    A robustness guard over all of ``GREEN_LION['tape_urls']`` (currently 27
+    tapes): regardless of how many periods are driven, the loop preserves the
+    closing[N]==opening[N+1] identity and reconstructs each period's pool to the
+    cent. This does not assert prospectus-economic meaning (the history mixes
+    vintages); it guards that the integrator scales to the real period count.
+    """
+    all_dates = tuple(t["date"] for t in GREEN_LION["tape_urls"])
+    tapes = _cached_pool_balances(all_dates)
+    if tapes is None:
+        pytest.skip("warm tape-analytics cache absent; full-history chain not runnable offline")
+
+    seed_date, seed_pool = tapes[0]
+    series = reconstruct_period_series(
+        capital_structure=_CAP_STRUCTURE,
+        reserve_target=_ORIGINAL_POOL,  # denominator irrelevant for this guard
+        original_pool_balance=seed_pool,
+        opening_pool_balance=seed_pool,
+        seed_reporting_date=seed_date,
+        periods=_pool_delta_periods(tapes),
+    )
+
+    assert len(series.states) == len(tapes)
+    for i, result in enumerate(series.period_results):
+        assert result.closing_state == series.states[i + 1]
+    for state, (date, pool) in zip(series.states, tapes):
+        assert state.reporting_date == date
+        assert math.isclose(state.pool_balance, pool, abs_tol=0.01)
