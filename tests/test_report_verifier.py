@@ -71,9 +71,13 @@ _WATERFALL_OUTPUT: dict[str, Any] = {
     ],
     "total_distributed": 14_050_000.0,
     "shortfall": 0.0,
-    # Extra keys callers can add to enable reserve_fund_balance and pool_balance comparison.
+    # Enrichment keys callers add (via ReportVerifier.enrich_waterfall_output)
+    # to enable the pool_balance / reserve_fund_balance / total_collections
+    # comparisons. total_collections is the period's COLLECTED cash — supplied
+    # explicitly, NOT proxied by total_distributed (#187).
     "reserve_fund_balance": 5_000_000.0,
     "pool_balance": 1_063_600_000.0,
+    "total_collections": 14_050_000.0,
 }
 
 # Reported figures that match the waterfall within 1% tolerance.
@@ -570,6 +574,101 @@ class TestOverallMatch:
             result = verifier.execute(_make_input())
         assert result.output.line_items == []
         assert result.output.overall_match is True
+
+
+# ---------------------------------------------------------------------------
+# Computed-value sourcing (#187): no false 999.0 mismatches, no
+# total_distributed proxy
+# ---------------------------------------------------------------------------
+
+
+_WATERFALL_NO_ENRICHMENT: dict[str, Any] = {
+    "reporting_period": "April 2026",
+    "tranche_distributions": [
+        {
+            "tranche": "class_a",
+            "interest_received": 9_050_000.0,
+            "principal_received": 5_000_000.0,
+        }
+    ],
+    "total_distributed": 14_050_000.0,
+    # NOTE: no pool_balance / reserve_fund_balance / total_collections keys.
+}
+
+
+class TestComputedValueSourcing:
+    """#187: a missing computed figure is SKIPPED, not compared against 0.0."""
+
+    def test_no_false_999_mismatch_for_unenriched_pool_balance(
+        self, verifier: ReportVerifier
+    ):
+        # pool_balance is reported but the waterfall_output carries no pool
+        # balance to compute against. The OLD behaviour defaulted computed to
+        # 0.0 → 999.0 sentinel → false mismatch. The fix SKIPS the line.
+        with _mock_extract(_MATCHING_REPORTED):
+            result = verifier.execute(
+                _make_input(waterfall_output=_WATERFALL_NO_ENRICHMENT)
+            )
+        items = {f.line_item for f in result.output.line_items}
+        assert "pool_balance" not in items
+        assert "reserve_fund_balance" not in items
+        # No 999.0 sentinel anywhere, and no false mismatch.
+        assert all(f.delta_pct != 999.0 for f in result.output.line_items)
+        assert result.output.overall_match is True
+
+    def test_total_collections_not_proxied_by_total_distributed(
+        self, verifier: ReportVerifier
+    ):
+        # Reported total_collections differs from total_distributed. With the old
+        # proxy this would compare 14.05M (distributed) and FALSELY match the
+        # reported 14.05M. The fix omits total_collections entirely (no
+        # enrichment key), so the line is skipped — it is NOT silently matched
+        # against total_distributed.
+        reported = {"total_collections": 14_050_000.0}
+        with _mock_extract(reported):
+            result = verifier.execute(
+                _make_input(waterfall_output=_WATERFALL_NO_ENRICHMENT)
+            )
+        assert all(
+            f.line_item != "total_collections" for f in result.output.line_items
+        )
+        assert result.output.figures_checked == 0
+
+    def test_enriched_pool_balance_is_compared(self, verifier: ReportVerifier):
+        # When the caller enriches the dict, the figure IS compared.
+        enriched = ReportVerifier.enrich_waterfall_output(
+            _WATERFALL_NO_ENRICHMENT,
+            pool_balance=1_063_600_000.0,
+            reserve_fund_balance=5_000_000.0,
+            total_collections=14_050_000.0,
+        )
+        with _mock_extract(_MATCHING_REPORTED):
+            result = verifier.execute(_make_input(waterfall_output=enriched))
+        items = {f.line_item for f in result.output.line_items}
+        assert {"pool_balance", "reserve_fund_balance", "total_collections"} <= items
+        assert result.output.overall_match is True
+
+    def test_enrich_does_not_mutate_input(self):
+        base = dict(_WATERFALL_NO_ENRICHMENT)
+        ReportVerifier.enrich_waterfall_output(base, pool_balance=1.0)
+        assert "pool_balance" not in base
+
+    def test_enrich_omits_none_args(self):
+        enriched = ReportVerifier.enrich_waterfall_output(
+            _WATERFALL_NO_ENRICHMENT, pool_balance=1.0
+        )
+        assert enriched["pool_balance"] == 1.0
+        assert "reserve_fund_balance" not in enriched
+        assert "total_collections" not in enriched
+
+    def test_genuine_999_sentinel_still_fires_for_real_zero_computed(self):
+        # The 999.0 path must still fire when the computed value is a GENUINE 0
+        # and reported is non-zero (e.g. a tranche that received nothing but the
+        # report claims a payment). This guards that the fix only stopped
+        # FABRICATED zeros, not legitimate ones.
+        fig = _build_reported_figure("class_a_principal_paid", 100.0, 0.0, 1.0)
+        assert fig.delta_pct == pytest.approx(999.0)
+        assert fig.match is False
 
 
 # ---------------------------------------------------------------------------
