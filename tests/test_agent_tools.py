@@ -635,9 +635,12 @@ def test_list_deal_tapes_missing_period_notes_jan_2026_gap():
 
 
 def test_list_deal_tapes_unknown_deal_returns_error():
+    from loanwhiz.config import DEAL_REGISTRY
+
     result = list_deal_tapes.invoke({"deal_id": "no-such-deal"})
     assert "error" in result
-    assert result["available_deals"] == ["green-lion-2026-1"]
+    # Tracks the registry (now includes the seasoned deals), not a hardcoded list.
+    assert set(result["available_deals"]) == set(DEAL_REGISTRY)
 
 
 # ---------------------------------------------------------------------------

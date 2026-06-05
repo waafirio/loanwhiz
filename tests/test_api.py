@@ -425,6 +425,58 @@ def test_committed_green_lion_seed_exists_and_validates():
     assert not Path(model.metadata.cache_path).is_absolute()
 
 
+# Seasoned deals (#206 / #208) — the same pipeline that produced the 2026-1 seed
+# above, run unmodified on the two registered seasoned deals. Sourced from the
+# registry (data/deals.json) so the test is data-agnostic: no per-deal literals.
+_SEASONED_DEAL_IDS = ("green-lion-2023-1", "green-lion-2024-1")
+
+
+@pytest.mark.parametrize("deal_id", _SEASONED_DEAL_IDS)
+def test_committed_seasoned_deal_seed_exists_and_validates(deal_id):
+    """Each seasoned-deal seed ships, validates as a DealModel, and has real shape.
+
+    V2 (#208) of the seasoned-deal-validation epic proves the extraction pipeline
+    is data-agnostic: the *unmodified* ``extraction/`` pipeline that produced the
+    Green Lion 2026-1 seed also produces shaped models for the 2023-1 / 2024-1
+    seasoned deals. These are the artifacts a clean checkout serves to the Overview
+    (and that downstream V4/V5 load warm); if either stops being tracked or drifts
+    from the schema, the seasoned deal's Overview goes blank. The assertions mirror
+    ``test_committed_green_lion_seed_exists_and_validates`` but are driven off the
+    registry so no deal-specific content is hardcoded.
+    """
+    from loanwhiz.api import main as api_main
+    from loanwhiz.config import DEAL_REGISTRY
+    from loanwhiz.extraction.assembler import DealModel, _slug
+
+    deal_name = DEAL_REGISTRY[deal_id]["deal_name"]
+
+    # Resolve the *real* committed seed dir from the package layout — the autouse
+    # fixture patches ``api_main.DEAL_MODEL_SEED_DIR`` to an empty tmp dir.
+    real_seed_dir = (
+        Path(api_main.__file__).resolve().parents[1] / "data" / "deals" / "seed"
+    )
+    seed_path = real_seed_dir / f"{_slug(deal_name)}.json"
+    assert seed_path.exists(), f"committed seasoned-deal seed missing: {seed_path}"
+
+    model = DealModel.model_validate_json(seed_path.read_text(encoding="utf-8"))
+
+    # Provenance matches the registered deal — no cross-deal mix-up.
+    assert model.metadata.deal_name == deal_name
+    assert model.metadata.prospectus_url == DEAL_REGISTRY[deal_id]["prospectus_url"]
+
+    # Real extracted shape (the proof the pipeline ran on real content, not an
+    # empty skeleton): a tranche structure, triggers, and ≥1 waterfall with steps.
+    assert model.tranche_structure, f"{deal_id} seed has no tranche structure"
+    assert model.trigger_names, f"{deal_id} seed has no trigger names"
+    assert any(
+        wf.get("steps") for wf in model.waterfalls.values()
+    ), f"{deal_id} seed has no waterfall with extracted steps"
+
+    assert 0.0 <= model.metadata.completeness_score <= 1.0
+    # The committed seed must carry no host-specific absolute path.
+    assert not Path(model.metadata.cache_path).is_absolute()
+
+
 # ---------------------------------------------------------------------------
 # Query (agent mocked)
 # ---------------------------------------------------------------------------
