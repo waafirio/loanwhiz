@@ -21,6 +21,24 @@ from loanwhiz.primitives.covenant_monitor import CovenantMonitor
 
 client = TestClient(app)
 
+
+@pytest.fixture(autouse=True)
+def _isolate_deal_model_seed_dir(tmp_path_factory):
+    """Point ``DEAL_MODEL_SEED_DIR`` at an empty dir for every test by default.
+
+    The committed deal-model seed (#196) makes ``_load_cached_deal_model`` fall
+    back to a shipped model on a runtime-cache miss. Tests that exercise the
+    *cold* path (``not_cached`` / ``DEFAULT_TRIGGERS`` fallback) assume a miss
+    means "no model", so without this fixture the real Green Lion seed would
+    leak in and flip them to ``cached``. Isolating the seed dir to an empty
+    per-session tmp path preserves those tests' cold semantics; the seed-aware
+    tests override this patch with their own populated dir (or the real dir).
+    """
+    empty = tmp_path_factory.mktemp("empty_seed_dir")
+    with patch("loanwhiz.api.main.DEAL_MODEL_SEED_DIR", str(empty)):
+        yield
+
+
 # The Green Lion deal context references one ESMA tape per monthly reporting
 # period; the deal endpoints fan out across all of them. Drive count
 # expectations off the config (currently 27 tapes) rather than a hardcoded
@@ -295,6 +313,116 @@ def test_deal_model_unknown_returns_404():
     resp = client.get("/deal/unknown/model")
     assert resp.status_code == 404
     assert resp.json()["detail"] == "Deal unknown not found"
+
+
+# ---------------------------------------------------------------------------
+# Committed deal-model seed fallback (#196 — Overview cold-cache)
+# ---------------------------------------------------------------------------
+
+
+def test_deal_model_served_from_seed_when_runtime_cache_cold(tmp_path):
+    """A cold runtime cache + a committed seed → the endpoint serves the seed.
+
+    This is the clean-checkout case: ``data/deals/*.json`` is gitignored and
+    empty, but the committed seed under ``src/loanwhiz/data/deals/seed`` lets
+    the Overview render Capital Structure / Triggers / Completeness instead of
+    a blank 'not extracted' screen. The runtime cache dir is empty; the seed
+    dir carries a Green Lion model.
+    """
+    cache_dir = tmp_path / "cache"
+    seed_dir = tmp_path / "seed"
+    cache_dir.mkdir()
+    seeded = _seed_cached_deal_model(str(seed_dir))
+
+    with patch("loanwhiz.api.main.DEAL_MODEL_CACHE_DIR", str(cache_dir)), patch(
+        "loanwhiz.api.main.DEAL_MODEL_SEED_DIR", str(seed_dir)
+    ):
+        resp = client.get("/deal/green-lion-2026-1/model")
+
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["extraction_status"] == "cached"
+    assert body["completeness_score"] == seeded["metadata"]["completeness_score"]
+    assert body["trigger_names"] == seeded["trigger_names"]
+    assert body["deal_model"] is not None
+    assert body["deal_model"]["tranche_structure"] == seeded["tranche_structure"]
+
+
+def test_runtime_cache_wins_over_seed(tmp_path):
+    """When both the runtime cache and the seed have the deal, the runtime cache
+    wins — a fresh cold extraction must override the shipped seed."""
+    cache_dir = tmp_path / "cache"
+    seed_dir = tmp_path / "seed"
+    cached = _seed_cached_deal_model(str(cache_dir))
+    # Give the seed a distinguishable completeness so we can tell which won.
+    seeded = _seed_cached_deal_model(str(seed_dir))
+    seed_path = seed_dir / "green-lion-2026-1-bv.json"
+    seeded["metadata"]["completeness_score"] = 0.25
+    seed_path.write_text(json.dumps(seeded), encoding="utf-8")
+
+    with patch("loanwhiz.api.main.DEAL_MODEL_CACHE_DIR", str(cache_dir)), patch(
+        "loanwhiz.api.main.DEAL_MODEL_SEED_DIR", str(seed_dir)
+    ):
+        resp = client.get("/deal/green-lion-2026-1/model")
+
+    assert resp.status_code == 200
+    # The runtime cache's completeness (0.75), not the seed's overridden 0.25.
+    assert resp.json()["completeness_score"] == cached["metadata"][
+        "completeness_score"
+    ]
+
+
+def test_deal_model_not_cached_when_no_seed_and_cold_cache(tmp_path):
+    """With both the runtime cache AND the seed dir empty, the endpoint still
+    degrades gracefully — ``not_cached`` / ``deal_model=None``, no extraction.
+
+    Guards that a deal without a committed seed keeps the original cold-path
+    behaviour rather than 500-ing on a missing seed file."""
+    cache_dir = tmp_path / "cache"
+    seed_dir = tmp_path / "seed"
+    cache_dir.mkdir()
+    seed_dir.mkdir()
+
+    with patch("loanwhiz.api.main.DEAL_MODEL_CACHE_DIR", str(cache_dir)), patch(
+        "loanwhiz.api.main.DEAL_MODEL_SEED_DIR", str(seed_dir)
+    ), patch("loanwhiz.extraction.assembler.extract_deal_model") as mock_extract:
+        resp = client.get("/deal/green-lion-2026-1/model")
+
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["extraction_status"] == "not_cached"
+    assert body["deal_model"] is None
+    mock_extract.assert_not_called()
+
+
+def test_committed_green_lion_seed_exists_and_validates():
+    """The committed Green Lion seed artifact ships and validates as a DealModel.
+
+    This is the artifact a clean checkout serves; if it stops being tracked (an
+    over-broad ``.gitignore`` rule) or drifts from the schema, the Overview goes
+    blank again. Validating it against the real ``DEAL_MODEL_SEED_DIR`` and the
+    live ``DealModel`` is the regression guard.
+    """
+    from loanwhiz.api import main as api_main
+    from loanwhiz.config import GREEN_LION
+    from loanwhiz.extraction.assembler import DealModel, _slug
+
+    # Resolve the *real* committed seed dir from the package layout — the
+    # autouse fixture patches ``api_main.DEAL_MODEL_SEED_DIR`` to an empty tmp
+    # dir, so reading the attribute here would point at the wrong place.
+    real_seed_dir = (
+        Path(api_main.__file__).resolve().parents[1] / "data" / "deals" / "seed"
+    )
+    seed_path = real_seed_dir / f"{_slug(GREEN_LION['deal_name'])}.json"
+    assert seed_path.exists(), f"committed seed missing: {seed_path}"
+
+    model = DealModel.model_validate_json(seed_path.read_text(encoding="utf-8"))
+    assert model.metadata.deal_name == GREEN_LION["deal_name"]
+    assert model.tranche_structure, "seed has no tranche structure"
+    assert model.trigger_names, "seed has no trigger names"
+    assert 0.0 <= model.metadata.completeness_score <= 1.0
+    # The committed seed must carry no host-specific absolute path.
+    assert not Path(model.metadata.cache_path).is_absolute()
 
 
 # ---------------------------------------------------------------------------
