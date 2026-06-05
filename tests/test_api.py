@@ -496,6 +496,53 @@ class _FakeResult:
         return self._dump
 
 
+def _small_reconstructed_series(
+    n_transitions: int = 2, *, original_pool_balance: float = 1_063_600_000.0
+):
+    """Build a real (offline) reconstructed ``DealStateSeries`` for the S9 rewire.
+
+    Threads ``reconstruct_period_series`` (the same S6 engine the endpoints read)
+    over hand-built ``PeriodInput``s — no tape downloads — so the wired
+    ``/waterfall`` / ``/compliance`` / ``/reconciliation`` behaviour can be tested
+    against a genuine amortizing ledger. Each transition collects real interest +
+    principal and a small realized loss, so tranche balances amortize and PDL /
+    cumulative loss move period to period.
+    """
+    from loanwhiz.primitives.deal_state import PeriodCollections
+    from loanwhiz.primitives.period_state_machine import (
+        PeriodInput,
+        reconstruct_period_series,
+    )
+
+    cap = {
+        "class_a_balance": 1_000_000_000.0,
+        "class_a_rate_pct": 3.62,
+        "class_b_balance": 53_100_000.0,
+        "class_c_balance": 10_500_000.0,
+    }
+    periods = [
+        PeriodInput(
+            reporting_date=f"2024-0{idx + 2}-28",
+            collections=PeriodCollections(
+                interest=3_000_000.0,
+                scheduled_principal=8_000_000.0,
+                prepayment=2_000_000.0,
+                recovery=100_000.0,
+                realized_loss=500_000.0,
+            ),
+            days_in_period=30,
+        )
+        for idx in range(n_transitions)
+    ]
+    return reconstruct_period_series(
+        capital_structure=cap,
+        reserve_target=10_636_000.0,
+        original_pool_balance=original_pool_balance,
+        seed_reporting_date="2024-01-31",
+        periods=periods,
+    )
+
+
 def test_deal_compliance_runs_monitor(tmp_path):
     tape_dump = {"row_count": 100, "field_coverage": 0.98}
     compliance_dump = {
@@ -505,10 +552,13 @@ def test_deal_compliance_runs_monitor(tmp_path):
         "summary": "All covenants within limits.",
     }
 
+    series = _small_reconstructed_series()
     # Empty cache dir → no extracted triggers → fall back to DEFAULT_TRIGGERS.
     with patch("loanwhiz.api.main.DEAL_MODEL_CACHE_DIR", str(tmp_path)), patch(
         "loanwhiz.api.main.EsmaTapeNormaliser"
-    ) as MockNorm, patch("loanwhiz.api.main.CovenantMonitor") as MockMon:
+    ) as MockNorm, patch(
+        "loanwhiz.api.main._reconstruct_series", return_value=series
+    ), patch("loanwhiz.api.main.CovenantMonitor") as MockMon:
         MockNorm.return_value.execute.return_value = _FakeResult(tape_dump)
         MockMon.DEFAULT_TRIGGERS = []
         MockMon.return_value.execute.return_value = _FakeResult(compliance_dump)
@@ -520,6 +570,10 @@ def test_deal_compliance_runs_monitor(tmp_path):
     # One normalise call per tape in the deal context.
     assert MockNorm.return_value.execute.call_count == GREEN_LION_TAPE_COUNT
     MockMon.return_value.execute.assert_called_once()
+    # The monitor was fed the reconstructed per-period states (the one ledger),
+    # not a single seeded snapshot.
+    covenant_input = MockMon.return_value.execute.call_args.args[0]
+    assert covenant_input.period_states == series.states
 
 
 def test_deal_compliance_uses_green_lion_pool_balance_by_default():
@@ -531,9 +585,15 @@ def test_deal_compliance_uses_green_lion_pool_balance_by_default():
     """
     compliance_dump = {"trigger_statuses": [], "summary": "ok"}
 
+    # The reconstructed series is seeded from the resolved (Green Lion default)
+    # original pool balance, and the covenant input's denominator comes from
+    # that series' first state (the one ledger), not the deal context directly.
+    series = _small_reconstructed_series()
     with patch(
         "loanwhiz.api.main.EsmaTapeNormaliser"
-    ) as MockNorm, patch("loanwhiz.api.main.CovenantMonitor") as MockMon:
+    ) as MockNorm, patch(
+        "loanwhiz.api.main._reconstruct_series", return_value=series
+    ), patch("loanwhiz.api.main.CovenantMonitor") as MockMon:
         MockNorm.return_value.execute.return_value = _FakeResult({"row_count": 1})
         MockMon.DEFAULT_TRIGGERS = []
         MockMon.return_value.execute.return_value = _FakeResult(compliance_dump)
@@ -566,9 +626,12 @@ def test_deal_compliance_resolves_pool_balance_from_deal_context():
     augmented = {**api_main.DEALS, "sponsor-2025-1": sponsor}
     compliance_dump = {"trigger_statuses": [], "summary": "ok"}
 
+    series = _small_reconstructed_series(original_pool_balance=500_000_000.0)
     with patch.object(api_main, "DEALS", augmented), patch(
         "loanwhiz.api.main.EsmaTapeNormaliser"
-    ) as MockNorm, patch("loanwhiz.api.main.CovenantMonitor") as MockMon:
+    ) as MockNorm, patch(
+        "loanwhiz.api.main._reconstruct_series", return_value=series
+    ), patch("loanwhiz.api.main.CovenantMonitor") as MockMon:
         MockNorm.return_value.execute.return_value = _FakeResult({"row_count": 1})
         MockMon.DEFAULT_TRIGGERS = []
         MockMon.return_value.execute.return_value = _FakeResult(compliance_dump)
@@ -635,9 +698,12 @@ def test_deal_compliance_uses_extracted_triggers(tmp_path):
             captured["triggers"] = input.triggers
             return _FakeResult({"summary": "ok"})
 
+    series = _small_reconstructed_series()
     with patch("loanwhiz.api.main.DEAL_MODEL_CACHE_DIR", str(tmp_path)), patch(
         "loanwhiz.api.main.EsmaTapeNormaliser"
-    ) as MockNorm, patch("loanwhiz.api.main.CovenantMonitor", _SpyMonitor):
+    ) as MockNorm, patch(
+        "loanwhiz.api.main._reconstruct_series", return_value=series
+    ), patch("loanwhiz.api.main.CovenantMonitor", _SpyMonitor):
         MockNorm.return_value.execute.return_value = _FakeResult({"row_count": 1})
         resp = client.get("/deal/green-lion-2026-1/compliance")
 
@@ -673,9 +739,12 @@ def test_deal_compliance_falls_back_when_no_extracted_triggers(tmp_path):
             captured["triggers"] = input.triggers
             return _FakeResult({"summary": "ok"})
 
+    series = _small_reconstructed_series()
     with patch("loanwhiz.api.main.DEAL_MODEL_CACHE_DIR", str(tmp_path)), patch(
         "loanwhiz.api.main.EsmaTapeNormaliser"
-    ) as MockNorm, patch("loanwhiz.api.main.CovenantMonitor", _SpyMonitor):
+    ) as MockNorm, patch(
+        "loanwhiz.api.main._reconstruct_series", return_value=series
+    ), patch("loanwhiz.api.main.CovenantMonitor", _SpyMonitor):
         MockNorm.return_value.execute.return_value = _FakeResult({"row_count": 1})
         resp = client.get("/deal/green-lion-2026-1/compliance")
 
@@ -686,6 +755,70 @@ def test_deal_compliance_falls_back_when_no_extracted_triggers(tmp_path):
 
 def test_deal_compliance_unknown_returns_404():
     resp = client.get("/deal/unknown/compliance")
+    assert resp.status_code == 404
+
+
+def test_deal_compliance_proximity_series_is_non_flat():
+    """The structural proximity series moves across periods (the S9 outcome).
+
+    With the real covenant monitor run over the reconstructed per-period states
+    (no monitor mock), a structural trigger's proximity is NOT constant across
+    periods — proving PDL/reserve/loss now flow from the one ledger instead of a
+    single seeded snapshot (which produced a flat curve).
+    """
+    # Reconstruct with several transitions carrying realized losses so the
+    # cumulative-loss / PDL structural metrics genuinely move period to period.
+    series = _small_reconstructed_series(n_transitions=4)
+    # Real EsmaTapeNormaliser would fetch tapes; feed a minimal period dict so the
+    # monitor runs offline. The structural metrics come from period_states (the
+    # reconstructed series), so the tape periods only need a reporting_date.
+    with patch(
+        "loanwhiz.api.main._reconstruct_series", return_value=series
+    ), patch("loanwhiz.api.main.EsmaTapeNormaliser") as MockNorm:
+        MockNorm.return_value.execute.return_value = _FakeResult(
+            {"reporting_date": "2024-01-31"}
+        )
+        resp = client.get("/deal/green-lion-2026-1/compliance")
+
+    assert resp.status_code == 200
+    body = resp.json()
+    # The cumulative-loss trigger's proximity should not be identical across all
+    # periods (it was flat before per-period states were plumbed in).
+    loss_prox = [
+        s["proximity_pct"]
+        for s in body["trigger_statuses"]
+        if s["trigger_name"] == "cumulative_loss_trigger"
+        and s["proximity_pct"] is not None
+    ]
+    assert len(loss_prox) >= 2
+    assert len(set(loss_prox)) > 1, "structural proximity series is flat"
+
+
+# ---------------------------------------------------------------------------
+# Reconciliation — read-only over the one ledger (S9, #189)
+# ---------------------------------------------------------------------------
+
+
+def test_deal_reconciliation_surfaces_ledger_invariants():
+    """`/reconciliation` exposes the reconstructed series' headline invariants."""
+    series = _small_reconstructed_series(n_transitions=3)
+    final = series.final_state
+    with patch("loanwhiz.api.main._reconstruct_series", return_value=series):
+        resp = client.get("/deal/green-lion-2026-1/reconciliation")
+
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["deal_id"] == "green-lion-2026-1"
+    assert body["period_count"] == len(series.states)
+    assert body["final_reporting_date"] == final.reporting_date
+    assert body["class_a_balance"] == final.class_a_balance
+    assert body["cumulative_losses"] == final.cumulative_losses
+    assert body["pool_factor"] == pytest.approx(final.pool_factor)
+    assert body["original_pool_balance"] == final.original_pool_balance
+
+
+def test_deal_reconciliation_unknown_returns_404():
+    resp = client.get("/deal/unknown/reconciliation")
     assert resp.status_code == 404
 
 
@@ -921,165 +1054,84 @@ def test_deal_project_uses_resolved_deal_base():
 
 
 # ---------------------------------------------------------------------------
-# Waterfall (primitives mocked)
+# Waterfall — sourced from the one reconstructed ledger (S9, #189)
 # ---------------------------------------------------------------------------
 
 
-class _FakeOutput:
-    """Stand-in for a PrimitiveResult whose ``output`` is a plain object.
+def test_deal_waterfall_sources_from_reconstructed_ledger():
+    """`/waterfall` reports the latest reconstructed period from the one ledger.
 
-    Unlike ``_FakeResult`` (which model_dumps to a dict), the waterfall handler
-    reads typed attributes off ``.output`` (``revenue_waterfall`` etc.), so the
-    fake exposes them as attributes via ``SimpleNamespace``.
+    S9 rewire: tranche opening/closing balances are the **amortizing** balances
+    of the latest transition's opening/closing DealState (not static constants),
+    and the cascade is the S6-recorded execution trace — sourced from
+    ``_reconstruct_series``, not a single-period ``WaterfallRunner`` on hardcoded
+    reserve=0/0 / pdl=0/0.
     """
+    series = _small_reconstructed_series()
+    opening = series.states[-2]
+    closing = series.states[-1]
 
-    def __init__(self, output):
-        self._output = output
-
-    @property
-    def output(self):
-        return self._output
-
-
-def test_deal_waterfall_runs_chain():
-    from types import SimpleNamespace
-
-    collections_out = SimpleNamespace(
-        available_revenue_funds=4_000_000.0,
-        available_principal_funds=10_000_000.0,
-        senior_fees=50_000.0,
-        pool_balance_eur=1_000_000_000.0,
-    )
-    step = SimpleNamespace(
-        priority="(d)",
-        recipient="class_a_interest",
-        amount_available=4_000_000.0,
-        amount_distributed=3_000_000.0,
-        shortfall=0.0,
-        condition=None,
-    )
-    tranche = SimpleNamespace(
-        tranche="class_a",
-        interest_received=3_000_000.0,
-        principal_received=10_000_000.0,
-        total_received=13_000_000.0,
-        opening_balance=1_000_000_000.0,
-        closing_balance=990_000_000.0,
-    )
-    waterfall_out = SimpleNamespace(
-        reporting_period="2026-04-30",
-        revenue_waterfall=[step],
-        tranche_distributions=[tranche],
-        total_distributed=13_000_000.0,
-        shortfall=0.0,
-    )
-
-    with patch("loanwhiz.api.main.CollectionsAggregator") as MockAgg, patch(
-        "loanwhiz.api.main.WaterfallRunner"
-    ) as MockRunner:
-        MockAgg.return_value.execute.return_value = _FakeOutput(collections_out)
-        MockRunner.return_value.execute.return_value = _FakeOutput(waterfall_out)
-
+    with patch("loanwhiz.api.main._reconstruct_series", return_value=series):
         resp = client.get("/deal/green-lion-2026-1/waterfall")
 
     assert resp.status_code == 200
     body = resp.json()
     assert body["deal_id"] == "green-lion-2026-1"
-    assert body["reporting_period"] == "2026-04-30"
-    assert body["available_revenue_funds"] == 4_000_000.0
-    assert body["available_principal_funds"] == 10_000_000.0
-    # Revenue cascade steps surfaced with their amounts.
-    assert len(body["revenue_waterfall"]) == 1
-    assert body["revenue_waterfall"][0]["recipient"] == "class_a_interest"
-    assert body["revenue_waterfall"][0]["amount_distributed"] == 3_000_000.0
-    # Per-tranche distributions surfaced.
-    assert len(body["tranche_distributions"]) == 1
-    assert body["tranche_distributions"][0]["tranche"] == "class_a"
-    assert body["tranche_distributions"][0]["total_received"] == 13_000_000.0
-    assert body["total_distributed"] == 13_000_000.0
-    assert body["shortfall"] == 0.0
-    # Latest tape aggregated, plus the prior tape for prev_pool_balance.
-    assert MockAgg.return_value.execute.call_count == 2
-    MockRunner.return_value.execute.assert_called_once()
+    # Reporting period is the latest reconstructed closing date.
+    assert body["reporting_period"] == closing.reporting_date
+    # The 11-step Revenue Priority of Payments cascade is surfaced from S6's
+    # execution trace.
+    assert len(body["revenue_waterfall"]) == 11
+    # Per-tranche distributions carry the AMORTIZING reconstructed balances.
+    dists = {t["tranche"]: t for t in body["tranche_distributions"]}
+    assert set(dists) == {"class_a", "class_b", "class_c"}
+    assert dists["class_a"]["opening_balance"] == opening.class_a_balance
+    assert dists["class_a"]["closing_balance"] == closing.class_a_balance
+    # Principal received == the balance redeemed this period (amortization).
+    assert dists["class_a"]["principal_received"] == pytest.approx(
+        max(0.0, opening.class_a_balance - closing.class_a_balance)
+    )
+
+
+def test_deal_waterfall_balances_amortize_period_to_period():
+    """Tranche balances move down across periods — the core S9 outcome.
+
+    The closing Class A balance of the latest period is strictly below the
+    seeded (period-0) opening balance, proving the endpoint reads a real
+    amortizing ledger rather than the old static prospectus constant.
+    """
+    series = _small_reconstructed_series(n_transitions=3)
+    seed = series.states[0]
+    with patch("loanwhiz.api.main._reconstruct_series", return_value=series):
+        resp = client.get("/deal/green-lion-2026-1/waterfall")
+
+    assert resp.status_code == 200
+    body = resp.json()
+    class_a = next(t for t in body["tranche_distributions"] if t["tranche"] == "class_a")
+    assert class_a["closing_balance"] < seed.class_a_balance
+
+
+def test_deal_waterfall_single_tape_returns_empty_cascade():
+    """A deal with no reconstructed transition returns an empty cascade.
+
+    The series carries only the seeded period-0 state (no ``period_results``),
+    so the endpoint reports the seed date with an empty cascade rather than
+    erroring.
+    """
+    series = _small_reconstructed_series(n_transitions=0)
+    with patch("loanwhiz.api.main._reconstruct_series", return_value=series):
+        resp = client.get("/deal/green-lion-2026-1/waterfall")
+
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["revenue_waterfall"] == []
+    assert body["tranche_distributions"] == []
+    assert body["reporting_period"] == series.states[0].reporting_date
 
 
 def test_deal_waterfall_unknown_returns_404():
     resp = client.get("/deal/unknown/waterfall")
     assert resp.status_code == 404
-
-
-def test_deal_waterfall_uses_resolved_deal_not_green_lion():
-    """The waterfall runs against the *selected* deal's tapes + capital structure.
-
-    Regression for #151: the handler previously read ``GREEN_LION["tape_urls"]``
-    and the hard-coded Green Lion capital-structure constants, so it returned
-    Green Lion's waterfall for any deal. With a second deal registered (its own
-    tapes + an explicit ``capital_structure``), the aggregator and runner must be
-    driven by *that* deal's values — not Green Lion's.
-    """
-    from types import SimpleNamespace
-
-    from loanwhiz.api import main as api_main
-
-    sponsor = {
-        "deal_name": "Sponsor Deal 2025-1 B.V.",
-        "prospectus_url": "https://example.test/sponsor-2025-1-prospectus.pdf",
-        "tape_urls": [
-            {"date": "2025-11-30", "url": "https://example.test/sponsor-202511.csv"},
-            {"date": "2025-12-31", "url": "https://example.test/sponsor-202512.csv"},
-        ],
-        "investor_report_urls": [],
-        "capital_structure": {
-            "class_a_balance": 500_000_000.0,
-            "class_a_rate_pct": 4.10,
-            "class_b_balance": 25_000_000.0,
-            "class_c_balance": 5_000_000.0,
-        },
-    }
-    augmented = {**api_main.DEALS, "sponsor-2025-1": sponsor}
-
-    collections_out = SimpleNamespace(
-        available_revenue_funds=2_000_000.0,
-        available_principal_funds=6_000_000.0,
-        senior_fees=25_000.0,
-        pool_balance_eur=500_000_000.0,
-    )
-    waterfall_out = SimpleNamespace(
-        reporting_period="2025-12-31",
-        revenue_waterfall=[],
-        tranche_distributions=[],
-        total_distributed=0.0,
-        shortfall=0.0,
-    )
-
-    with patch.object(api_main, "DEALS", augmented), patch(
-        "loanwhiz.api.main.CollectionsAggregator"
-    ) as MockAgg, patch("loanwhiz.api.main.WaterfallRunner") as MockRunner:
-        MockAgg.return_value.execute.return_value = _FakeOutput(collections_out)
-        MockRunner.return_value.execute.return_value = _FakeOutput(waterfall_out)
-
-        resp = client.get("/deal/sponsor-2025-1/waterfall")
-
-    assert resp.status_code == 200
-    body = resp.json()
-    assert body["deal_id"] == "sponsor-2025-1"
-    assert body["reporting_period"] == "2025-12-31"
-
-    # Tapes resolved from the SELECTED deal, not Green Lion: the latest call
-    # aggregates the sponsor's latest tape URL.
-    agg_calls = MockAgg.return_value.execute.call_args_list
-    latest_input = agg_calls[-1].args[0]
-    assert latest_input.tape_file_url == "https://example.test/sponsor-202512.csv"
-    # Capital structure resolved from the deal context (sponsor's values).
-    assert latest_input.class_a_balance == 500_000_000.0
-    assert latest_input.class_a_rate_pct == 4.10
-
-    # The waterfall ran on the sponsor's capital structure too.
-    wf_input = MockRunner.return_value.execute.call_args.args[0]
-    assert wf_input.class_a_balance == 500_000_000.0
-    assert wf_input.class_b_balance == 25_000_000.0
-    assert wf_input.class_c_balance == 5_000_000.0
-    assert wf_input.class_a_rate_pct == 4.10
 
 
 # ---------------------------------------------------------------------------

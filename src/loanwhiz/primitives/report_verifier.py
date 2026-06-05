@@ -16,6 +16,21 @@ Five key figures are extracted and compared:
 - Pool balance
 - Total collections
 
+Sourcing the computed side (#187 fix)
+-------------------------------------
+``class_a_interest_paid`` / ``class_a_principal_paid`` come straight from the
+WaterfallOutput's Class A tranche distribution. The other three
+(``pool_balance``, ``reserve_fund_balance``, ``total_collections``) are NOT
+present in a WaterfallOutput on its own, so they are sourced only from explicit
+enrichment keys on the ``waterfall_output`` dict — use
+:meth:`ReportVerifier.enrich_waterfall_output` to populate them from a
+reconstructed :class:`~loanwhiz.primitives.deal_state.DealState`. When an
+enrichment figure is absent the verifier **skips** that line item rather than
+defaulting the computed value to ``0.0`` (a zero computed value would emit the
+``999.0`` "computed-was-zero" sentinel against any non-zero reported figure — a
+false mismatch). ``total_collections`` is the period's collected cash, not the
+distributed cash, so it is no longer proxied by ``total_distributed``.
+
 Confidence scoring:
 - 0.9 if ≥3 figures extracted successfully from the investor report.
 - 0.6 if <3 figures extracted (partial/degraded extraction).
@@ -287,24 +302,36 @@ Example output format:
 
 
 def _extract_computed_values(waterfall_output: dict[str, Any]) -> dict[str, float]:
-    """Extract the five key figures from a WaterfallOutput dict.
+    """Extract the available key figures from a WaterfallOutput dict.
 
     WaterfallOutput carries per-tranche distributions and waterfall step details.
     We map the canonical figure names to the closest available computed fields.
 
-    Figures that cannot be derived from WaterfallOutput alone (e.g. pool_balance,
-    reserve_fund_balance) fall back to a caller-supplied extra key if present in
-    the dict, otherwise to 0.0 with a warning.
+    A figure that **cannot be sourced** from this dict is **omitted** from the
+    returned mapping — it is *not* defaulted to ``0.0``. This is deliberate (the
+    #187 fix): a bogus ``0.0`` computed value makes ``_build_reported_figure``
+    emit the ``999.0`` "computed-was-zero" sentinel against any non-zero reported
+    figure, which is a **false** mismatch. By omitting the key, ``execute`` skips
+    that line item entirely (it has no computed counterpart to compare against)
+    rather than fabricating a failure.
+
+    Figures that are not present in a WaterfallOutput on their own
+    (``pool_balance``, ``reserve_fund_balance``, ``total_collections``) are
+    sourced only from caller-supplied enrichment keys on the dict (see
+    :func:`ReportVerifier.enrich_waterfall_output`). When absent, they are simply
+    not compared.
 
     Parameters
     ----------
     waterfall_output:
-        ``WaterfallOutput.model_dump()`` dict.
+        ``WaterfallOutput.model_dump()`` dict, optionally enriched with
+        ``pool_balance`` / ``reserve_fund_balance`` / ``total_collections`` keys.
 
     Returns
     -------
     dict[str, float]
-        Canonical figure name → computed value.
+        Canonical figure name → computed value, for the figures that could be
+        sourced. Unsourceable figures are absent from the mapping.
     """
     computed: dict[str, float] = {}
 
@@ -319,27 +346,35 @@ def _extract_computed_values(waterfall_output: dict[str, Any]) -> dict[str, floa
     computed["class_a_interest_paid"] = float(class_a.get("interest_received", 0.0))
     computed["class_a_principal_paid"] = float(class_a.get("principal_received", 0.0))
 
-    # total_collections — WaterfallOutput.total_distributed is the closest proxy.
-    computed["total_collections"] = float(waterfall_output.get("total_distributed", 0.0))
+    # total_collections — total cash COLLECTED in the period, not distributed.
+    # WaterfallOutput.total_distributed is NOT a valid proxy (distributed ≠
+    # collected), so we no longer use it: source total_collections only from an
+    # explicit caller-supplied "total_collections" enrichment key. Absent → skip.
+    if "total_collections" in waterfall_output:
+        computed["total_collections"] = float(waterfall_output["total_collections"])
 
-    # reserve_fund_balance — not directly in WaterfallOutput; accept from extra key
-    # or fall back to 0.0.  Callers may enrich the dict with "reserve_fund_balance"
-    # derived from WaterfallInput.reserve_account_balance.
-    computed["reserve_fund_balance"] = float(
-        waterfall_output.get("reserve_fund_balance", 0.0)
-    )
-    if "reserve_fund_balance" not in waterfall_output:
+    # reserve_fund_balance — not in WaterfallOutput; only from an enrichment key
+    # (e.g. the reconstructed DealState.reserve_balance). Absent → skip the line.
+    if "reserve_fund_balance" in waterfall_output:
+        computed["reserve_fund_balance"] = float(
+            waterfall_output["reserve_fund_balance"]
+        )
+    else:
         logger.info(
-            "reserve_fund_balance not in waterfall_output; computed value set to 0.0. "
-            "Enrich the dict with WaterfallInput.reserve_account_balance if needed."
+            "reserve_fund_balance not in waterfall_output; skipping that line "
+            "item (no computed counterpart). Enrich the dict via "
+            "ReportVerifier.enrich_waterfall_output if a reserve figure exists."
         )
 
-    # pool_balance — not in WaterfallOutput; accept from extra key or 0.0.
-    computed["pool_balance"] = float(waterfall_output.get("pool_balance", 0.0))
-    if "pool_balance" not in waterfall_output:
+    # pool_balance — not in WaterfallOutput; only from an enrichment key (e.g.
+    # the reconstructed DealState.pool_balance / ESMA tape). Absent → skip.
+    if "pool_balance" in waterfall_output:
+        computed["pool_balance"] = float(waterfall_output["pool_balance"])
+    else:
         logger.info(
-            "pool_balance not in waterfall_output; computed value set to 0.0. "
-            "Enrich the dict with the pool balance from the ESMA tape if needed."
+            "pool_balance not in waterfall_output; skipping that line item (no "
+            "computed counterpart). Enrich the dict via "
+            "ReportVerifier.enrich_waterfall_output if a pool balance exists."
         )
 
     return computed
@@ -425,6 +460,52 @@ class ReportVerifier(Primitive[ReportVerifierInput, ReportVerifierOutput]):
     version = "0.1.0"
     description = "Verify investor report figures against waterfall-computed distributions"
 
+    @staticmethod
+    def enrich_waterfall_output(
+        waterfall_output: dict[str, Any],
+        *,
+        pool_balance: float | None = None,
+        reserve_fund_balance: float | None = None,
+        total_collections: float | None = None,
+    ) -> dict[str, Any]:
+        """Return a copy of ``waterfall_output`` enriched with the figures a bare
+        WaterfallOutput lacks (the "wire it live" seam, #187).
+
+        A WaterfallOutput carries the per-tranche distributions but not the pool
+        balance, reserve balance, or total *collected* cash. Those three figures
+        come from the reconstructed deal state / collections — pass them here and
+        they are merged onto a shallow copy of the dict so
+        :func:`_extract_computed_values` can compare them. Any argument left as
+        ``None`` is omitted, so the corresponding line item is skipped rather
+        than compared against a fabricated zero.
+
+        Typical caller (collateral side): source ``pool_balance`` and
+        ``reserve_fund_balance`` from a reconstructed
+        :class:`~loanwhiz.primitives.deal_state.DealState`'s ``pool_balance`` /
+        ``reserve_balance``, and ``total_collections`` from that period's
+        collections (``interest + total_principal + recovery``).
+
+        Parameters
+        ----------
+        waterfall_output:
+            The base ``WaterfallOutput.model_dump()`` dict (not mutated).
+        pool_balance / reserve_fund_balance / total_collections:
+            Figures to merge in; ``None`` means "don't add / don't compare".
+
+        Returns
+        -------
+        dict[str, Any]
+            A shallow copy carrying the supplied enrichment keys.
+        """
+        enriched = dict(waterfall_output)
+        if pool_balance is not None:
+            enriched["pool_balance"] = float(pool_balance)
+        if reserve_fund_balance is not None:
+            enriched["reserve_fund_balance"] = float(reserve_fund_balance)
+        if total_collections is not None:
+            enriched["total_collections"] = float(total_collections)
+        return enriched
+
     def execute(  # type: ignore[override]
         self, input: ReportVerifierInput
     ) -> PrimitiveResult[ReportVerifierOutput]:
@@ -479,7 +560,13 @@ class ReportVerifier(Primitive[ReportVerifierInput, ReportVerifierOutput]):
             if reported_val is None:
                 # Figure not extracted — skip (counts against figure total for confidence)
                 continue
-            computed_val = computed_values.get(key, 0.0)
+            computed_val = computed_values.get(key)
+            if computed_val is None:
+                # No computed counterpart could be sourced for this figure (e.g.
+                # pool_balance / reserve_fund_balance not enriched). Skip it
+                # rather than comparing against a fabricated 0.0, which would
+                # produce a false 999.0-sentinel mismatch (#187).
+                continue
             line_items.append(
                 _build_reported_figure(
                     line_item=key,

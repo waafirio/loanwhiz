@@ -20,8 +20,56 @@ from loanwhiz.primitives.esma_tape_normaliser import (
     EsmaTapeNormaliser,
     _detect_annex,
     _load_tape,
+    non_performing_mask,
+    performing_mask,
 )
 from loanwhiz.primitives.registry import PRIMITIVE_REGISTRY
+
+
+# ---------------------------------------------------------------------------
+# Unit tests — performing / non-performing mask (shared with collections)
+# ---------------------------------------------------------------------------
+
+
+class TestPerformingMask:
+    """The shared performing/non-performing definition used by S3."""
+
+    @staticmethod
+    def _df(rows: list[dict]) -> pd.DataFrame:
+        return pd.DataFrame(rows)
+
+    def test_defaulted_is_non_performing(self) -> None:
+        df = self._df([{"default_crr_flag": "Y", "arrears_bucket": "Performing"}])
+        assert non_performing_mask(df).tolist() == [True]
+        assert performing_mask(df).tolist() == [False]
+
+    def test_180d_arrears_is_non_performing(self) -> None:
+        df = self._df([{"default_crr_flag": "N", "arrears_bucket": "180+d"}])
+        assert non_performing_mask(df).tolist() == [True]
+
+    def test_performing_and_short_arrears_are_performing(self) -> None:
+        df = self._df(
+            [
+                {"default_crr_flag": "N", "arrears_bucket": "Performing"},
+                {"default_crr_flag": "n", "arrears_bucket": "<29d"},
+            ]
+        )
+        assert performing_mask(df).tolist() == [True, True]
+
+    def test_missing_columns_degrade_to_all_performing(self) -> None:
+        df = self._df([{"current_balance": 100.0}, {"current_balance": 200.0}])
+        assert performing_mask(df).tolist() == [True, True]
+        assert non_performing_mask(df).tolist() == [False, False]
+
+    def test_mask_complement(self) -> None:
+        df = self._df(
+            [
+                {"default_crr_flag": "Y", "arrears_bucket": "Performing"},
+                {"default_crr_flag": "N", "arrears_bucket": "180+d"},
+                {"default_crr_flag": "N", "arrears_bucket": "Performing"},
+            ]
+        )
+        assert (performing_mask(df) == ~non_performing_mask(df)).all()
 
 # ---------------------------------------------------------------------------
 # Helpers

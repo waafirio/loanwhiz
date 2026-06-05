@@ -43,6 +43,14 @@ from loanwhiz.primitives.base import (
     PrimitiveResult,
 )
 from loanwhiz.primitives.registry import register_primitive
+from loanwhiz.primitives.waterfall_interpreter import (
+    ConditionEvaluator,
+    StepSpec,
+    WaterfallExecution,
+    WaterfallFunds,
+    allocate_principal,
+    interpret,
+)
 
 # ---------------------------------------------------------------------------
 # Output sub-models
@@ -166,6 +174,109 @@ class WaterfallOutput(BaseModel):
 
 
 # ---------------------------------------------------------------------------
+# Green Lion 2026-1 builtin waterfall step lists (data, not control flow)
+# ---------------------------------------------------------------------------
+#
+# The Green-Lion priority-of-payments is expressed here as DATA — an ordered
+# list of ``StepSpec`` the generic interpreter executes. This is the same shape
+# the extraction layer produces in ``DealModel.waterfalls[*].steps``, so the
+# same interpreter runs an extracted deal model. Recipients not in the
+# interpreter's need-calculator registry (operating fees, expense account,
+# subordinated swap, new receivables, deferred purchase price) contribute need 0
+# and are recorded ``not_evaluable`` — the audit trace stays structurally
+# complete without inventing figures the input schema does not carry (matching
+# the prior runner's "modelled as zero" steps).
+
+_GREEN_LION_REVENUE_STEPS: list[StepSpec] = [
+    StepSpec(priority="(a)", recipient="senior_fees"),
+    StepSpec(
+        priority="(b)",
+        recipient="operating_fees",
+        condition="pari passu: servicer, administrator, paying agent",
+    ),
+    StepSpec(priority="(c)", recipient="swap_payment"),
+    StepSpec(priority="(d)", recipient="class_a_interest"),
+    StepSpec(priority="(e)", recipient="class_a_pdl_replenishment"),
+    StepSpec(priority="(f)", recipient="reserve_account_replenishment"),
+    StepSpec(priority="(g)", recipient="expense_account_replenishment"),
+    StepSpec(priority="(h)", recipient="class_b_pdl_replenishment"),
+    StepSpec(
+        priority="(i)",
+        recipient="subordinated_swap_payment",
+        condition="subordinated swap",
+    ),
+    StepSpec(
+        priority="(j)",
+        recipient="class_c_principal_from_revenue",
+        condition="from First Optional Redemption Date",
+    ),
+    StepSpec(
+        priority="(k)", recipient="deferred_purchase_price_seller", residual=True
+    ),
+]
+
+# Redemption (principal) steps. Steps (b)/(c) carry the principal allocation,
+# which the runner computes via the sequential-pay branch
+# (``allocate_principal``) and feeds back through ``need_overrides`` — so the
+# pro-rata ↔ sequential choice (MODELING-GAPS.md A3) actually gates Class B's
+# principal instead of Class A always taking 100%.
+_GREEN_LION_REDEMPTION_STEPS: list[StepSpec] = [
+    StepSpec(
+        priority="(a)",
+        recipient="new_mortgage_receivables",
+        condition="during Revolving Period",
+    ),
+    StepSpec(priority="(b)", recipient="class_a_principal"),
+    StepSpec(priority="(c)", recipient="class_b_principal"),
+    StepSpec(
+        priority="(d)",
+        recipient="deferred_purchase_price_seller_principal",
+        residual=True,
+    ),
+]
+
+
+def _funds_from_input(input: WaterfallInput) -> WaterfallFunds:
+    """Build the interpreter's ``WaterfallFunds`` from a ``WaterfallInput``."""
+    return WaterfallFunds(
+        available_revenue_funds=input.available_revenue_funds,
+        available_principal_funds=input.available_principal_funds,
+        senior_fees=input.senior_fees,
+        swap_payment=input.swap_payment,
+        class_a_balance=input.class_a_balance,
+        class_a_rate_pct=input.class_a_rate_pct,
+        class_b_balance=input.class_b_balance,
+        class_c_balance=input.class_c_balance,
+        class_a_pdl_balance=input.class_a_pdl_balance,
+        class_b_pdl_balance=input.class_b_pdl_balance,
+        reserve_balance=input.reserve_account_balance,
+        reserve_target=input.reserve_account_target,
+        days_in_period=input.days_in_period,
+    )
+
+
+def _to_output_steps(execution: WaterfallExecution) -> list["WaterfallStep"]:
+    """Map an interpreter ``WaterfallExecution`` to the public ``WaterfallStep``s.
+
+    ``amount_available`` mirrors the prior runner's semantics: funds available at
+    the *start* of the step (before its own deduction).
+    """
+    out: list[WaterfallStep] = []
+    for s in execution.steps:
+        out.append(
+            WaterfallStep(
+                priority=s.priority,
+                recipient=s.recipient,
+                amount_available=s.amount_available,
+                amount_distributed=s.amount_distributed,
+                shortfall=s.shortfall,
+                condition=s.condition,
+            )
+        )
+    return out
+
+
+# ---------------------------------------------------------------------------
 # Primitive
 # ---------------------------------------------------------------------------
 
@@ -180,11 +291,33 @@ class WaterfallRunner(Primitive[WaterfallInput, WaterfallOutput]):
     """Execute the Green Lion 2026-1 Revenue and Redemption waterfalls.
 
     Pure deterministic computation — no LLM calls. Confidence is always 1.0.
+
+    The Green-Lion priority-of-payments is now expressed as *data* (the
+    ``_GREEN_LION_*_STEPS`` ``StepSpec`` lists) executed by the generic
+    ``waterfall_interpreter``; the same interpreter runs an extracted
+    ``DealModel.waterfalls[*].steps``. Condition gating (and the sequential-pay
+    branch) flow through an injectable ``ConditionEvaluator`` — pass one to the
+    constructor to compose with S5's (#185) trigger engine; the default handles
+    the Green-Lion conditions.
     """
 
     name = "waterfall_runner"
     version = "0.1.0"
     description = "Execute RMBS payment waterfall against monthly collections"
+
+    def __init__(self, condition_evaluator: ConditionEvaluator | None = None) -> None:
+        """Construct the runner, optionally with a custom condition evaluator.
+
+        Parameters
+        ----------
+        condition_evaluator:
+            The predicate used to gate conditional steps and to drive the
+            sequential-pay branch. Defaults to ``None``, in which case the
+            interpreter's ``DefaultConditionEvaluator`` is used. Inject S5's
+            (#185) trigger engine here to compose the two without either side
+            editing the other's internals.
+        """
+        self.condition_evaluator = condition_evaluator
 
     def execute(  # type: ignore[override]
         self, input: WaterfallInput
@@ -206,222 +339,80 @@ class WaterfallRunner(Primitive[WaterfallInput, WaterfallOutput]):
         input_hash = input.input_hash()
 
         # ------------------------------------------------------------------
-        # 1. Derived amounts
+        # 1. Build the interpreter's funds view + condition evaluator
         # ------------------------------------------------------------------
 
-        # Class A quarterly interest: balance * (rate / 100) / 360 * days
-        # Act/360 day-count convention (prospectus section 5.2 implicit).
-        class_a_interest = (
-            input.class_a_balance
-            * (input.class_a_rate_pct / 100.0)
-            / 360.0
-            * input.days_in_period
-        )
-
-        # Reserve shortfall (how much is needed to top up the reserve account).
-        reserve_shortfall = max(
-            0.0, input.reserve_account_target - input.reserve_account_balance
-        )
+        funds = _funds_from_input(input)
+        evaluator = self.condition_evaluator
 
         # ------------------------------------------------------------------
-        # 2. Revenue waterfall (a) → (k)
+        # 2. Revenue waterfall (a) → (k) — driven by the generic interpreter
         # ------------------------------------------------------------------
+        #
+        # The residual step (k) Deferred Purchase Price absorbs whatever revenue
+        # remains. It has no registry need-calculator (it is a residual, not a
+        # fixed obligation), so we feed it an effectively-unbounded need override
+        # — the interpreter caps every distribution at the remaining pot, so the
+        # override makes the step sweep the residual without a phantom shortfall.
 
-        remaining_rev = input.available_revenue_funds
-        rev_steps: list[WaterfallStep] = []
-
-        def _rev_step(
-            priority: str,
-            recipient: str,
-            need: float,
-            condition: str | None = None,
-        ) -> WaterfallStep:
-            nonlocal remaining_rev
-            distributed = min(need, remaining_rev)
-            shortfall = max(0.0, need - distributed)
-            remaining_rev -= distributed
-            return WaterfallStep(
-                priority=priority,
-                recipient=recipient,
-                amount_available=remaining_rev + distributed,  # available before deduction
-                amount_distributed=distributed,
-                shortfall=shortfall,
-                condition=condition,
-            )
-
-        # (a) Senior fees
-        rev_steps.append(_rev_step("(a)", "senior_fees", input.senior_fees))
-
-        # (b) Operating fees — modelled as a pari-passu bundle; the input
-        #     carries no separate operating-fee field, so this step distributes
-        #     zero unless a future input field is added.  The step is kept in
-        #     the sequence so the audit trace is structurally complete.
-        rev_steps.append(
-            _rev_step(
-                "(b)",
-                "operating_fees",
-                0.0,
-                condition="pari passu: servicer, administrator, paying agent",
-            )
+        rev_execution = interpret(
+            _GREEN_LION_REVENUE_STEPS,
+            funds,
+            available=input.available_revenue_funds,
+            evaluator=evaluator,
         )
-
-        # (c) Swap payments (non-subordinated)
-        rev_steps.append(_rev_step("(c)", "swap_payment", input.swap_payment))
-
-        # (d) Class A interest
-        rev_steps.append(_rev_step("(d)", "class_a_interest", class_a_interest))
-
-        # (e) Class A PDL replenishment
-        rev_steps.append(
-            _rev_step("(e)", "class_a_pdl_replenishment", input.class_a_pdl_balance)
-        )
-
-        # (f) Reserve Account replenishment
-        rev_steps.append(
-            _rev_step("(f)", "reserve_account_replenishment", reserve_shortfall)
-        )
-
-        # (g) Expense Account replenishment — modelled as zero (no separate
-        #     expense-account shortfall in the input schema).
-        rev_steps.append(
-            _rev_step("(g)", "expense_account_replenishment", 0.0)
-        )
-
-        # (h) Class B PDL replenishment
-        rev_steps.append(
-            _rev_step("(h)", "class_b_pdl_replenishment", input.class_b_pdl_balance)
-        )
-
-        # (i) Subordinated swap payments — modelled as zero (no subordinated
-        #     swap field in the input schema).
-        rev_steps.append(
-            _rev_step(
-                "(i)",
-                "subordinated_swap_payment",
-                0.0,
-                condition="subordinated swap",
-            )
-        )
-
-        # (j) Class C principal — only from First Optional Redemption Date.
-        #     The input does not carry the redemption-date flag; the condition
-        #     is captured in the audit trace.  In this model the step distributes
-        #     from remaining revenue (not the principal waterfall) as specified.
-        rev_steps.append(
-            _rev_step(
-                "(j)",
-                "class_c_principal_from_revenue",
-                0.0,
-                condition="from First Optional Redemption Date",
-            )
-        )
-
-        # (k) Deferred Purchase Price to Seller — residual revenue
-        rev_steps.append(
-            _rev_step("(k)", "deferred_purchase_price_seller", remaining_rev)
-        )
+        rev_steps = _to_output_steps(rev_execution)
 
         # ------------------------------------------------------------------
-        # 3. Redemption waterfall (a) → (d)
+        # 3. Redemption waterfall (a) → (d) — sequential-pay branch (A3)
         # ------------------------------------------------------------------
+        #
+        # New receivables (a) is gated by the revolving-period condition (the
+        # input carries no revolving flag, so the default evaluator suppresses
+        # it). Principal steps (b)/(c) are allocated by the sequential-pay
+        # branch: pro-rata ↔ sequential by the Sequential Pay Trigger — so Class
+        # B can receive principal under pro-rata instead of Class A always
+        # taking 100%. Step (d) sweeps the residual.
 
-        remaining_prin = input.available_principal_funds
-        red_steps: list[WaterfallStep] = []
-
-        def _red_step(
-            priority: str,
-            recipient: str,
-            need: float,
-            condition: str | None = None,
-        ) -> WaterfallStep:
-            nonlocal remaining_prin
-            distributed = min(need, remaining_prin)
-            shortfall = max(0.0, need - distributed)
-            remaining_prin -= distributed
-            return WaterfallStep(
-                priority=priority,
-                recipient=recipient,
-                amount_available=remaining_prin + distributed,
-                amount_distributed=distributed,
-                shortfall=shortfall,
-                condition=condition,
-            )
-
-        # (a) New Mortgage Receivables during Revolving Period — modelled as
-        #     zero (the input does not carry a revolving-period flag or a new-
-        #     receivables purchase amount).
-        red_steps.append(
-            _red_step(
-                "(a)",
-                "new_mortgage_receivables",
-                0.0,
-                condition="during Revolving Period",
-            )
+        # Green Lion's redemption waterfall repays only Class A and Class B from
+        # principal (Class C is redeemed from revenue, step (j)); restrict the
+        # sequential-pay allocation to the classes that actually have a
+        # redemption step so the residual (step (d)) is correct.
+        principal_alloc = allocate_principal(
+            funds,
+            available=input.available_principal_funds,
+            classes=("class_a", "class_b"),
+            evaluator=evaluator,
         )
-
-        # (b) Class A principal — pari passu.
-        # The redemption waterfall distributes available principal collections
-        # in priority order; it does not attempt to repay the full outstanding
-        # balance in a single period.  Class A absorbs all remaining principal
-        # after step (a); there is no "need" shortfall — whatever arrives is
-        # distributed to Class A first (they are senior).
-        class_a_principal_need = remaining_prin  # senior class takes all remaining
-        red_steps.append(
-            _red_step(
-                "(b)",
-                "class_a_principal",
-                class_a_principal_need,
-                condition="pari passu",
-            )
+        red_execution = interpret(
+            _GREEN_LION_REDEMPTION_STEPS,
+            funds,
+            available=input.available_principal_funds,
+            evaluator=evaluator,
+            need_overrides={
+                "class_a_principal": principal_alloc["class_a"],
+                "class_b_principal": principal_alloc["class_b"],
+            },
         )
-
-        # (c) Class B principal — pari passu.
-        # After Class A absorbs available principal, Class B takes whatever
-        # remains (typically zero in a sequential-pay structure during normal
-        # amortisation).  The step records zero distributed with zero shortfall.
-        class_b_principal_need = remaining_prin  # what's left after Class A
-        red_steps.append(
-            _red_step(
-                "(c)",
-                "class_b_principal",
-                class_b_principal_need,
-                condition="pari passu",
-            )
-        )
-
-        # (d) Deferred Purchase Price to Seller — residual principal
-        red_steps.append(
-            _red_step("(d)", "deferred_purchase_price_seller_principal", remaining_prin)
-        )
+        red_steps = _to_output_steps(red_execution)
 
         # ------------------------------------------------------------------
         # 4. Per-tranche distributions
         # ------------------------------------------------------------------
 
-        # Revenue step look-ups
-        def _rev_amount(recipient: str) -> float:
-            for step in rev_steps:
-                if step.recipient == recipient:
-                    return step.amount_distributed
-            return 0.0
-
-        def _red_amount(recipient: str) -> float:
-            for step in red_steps:
-                if step.recipient == recipient:
-                    return step.amount_distributed
-            return 0.0
-
-        class_a_interest_dist = _rev_amount("class_a_interest")
-        class_a_principal_dist = _red_amount("class_a_principal")
+        class_a_interest_dist = rev_execution.distributed_to("class_a_interest")
+        class_a_principal_dist = red_execution.distributed_to("class_a_principal")
         class_a_total = class_a_interest_dist + class_a_principal_dist
 
-        class_b_interest_dist = 0.0  # Class B receives no revenue interest in this model
-        class_b_principal_dist = _red_amount("class_b_principal")
+        class_b_interest_dist = rev_execution.distributed_to("class_b_interest")
+        class_b_principal_dist = red_execution.distributed_to("class_b_principal")
         class_b_total = class_b_interest_dist + class_b_principal_dist
 
-        # Class C — interest from revenue step (j) + no redemption-waterfall entry
-        class_c_interest_dist = _rev_amount("class_c_principal_from_revenue")
-        class_c_principal_dist = 0.0
+        # Class C — interest from revenue step (j) + any redemption principal.
+        class_c_interest_dist = rev_execution.distributed_to(
+            "class_c_principal_from_revenue"
+        )
+        class_c_principal_dist = red_execution.distributed_to("class_c_principal")
         class_c_total = class_c_interest_dist + class_c_principal_dist
 
         tranche_distributions = [

@@ -50,7 +50,7 @@ function statusBadge(s: TriggerStatus) {
   if (s.is_triggered) {
     return <Badge variant="destructive">Breached</Badge>;
   }
-  if (s.proximity_pct >= 80) {
+  if (s.proximity_pct != null && s.proximity_pct >= 80) {
     return (
       <Badge className="bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400">
         Near miss
@@ -131,8 +131,10 @@ function ComplianceContent({ data }: { data: ComplianceResult }) {
       )
       .filter((s): s is TriggerStatus => s != null);
 
-    // Proximity-vs-threshold series, one point per period.
-    const byPeriod = new Map<string, Record<string, number>>();
+    // Proximity-vs-threshold series, one point per period. A not-evaluable
+    // status carries a null proximity — recharts renders it as a gap in the
+    // line rather than a spurious 0.
+    const byPeriod = new Map<string, Record<string, number | null>>();
     for (const s of data.trigger_statuses) {
       const row = byPeriod.get(s.period) ?? {};
       row[s.trigger_name] = s.proximity_pct;
@@ -192,13 +194,13 @@ function ComplianceContent({ data }: { data: ComplianceResult }) {
                   </TableCell>
                   <TableCell>{statusBadge(s)}</TableCell>
                   <TableCell className="text-right tabular-nums">
-                    {s.metric_value.toLocaleString()}
+                    {s.metric_value != null ? s.metric_value.toLocaleString() : "—"}
                   </TableCell>
                   <TableCell className="text-right tabular-nums">
                     {s.threshold != null ? s.threshold.toLocaleString() : "—"}
                   </TableCell>
                   <TableCell className="text-right tabular-nums">
-                    {formatPct(s.proximity_pct)}
+                    {s.proximity_pct != null ? formatPct(s.proximity_pct) : "—"}
                   </TableCell>
                   <TableCell className="capitalize text-muted-foreground">
                     {s.direction}
