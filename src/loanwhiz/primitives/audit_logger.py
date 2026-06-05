@@ -564,6 +564,74 @@ def wrap_primitive(
 
 
 # ---------------------------------------------------------------------------
+# audit_result — best-effort post-hoc audit of an already-executed call
+# ---------------------------------------------------------------------------
+
+
+def audit_result(
+    primitive: Primitive,
+    input: Any,
+    result: Any,
+    log_dir: str = "/tmp/loanwhiz_audit",
+    model_version: str | None = None,
+    threshold: float = 0.7,
+) -> AuditLogEntry | None:
+    """Append one ``AuditLogEntry`` for an *already-executed* primitive call.
+
+    Unlike :func:`wrap_primitive` (which both runs *and* audits the call), this
+    records provenance for a ``PrimitiveResult`` the caller already produced —
+    the shape the REST API needs, where the endpoint already holds the result
+    by the time it wants to audit it.
+
+    It is deliberately **best-effort**: it builds and persists the entry from a
+    real :class:`PrimitiveResult` (``confidence``, ``citations``, ``output`` and
+    a hashable ``input``), but any failure — a stand-in/mock result lacking
+    those attributes, or an unwritable ``log_dir`` — is swallowed and ``None``
+    is returned. The audit trail is a side-channel that must never take down the
+    primitive call it observes.
+
+    Parameters
+    ----------
+    primitive:
+        The ``Primitive`` instance whose call is being audited (supplies
+        ``name`` / ``version`` and the replay-command module path).
+    input:
+        The input object passed to ``primitive.execute()`` — hashed into the
+        entry's ``input_hash``.
+    result:
+        The ``PrimitiveResult`` returned by ``primitive.execute()``.
+    log_dir:
+        Root directory for the per-primitive JSONL audit files.
+    model_version:
+        LLM model version to record, or ``None`` for rule-based primitives.
+    threshold:
+        Confidence threshold below which ``human_review_required`` is set.
+
+    Returns
+    -------
+    AuditLogEntry | None
+        The persisted entry, or ``None`` when the audit was skipped (best-effort
+        failure — e.g. a non-real result or an unwritable directory).
+    """
+    try:
+        ctx = ExecutionContext(
+            primitive,
+            log_dir=log_dir,
+            model_version=model_version,
+            threshold=threshold,
+            input=input,
+        )
+        ctx.__enter__()
+        try:
+            return ctx.log(result)
+        finally:
+            ctx.__exit__(None, None, None)
+    except Exception:
+        # Audit is a side-channel — never propagate into the observed call.
+        return None
+
+
+# ---------------------------------------------------------------------------
 # replay — determinism check
 # ---------------------------------------------------------------------------
 
