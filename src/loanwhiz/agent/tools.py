@@ -100,6 +100,7 @@ def load_esma_tape(file_url: str, reporting_date: str | None = None) -> dict:
     return result.output.model_dump() | {
         "confidence": result.confidence,
         "citations": [c.model_dump() for c in result.citations],
+        "duration_ms": result.audit_entry.duration_ms,
     }
 
 
@@ -141,7 +142,11 @@ def run_waterfall(
             class_b_pdl_balance=class_b_pdl_balance,
         )
     )
-    return result.output.model_dump() | {"confidence": result.confidence}
+    return result.output.model_dump() | {
+        "confidence": result.confidence,
+        "citations": [c.model_dump() for c in result.citations],
+        "duration_ms": result.audit_entry.duration_ms,
+    }
 
 
 @tool
@@ -178,7 +183,9 @@ def check_covenants(
         )
     )
     return _bound_covenant_output(result.output.model_dump()) | {
-        "confidence": result.confidence
+        "confidence": result.confidence,
+        "citations": [c.model_dump() for c in result.citations],
+        "duration_ms": result.audit_entry.duration_ms,
     }
 
 
@@ -204,7 +211,11 @@ def aggregate_collections(
             class_a_rate_pct=class_a_rate_pct,
         )
     )
-    return result.output.model_dump() | {"confidence": result.confidence}
+    return result.output.model_dump() | {
+        "confidence": result.confidence,
+        "citations": [c.model_dump() for c in result.citations],
+        "duration_ms": result.audit_entry.duration_ms,
+    }
 
 
 # Collect all tools for the agent

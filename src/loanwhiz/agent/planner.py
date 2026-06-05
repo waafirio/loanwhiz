@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import json
 from datetime import datetime, timezone
-from typing import TypedDict
+from typing import Any, TypedDict
 
+from langchain_core.messages import ToolMessage
 from langchain_google_vertexai import ChatVertexAI
 from langgraph.graph.state import CompiledStateGraph
 from langgraph.prebuilt import create_react_agent
@@ -122,6 +124,50 @@ def _content_to_text(content: object) -> str:
     return str(content)
 
 
+def _tool_result_payload(msg: ToolMessage) -> dict[str, Any]:
+    """Parse a ``ToolMessage``'s content back into the dict the tool returned.
+
+    LangGraph's ``ToolNode`` serialises a tool's ``dict`` return value to a
+    JSON string in ``ToolMessage.content`` (``langgraph.prebuilt.tool_node.
+    msg_content_output`` → ``json.dumps``). Re-parse it so the per-tool
+    governance values the primitive already computed — ``confidence``,
+    ``citations``, ``duration_ms`` — can be threaded into the evidence pack
+    instead of being discarded.
+
+    Returns an empty dict when the content isn't a JSON object (e.g. a tool
+    that errored and returned a plain string), so callers fall back to honest
+    defaults rather than raising.
+    """
+    content = msg.content
+    if isinstance(content, str):
+        try:
+            parsed = json.loads(content)
+        except (ValueError, TypeError):
+            return {}
+        return parsed if isinstance(parsed, dict) else {}
+    # Newer message-content shapes (list of content-part dicts) don't carry the
+    # tool's JSON payload in a re-parseable form here; treat as no payload.
+    return {}
+
+
+def _summarise_tool_output(payload: dict[str, Any]) -> str:
+    """Build a compact, human-readable summary of a tool's output dict.
+
+    Drops the governance side-channel keys (``confidence`` / ``citations`` /
+    ``duration_ms``) so the summary reflects the actual analytical result, then
+    truncates to keep the evidence pack compact (mirrors ``input_summary``'s
+    200-char bound). Empty payloads yield an empty string.
+    """
+    if not payload:
+        return ""
+    visible = {
+        k: v
+        for k, v in payload.items()
+        if k not in ("confidence", "citations", "duration_ms")
+    }
+    return str(visible)[:200]
+
+
 def run_query(question: str, save_evidence: bool = True) -> AgentResponse:
     """Run a structured finance question through the planner agent.
 
@@ -154,23 +200,56 @@ def run_query(question: str, save_evidence: bool = True) -> AgentResponse:
     # pack.
     answer: str = _content_to_text(result["messages"][-1].content)
 
+    # Index the tool *results* by their tool_call_id. Each tool request lives
+    # on an AIMessage's .tool_calls; its result lands in a later ToolMessage
+    # whose .tool_call_id matches the request's id. The result carries the
+    # *real* per-tool confidence / citations / duration the primitive computed
+    # (see loanwhiz.agent.tools), so we thread those into the evidence pack
+    # rather than stamping constants.
+    results_by_id: dict[str, ToolMessage] = {}
+    for msg in result["messages"]:
+        if isinstance(msg, ToolMessage):
+            results_by_id[msg.tool_call_id] = msg
+
     # Walk the message history and extract ToolCallRecord entries from every
-    # AI message that carries a non-empty .tool_calls list.
+    # AI message that carries a non-empty .tool_calls list, pulling the real
+    # output values from the matching ToolMessage result.
     tool_calls: list[ToolCallRecord] = []
     for msg in result["messages"]:
         raw_tool_calls = getattr(msg, "tool_calls", None)
         if not raw_tool_calls:
             continue
         for tc in raw_tool_calls:
+            result_msg = results_by_id.get(tc.get("id", ""))
+            payload = _tool_result_payload(result_msg) if result_msg else {}
+            # Honest defaults when a result is genuinely absent (no matching
+            # ToolMessage) or the tool omitted a field: confidence falls back
+            # to the prior 0.9, citations to [], duration to 0.0.
+            raw_confidence = payload.get("confidence", 0.9)
+            confidence = (
+                float(raw_confidence)
+                if isinstance(raw_confidence, (int, float))
+                else 0.9
+            )
+            raw_citations = payload.get("citations", [])
+            citations = [c for c in raw_citations if isinstance(c, dict)] if isinstance(
+                raw_citations, list
+            ) else []
+            raw_duration = payload.get("duration_ms", 0.0)
+            duration_ms = (
+                float(raw_duration)
+                if isinstance(raw_duration, (int, float))
+                else 0.0
+            )
             tool_calls.append(
                 ToolCallRecord(
                     call_index=len(tool_calls),
                     tool_name=tc["name"],
                     input_summary=str(tc["args"])[:200],
-                    output_summary="",  # tool result is not attached to the AI msg
-                    confidence=0.9,
-                    citations=[],
-                    duration_ms=0,
+                    output_summary=_summarise_tool_output(payload),
+                    confidence=confidence,
+                    citations=citations,
+                    duration_ms=duration_ms,
                     timestamp=datetime.now(timezone.utc).isoformat(),
                 )
             )
