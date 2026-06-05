@@ -410,8 +410,8 @@ def test_real_2026_tape_chain_ties_to_cached_pool_balances() -> None:
 def test_full_tape_history_chain_preserves_identity() -> None:
     """The engine threads the deal's FULL tape history without breaking.
 
-    A robustness guard over all of ``GREEN_LION['tape_urls']`` (currently 27
-    tapes): regardless of how many periods are driven, the loop preserves the
+    A robustness guard over all of ``GREEN_LION['tape_urls']`` (currently the 3
+    2026 tapes): regardless of how many periods are driven, the loop preserves the
     closing[N]==opening[N+1] identity and reconstructs each period's pool to the
     cent. This does not assert prospectus-economic meaning (the history mixes
     vintages); it guards that the integrator scales to the real period count.
