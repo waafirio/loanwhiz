@@ -232,7 +232,34 @@ The LoanWhiz Extraction Pipeline is classified as a **decision-support tool**. I
 
 ---
 
-## 7. Scope and Applicability
+## 7. Data Provenance
+
+### Pattern
+
+Governance does not stop at the model — it extends to **where the data came from**. Every normalised ESMA tape records which ingestion path produced it, and that provenance is carried through to the agent's evidence pack so an auditor can see, per answer, whether the underlying loan tape was sourced through the [deeploans](https://github.com/Algoritmica-ai/deeploans) ETL backend or read directly.
+
+### deeploans on the live ingestion path
+
+deeploans is Algoritmica's open-source ESMA loan-level ETL — the hackathon organiser's own tool. LoanWhiz routes ESMA tape ingestion through it for real, not decoratively:
+
+- A tape referenced as `deeploans://{asset_class}/{table_name}` is fetched from the running deeploans FastAPI backend by `DeepLoansClient.fetch_tape` (`loanwhiz/data/deeploans_client.py`), which pages the `GET /api/v1/{credit_type}/{table_name}` endpoint into a DataFrame.
+- Any other tape URL (HuggingFace CSV/parquet, local `file://`) takes the direct pandas path.
+
+`esma_tape_normaliser._load_tape` performs this routing and tags the result. When a `deeploans://` reference is supplied but no deeploans backend is reachable, ingestion fails loudly with a clear error rather than silently mis-reading the reference — so the provenance label is never wrong.
+
+### Recorded provenance
+
+| Field | Where | Value |
+|---|---|---|
+| `EsmaTapeOutput.data_source` | `esma_tape_normaliser.py` | `"deeploans"` when fetched through the deeploans backend, `"direct"` for the direct-URL read |
+| `TapeAnalyticsPeriod.data_source` | `GET /deal/{id}/tape-analytics` | the same provenance, per reporting period |
+| Tape citation excerpt | `Citation.excerpt` (`"… (ingested via deeploans)"`) | the human-readable provenance carried into the agent's deduplicated citation trail |
+
+The Governance view and the chat panel's evidence slide-over surface this per answer, so the FINOS audit trail (§1) and citation trail (§3) now include honest data provenance — not just *what* the agent computed, but *where the data it computed on came from*.
+
+---
+
+## 8. Scope and Applicability
 
 This governance framework applies to:
 
@@ -242,13 +269,13 @@ This governance framework applies to:
 
 It does not apply to:
 
-- External data sources used as inputs (deeploans, HuggingFace datasets)
+- The internals of external data sources (the deeploans ETL transforms and the HuggingFace datasets themselves are governed by their own publishers) — though **which** source produced each tape *is* tracked, as data provenance (§7).
 - The Gemini 2.5 Pro model itself (governed by Google's model policies)
 - Client applications built on top of the LoanWhiz REST API (governed by the client application's own policies)
 
 ---
 
-## 8. FINOS AI Governance Framework Alignment
+## 9. FINOS AI Governance Framework Alignment
 
 | FINOS Pattern | LoanWhiz Implementation |
 |---|---|
@@ -258,6 +285,7 @@ It does not apply to:
 | Replayability | Input hash + model version in every `AuditEntry` (§4) |
 | Human review routing | `human_review_required` flag; confidence < 0.7 triggers mandatory review (§5) |
 | Model risk classification | Decision-support tier; no autonomous decisions (§6) |
+| Data provenance | `data_source` (deeploans vs direct) recorded on every tape and carried into the evidence pack (§7) |
 | Model card | [docs/model-card.md](model-card.md) |
 | Data card | [docs/data-card.md](data-card.md) |
 

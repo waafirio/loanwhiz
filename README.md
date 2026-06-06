@@ -230,6 +230,21 @@ Tape ingestion is format-agnostic: loan tapes may be supplied as **CSV or parque
 
 ---
 
+## Data provenance & governance
+
+LoanWhiz is built on two open frameworks that together carry the **trust story**: [deeploans](https://github.com/Algoritmica-ai/deeploans) (Algoritmica's open-source ESMA loan-level ETL) for data, and the [FINOS AI Governance Framework](https://github.com/finos/ai-governance-framework) for auditability.
+
+**Honest data provenance — deeploans is on the live path.** ESMA tape ingestion is routed through the deeploans backend when one is available, with a clean fallback to a direct-URL pandas read otherwise:
+
+- A tape referenced as `deeploans://{asset_class}/{table_name}` (e.g. `deeploans://sme/loans`) is fetched through the running deeploans ETL backend (`loanwhiz.data.deeploans_client.DeepLoansClient.fetch_tape`). This is a genuinely reachable ingestion path, not a decorative dependency.
+- Any other tape URL (the Green Lion HuggingFace CSVs, a local `file://` path) takes the direct pandas path. The demo runs with **or without** a deeploans backend — the 10 June demo environment has none, and the direct path keeps everything working.
+
+Either way, the `esma_tape_normaliser` records which path produced the data as a `data_source` field (`"deeploans"` or `"direct"`) on its output. That provenance flows through `/deal/{id}/tape-analytics` and the agent's `load_esma_tape` tool into the governance evidence pack — so the trust story extends all the way down to where the data came from.
+
+**Governance surface.** Every governed agent query emits one FINOS-aligned evidence pack (audit trail, conservative aggregate confidence, deduplicated citations, human-review flag, and a real `finos_compliant` consistency check). The demo UI's **Governance** view (and the chat panel's evidence slide-over) surface this per answer, including the per-tape `deeploans`-vs-`direct` provenance. See [docs/governance.md](docs/governance.md).
+
+---
+
 ## Built On
 
 | Component | Source | License |
