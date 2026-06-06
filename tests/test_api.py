@@ -1213,6 +1213,7 @@ def _tape_output_dump(reporting_date: str, pool_balance: float) -> dict:
         "property_type_breakdown": {"House": 70.0, "Apartment": 30.0},
         "geographic_breakdown": {"NL-NH": 50.0, "NL-ZH": 50.0},
         "annex_detected": "Annex 2 (RMBS)",
+        "data_source": "direct",
     }
 
 
@@ -1288,9 +1289,12 @@ def test_deal_tape_analytics_returns_periods(_isolated_tape_cache):
         "epc_breakdown",
         "geographic_breakdown",
         "property_type_breakdown",
+        "data_source",
     }
     for period in body:
         assert expected_keys <= set(period)
+    # Ingestion provenance surfaces honestly on every period (#239).
+    assert all(p["data_source"] == "direct" for p in body)
     # Weighted LTV surfaces through pool_stats.
     assert body[0]["pool_stats"]["wtd_ltv"] == 65.0
 

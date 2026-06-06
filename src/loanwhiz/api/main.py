@@ -1033,6 +1033,10 @@ class TapeAnalyticsPeriod(BaseModel):
     property_type_breakdown: dict[str, float] | None
     geographic_breakdown: dict[str, float] | None
     annex_detected: str
+    # Ingestion provenance — "deeploans" when fetched through the deeploans ETL
+    # backend, "direct" for the direct-URL pandas read. Surfaced so the demo's
+    # governance view can show honest data provenance per period.
+    data_source: str = "direct"
 
 
 @app.get("/deal/{deal_id}/tape-analytics", response_model=list[TapeAnalyticsPeriod])

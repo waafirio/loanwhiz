@@ -58,6 +58,7 @@ def _make_esma_output() -> EsmaTapeOutput:
         property_type_breakdown={"House": 60.0, "Apartment": 40.0},
         geographic_breakdown={"ES30": 50.0, "ES51": 50.0},
         annex_detected="Annex 2 (RMBS)",
+        data_source="direct",
     )
 
 

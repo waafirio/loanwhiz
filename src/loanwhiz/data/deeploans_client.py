@@ -12,7 +12,7 @@ How LoanWhiz uses deeploans
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~
 LoanWhiz treats the deeploans backend as a **canonical data source** for
 querying ESMA loan tapes that have already been ingested and normalised by the
-deeploans ETL pipelines. The three integration points are:
+deeploans ETL pipelines. The integration points are:
 
 - ``list_asset_classes()`` — discover available credit types (e.g. "sme").
 - ``describe_table(asset_class, table_name)`` — get column metadata for a
@@ -21,6 +21,11 @@ deeploans ETL pipelines. The three integration points are:
   via a live sample call — see method docstring for details).
 - ``sample_rows(asset_class, table_name, n)`` — fetch preview rows from the
   live API endpoint ``GET /api/v1/{credit_type}/{table_name}?limit=N``.
+- ``fetch_tape(asset_class, table_name)`` — materialise a whole table into a
+  ``pandas.DataFrame`` by paging the same endpoint. This is the **live ESMA
+  ingestion path**: ``EsmaTapeNormaliser`` routes a
+  ``deeploans://{asset_class}/{table_name}`` tape reference through this method,
+  falling back to the direct-URL pandas path for ordinary http/file URLs.
 
 Fallback strategy
 ~~~~~~~~~~~~~~~~~
@@ -42,10 +47,51 @@ from __future__ import annotations
 
 import logging
 from typing import Any
+from urllib.parse import urlsplit
 
 import httpx
+import pandas as pd
 
 logger = logging.getLogger(__name__)
+
+# URL scheme that routes an ESMA tape reference through the deeploans backend
+# rather than the direct-URL pandas path. A ``deeploans://{asset_class}/{table}``
+# reference names a table the deeploans ETL has already ingested and normalised;
+# :func:`parse_deeploans_url` decodes it and ``EsmaTapeNormaliser`` fetches it via
+# :meth:`DeepLoansClient.fetch_tape`.
+DEEPLOANS_URL_SCHEME = "deeploans"
+
+# Hard ceiling on rows pulled when materialising a whole table into a DataFrame.
+# The deeploans REST API pages with ``limit``/``offset``; this caps the paging
+# loop so a pathologically large table can't exhaust memory. Generous enough for
+# the loan tapes the demo works with.
+_FETCH_TAPE_MAX_ROWS = 1_000_000
+
+# Per-request page size for the paging loop in :meth:`DeepLoansClient.fetch_tape`.
+_FETCH_TAPE_PAGE_SIZE = 5_000
+
+
+def parse_deeploans_url(url: str) -> tuple[str, str] | None:
+    """Decode a ``deeploans://{asset_class}/{table_name}`` tape reference.
+
+    Returns ``(asset_class, table_name)`` for a well-formed deeploans reference,
+    or ``None`` for any other URL (http/https/file/…) so the caller falls back
+    to the direct-URL pandas path. The host component carries the asset class and
+    the first path segment carries the table name, e.g.
+    ``deeploans://sme/loans`` → ``("sme", "loans")``.
+
+    A reference with the deeploans scheme but a missing asset class or table name
+    is malformed and also returns ``None`` (the caller treats it as a normal URL,
+    which then fails loudly at read time rather than silently mis-routing).
+    """
+    parts = urlsplit(url)
+    if parts.scheme != DEEPLOANS_URL_SCHEME:
+        return None
+    asset_class = _normalize(parts.netloc)
+    table_segments = [seg for seg in parts.path.split("/") if seg]
+    if not asset_class or not table_segments:
+        return None
+    return asset_class, _normalize(table_segments[0])
 
 # Asset classes supported by the deeploans ETL platform.
 # Sourced from deeploans/mcp-server/deeploans_mcp/server.py → get_asset_classes().
@@ -327,3 +373,88 @@ class DeepLoansClient:
             payload if isinstance(payload, list) else payload.get("data", [])
         )
         return rows if isinstance(rows, list) else []
+
+    def fetch_tape(
+        self,
+        asset_class: str,
+        table_name: str,
+        max_rows: int = _FETCH_TAPE_MAX_ROWS,
+    ) -> pd.DataFrame | None:
+        """Materialise a whole deeploans table into a :class:`pandas.DataFrame`.
+
+        This is the ingestion entry point the ESMA tape normaliser routes through
+        when given a ``deeploans://{asset_class}/{table_name}`` reference. It pages
+        the live deeploans REST endpoint
+        (``GET /api/v1/{credit_type}/{table_name}?limit&offset``) until the table
+        is exhausted (a short page signals the end) or *max_rows* is reached, then
+        concatenates the pages into a single frame.
+
+        Returns ``None`` — never raises — when the backend is unreachable, so the
+        caller can fall back to the direct-URL pandas path with no special-casing.
+        An empty (but reachable) table yields an empty DataFrame, not ``None``.
+
+        Parameters
+        ----------
+        asset_class:
+            Credit type (e.g. ``"sme"``).
+        table_name:
+            Table identifier (e.g. ``"loans"``).
+        max_rows:
+            Upper bound on the rows pulled across all pages (memory guard).
+
+        Returns
+        -------
+        pandas.DataFrame | None
+            The full table as a DataFrame, or ``None`` when the backend is not a
+            reachable deeploans instance.
+        """
+        if not self._is_reachable():
+            logger.warning(_FALLBACK_MSG.format(base_url=self.base_url))
+            return None
+
+        normalized_ac = _normalize(asset_class)
+        normalized_tn = _normalize(table_name)
+        page_size = max(1, min(_FETCH_TAPE_PAGE_SIZE, max_rows))
+
+        pages: list[pd.DataFrame] = []
+        offset = 0
+        with httpx.Client(timeout=self.timeout) as client:
+            while offset < max_rows:
+                limit = min(page_size, max_rows - offset)
+                url = (
+                    f"{self.base_url}/api/v1/{normalized_ac}/{normalized_tn}"
+                    f"?limit={limit}&offset={offset}"
+                )
+                try:
+                    response = client.get(url, headers=self._headers)
+                    response.raise_for_status()
+                    payload = response.json()
+                except (
+                    httpx.ConnectError,
+                    httpx.TimeoutException,
+                    httpx.TransportError,
+                ):
+                    logger.warning(_FALLBACK_MSG.format(base_url=self.base_url))
+                    return None
+                except httpx.HTTPStatusError as exc:
+                    logger.warning(
+                        "deeploans returned HTTP %s: %s",
+                        exc.response.status_code,
+                        exc,
+                    )
+                    return None
+
+                rows: list[dict[str, Any]] = (
+                    payload if isinstance(payload, list) else payload.get("data", [])
+                )
+                if not isinstance(rows, list) or not rows:
+                    break
+                pages.append(pd.DataFrame(rows))
+                offset += len(rows)
+                # A page shorter than requested means the table is exhausted.
+                if len(rows) < limit:
+                    break
+
+        if not pages:
+            return pd.DataFrame()
+        return pd.concat(pages, ignore_index=True)
