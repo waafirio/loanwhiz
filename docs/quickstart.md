@@ -189,8 +189,23 @@ Endpoints:
 - `GET /deal/{id}/compliance` — covenant monitor results across periods
 - `POST /deal/{id}/project` — single-period waterfall stress sensitivity under base/stress scenarios
 - `GET /primitives` — the primitive catalogue with per-primitive reachability (`live` / `library-only`)
+- `GET /capability-matrix` — the primitives × 5 deals capability matrix: each cell `validated` / `ran` / `not-applicable` with a real reason, plus the tally (**1 validated / 9 ran / 15 not-applicable**)
+- `GET /deal/{id}/validation` — the engine-validation report for a deal; returns `available=false` with an honest note for a deal without a Notes & Cash fixture (e.g. Green Lion 2023-1), `available=true` with the to-the-cent reconciliation for Green Lion 2024-1
 
 See `src/loanwhiz/api/README.md` for the full endpoint reference and curl examples.
+
+### Demo UI views
+
+The Next.js dashboard (`./scripts/run-demo-v2.sh`, UI on :3000) groups its views into two sidebar sections (`NAV_GROUPS` in `web/lib/nav.ts`):
+
+- **Deal Analytics** — Overview, Pool & Performance, Waterfall, Compliance, Projection (the per-deal analyst views, one loaded deal at a time).
+- **Platform & Governance** — Showcase (the primitives × 5 deals capability matrix across Dutch / Italian / Spanish RMBS), Validation (the Green Lion 2024-1 engine-vs-Notes-&-Cash proof, to the cent), Framework (the primitive-registry catalogue), and Governance (the FINOS evidence pack + `deeploans`-vs-`direct` data provenance).
+
+The capability matrix is the honest source of truth for what is validated vs ran vs not-applicable across the deal set — never read the cross-jurisdiction coverage as "validated everywhere".
+
+### MCP server
+
+The 8 primitives are also consumable as a governed MCP server (`mcp/`) — each `live` primitive becomes an MCP tool that returns the full `PrimitiveResult` evidence pack. See [mcp/README.md](../mcp/README.md) for wiring it into an MCP client.
 
 ---
 

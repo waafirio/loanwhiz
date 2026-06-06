@@ -24,6 +24,18 @@ Primitives are the building blocks that the LangGraph agent DAG executor compose
 answer structured-finance questions. A new team can add a primitive without touching
 any core framework code — only the primitive file and its test file need to be created.
 
+> **Consumable as an MCP server.** The same registry is packaged as a governed
+> [Model Context Protocol](https://modelcontextprotocol.io) server under
+> [`mcp/`](../../mcp/README.md). Each `live` (endpoint-reachable) primitive is
+> exposed as an MCP tool whose `inputSchema` is the primitive's own typed
+> Pydantic input; calling it runs `execute()` and returns the full
+> `PrimitiveResult` envelope — output **plus** the governance evidence pack
+> (confidence, citations, audit entry). A `primitives://catalogue` resource
+> lists all 8 registered primitives (live + `library-only`) with honest
+> reachability, so a third party can consume the framework over MCP without
+> rewriting any primitive. `library-only` primitives appear in the catalogue
+> resource but are not advertised as callable tools.
+
 ---
 
 ### The `Primitive[InputT, OutputT]` interface

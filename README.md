@@ -2,6 +2,8 @@
 
 Structured finance agent framework — SF-native primitives, deal model extraction, waterfall execution, and LangGraph orchestration. Built for the Barcelona AI Tinkerers Structured Finance Hackathon 2026 (demo day: 10 June).
 
+The same governed primitives run **end-to-end across 5 deals in 3 jurisdictions** — Dutch (Green Lion 2023-1 / 2024-1 / 2026-1), Italian (Leone Arancio RMBS 2023-1), and Spanish (Sol-Lion II RMBS) — and the model-driven waterfall engine has been **validated to the cent against a real published deal** (Green Lion 2024-1's own Notes & Cash Priority of Payments). What is *validated* vs merely *ran* vs *not-applicable* is tracked honestly in a per-cell capability matrix (`GET /capability-matrix` and the **Showcase** view) — the source of truth is **1 validated / 9 ran / 15 not-applicable**, never a blanket "validated everywhere". Extraction on the non-English prospectuses is honestly **partial** (see the data/model cards). The 8 primitives are also packaged as a governed **MCP server** (`mcp/`) for third-party consumption.
+
 ---
 
 ## Architecture
@@ -27,9 +29,15 @@ CLIENTS
       collections_aggregator
             |                         ^
             +-------- DATA LAYER -----+
-      deeploans ETL + MCP server  (ESMA tape ingestion, multi-annex)
+      deeploans ETL (ESMA tape ingestion, multi-annex; live deeploans:// path + direct fallback)
       Docling extraction pipeline (prospectus -> deal model JSON)
-      HuggingFace: Algoritmica/green-lion-2026 (2026 deal package, 3 tapes)
+      HuggingFace: 5 deals across 3 jurisdictions (NL / IT / ES RMBS)
+
+CROSS-DEAL / FRAMEWORK SURFACE
+      capability matrix  (primitives x 5 deals, validated/ran/not-applicable; /capability-matrix + Showcase)
+      engine validation  (Green Lion 2024-1 Notes & Cash, to the cent; /validation)
+      governed MCP server  (mcp/ — the 8 primitives as MCP tools, evidence pack travels with each call)
+      governance surface  (FINOS evidence pack + deeploans-vs-direct provenance; /governance)
 ```
 
 ---
@@ -78,13 +86,22 @@ The demo UI is a Next.js dashboard in `web/` served over the FastAPI REST API. O
 ./scripts/run-demo-v2.sh
 ```
 
-Then open http://localhost:3000. The dashboard shares one loaded deal across five views, plus a docked chat panel:
+Then open http://localhost:3000. The sidebar groups the views into two sections (`NAV_GROUPS` in `web/lib/nav.ts`), plus a docked chat panel.
+
+**Deal Analytics** — the per-deal views an analyst works in (one loaded deal at a time):
 
 1. **Overview** — the extracted deal model (tranche structure, trigger names, completeness).
 2. **Pool & Performance** — 3-period pool analytics and arrears / EPC / geographic distributions.
 3. **Waterfall** — the revenue priority cascade and per-tranche distributions for the latest period.
-4. **Compliance & Covenants** — the live covenant monitor across reporting periods.
+4. **Compliance** — the live covenant monitor across reporting periods.
 5. **Projection** — a single-period **stress sensitivity**: the waterfall re-run on the base-case capital structure under base vs stressed collection factors, with Class A WAL. (This is a sensitivity, not a multi-month CPR/CDR projection — the dedicated forward `cashflow_projector` is not yet wired.)
+
+**Platform & Governance** — the reusable-framework / trust / cross-deal layer:
+
+6. **Showcase** — the primitives × 5 deals **capability matrix** (Dutch / Italian / Spanish RMBS), each cell `validated` / `ran` / `not-applicable` with the honest reason behind it (tally **1 validated / 9 ran / 15 not-applicable**).
+7. **Validation** — the seasoned-deal proof: the waterfall engine reproduced against **Green Lion 2024-1's own published Notes & Cash Priority of Payments, to the cent** (revenue 11/11, redemption 4/4; Class A interest engine-computed).
+8. **Framework** — the typed primitive-registry catalogue.
+9. **Governance** — the FINOS evidence pack (audit trail, confidence, citations, `finos_compliant`) plus per-tape `deeploans`-vs-`direct` data provenance.
 
 The docked chat panel answers ad-hoc deal questions grounded in the loaded deal model and tapes.
 
@@ -124,13 +141,28 @@ The docked chat panel answers ad-hoc deal questions grounded in the loaded deal 
 
 The framework is **data-driven by design**: adding a deal is *data*, not code. The canonical deal registry (`DEAL_REGISTRY` in `src/loanwhiz/config.py`) starts from the in-code Green Lion default and merges in any extra deals from the optional data file `src/loanwhiz/data/deals.json` at import time — so you add a deal **without editing any Python**. The API sources its `DEALS` from this registry, and the `/deal/{deal_id}/...` routes are keyed by the `deal_id` you choose, and the waterfall interpreter executes the deal's *extracted* model rather than hardcoded logic.
 
-> **Scope of validation.** The pipeline is data-driven, but it has been
-> end-to-end **validated on exactly one deal so far — Green Lion 2026-1**.
-> Real multi-deal validation (seasoned Green Lion 2023-1 / 2024-1 against
-> their own published Notes & Cash and investor reports) is **in progress**
-> (epic #206), not complete. Treat "add any RMBS, it just works" as the
-> design intent demonstrated on one deal — not a proven claim across
-> arbitrary deals today.
+> **Scope of validation.** The pipeline is data-driven, and the *unmodified*
+> primitives now run end-to-end across **5 deals in 3 jurisdictions** — Dutch
+> (Green Lion 2023-1 / 2024-1 / 2026-1), Italian (Leone Arancio RMBS 2023-1),
+> and Spanish (Sol-Lion II RMBS). But "ran" is not "validated", and the two
+> are tracked separately and honestly:
+>
+> - **Validated to the cent on one real deal.** The model-driven waterfall
+>   engine reproduces **Green Lion 2024-1's own published Notes & Cash Priority
+>   of Payments to the cent** (revenue 11/11, redemption 4/4; Class A interest
+>   engine-computed from the capital structure, not the report). See the
+>   **Validation** view / `engine_validation_harness.py`. Green Lion 2023-1 is
+>   registered but has no Notes & Cash fixture yet, so its validation reports
+>   `available=false` rather than a false pass.
+> - **Extraction is honestly partial on the non-English prospectuses.** Real
+>   *cited* triggers and issuer covenants extract from the Italian deal
+>   (completeness ≈ 0.38, no waterfall); the Spanish deal is minimal
+>   (≈ 0.30). These are not clean extractions and are not presented as such.
+> - **The capability matrix is the source of truth.** `GET /capability-matrix`
+>   and the **Showcase** view tally every primitive × deal cell as
+>   `validated` / `ran` / `not-applicable` — currently **1 validated / 9 ran /
+>   15 not-applicable** — each with a real reason. Never read this as
+>   "validated across all deals": exactly one cell is validated.
 
 Create `src/loanwhiz/data/deals.json` as a JSON object mapping each `deal_id` to a deal-context dict (same shape as the in-code `GREEN_LION`):
 
@@ -214,11 +246,15 @@ See `GREEN_LION` and `DEAL_REGISTRY` in `config.py` for a fully worked example u
 | `report_verifier` | Compares waterfall-computed distributions against investor-report actuals; flags discrepancies | 0.1.0 | Library-only |
 | `cashflow_projector` | Iterates the waterfall runner forward under base/stress scenarios (a future dedicated projector; the live `/project` route uses the waterfall runner as a single-period stress sensitivity) | 0.1.0 | Library-only |
 
+The same primitives are also packaged as a governed **MCP server** under [`mcp/`](mcp/README.md): each `live` primitive is exposed as an MCP tool whose input is the primitive's own typed Pydantic schema, and every call returns the full `PrimitiveResult` envelope (output **plus** the governance evidence pack — confidence, citations, audit entry). A `primitives://catalogue` resource lists all 8 registered primitives (live + library-only) with honest reachability, so a third party (e.g. the waafir platform, Claude Desktop) can consume the framework without rewriting any primitive.
+
 ---
 
 ## Data
 
-**Green Lion 2026-1** — a publicly available structured finance deal package built around a synthetic Dutch RMBS (~EUR 1bn pool). The deal reports **three monthly ESMA Annex 2 loan tapes** from `Algoritmica/green-lion-2026`: February, March, and April 2026, accompanied by the prospectus PDF (Green Lion 2026-1 B.V.) and 3 monthly investor reports. January 2026 (`202601`) is an intentional gap in the chronology.
+**Green Lion 2026-1** — the primary demo deal: a publicly available structured finance deal package built around a synthetic Dutch RMBS (~EUR 1bn pool). The deal reports **three monthly ESMA Annex 2 loan tapes** from `Algoritmica/green-lion-2026`: February, March, and April 2026, accompanied by the prospectus PDF (Green Lion 2026-1 B.V.) and 3 monthly investor reports. January 2026 (`202601`) is an intentional gap in the chronology.
+
+**The full deal set — 5 deals across 3 jurisdictions.** Alongside 2026-1, the registry (`src/loanwhiz/data/deals.json`) carries four more deals the *same* primitives run on end-to-end: the seasoned Dutch deals **Green Lion 2023-1** and **2024-1** (the latter is the engine's to-the-cent validation target), the Italian **Leone Arancio RMBS 2023-1 S.r.l.**, and the Spanish **Sol-Lion II RMBS Fondo de Titulización**. Extraction completeness is honest per deal — clean on the Dutch prospectuses, **partial on the Italian (≈ 0.38, cited triggers but no waterfall) and minimal on the Spanish (≈ 0.30)**. The capability matrix (`/capability-matrix`, Showcase view) is the per-deal source of truth. See [docs/data-card.md](docs/data-card.md) and [docs/model-card.md](docs/model-card.md) for the full per-deal breakdown.
 
 > **A note on the other Green Lion datasets.** `Algoritmica/green-lion-2024-2025` (and the real ING `green-lion-2023-1` / `green-lion-2024-1` deals) are **separate deals**, not Green Lion 2026-1's pre-history — different deals' loan tapes are not interchangeable (the 2024-2025 dataset is a ~EUR 139bn pool, ~130× this deal). They are therefore not chained into 2026-1's `tape_urls`. Validating the engine against the real seasoned deals' published Notes & Cash reports is tracked separately.
 
