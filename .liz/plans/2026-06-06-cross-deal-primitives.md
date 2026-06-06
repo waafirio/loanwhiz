@@ -1,7 +1,7 @@
 ---
 id: 2026-06-06-cross-deal-primitives
 title: cross-deal-primitives
-status: draft        # draft → decomposed → filed
+status: decomposed   # draft → decomposed → filed
 created: 2026-06-06
 updated: 2026-06-06
 epics: []            # umbrella issue numbers, filled in phase 4
@@ -88,7 +88,42 @@ extraction is driven offline by the orchestrator (as the seasoned-deal V2 was).
 
 ## Decomposition
 
-<Filled in phase 2.>
+### Epic: Reusable governed primitives across deals & jurisdictions   (umbrella #<N>)
+
+Shift from single-deal polish to proving the primitives are reusable, governed, and
+broadly applicable — across 5 real deals in 3 jurisdictions (Dutch / Italian /
+Spanish), packaged as consumable infra, with the trust story (FINOS + deeploans)
+credited honestly. Honesty discipline from #193 carries: real extractions only,
+honest degradation for tape-less deals, deeploans credited only once truly wired.
+
+- **C1 — Register the Italian + Spanish deals** — add Leone Arancio RMBS (Italian)
+  and Sol-Lion II RMBS (Spanish) to the deal registry with their ING-hosted URLs
+  (prospectus + investor reports); no loan tapes expected. Sequencing: sequential.
+  Paths: `src/loanwhiz/data/deals.json`, `src/loanwhiz/config.py`.
+- **C2 — Extract the Italian + Spanish deal models** — run the *unmodified*
+  extraction pipeline on both prospectuses → committed deal-model seeds, proving the
+  pipeline isn't Dutch-RMBS-specific (the cross-jurisdiction proof; long-pole offline
+  Docling). Sequencing: sequential. After C1. Paths: `src/loanwhiz/extraction/**`,
+  `src/loanwhiz/data/deals/seed/**`.
+- **C3 — Cross-deal primitives runner + capability matrix** — a harness/endpoint
+  that runs each applicable primitive across all loaded deals and returns a
+  "primitives × deals" capability matrix (ran / not-applicable / validated, with
+  governance evidence). Sequencing: sequential. After C2. Paths:
+  `src/loanwhiz/primitives/**`, `src/loanwhiz/api/main.py`, `tests/**`.
+- **C4 — Cross-deal showcase UI** — a view rendering the capability matrix + the
+  cross-jurisdiction generality story + the per-deal validation results; becomes the
+  refreshed demo. Sequencing: sequential. After C3. Paths: `web/**`,
+  `src/loanwhiz/api/main.py`.
+- **C5 — Reusable primitives MCP server** — package the 8 SF primitives as a
+  governed MCP server (typed I/O + evidence pack), consumable on the waafir platform,
+  mirroring the deck-mcp shape. Sequencing: parallel. Paths: `mcp/**`,
+  `src/loanwhiz/primitives/**`, `docs/**`.
+- **C6 — Governance + deeploans surface** — elevate the FINOS evidence-pack /
+  audit-trail / model-risk story in the product, AND genuinely route ESMA tape
+  ingestion through `deeploans_client` (or scope the claim precisely) so deeploans is
+  credited honestly alongside FINOS. Sequencing: parallel. Paths:
+  `src/loanwhiz/data/deeploans_client.py`, `src/loanwhiz/primitives/esma_tape_normaliser.py`,
+  `src/loanwhiz/governance/**`, `web/**`, `docs/**`.
 
 ## Filed issues
 
