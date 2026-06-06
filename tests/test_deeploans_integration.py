@@ -31,9 +31,12 @@ The ``DeepLoansClient`` contract confirmed here:
 
 from __future__ import annotations
 
+from unittest.mock import patch
+
+import pandas as pd
 import pytest
 
-from loanwhiz.data.deeploans_client import DeepLoansClient
+from loanwhiz.data.deeploans_client import DeepLoansClient, parse_deeploans_url
 
 # ---------------------------------------------------------------------------
 # Module-level reachability check — evaluated once at collection time.
@@ -212,7 +215,12 @@ class TestSampleRows:
 
 
 class TestFallback:
-    """Verify graceful fallback when pointing at a non-existent backend."""
+    """Verify graceful fallback when pointing at a non-existent backend.
+
+    These tests make no network calls to a *real* deeploans backend — they point
+    at a dead port (or mock the reachability probe) — so they run in the default
+    suite and never require the backend to be up.
+    """
 
     def test_unreachable_returns_none_for_list_asset_classes(self) -> None:
         dead = DeepLoansClient(base_url="http://localhost:19999", timeout=1.0)
@@ -225,3 +233,126 @@ class TestFallback:
     def test_unreachable_returns_none_for_sample_rows(self) -> None:
         dead = DeepLoansClient(base_url="http://localhost:19999", timeout=1.0)
         assert dead.sample_rows("sme", "loans", n=5) is None
+
+    def test_unreachable_returns_none_for_fetch_tape(self) -> None:
+        dead = DeepLoansClient(base_url="http://localhost:19999", timeout=1.0)
+        assert dead.fetch_tape("sme", "loans") is None
+
+
+# ---------------------------------------------------------------------------
+# parse_deeploans_url — no network; pure URL parsing.
+# ---------------------------------------------------------------------------
+
+
+class TestParseDeeploansUrl:
+    """The ``deeploans://{asset_class}/{table_name}`` reference decoder."""
+
+    def test_decodes_asset_class_and_table(self) -> None:
+        assert parse_deeploans_url("deeploans://sme/loans") == ("sme", "loans")
+
+    def test_normalises_case_and_whitespace(self) -> None:
+        assert parse_deeploans_url("deeploans://SME/Loans") == ("sme", "loans")
+
+    def test_http_url_is_not_a_deeploans_ref(self) -> None:
+        assert parse_deeploans_url("https://example.com/tape.csv") is None
+
+    def test_file_url_is_not_a_deeploans_ref(self) -> None:
+        assert parse_deeploans_url("file:///tmp/tape.parquet") is None
+
+    def test_missing_table_is_malformed(self) -> None:
+        assert parse_deeploans_url("deeploans://sme") is None
+
+    def test_missing_asset_class_is_malformed(self) -> None:
+        assert parse_deeploans_url("deeploans:///loans") is None
+
+
+# ---------------------------------------------------------------------------
+# fetch_tape — paging logic exercised with the HTTP boundary mocked, so no
+# live deeploans backend is required. Runs in the default suite.
+# ---------------------------------------------------------------------------
+
+
+class _FakeResponse:
+    """Minimal httpx.Response stand-in for the mocked client."""
+
+    def __init__(self, payload: list[dict]) -> None:
+        self._payload = payload
+
+    def raise_for_status(self) -> None:  # pragma: no cover - always 2xx here
+        return None
+
+    def json(self) -> list[dict]:
+        return self._payload
+
+
+class _FakeHttpxClient:
+    """Stand-in for ``httpx.Client`` that serves canned pages by offset.
+
+    ``pages`` is the full row list; the client slices it by the ``limit``/
+    ``offset`` query params so the paging loop sees realistic short final pages.
+    """
+
+    def __init__(self, rows: list[dict]) -> None:
+        self._rows = rows
+
+    def __enter__(self) -> "_FakeHttpxClient":
+        return self
+
+    def __exit__(self, *exc: object) -> None:
+        return None
+
+    def get(self, url: str, headers: dict | None = None) -> _FakeResponse:
+        # Parse limit/offset out of the query string the client builds.
+        from urllib.parse import parse_qs, urlsplit
+
+        qs = parse_qs(urlsplit(url).query)
+        limit = int(qs["limit"][0])
+        offset = int(qs["offset"][0])
+        return _FakeResponse(self._rows[offset : offset + limit])
+
+
+class TestFetchTape:
+    def test_pages_full_table_into_dataframe(self) -> None:
+        rows = [{"loan_id": i, "balance": i * 100.0} for i in range(12)]
+        client = DeepLoansClient()
+        with (
+            patch.object(DeepLoansClient, "_is_reachable", return_value=True),
+            patch(
+                "loanwhiz.data.deeploans_client.httpx.Client",
+                return_value=_FakeHttpxClient(rows),
+            ),
+        ):
+            df = client.fetch_tape("sme", "loans", max_rows=100)
+
+        assert isinstance(df, pd.DataFrame)
+        assert len(df) == 12
+        assert df["loan_id"].tolist() == list(range(12))
+
+    def test_respects_max_rows_cap(self) -> None:
+        rows = [{"loan_id": i} for i in range(50)]
+        client = DeepLoansClient()
+        with (
+            patch.object(DeepLoansClient, "_is_reachable", return_value=True),
+            patch(
+                "loanwhiz.data.deeploans_client.httpx.Client",
+                return_value=_FakeHttpxClient(rows),
+            ),
+        ):
+            df = client.fetch_tape("sme", "loans", max_rows=10)
+
+        assert df is not None
+        assert len(df) == 10
+
+    def test_empty_reachable_table_returns_empty_frame(self) -> None:
+        client = DeepLoansClient()
+        with (
+            patch.object(DeepLoansClient, "_is_reachable", return_value=True),
+            patch(
+                "loanwhiz.data.deeploans_client.httpx.Client",
+                return_value=_FakeHttpxClient([]),
+            ),
+        ):
+            df = client.fetch_tape("sme", "loans")
+
+        assert df is not None
+        assert df.empty

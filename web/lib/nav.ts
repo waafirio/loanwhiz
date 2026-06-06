@@ -6,6 +6,7 @@ import {
   TrendingUp,
   Boxes,
   BadgeCheck,
+  Scale,
   type LucideIcon,
 } from "lucide-react";
 
@@ -33,6 +34,11 @@ export const NAV_ITEMS: NavItem[] = [
   // Framework — the primitive registry catalogue (#137): surfaces the typed
   // primitive contracts that make up the framework the challenge judges.
   { title: "Framework", href: "/primitives", icon: Boxes },
+  // Governance — the FINOS evidence-pack / audit-trail / confidence /
+  // model-risk surface (#239), the challenge's trust differentiator: per agent
+  // query, the auditable reasoning trace, confidence, citations, finos_compliant,
+  // and data provenance (deeploans vs direct).
+  { title: "Governance", href: "/governance", icon: Scale },
 ];
 
 /** The single deal the demo serves, shown in the top-bar deal selector. */

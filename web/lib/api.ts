@@ -148,6 +148,29 @@ export interface Citation {
   [key: string]: unknown;
 }
 
+/**
+ * Ingestion provenance for an ESMA tape — mirrors the backend
+ * `EsmaTapeOutput.data_source` (`esma_tape_normaliser.py`, issue #239).
+ * `"deeploans"` = fetched through the deeploans ETL backend; `"direct"` = the
+ * direct CSV/parquet URL read.
+ */
+export type DataSource = "deeploans" | "direct";
+
+/**
+ * Best-effort read of a tape citation's ingestion provenance. The ESMA tape
+ * normaliser records it in the citation excerpt as "(ingested via deeploans)" /
+ * "(ingested via direct)"; this parses that marker so the governance surface can
+ * show honest provenance without a separate API field. Returns `null` when the
+ * citation carries no provenance marker (e.g. a non-tape citation).
+ */
+export function citationDataSource(c: Citation): DataSource | null {
+  if (c.data_source === "deeploans" || c.data_source === "direct") {
+    return c.data_source;
+  }
+  const m = /ingested via (deeploans|direct)/i.exec(c.excerpt ?? "");
+  return m ? (m[1].toLowerCase() as DataSource) : null;
+}
+
 /** One agent tool call within a query (mirrors `ToolCallRecordModel`). */
 export interface ToolCallRecord {
   /** 0-based position in the tool-call sequence. */
@@ -302,6 +325,11 @@ export interface TapeAnalyticsPeriod {
   property_type_breakdown: Record<string, number> | null;
   geographic_breakdown: Record<string, number> | null;
   annex_detected: string;
+  /**
+   * Ingestion provenance for this period's tape (#239). Optional so the page
+   * degrades gracefully against an older API that omits the field.
+   */
+  data_source?: DataSource;
 }
 
 export function getTapeAnalytics(
