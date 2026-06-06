@@ -47,6 +47,10 @@ from loanwhiz.primitives.collections_aggregator import (
     CollectionsInput,
 )
 from loanwhiz.primitives.base import Citation
+from loanwhiz.primitives.capability_matrix import (
+    CapabilityMatrix,
+    build_capability_matrix,
+)
 from loanwhiz.primitives.covenant_monitor import (
     CovenantInput,
     CovenantMonitor,
@@ -1164,6 +1168,50 @@ def primitives() -> list[PrimitiveCatalogueEntry]:
 
 
 # --- end primitive registry catalogue (#135) ---------------------------------
+
+
+# --- cross-deal capability matrix (#241, C3 / epic #236) ---------------------
+# Self-contained block (response model + handler) for GET /capability-matrix —
+# the cross-deal capability matrix that makes primitive reusability *visible*.
+# For each deal-facing primitive capability x each registered deal it returns a
+# typed cell: `validated` (ran AND reconciled to external truth — the only one
+# today is green-lion-2024-1's engine vs. its own published Notes & Cash PoP, to
+# the cent), `ran` (executed, no external truth to check), or `not-applicable`
+# (inputs absent, with the REAL reason — e.g. "no loan tapes published",
+# "waterfall not extracted"). Each cell carries governance evidence (confidence +
+# citation). The C4 demo UI renders this structured data.
+#
+# Honesty (#193 discipline): the matrix tells the true cross-jurisdiction story,
+# not a wall of green. The same primitive code runs across the Dutch / Italian /
+# Spanish deals; where a deal lacks an input, the cell says so plainly.
+#
+# Offline & deterministic: applicability is derived from committed registry +
+# seed-model metadata (via `_load_cached_deal_model`, which never triggers a cold
+# extraction), and the single `validated` cell reuses the committed-fixture
+# offline validation builder (`_VALIDATION_BUILDERS[green-lion-2024-1]`). No loan
+# tape is fetched and no live waterfall is run in the request path. The runner is
+# dependency-injected with the live DEAL_REGISTRY / loader / builders so it is
+# both deal-generic and unit-testable.
+
+
+@app.get("/capability-matrix", response_model=CapabilityMatrix)
+def capability_matrix() -> CapabilityMatrix:
+    """Return the cross-deal `primitives x deals` capability matrix.
+
+    Computes, for each deal-facing primitive capability and each registered deal,
+    an honest typed cell (``validated`` / ``ran`` / ``not-applicable``) with
+    governance evidence, derived from the deal's real inputs (registry context +
+    committed extracted seed model + offline validation builder). Runs offline and
+    deterministically — no loan-tape fetch, no live waterfall, in the request path.
+    """
+    return build_capability_matrix(
+        DEALS,
+        seed_loader=_load_cached_deal_model,
+        validators=_VALIDATION_BUILDERS,
+    )
+
+
+# --- end cross-deal capability matrix (#241) ---------------------------------
 
 
 # --- engine validation (#212, V6 / epic #206) --------------------------------

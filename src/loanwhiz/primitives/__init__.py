@@ -25,6 +25,15 @@ from loanwhiz.primitives.base import (
     PrimitiveMetadata,
     PrimitiveResult,
 )
+from loanwhiz.primitives.capability_matrix import (
+    CapabilityCell,
+    CapabilityMatrix,
+    CapabilityRow,
+    CellEvidence,
+    DealColumn,
+    build_capability_matrix,
+    capability_rows,
+)
 from loanwhiz.primitives.esma_tape_normaliser import (
     EsmaTapeInput,
     EsmaTapeNormaliser,
@@ -35,7 +44,14 @@ from loanwhiz.primitives.registry import PRIMITIVE_REGISTRY, register_primitive
 __all__ = [
     "AuditEntry",
     "BaseInput",
+    "build_capability_matrix",
+    "capability_rows",
+    "CapabilityCell",
+    "CapabilityMatrix",
+    "CapabilityRow",
+    "CellEvidence",
     "Citation",
+    "DealColumn",
     "EsmaTapeInput",
     "EsmaTapeNormaliser",
     "EsmaTapeOutput",
