@@ -160,11 +160,12 @@ function MatrixCell({ cell }: { cell: CapabilityCell }) {
     styles.cell,
   );
 
-  // The cell's interactive surface. The `validated` proof cell is a Link that
+  // The cell's interactive surface, passed to `TooltipTrigger` via base-ui's
+  // `render` prop (same pattern as SidebarMenuButton's `render={<Link/>}`):
+  // base-ui merges the trigger's hover/focus + a11y props onto this element, so
+  // the tooltip works on every cell. The `validated` proof cell is a Link that
   // sets the global selected deal then routes to the Validation view; every
-  // other cell is a plain (non-navigating) pill. Both accept the tooltip
-  // trigger's injected props via base-ui's `render` (they spread `...props`),
-  // so the hover/focus tooltip works on every cell.
+  // other cell is a plain, non-navigating pill.
   const trigger = isProof ? (
     <Link
       href="/validation"
