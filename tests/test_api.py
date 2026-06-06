@@ -606,12 +606,14 @@ def test_deal_compliance_runs_monitor(tmp_path):
 
     series = _small_reconstructed_series()
     # Empty cache dir → no extracted triggers → fall back to DEFAULT_TRIGGERS.
+    # /compliance builds its per-period tape analytics via the on-disk-cached
+    # ``_normalised_tape_output`` helper (one call per tape), not a direct
+    # ``EsmaTapeNormaliser().execute`` — patch the helper accordingly.
     with patch("loanwhiz.api.main.DEAL_MODEL_CACHE_DIR", str(tmp_path)), patch(
-        "loanwhiz.api.main.EsmaTapeNormaliser"
-    ) as MockNorm, patch(
+        "loanwhiz.api.main._normalised_tape_output", return_value=tape_dump
+    ) as mock_norm, patch(
         "loanwhiz.api.main._reconstruct_series", return_value=series
     ), patch("loanwhiz.api.main.CovenantMonitor") as MockMon:
-        MockNorm.return_value.execute.return_value = _FakeResult(tape_dump)
         MockMon.DEFAULT_TRIGGERS = []
         MockMon.return_value.execute.return_value = _FakeResult(compliance_dump)
 
@@ -619,8 +621,8 @@ def test_deal_compliance_runs_monitor(tmp_path):
 
     assert resp.status_code == 200
     assert resp.json() == compliance_dump
-    # One normalise call per tape in the deal context.
-    assert MockNorm.return_value.execute.call_count == GREEN_LION_TAPE_COUNT
+    # One normalise call per tape in the deal context (via the cached helper).
+    assert mock_norm.call_count == GREEN_LION_TAPE_COUNT
     MockMon.return_value.execute.assert_called_once()
     # The monitor was fed the reconstructed per-period states (the one ledger),
     # not a single seeded snapshot.
