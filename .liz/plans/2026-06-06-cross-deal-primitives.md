@@ -1,10 +1,10 @@
 ---
 id: 2026-06-06-cross-deal-primitives
 title: cross-deal-primitives
-status: decomposed   # draft → decomposed → filed
+status: filed        # draft → decomposed → filed
 created: 2026-06-06
 updated: 2026-06-06
-epics: []            # umbrella issue numbers, filled in phase 4
+epics: [236]         # umbrella issue numbers, filled in phase 4
 ---
 
 # cross-deal-primitives
@@ -127,4 +127,10 @@ honest degradation for tape-less deals, deeploans credited only once truly wired
 
 ## Filed issues
 
-<Filled in phase 4 — the artifact↔issue link.>
+- Epic "Reusable governed primitives across deals & jurisdictions" → umbrella **#236**
+  - #237 C1 — Register the Italian + Spanish deals
+  - #240 C2 — Extract the Italian + Spanish deal models (after #237)
+  - #241 C3 — Cross-deal primitives runner + capability matrix (after #240)
+  - #242 C4 — Cross-deal showcase UI (after #241)
+  - #238 C5 — Reusable primitives MCP server (parallel)
+  - #239 C6 — Governance + deeploans surface (parallel)
