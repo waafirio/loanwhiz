@@ -25,7 +25,9 @@ import {
   EmptyState,
   ErrorState,
   LoadingState,
+  NoTapesNotice,
   PageHeader,
+  useDealHasTapes,
 } from "@/components/page-states";
 import { TablePagination } from "@/components/table-pagination";
 import {
@@ -49,6 +51,9 @@ const BAR_COLORS = ["#2563eb", "#16a34a", "#d97706", "#9333ea", "#dc2626", "#089
 
 export default function PoolPage() {
   const { dealId } = useSelectedDeal();
+  // Seasoned deals have no published loan tapes — pool analytics is tape-driven,
+  // so we degrade to NoTapesNotice rather than render an empty trend.
+  const hasTapes = useDealHasTapes(dealId);
   // Tag the result with its deal so a deal switch falls back to the loading
   // state without a synchronous setState in the effect (see Overview page).
   const [state, setState] = useState<{
@@ -58,6 +63,7 @@ export default function PoolPage() {
   }>({ dealId, data: null, error: null });
 
   useEffect(() => {
+    if (hasTapes === false) return;
     let cancelled = false;
     getTapeAnalytics(dealId)
       .then(
@@ -78,7 +84,7 @@ export default function PoolPage() {
     return () => {
       cancelled = true;
     };
-  }, [dealId]);
+  }, [dealId, hasTapes]);
 
   const current = state.dealId === dealId ? state : null;
   const data = current?.data ?? null;
@@ -90,7 +96,9 @@ export default function PoolPage() {
         title="Pool & Performance"
         description="Per-period pool analytics across the reported ESMA tapes — balance, loan count, arrears, weighted LTV, and distributions."
       />
-      {error ? (
+      {hasTapes === false ? (
+        <NoTapesNotice what="per-period pool analytics" />
+      ) : error ? (
         <ErrorState title="Could not load pool analytics" message={error} />
       ) : !data ? (
         <LoadingState />

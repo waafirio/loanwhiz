@@ -1684,3 +1684,83 @@ def test_deal_tape_analytics_integration():
         assert period["pool_balance_eur"] > 0
         assert "wtd_ltv" in period["pool_stats"]
         assert "current_pct" in period["arrears_breakdown"]
+
+
+# ---------------------------------------------------------------------------
+# Engine validation  —  GET /deal/{deal_id}/validation  (#212, V6 / epic #206)
+# ---------------------------------------------------------------------------
+# Offline + deterministic: runs V4's engine_validation_harness against the
+# committed seed + committed Notes & Cash fixture (no network, no LLM). These
+# are NOT integration-marked — they must run in the fast suite, mirroring
+# test_engine_validation_harness.
+
+
+def test_validation_green_lion_2024_1_reproduces_published_pop():
+    """The headline proof, over HTTP: revenue 11/11, redemption 4/4, to the cent."""
+    resp = client.get("/deal/green-lion-2024-1/validation")
+    assert resp.status_code == 200
+    body = resp.json()
+
+    assert body["available"] is True
+    assert body["deal_id"] == "green-lion-2024-1"
+    assert body["passed"] is True
+    assert body["periods_checked"] >= 1
+    assert body["periods_passed"] == body["periods_checked"]
+    assert body["tolerance_eur"] == pytest.approx(0.01)
+    assert body["source_note"]
+    assert body["summary"]
+
+    period = body["periods"][0]
+    # Revenue: 11 steps, every one reconciled to the cent.
+    assert len(period["revenue"]["steps"]) == 11
+    assert period["revenue"]["steps_passed"] == 11
+    assert period["revenue"]["passed"] is True
+    # Redemption: 4 steps, every one reconciled.
+    assert len(period["redemption"]["steps"]) == 4
+    assert period["redemption"]["steps_passed"] == 4
+    assert period["redemption"]["passed"] is True
+
+
+def test_validation_carries_honest_source_labels():
+    """Every step carries an honest engine/report-supplied/residual source label."""
+    body = client.get("/deal/green-lion-2024-1/validation").json()
+    period = body["periods"][0]
+
+    sources = {s["source"] for s in period["revenue"]["steps"]}
+    # The proof must not be a blanket 100% — it mixes engine-computed,
+    # report-supplied, and a residual sweep.
+    assert "engine" in sources
+    assert "report-supplied" in sources
+    assert sources <= {"engine", "report-supplied", "residual"}
+
+    # At least the four engine-COMPUTED revenue lines (Class A/B/C interest +
+    # reserve/PDL needs) are present — the independent part of the proof.
+    engine_steps = [s for s in period["revenue"]["steps"] if s["source"] == "engine"]
+    assert len(engine_steps) >= 4
+    assert all(s["passed"] for s in engine_steps)
+
+
+def test_validation_surfaces_redemption_unapplied_rounding():
+    """The documented ~€0.69 redemption rounding remainder is surfaced, not hidden."""
+    body = client.get("/deal/green-lion-2024-1/validation").json()
+    redemption = body["periods"][0]["redemption"]
+    # The fixtured period leaves €0.69 of redemption funds unapplied due to
+    # rounding — a real published line, presented honestly.
+    assert redemption["unapplied_rounding"] == pytest.approx(0.69, abs=0.01)
+
+
+def test_validation_unfixtured_deal_degrades_gracefully():
+    """A registered deal with no committed fixture returns 200 available=false."""
+    resp = client.get("/deal/green-lion-2023-1/validation")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["available"] is False
+    assert body["deal_id"] == "green-lion-2023-1"
+    assert body["note"]  # honest "no published proof" note
+    assert body["periods"] == []
+    assert body["passed"] is False
+
+
+def test_validation_unknown_deal_returns_404():
+    resp = client.get("/deal/does-not-exist/validation")
+    assert resp.status_code == 404

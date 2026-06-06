@@ -508,3 +508,84 @@ export interface PrimitiveCatalogueEntry {
 export function getPrimitives(): Promise<PrimitiveCatalogueEntry[]> {
   return request<PrimitiveCatalogueEntry[]>("/primitives");
 }
+
+// ---------------------------------------------------------------------------
+// Engine validation  —  GET /deal/{deal_id}/validation  (#212, V6)
+// (engine_validation_harness → EngineValidationReport: the engine-vs-published
+// Notes & Cash Priority of Payments reconciliation, to the cent, with honest
+// per-step engine/report-supplied/residual source labels.)
+// ---------------------------------------------------------------------------
+
+/** Honesty label for a reconciled step — mirrors `StepReconciliation.source`. */
+export type ValidationSource = "engine" | "report-supplied" | "residual";
+
+/**
+ * One reconciled priority step — mirrors `StepReconciliationModel`. `source`
+ * distinguishes a line the engine COMPUTED from the extracted model with no
+ * report input (`engine` — the independent proof) from one whose amount was
+ * taken from the report and only routed by the engine (`report-supplied`), or
+ * a terminal sweep of the remaining pot (`residual`).
+ */
+export interface ValidationStep {
+  priority: string;
+  recipient: string;
+  engine_amount: number;
+  report_amount: number;
+  /** `engine_amount - report_amount` (signed). */
+  delta: number;
+  source: ValidationSource;
+  passed: boolean;
+}
+
+/** One waterfall's per-step reconciliation — mirrors `WaterfallReconciliationModel`. */
+export interface ValidationWaterfall {
+  /** "revenue" | "redemption" */
+  waterfall_type: string;
+  steps: ValidationStep[];
+  engine_total: number;
+  report_total: number;
+  available_funds: number;
+  /** Report's documented "Unapplied … due to rounding" remainder (e.g. €0.69). */
+  unapplied_rounding: number;
+  steps_passed: number;
+  passed: boolean;
+}
+
+/** One reporting period's revenue + redemption reconciliation. */
+export interface ValidationPeriod {
+  reporting_date: string;
+  period_label: string;
+  revenue: ValidationWaterfall;
+  redemption: ValidationWaterfall;
+  passed: boolean;
+}
+
+/**
+ * Mirrors `ValidationResponse` — the engine-validation report for one deal.
+ *
+ * `available` is `false` for a registered deal with no committed validation
+ * fixture (e.g. Green Lion 2023-1): the report fields are then empty and the UI
+ * renders an honest "no published proof" state. When `true`, `periods` carries
+ * the per-period reconciliation of our waterfall engine against the deal's own
+ * published Notes & Cash Priority of Payments, to the cent.
+ */
+export interface ValidationReport {
+  deal_id: string;
+  deal_name: string;
+  available: boolean;
+  note: string | null;
+
+  passed: boolean;
+  periods_checked: number;
+  periods_passed: number;
+  tolerance_eur: number;
+  source_note: string | null;
+  summary: string | null;
+  periods: ValidationPeriod[];
+}
+
+export function getValidation(
+  dealId: string = DEFAULT_DEAL_ID,
+): Promise<ValidationReport> {
+  return request<ValidationReport>(`/deal/${dealId}/validation`);
+}
