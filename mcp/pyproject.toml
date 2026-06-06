@@ -1,0 +1,35 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "loanwhiz-primitives-mcp"
+version = "0.1.0"
+description = "Governed MCP server wrapping the LoanWhiz SF primitive registry (typed I/O + evidence pack)."
+license = { text = "Apache-2.0" }
+requires-python = ">=3.12"
+dependencies = [
+    # The primitives themselves — wrapped, never rewritten. Installed from the
+    # repo root (`pip install -e ..`) or made importable via PYTHONPATH=../src.
+    "loanwhiz",
+    "mcp>=1.0",
+    "pydantic>=2.7",
+]
+
+[project.scripts]
+loanwhiz-primitives-mcp = "loanwhiz_primitives_mcp.server:main"
+
+[project.urls]
+Repository = "https://github.com/waafirio/loanwhiz"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["loanwhiz_primitives_mcp*"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+markers = [
+    "slow: marks tests that require network access or external services (deselect with '-m not slow')",
+    "integration: marks tests that make real external API calls (deselect with '-m not integration')",
+]
