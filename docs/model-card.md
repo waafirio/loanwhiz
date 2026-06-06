@@ -50,7 +50,7 @@ The pipeline uses:
 **Intended tasks:**
 - Extracting waterfall rules from Priority of Payments sections for computational execution
 - Extracting covenant and trigger definitions with threshold values and monitoring conditions
-- Building a definitions graph that resolves cross-references within a single deal's documentation (note: on the validated Green Lion 2026-1 deal this graph resolves 0 terms — see Performance)
+- Building a definitions graph that resolves cross-references within a single deal's documentation (note: on the primary Green Lion 2026-1 extraction-quality reference this graph resolves 0 terms — see Performance)
 - Assembling a machine-executable deal model as the foundation for downstream analytics (waterfall runner, covenant monitor, cashflow projector, report verifier)
 
 **Expected deployment context:** Decision-support tool within a supervised analytical workflow. All extracted outputs are intended to be reviewed by a qualified professional before use in production calculations.
@@ -64,7 +64,7 @@ The following uses are explicitly **out of scope** and are not supported:
 - **Legal advice or legal document interpretation.** The pipeline extracts text and structure; it does not provide legal analysis or legal opinions.
 - **Investment decisions.** Extracted deal models are analytical inputs, not investment recommendations. The pipeline does not assess creditworthiness, risk appetite, or suitability.
 - **Regulatory compliance certification.** The pipeline is not a compliance tool. Outputs have not been validated against any regulatory reporting standard. They must not be used as evidence of regulatory compliance without independent review.
-- **Cross-deal generalisation without validation.** The pipeline has been validated on one deal (Green Lion 2026-1). Its outputs on other deals must be treated as unvalidated until independently verified.
+- **Cross-deal generalisation without validation.** The pipeline *runs* on 5 deals across 3 jurisdictions, but extraction quality varies and only the downstream waterfall engine on **Green Lion 2024-1** is validated to the cent against external published actuals. Extracted outputs on every other deal — especially the partially-extracted Italian (≈ 0.38) and Spanish (≈ 0.30) prospectuses — must be treated as unvalidated until independently verified.
 - **Autonomous decision-making.** The pipeline is a decision-support tool. No output should be used to take automated financial action without human review.
 
 ---
@@ -73,7 +73,20 @@ The following uses are explicitly **out of scope** and are not supported:
 
 ### Validation Dataset
 
-Validated on the **Green Lion 2026-1 B.V.** prospectus (Dutch RMBS, Annex 2 ESMA format). See [docs/data-card.md](data-card.md) for full dataset details.
+The pipeline has been **run across 5 deals in 3 jurisdictions** (Dutch / Italian
+/ Spanish RMBS — see [docs/data-card.md](data-card.md)), but extraction quality
+and external validation differ sharply per deal and are reported honestly. The
+primary extraction-quality reference is the **Green Lion 2026-1 B.V.** prospectus
+(Dutch RMBS, Annex 2 ESMA format), detailed step-by-step below; the per-deal
+completeness across the whole set is summarised in
+[Cross-deal extraction completeness](#cross-deal-extraction-completeness).
+
+Note the distinction the rest of this card relies on: **the *extraction*
+pipeline's "validation" is about how completely it parses a prospectus into the
+deal model. It is separate from the *downstream waterfall engine's* to-the-cent
+reconciliation against published actuals** (Green Lion 2024-1's Notes & Cash) —
+that engine validation is covered by `engine_validation_harness.py` and the
+Validation view, not by this extraction model card.
 
 ### Extraction Results
 
@@ -89,17 +102,40 @@ Validated on the **Green Lion 2026-1 B.V.** prospectus (Dutch RMBS, Annex 2 ESMA
 
 The extraction pipeline correctly resolves the primary waterfall structure of a Dutch RMBS prospectus in a single zero-shot pass. The Definitions section is the weakest surface — on this deal it resolves no terms into the model — and is the primary area requiring human review before the extracted model is used in production calculations.
 
+### Cross-deal extraction completeness
+
+The same extractor runs unchanged on all five registered deals. Completeness is
+the real coverage metric from `extraction/assembler.py` (fraction of expected key
+sections — waterfall, definitions, triggers, tranches — located). It degrades
+honestly on the non-English prospectuses; the model is **not** claimed clean
+where it is partial.
+
+| Deal | Jurisdiction | Completeness | What the extractor resolved |
+|---|---|---|---|
+| Green Lion 2023-1 B.V. | Netherlands | **1.0** | Full waterfall (revenue/redemption/post-enforcement), 4 triggers |
+| Green Lion 2024-1 B.V. | Netherlands | **0.925** | Full waterfall, 3 triggers (the deal the downstream engine validates to the cent) |
+| Green Lion 2026-1 B.V. | Netherlands | **0.75** | Full waterfall, 3 triggers, **0 definitions** |
+| Leone Arancio RMBS 2023-1 S.r.l. | Italy | **≈ 0.38** | Real *cited* triggers (performance trigger, PDL shortfall) + issuer covenants; **no waterfall** |
+| Sol-Lion II RMBS Fondo de Titulización | Spain | **≈ 0.30** | Minimal — **no waterfall, no triggers** resolved into the model |
+
+These map directly onto the capability matrix's `validated` / `ran` /
+`not-applicable` cells (`GET /capability-matrix`, Showcase view): the cross-deal
+story is "the same governed primitives ran on every deal", **not** "every deal was
+validated". Exactly one cell is validated (Green Lion 2024-1's engine vs. its own
+published Notes & Cash); the non-English deals are honest `ran` cells with real
+reasons for their gaps.
+
 ---
 
 ## Limitations
 
-1. **Single-deal validation.** The pipeline has been validated on one deal (Green Lion 2026-1, Dutch RMBS). Performance on other deal types (CLOs, CMBS, US RMBS, ABS, synthetic securitisations) is untested.
+1. **Partial cross-deal coverage.** The pipeline runs on 5 deals across 3 jurisdictions (Dutch / Italian / Spanish RMBS), but extraction completeness ranges from clean (Dutch, 0.75–1.0) to partial (Italian ≈ 0.38) to minimal (Spanish ≈ 0.30), and only Green Lion 2024-1 is externally validated (engine to the cent). Other asset classes (CLOs, CMBS, US RMBS, ABS) are untested. The capability matrix (1 validated / 9 ran / 15 not-applicable) is the honest source of truth — never read the coverage as "validated across all deals".
 
 2. **Cross-reference resolution.** Prospectus definitions frequently reference other defined terms. The pipeline resolves one level of cross-reference; deeply nested chains (term A → term B → term C) may not resolve fully and require human review.
 
 3. **Table extraction from scanned PDFs.** Docling's table extraction degrades significantly on scanned (image-based) PDFs. Deal models extracted from scanned documents should be treated as low-confidence and reviewed line-by-line.
 
-4. **Jurisdiction-specific language.** The Definitions section extraction has been tested on Dutch law governed documents. Civil law versus common law distinctions in drafting style may affect extraction quality.
+4. **Jurisdiction- and language-specific extraction.** Extraction is strongest on the Dutch (English-language) prospectuses. The Italian (Leone Arancio) and Spanish (Sol-Lion II) prospectuses extract only partially — cited triggers at best, no waterfall — confirming that civil-law drafting style and non-English source text materially degrade extraction quality. The Definitions section resolves 0 terms even on the Dutch deals.
 
 5. **Conditional waterfall logic.** Complex conditional branches in payment waterfalls (e.g. "subject to the PDL being zero") are extracted as natural language strings rather than executable boolean logic unless explicitly parsed.
 

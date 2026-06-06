@@ -1,7 +1,17 @@
-# Data Card: Green Lion 2026-1
+# Data Card: LoanWhiz deal set (Green Lion 2026-1 + cross-jurisdiction deals)
 
 > Governance artefact following FINOS AI Governance Framework templates.
 > See also: [docs/model-card.md](model-card.md) · [docs/governance.md](governance.md)
+
+The primary demo and validation subject is **Green Lion 2026-1** (documented in
+full below). The deal registry additionally carries **four more deals across two
+further jurisdictions** that the *same* primitives run on end-to-end — see
+[The full deal set](#the-full-deal-set--5-deals-3-jurisdictions) for the honest
+per-deal breakdown. "Runs on" is not "validated against": the only deal validated
+to the cent against external published actuals is **Green Lion 2024-1**, and
+extraction on the non-English prospectuses is **partial**. The capability matrix
+(`GET /capability-matrix`, Showcase view) is the source of truth, tallying
+**1 validated / 9 ran / 15 not-applicable**.
 
 ---
 
@@ -20,7 +30,7 @@
 
 Green Lion 2026-1 (~EUR 1bn pool) reports **3 monthly ESMA Annex 2 tapes** from `Algoritmica/green-lion-2026` — **February, March, and April 2026** — each with a matching real investor report. **January 2026 (`202601`) is an intentional gap** in the chronology.
 
-> **Separate deals are not interchangeable.** `Algoritmica/green-lion-2024-2025` (~EUR 139bn pool, ~130× this deal) and the real ING `green-lion-2023-1` / `green-lion-2024-1` deals are **different deals**, not Green Lion 2026-1's pre-history. Their loan tapes are **not** chained into this deal's `tape_urls` — doing so would splice unrelated pools. Validating the engine against the real seasoned deals' published Notes & Cash reports is tracked separately.
+> **Separate deals are not interchangeable.** `Algoritmica/green-lion-2024-2025` (~EUR 139bn pool, ~130× this deal) and the real ING `green-lion-2023-1` / `green-lion-2024-1` deals are **different deals**, not Green Lion 2026-1's pre-history. Their loan tapes are **not** chained into this deal's `tape_urls` — doing so would splice unrelated pools. Green Lion 2023-1 and 2024-1 are registered as their own deals (see [The full deal set](#the-full-deal-set--5-deals-3-jurisdictions)); 2024-1 is the engine's to-the-cent validation target against its own published Notes & Cash report.
 
 > **These are period snapshots, not a longitudinal panel.** The three tapes are
 > **re-sampled each period** — loan identifiers do not persist across months
@@ -29,6 +39,40 @@ Green Lion 2026-1 (~EUR 1bn pool) reports **3 monthly ESMA Annex 2 tapes** from 
 > point-in-time pool snapshots, not a tracked-cohort loan-level time series.
 > Per-period collections and losses are derived by **net reconciliation to
 > pool movement**, not by following individual loans.
+
+---
+
+## The full deal set — 5 deals, 3 jurisdictions
+
+Green Lion 2026-1 is the headline demo deal, but the deal registry
+(`src/loanwhiz/data/deals.json`, merged over the in-code Green Lion default)
+carries **five deals across three jurisdictions** that the *unmodified* pipeline
+runs on end-to-end. This demonstrates the primitives are deal-agnostic — but
+**"the pipeline ran" is reported separately from "the output was validated"**,
+and extraction completeness is stated honestly per deal (it is *not* clean
+everywhere). The capability matrix (`GET /capability-matrix`, Showcase view) is
+the per-cell source of truth: **1 validated / 9 ran / 15 not-applicable**.
+
+| Deal | Jurisdiction | Documents | Extraction completeness | What extracted | Validation |
+|---|---|---|---|---|---|
+| **Green Lion 2026-1 B.V.** | Netherlands | Prospectus (real) + 3 synthetic Annex 2 tapes + 3 investor reports (real) | **0.75** | Full waterfall (revenue/redemption/post-enforcement), 3 triggers, 0 definitions | Collateral reconciled to investor reports to the cent; liabilities prospectus-derived & invariant-checked (no in-window Notes & Cash) |
+| **Green Lion 2024-1 B.V.** | Netherlands | Prospectus (real) + investor reports + **quarterly Notes & Cash (real)** | **0.925** | Full waterfall, 3 triggers | **Validated to the cent** — engine reproduces the published Notes & Cash Priority of Payments (revenue 11/11, redemption 4/4; Class A interest engine-computed). This is the single `validated` cell. |
+| **Green Lion 2023-1 B.V.** | Netherlands | Prospectus (real) + investor reports + Notes & Cash | **1.0** | Full waterfall, 4 triggers | Registered; **no Notes & Cash fixture committed yet**, so the validation endpoint returns `available=false` with an honest note rather than a false pass |
+| **Leone Arancio RMBS 2023-1 S.r.l.** | Italy | Prospectus (real, Italian) + investor reports | **≈ 0.38** | **Partial** — real *cited* triggers (performance trigger, PDL shortfall) and issuer covenants; **no waterfall extracted** | Pipeline ran; outputs not externally validated |
+| **Sol-Lion II RMBS Fondo de Titulización** | Spain | Prospectus (real, Spanish) + investor reports | **≈ 0.30** | **Minimal** — no waterfall, no triggers resolved into the model | Pipeline ran; outputs not externally validated |
+
+**Honesty note on the non-English deals.** Extraction on the Italian and Spanish
+prospectuses is **partial by design of reality, not by claim**: the Leone Arancio
+model carries real, cited triggers but no waterfall, and the Sol-Lion II model is
+minimal. These are surfaced as `ran` (not `validated`) cells in the capability
+matrix, each with the real reason. Nothing about the cross-jurisdiction coverage
+should be read as "validated across all deals" — exactly one deal (Green Lion
+2024-1) is validated against external published actuals.
+
+The four non-2026 deals carry a `jurisdiction` field in the registry where they
+are non-Dutch (`"Italy"`, `"Spain"`). Their loan tapes follow the same
+ESMA-format ingestion path; the same synthetic-vs-real and snapshot caveats below
+apply to whichever tapes are synthetic.
 
 ---
 
@@ -146,10 +190,11 @@ The dataset is **not intended** for:
 
 | Limitation | Description |
 |---|---|
-| **Single deal** | One deal, one originator, one jurisdiction. Findings do not generalise to other deals or other RMBS markets without re-validation. |
-| **Single asset class** | Dutch RMBS only. CLOs, CMBS, US RMBS, ABS, and other asset classes are not represented. |
-| **Synthetic loan performance** | No real default history. Arrears rates, default rates, and prepayment rates in the loan tapes reflect synthetic generation assumptions, not observed market behaviour. |
-| **Netherlands jurisdiction only** | Dutch law, Dutch mortgage market conventions, Dutch EPC rating system. Not representative of other European or non-European RMBS markets. |
+| **One validated deal** | The pipeline *runs* on 5 deals across 3 jurisdictions, but only **Green Lion 2024-1** is validated to the cent against external published actuals (its Notes & Cash report). Every other cell is `ran` or `not-applicable` in the capability matrix — outputs there are unvalidated and do not generalise without re-validation. |
+| **Partial non-English extraction** | Extraction on the Italian (Leone Arancio, ≈ 0.38) and Spanish (Sol-Lion II, ≈ 0.30) prospectuses is partial — cited triggers at best on the Italian, minimal on the Spanish, no waterfall on either. These are honest `ran` cells, not clean extractions. |
+| **Single asset class** | RMBS only (Dutch, Italian, Spanish). CLOs, CMBS, US RMBS, ABS, and other asset classes are not represented. |
+| **Synthetic loan performance** | No real default history in the synthetic tapes. Arrears rates, default rates, and prepayment rates reflect synthetic generation assumptions, not observed market behaviour. |
+| **Three jurisdictions, not arbitrary** | The deal set spans Dutch, Italian, and Spanish RMBS only — three legal regimes, three EPC/market conventions. Coverage of other European or non-European RMBS markets is untested. |
 | **Synthetic time series (snapshots, not a panel)** | The deal's three 2026 monthly tapes enable time-series views and multi-period waterfall runs. The tapes are **re-sampled each period** — loan IDs do not persist — so the series is a sequence of point-in-time snapshots, not a tracked-cohort longitudinal panel. It is synthetically generated, so prepayment/default speeds estimated from it reflect the generation process, not observed market behaviour. |
 | **No amendments or supplements** | The prospectus is the original offering document. Any amendments, supplements, or side letters issued after closing are not included. |
 
