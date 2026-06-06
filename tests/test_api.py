@@ -41,8 +41,8 @@ def _isolate_deal_model_seed_dir(tmp_path_factory):
 
 # The Green Lion deal context references one ESMA tape per monthly reporting
 # period; the deal endpoints fan out across all of them. Drive count
-# expectations off the config (currently 27 tapes) rather than a hardcoded
-# literal so the suite tracks the deal's real tape history.
+# expectations off the config (currently the 3 2026 tapes) rather than a
+# hardcoded literal so the suite tracks the deal's real tape set.
 GREEN_LION_TAPE_COUNT = len(GREEN_LION["tape_urls"])
 
 

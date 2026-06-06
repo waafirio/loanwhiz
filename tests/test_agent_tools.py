@@ -596,33 +596,31 @@ def test_get_deal_model_defaults_to_green_lion():
 # ---------------------------------------------------------------------------
 
 
-def test_list_deal_tapes_returns_all_27_for_default_deal():
-    """The agent can see all 27 tapes, not just the 3 hardcoded 2026 URLs."""
+def test_list_deal_tapes_returns_the_three_2026_tapes_for_default_deal():
+    """The agent can see all of Green Lion 2026-1's tapes via the registry."""
     result = list_deal_tapes.invoke({})
     assert result["deal_id"] == "green-lion-2026-1"
-    assert result["tape_count"] == 27
-    assert len(result["tape_urls"]) == 27
-    # Historical (2024-2025) tapes are now reachable.
+    assert result["tape_count"] == 3
+    assert len(result["tape_urls"]) == 3
     dates = {t["date"] for t in result["tape_urls"]}
-    assert "2024-01-31" in dates
-    assert "2025-12-31" in dates
+    assert dates == {"2026-02-28", "2026-03-31", "2026-04-30"}
     assert "prospectus_url" in result
     assert "investor_report_urls" in result
 
 
 def test_list_deal_tapes_period_substring_selects_one_month():
-    result = list_deal_tapes.invoke({"period": "2025-01"})
+    result = list_deal_tapes.invoke({"period": "2026-03"})
     assert result["tape_count"] == 1
-    assert result["period_filter"] == "2025-01"
+    assert result["period_filter"] == "2026-03"
     # Exactly one match → a directly-usable selected_url.
     assert "selected_url" in result
-    assert result["tape_urls"][0]["date"] == "2025-01-31"
+    assert result["tape_urls"][0]["date"] == "2026-03-31"
     assert result["selected_url"] == result["tape_urls"][0]["url"]
 
 
-def test_list_deal_tapes_period_year_selects_twelve_months():
-    result = list_deal_tapes.invoke({"period": "2025"})
-    assert result["tape_count"] == 12
+def test_list_deal_tapes_period_year_selects_all_of_2026():
+    result = list_deal_tapes.invoke({"period": "2026"})
+    assert result["tape_count"] == 3
     # Ambiguous (>1 match) → no selected_url.
     assert "selected_url" not in result
 
@@ -766,5 +764,6 @@ def test_system_prompt_is_regrounded():
     assert "green_lion_202602_1_synthetic_loan_tape.csv" not in SYSTEM_PROMPT
     assert "green_lion_202603_1_synthetic_loan_tape.csv" not in SYSTEM_PROMPT
     assert "green_lion_2026_1_synthetic_loan_tape.csv" not in SYSTEM_PROMPT
-    # The agent is told the full history exists (27 tapes incl. 2024-2025).
-    assert "27" in SYSTEM_PROMPT
+    # The agent is told the deal reports its three 2026 monthly tapes (and to
+    # resolve them via list_deal_tapes rather than hardcoded URLs).
+    assert "Feb/Mar/Apr" in SYSTEM_PROMPT

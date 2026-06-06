@@ -314,11 +314,10 @@ def test_run_period_uses_real_trigger_engine() -> None:
 # ===========================================================================
 
 
-# The deal's tapes mix two series: 24 historical 2024-2025 monthly tapes of a
-# DIFFERENT, much larger Green-Lion vintage (~€110-140B pool) and the 3 actual
-# 2026 reporting tapes of THIS deal (~€1.05B pool, the one spike S0 reconciled).
-# The "Green Lion 2026-1" deal whose prospectus seeds the liability side is the
-# 2026 series, so the meaningful real-tape reconstruction chains those three.
+# Green Lion 2026-1 reports exactly these 3 monthly tapes (~€1.05B pool, the
+# ones spike S0 reconciled). NOTE: the separate green-lion-2024-2025 dataset is a
+# DIFFERENT, much larger vintage (~€110-140B pool) and is no longer chained into
+# this deal's config; this explicit date tuple keeps the test robust regardless.
 _GREEN_LION_2026_DATES = ("2026-02-28", "2026-03-31", "2026-04-30")
 
 
@@ -411,8 +410,8 @@ def test_real_2026_tape_chain_ties_to_cached_pool_balances() -> None:
 def test_full_tape_history_chain_preserves_identity() -> None:
     """The engine threads the deal's FULL tape history without breaking.
 
-    A robustness guard over all of ``GREEN_LION['tape_urls']`` (currently 27
-    tapes): regardless of how many periods are driven, the loop preserves the
+    A robustness guard over all of ``GREEN_LION['tape_urls']`` (currently the 3
+    2026 tapes): regardless of how many periods are driven, the loop preserves the
     closing[N]==opening[N+1] identity and reconstructs each period's pool to the
     cent. This does not assert prospectus-economic meaning (the history mixes
     vintages); it guards that the integrator scales to the real period count.
