@@ -5,6 +5,7 @@ import {
   ShieldCheck,
   TrendingUp,
   Boxes,
+  BadgeCheck,
   type LucideIcon,
 } from "lucide-react";
 
@@ -25,6 +26,10 @@ export const NAV_ITEMS: NavItem[] = [
   { title: "Waterfall", href: "/waterfall", icon: Waves },
   { title: "Compliance", href: "/compliance", icon: ShieldCheck },
   { title: "Projection", href: "/projection", icon: TrendingUp },
+  // Validation — the headline seasoned-deal proof (#212, epic #206): our
+  // waterfall engine reproduced against a real ING deal's own published Notes
+  // & Cash Priority of Payments, to the cent.
+  { title: "Validation", href: "/validation", icon: BadgeCheck },
   // Framework — the primitive registry catalogue (#137): surfaces the typed
   // primitive contracts that make up the framework the challenge judges.
   { title: "Framework", href: "/primitives", icon: Boxes },

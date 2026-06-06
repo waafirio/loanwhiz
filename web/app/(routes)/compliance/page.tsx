@@ -24,7 +24,9 @@ import {
   EmptyState,
   ErrorState,
   LoadingState,
+  NoTapesNotice,
   PageHeader,
+  useDealHasTapes,
 } from "@/components/page-states";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -66,6 +68,9 @@ function statusBadge(s: TriggerStatus) {
 
 export default function CompliancePage() {
   const { dealId } = useSelectedDeal();
+  // The covenant monitor runs over the deal's ESMA tapes — a seasoned deal has
+  // none published, so degrade to NoTapesNotice rather than an empty monitor.
+  const hasTapes = useDealHasTapes(dealId);
   // Tag the result with its deal so a deal switch falls back to the loading
   // state without a synchronous setState in the effect (see Overview page).
   const [state, setState] = useState<{
@@ -75,6 +80,7 @@ export default function CompliancePage() {
   }>({ dealId, data: null, error: null });
 
   useEffect(() => {
+    if (hasTapes === false) return;
     let cancelled = false;
     getCompliance(dealId)
       .then(
@@ -93,7 +99,7 @@ export default function CompliancePage() {
     return () => {
       cancelled = true;
     };
-  }, [dealId]);
+  }, [dealId, hasTapes]);
 
   const current = state.dealId === dealId ? state : null;
   const data = current?.data ?? null;
@@ -105,7 +111,9 @@ export default function CompliancePage() {
         title="Compliance"
         description="Covenant monitor output — per-trigger status and proximity to threshold."
       />
-      {error ? (
+      {hasTapes === false ? (
+        <NoTapesNotice what="the covenant monitor" />
+      ) : error ? (
         <ErrorState title="Could not load compliance" message={error} />
       ) : !data ? (
         <LoadingState />

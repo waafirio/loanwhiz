@@ -27,6 +27,7 @@ import hashlib
 import json
 from datetime import date
 from pathlib import Path
+from collections.abc import Callable
 from typing import Any
 
 from fastapi import FastAPI, HTTPException
@@ -50,6 +51,10 @@ from loanwhiz.primitives.covenant_monitor import (
     CovenantInput,
     CovenantMonitor,
     TriggerDefinition,
+)
+from loanwhiz.primitives.engine_validation_harness import (
+    EngineValidationReport,
+    validate_green_lion_2024_1,
 )
 from loanwhiz.primitives.esma_tape_normaliser import (
     EsmaTapeInput,
@@ -1155,6 +1160,187 @@ def primitives() -> list[PrimitiveCatalogueEntry]:
 
 
 # --- end primitive registry catalogue (#135) ---------------------------------
+
+
+# --- engine validation (#212, V6 / epic #206) --------------------------------
+# Self-contained block (response models + handler) for GET
+# /deal/{deal_id}/validation — the headline seasoned-deal proof surfaced over
+# HTTP so the demo UI's Validation view can render it. It runs V4's engine
+# -validation harness (engine_validation_harness) OFFLINE: the committed
+# extracted-model seed + the committed Notes & Cash report fixture (no network,
+# no LLM, no PDF fetch), so the endpoint is deterministic and fast. The V3/V4/V5
+# harnesses deliberately avoided touching this module; this issue owns the API
+# seam onto V4.
+#
+# Honesty (epic #206): the response preserves V4's per-step `source` label —
+# 'engine' (the interpreter COMPUTED the line from the extracted model with no
+# report input — the independent proof), 'report-supplied' (no prospectus
+# formula; amount taken from the report, the engine only ROUTES it), 'residual'
+# (a terminal sweep). The redemption waterfall's documented "Unapplied … due to
+# rounding" remainder (€0.69 in the fixtured period) is surfaced as
+# `unapplied_rounding`, not hidden. Nothing is presented as a blanket 100%.
+#
+# Deal-genericity: only deals with a committed offline validation builder return
+# a full proof; a registered deal without one (e.g. Green Lion 2023-1, which has
+# a seed model but no committed Notes & Cash fixture) returns HTTP 200 with
+# `available=false` and an honest note — never a 500. `_VALIDATION_BUILDERS` is
+# patchable in tests, mirroring the other module-level seams.
+
+#: Per-deal offline validation builders. Each returns an
+#: :class:`EngineValidationReport` from committed fixtures (no network/LLM).
+#: Keyed by the canonical deal id used in the /deal/{deal_id}/... routes. A deal
+#: absent from this map is registered-but-unvalidated → `available=false`.
+_VALIDATION_BUILDERS: dict[str, Callable[[], EngineValidationReport]] = {
+    "green-lion-2024-1": validate_green_lion_2024_1,
+}
+
+_VALIDATION_UNAVAILABLE_NOTE = (
+    "No published validation proof for this deal. The engine-vs-published "
+    "Notes & Cash Priority of Payments reconciliation requires a committed "
+    "report fixture, which this deal does not yet have. See Green Lion 2024-1 "
+    "for the headline proof."
+)
+
+
+class StepReconciliationModel(BaseModel):
+    """One reconciled priority step (mirrors ``StepReconciliation``).
+
+    ``source`` is the honesty label: ``"engine"`` (computed by the interpreter
+    from the extracted model with no report input — the independent proof),
+    ``"report-supplied"`` (amount taken from the report; the engine only routes
+    it), or ``"residual"`` (a terminal sweep of the remaining pot).
+    """
+
+    priority: str
+    recipient: str
+    engine_amount: float
+    report_amount: float
+    delta: float
+    source: str
+    passed: bool
+
+
+class WaterfallReconciliationModel(BaseModel):
+    """One waterfall's per-step reconciliation (mirrors ``WaterfallReconciliation``)."""
+
+    waterfall_type: str
+    steps: list[StepReconciliationModel]
+    engine_total: float
+    report_total: float
+    available_funds: float
+    unapplied_rounding: float
+    steps_passed: int
+    passed: bool
+
+
+class PeriodValidationModel(BaseModel):
+    """One reporting period's revenue + redemption reconciliation."""
+
+    reporting_date: str
+    period_label: str
+    revenue: WaterfallReconciliationModel
+    redemption: WaterfallReconciliationModel
+    passed: bool
+
+
+class ValidationResponse(BaseModel):
+    """Response body for ``GET /deal/{deal_id}/validation``.
+
+    ``available`` is ``false`` for a registered deal that has no committed
+    validation fixture — the UI then renders an honest "no published proof"
+    state instead of an error. When ``true``, the per-period reconciliation is
+    the V4 engine-validation report: each step compared to the deal's own
+    published Notes & Cash PoP, to the cent, with per-step ``source`` labels.
+    """
+
+    deal_id: str
+    deal_name: str
+    available: bool
+    note: str | None = None
+
+    passed: bool = False
+    periods_checked: int = 0
+    periods_passed: int = 0
+    tolerance_eur: float = 0.0
+    source_note: str | None = None
+    summary: str | None = None
+    periods: list[PeriodValidationModel] = Field(default_factory=list)
+
+
+def _waterfall_to_model(wf) -> WaterfallReconciliationModel:
+    """Map a V4 ``WaterfallReconciliation`` onto its API model."""
+    return WaterfallReconciliationModel(
+        waterfall_type=wf.waterfall_type,
+        steps=[
+            StepReconciliationModel(
+                priority=s.priority,
+                recipient=s.recipient,
+                engine_amount=s.engine_amount,
+                report_amount=s.report_amount,
+                delta=s.delta,
+                source=s.source,
+                passed=s.passed,
+            )
+            for s in wf.steps
+        ],
+        engine_total=wf.engine_total,
+        report_total=wf.report_total,
+        available_funds=wf.available_funds,
+        unapplied_rounding=wf.unapplied_rounding,
+        steps_passed=wf.steps_passed,
+        passed=wf.passed,
+    )
+
+
+@app.get("/deal/{deal_id}/validation", response_model=ValidationResponse)
+def deal_validation(deal_id: str) -> ValidationResponse:
+    """Reconcile the waterfall engine against the deal's own published PoP.
+
+    Runs V4's engine-validation harness OFFLINE (committed extracted-model seed +
+    committed Notes & Cash fixture — no network, no LLM) and returns the
+    structured per-step reconciliation: each engine step compared to the deal's
+    actual published Notes & Cash Priority of Payments, to the cent, carrying the
+    honest ``source`` label (``engine`` / ``report-supplied`` / ``residual``).
+
+    A registered deal with no committed validation fixture (e.g. Green Lion
+    2023-1) returns HTTP 200 with ``available=false`` and an honest note rather
+    than erroring — so the UI degrades gracefully. An unknown deal id 404s.
+    """
+    deal = _require_deal(deal_id)
+    builder = _VALIDATION_BUILDERS.get(deal_id)
+    if builder is None:
+        return ValidationResponse(
+            deal_id=deal_id,
+            deal_name=deal["deal_name"],
+            available=False,
+            note=_VALIDATION_UNAVAILABLE_NOTE,
+        )
+
+    report: EngineValidationReport = builder()
+    return ValidationResponse(
+        deal_id=deal_id,
+        deal_name=report.deal_name,
+        available=True,
+        passed=report.passed,
+        periods_checked=report.periods_checked,
+        periods_passed=report.periods_passed,
+        tolerance_eur=report.tolerance_eur,
+        source_note=report.source_note,
+        summary=report.summary(),
+        periods=[
+            PeriodValidationModel(
+                reporting_date=p.reporting_date,
+                period_label=p.period_label,
+                revenue=_waterfall_to_model(p.revenue),
+                redemption=_waterfall_to_model(p.redemption),
+                passed=p.passed,
+            )
+            for p in report.periods
+        ],
+    )
+
+
+# --- end engine validation (#212) --------------------------------------------
 
 
 @app.post("/deal/{deal_id}/project")

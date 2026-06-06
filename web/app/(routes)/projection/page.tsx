@@ -22,7 +22,9 @@ import {
   EmptyState,
   ErrorState,
   LoadingState,
+  NoTapesNotice,
   PageHeader,
+  useDealHasTapes,
 } from "@/components/page-states";
 import { TablePagination } from "@/components/table-pagination";
 import {
@@ -50,6 +52,10 @@ const HORIZON_MONTHS = 48;
 
 export default function ProjectionPage() {
   const { dealId } = useSelectedDeal();
+  // The forward projection runs off the deal's reported tape state — a seasoned
+  // deal has no published tapes, so degrade to NoTapesNotice rather than project
+  // a tape-less deal off another deal's base case.
+  const hasTapes = useDealHasTapes(dealId);
   // Tag the result with its deal so a deal switch falls back to the loading
   // state without a synchronous setState in the effect (see Overview page).
   const [state, setState] = useState<{
@@ -59,6 +65,7 @@ export default function ProjectionPage() {
   }>({ dealId, data: null, error: null });
 
   useEffect(() => {
+    if (hasTapes === false) return;
     let cancelled = false;
     postProjection(
       { scenarios: ["base", "stress"], months: HORIZON_MONTHS },
@@ -80,7 +87,7 @@ export default function ProjectionPage() {
     return () => {
       cancelled = true;
     };
-  }, [dealId]);
+  }, [dealId, hasTapes]);
 
   const current = state.dealId === dealId ? state : null;
   const data = current?.data ?? null;
@@ -92,7 +99,9 @@ export default function ProjectionPage() {
         title="Projection"
         description={`Forward payment-waterfall projection — base vs stress over a ${HORIZON_MONTHS}-month horizon.`}
       />
-      {error ? (
+      {hasTapes === false ? (
+        <NoTapesNotice what="the forward projection" />
+      ) : error ? (
         <ErrorState title="Could not load projection" message={error} />
       ) : !data ? (
         <LoadingState />

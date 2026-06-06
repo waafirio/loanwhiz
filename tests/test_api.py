@@ -425,6 +425,58 @@ def test_committed_green_lion_seed_exists_and_validates():
     assert not Path(model.metadata.cache_path).is_absolute()
 
 
+# Seasoned deals (#206 / #208) — the same pipeline that produced the 2026-1 seed
+# above, run unmodified on the two registered seasoned deals. Sourced from the
+# registry (data/deals.json) so the test is data-agnostic: no per-deal literals.
+_SEASONED_DEAL_IDS = ("green-lion-2023-1", "green-lion-2024-1")
+
+
+@pytest.mark.parametrize("deal_id", _SEASONED_DEAL_IDS)
+def test_committed_seasoned_deal_seed_exists_and_validates(deal_id):
+    """Each seasoned-deal seed ships, validates as a DealModel, and has real shape.
+
+    V2 (#208) of the seasoned-deal-validation epic proves the extraction pipeline
+    is data-agnostic: the *unmodified* ``extraction/`` pipeline that produced the
+    Green Lion 2026-1 seed also produces shaped models for the 2023-1 / 2024-1
+    seasoned deals. These are the artifacts a clean checkout serves to the Overview
+    (and that downstream V4/V5 load warm); if either stops being tracked or drifts
+    from the schema, the seasoned deal's Overview goes blank. The assertions mirror
+    ``test_committed_green_lion_seed_exists_and_validates`` but are driven off the
+    registry so no deal-specific content is hardcoded.
+    """
+    from loanwhiz.api import main as api_main
+    from loanwhiz.config import DEAL_REGISTRY
+    from loanwhiz.extraction.assembler import DealModel, _slug
+
+    deal_name = DEAL_REGISTRY[deal_id]["deal_name"]
+
+    # Resolve the *real* committed seed dir from the package layout — the autouse
+    # fixture patches ``api_main.DEAL_MODEL_SEED_DIR`` to an empty tmp dir.
+    real_seed_dir = (
+        Path(api_main.__file__).resolve().parents[1] / "data" / "deals" / "seed"
+    )
+    seed_path = real_seed_dir / f"{_slug(deal_name)}.json"
+    assert seed_path.exists(), f"committed seasoned-deal seed missing: {seed_path}"
+
+    model = DealModel.model_validate_json(seed_path.read_text(encoding="utf-8"))
+
+    # Provenance matches the registered deal — no cross-deal mix-up.
+    assert model.metadata.deal_name == deal_name
+    assert model.metadata.prospectus_url == DEAL_REGISTRY[deal_id]["prospectus_url"]
+
+    # Real extracted shape (the proof the pipeline ran on real content, not an
+    # empty skeleton): a tranche structure, triggers, and ≥1 waterfall with steps.
+    assert model.tranche_structure, f"{deal_id} seed has no tranche structure"
+    assert model.trigger_names, f"{deal_id} seed has no trigger names"
+    assert any(
+        wf.get("steps") for wf in model.waterfalls.values()
+    ), f"{deal_id} seed has no waterfall with extracted steps"
+
+    assert 0.0 <= model.metadata.completeness_score <= 1.0
+    # The committed seed must carry no host-specific absolute path.
+    assert not Path(model.metadata.cache_path).is_absolute()
+
+
 # ---------------------------------------------------------------------------
 # Query (agent mocked)
 # ---------------------------------------------------------------------------
@@ -554,12 +606,14 @@ def test_deal_compliance_runs_monitor(tmp_path):
 
     series = _small_reconstructed_series()
     # Empty cache dir → no extracted triggers → fall back to DEFAULT_TRIGGERS.
+    # /compliance builds its per-period tape analytics via the on-disk-cached
+    # ``_normalised_tape_output`` helper (one call per tape), not a direct
+    # ``EsmaTapeNormaliser().execute`` — patch the helper accordingly.
     with patch("loanwhiz.api.main.DEAL_MODEL_CACHE_DIR", str(tmp_path)), patch(
-        "loanwhiz.api.main.EsmaTapeNormaliser"
-    ) as MockNorm, patch(
+        "loanwhiz.api.main._normalised_tape_output", return_value=tape_dump
+    ) as mock_norm, patch(
         "loanwhiz.api.main._reconstruct_series", return_value=series
     ), patch("loanwhiz.api.main.CovenantMonitor") as MockMon:
-        MockNorm.return_value.execute.return_value = _FakeResult(tape_dump)
         MockMon.DEFAULT_TRIGGERS = []
         MockMon.return_value.execute.return_value = _FakeResult(compliance_dump)
 
@@ -567,8 +621,8 @@ def test_deal_compliance_runs_monitor(tmp_path):
 
     assert resp.status_code == 200
     assert resp.json() == compliance_dump
-    # One normalise call per tape in the deal context.
-    assert MockNorm.return_value.execute.call_count == GREEN_LION_TAPE_COUNT
+    # One normalise call per tape in the deal context (via the cached helper).
+    assert mock_norm.call_count == GREEN_LION_TAPE_COUNT
     MockMon.return_value.execute.assert_called_once()
     # The monitor was fed the reconstructed per-period states (the one ledger),
     # not a single seeded snapshot.
@@ -1632,3 +1686,83 @@ def test_deal_tape_analytics_integration():
         assert period["pool_balance_eur"] > 0
         assert "wtd_ltv" in period["pool_stats"]
         assert "current_pct" in period["arrears_breakdown"]
+
+
+# ---------------------------------------------------------------------------
+# Engine validation  —  GET /deal/{deal_id}/validation  (#212, V6 / epic #206)
+# ---------------------------------------------------------------------------
+# Offline + deterministic: runs V4's engine_validation_harness against the
+# committed seed + committed Notes & Cash fixture (no network, no LLM). These
+# are NOT integration-marked — they must run in the fast suite, mirroring
+# test_engine_validation_harness.
+
+
+def test_validation_green_lion_2024_1_reproduces_published_pop():
+    """The headline proof, over HTTP: revenue 11/11, redemption 4/4, to the cent."""
+    resp = client.get("/deal/green-lion-2024-1/validation")
+    assert resp.status_code == 200
+    body = resp.json()
+
+    assert body["available"] is True
+    assert body["deal_id"] == "green-lion-2024-1"
+    assert body["passed"] is True
+    assert body["periods_checked"] >= 1
+    assert body["periods_passed"] == body["periods_checked"]
+    assert body["tolerance_eur"] == pytest.approx(0.01)
+    assert body["source_note"]
+    assert body["summary"]
+
+    period = body["periods"][0]
+    # Revenue: 11 steps, every one reconciled to the cent.
+    assert len(period["revenue"]["steps"]) == 11
+    assert period["revenue"]["steps_passed"] == 11
+    assert period["revenue"]["passed"] is True
+    # Redemption: 4 steps, every one reconciled.
+    assert len(period["redemption"]["steps"]) == 4
+    assert period["redemption"]["steps_passed"] == 4
+    assert period["redemption"]["passed"] is True
+
+
+def test_validation_carries_honest_source_labels():
+    """Every step carries an honest engine/report-supplied/residual source label."""
+    body = client.get("/deal/green-lion-2024-1/validation").json()
+    period = body["periods"][0]
+
+    sources = {s["source"] for s in period["revenue"]["steps"]}
+    # The proof must not be a blanket 100% — it mixes engine-computed,
+    # report-supplied, and a residual sweep.
+    assert "engine" in sources
+    assert "report-supplied" in sources
+    assert sources <= {"engine", "report-supplied", "residual"}
+
+    # At least the four engine-COMPUTED revenue lines (Class A/B/C interest +
+    # reserve/PDL needs) are present — the independent part of the proof.
+    engine_steps = [s for s in period["revenue"]["steps"] if s["source"] == "engine"]
+    assert len(engine_steps) >= 4
+    assert all(s["passed"] for s in engine_steps)
+
+
+def test_validation_surfaces_redemption_unapplied_rounding():
+    """The documented ~€0.69 redemption rounding remainder is surfaced, not hidden."""
+    body = client.get("/deal/green-lion-2024-1/validation").json()
+    redemption = body["periods"][0]["redemption"]
+    # The fixtured period leaves €0.69 of redemption funds unapplied due to
+    # rounding — a real published line, presented honestly.
+    assert redemption["unapplied_rounding"] == pytest.approx(0.69, abs=0.01)
+
+
+def test_validation_unfixtured_deal_degrades_gracefully():
+    """A registered deal with no committed fixture returns 200 available=false."""
+    resp = client.get("/deal/green-lion-2023-1/validation")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["available"] is False
+    assert body["deal_id"] == "green-lion-2023-1"
+    assert body["note"]  # honest "no published proof" note
+    assert body["periods"] == []
+    assert body["passed"] is False
+
+
+def test_validation_unknown_deal_returns_404():
+    resp = client.get("/deal/does-not-exist/validation")
+    assert resp.status_code == 404

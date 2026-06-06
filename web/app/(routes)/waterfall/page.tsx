@@ -21,7 +21,9 @@ import {
   EmptyState,
   ErrorState,
   LoadingState,
+  NoTapesNotice,
   PageHeader,
+  useDealHasTapes,
 } from "@/components/page-states";
 import {
   Card,
@@ -41,6 +43,9 @@ import { formatCurrency, humanize } from "@/lib/format";
 
 export default function WaterfallPage() {
   const { dealId } = useSelectedDeal();
+  // Seasoned deals have no published loan tapes — this view is tape-driven, so
+  // we degrade to NoTapesNotice rather than render an empty cascade.
+  const hasTapes = useDealHasTapes(dealId);
   // Tag the result with its deal so a deal switch falls back to the loading
   // state without a synchronous setState in the effect (see Overview page).
   const [state, setState] = useState<{
@@ -50,6 +55,8 @@ export default function WaterfallPage() {
   }>({ dealId, data: null, error: null });
 
   useEffect(() => {
+    // Don't fetch tape-driven data for a deal we already know has no tapes.
+    if (hasTapes === false) return;
     let cancelled = false;
     getWaterfall(dealId)
       .then(
@@ -68,7 +75,7 @@ export default function WaterfallPage() {
     return () => {
       cancelled = true;
     };
-  }, [dealId]);
+  }, [dealId, hasTapes]);
 
   const current = state.dealId === dealId ? state : null;
   const data = current?.data ?? null;
@@ -80,7 +87,9 @@ export default function WaterfallPage() {
         title="Waterfall"
         description="Revenue priority cascade and per-tranche distributions for the latest reported period."
       />
-      {error ? (
+      {hasTapes === false ? (
+        <NoTapesNotice what="the payment waterfall" />
+      ) : error ? (
         <ErrorState title="Could not load waterfall" message={error} />
       ) : !data ? (
         <LoadingState />
