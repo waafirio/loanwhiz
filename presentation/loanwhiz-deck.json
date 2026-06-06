@@ -1,0 +1,98 @@
+{
+  "title": "LoanWhiz",
+  "theme": "loanwhiz",
+  "slides": [
+    {
+      "type": "title",
+      "eyebrow": "Barcelona AI Tinkerers · Structured Finance Hackathon 2026",
+      "title": "LoanWhiz",
+      "subtitle": "A Structured Finance Agent Framework — compile the deal, don't chat about it.",
+      "tags": ["Gemini 2.5", "LangGraph", "Docling", "FINOS + deeploans"],
+      "footnote": "github.com/waafirio/loanwhiz"
+    },
+    {
+      "type": "cards",
+      "kicker": "Our approach",
+      "title": "Don't chat about the deal — compile it",
+      "intro": "Three concerns a chatbot collapses into one. Read once, execute deterministically, orchestrate with an agent.",
+      "cards": [
+        { "title": "1 · Extract", "accent": "primary", "bullets": [{ "lead": "Prospectus → model. ", "text": "Docling + section-routed Gemini 2.5 Pro produce structured JSON." }, { "lead": "Cited. ", "text": "Every fact carries a verbatim source excerpt." }] },
+        { "title": "2 · Execute", "accent": "accent", "bullets": [{ "lead": "SF-native primitives. ", "text": "Waterfall, covenant monitor, projector — typed and deterministic." }, { "lead": "No LLM in the maths. ", "text": "Numbers are computed, not generated." }] },
+        { "title": "3 · Orchestrate", "accent": "navy", "bullets": [{ "lead": "LangGraph agent. ", "text": "Plans which primitives to call, then explains." }, { "lead": "Governed. ", "text": "Every call carries an audit entry + confidence." }] }
+      ]
+    },
+    {
+      "type": "metrics",
+      "kicker": "The proof",
+      "title": "Validated against a real ING deal — to the cent",
+      "intro": "Green Lion 2024-1: our engine re-runs the deal's own published Notes & Cash waterfall. No report distribution figures fed in — Class A interest is computed (balance × coupon × days/360).",
+      "metrics": [
+        { "value": "11/11", "label": "revenue PoP steps", "sub": "reconciled to the cent" },
+        { "value": "4/4", "label": "redemption steps", "sub": "to the cent" },
+        { "value": "€0.00", "label": "reconciliation gap", "sub": "the report's own €0.69 rounding modelled, not fudged" },
+        { "value": "1", "label": "real ING deal", "sub": "its own published quarterly report" }
+      ]
+    },
+    {
+      "type": "table",
+      "kicker": "Broadly applicable — not hardcoded",
+      "title": "The same primitives across three jurisdictions",
+      "header": ["Deal", "Jurisdiction", "Source data", "Status"],
+      "rows": [
+        ["Green Lion 2026-1", "Netherlands", "loan tapes + prospectus", "full model · collateral reconciled"],
+        ["Green Lion 2024-1", "Netherlands", "reports + prospectus", "engine validated to the cent"],
+        ["Green Lion 2023-1", "Netherlands", "reports + prospectus", "model extracted"],
+        ["Leone Arancio 2023-1", "Italy", "prospectus", "partial — real cited triggers"],
+        ["Sol-Lion II", "Spain", "prospectus", "partial — minimal extraction"]
+      ],
+      "note": "The unmodified pipeline runs end-to-end on all five. Extraction completeness is honest — non-English prospectuses extract partially; we show that, we don't fake it."
+    },
+    {
+      "type": "section",
+      "kicker": "Reusability you can see",
+      "title": "A capability matrix, not a claim",
+      "body": "GET /capability-matrix runs every primitive across every deal and renders it in the /showcase view: validated / ran / not-applicable, each cell carrying its real reason. Today: 1 validated, 9 ran, 15 not-applicable. N/A is shown as honest scope — never hidden, never coloured green."
+    },
+    {
+      "type": "cards",
+      "kicker": "Packaged for reuse",
+      "title": "Reusable infrastructure, not a one-off",
+      "columns": 3,
+      "cards": [
+        { "title": "MCP server", "accent": "primary", "body": "The 8 SF primitives exposed as a governed MCP server — typed I/O + the evidence pack — consumable on any MCP host." },
+        { "title": "Deal = data, not code", "accent": "accent", "body": "Add a deal by dropping JSON into deals.json; no Python. The interpreter executes the deal's extracted model, not hardcoded logic." },
+        { "title": "Open & portable", "accent": "navy", "body": "Apache-2.0; CSV or parquet tapes; deeploans (Algoritmica's ESMA ETL) on the ingestion path with a direct fallback." }
+      ]
+    },
+    {
+      "type": "cards",
+      "kicker": "Trust — FINOS AI Governance Framework + deeploans",
+      "title": "Governance is baked into the interface",
+      "columns": 3,
+      "cards": [
+        { "title": "Audit trail", "body": "Append-only entry per call: hashes, model version, timestamp, duration." },
+        { "title": "Confidence scoring", "body": "Mandatory on every primitive — coverage · cross-ref · self-assessment." },
+        { "title": "Verbatim citations", "body": "Every fact grounded to a section + excerpt a reviewer can locate." },
+        { "title": "Data provenance", "body": "Each tape tagged deeploans vs direct, carried into the evidence pack." },
+        { "title": "Human-review routing", "body": "Confidence < 0.70 → flagged; output can't be used until signed off." },
+        { "title": "Model-risk class", "body": "Decision-support tier, zero autonomy — outputs are inputs, never actions." }
+      ]
+    },
+    {
+      "type": "cards",
+      "kicker": "What we built — the dashboard",
+      "title": "Two layers, one product",
+      "columns": 2,
+      "cards": [
+        { "title": "Deal Analytics", "accent": "navy", "body": "Overview · Pool & Performance · Waterfall · Compliance · Projection — the per-deal analyst workflow over the extracted model." },
+        { "title": "Platform & Governance", "accent": "primary", "body": "Showcase · Validation · Framework · Governance — the cross-deal, trust & reusability layer that headlines the work." }
+      ]
+    },
+    {
+      "type": "section",
+      "kicker": "Why it answers the challenge",
+      "title": "Reusable, trustworthy, broadly applicable",
+      "body": "SF-native primitives + a registry, packaged as an MCP — not a one-off script. Validated to the cent against a real ING deal, demonstrated across Dutch, Italian and Spanish RMBS, with citations, governance and data-provenance on every output. And honest about its limits — the capability matrix shows exactly what's proven."
+    }
+  ]
+}
