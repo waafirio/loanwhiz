@@ -7,6 +7,7 @@ import {
   Boxes,
   BadgeCheck,
   Scale,
+  Grid3x3,
   type LucideIcon,
 } from "lucide-react";
 
@@ -22,6 +23,11 @@ export interface NavItem {
  * Issue #99 fills the page bodies; this is the canonical nav order.
  */
 export const NAV_ITEMS: NavItem[] = [
+  // Showcase — the refreshed demo's headline/landing (#242, C4, epic #236):
+  // the same governed primitives rendered across Dutch / Italian / Spanish RMBS
+  // as the primitives × deals capability matrix (validated / ran / not-applicable,
+  // with the honest reason behind every cell). Placed first as the demo lead.
+  { title: "Showcase", href: "/showcase", icon: Grid3x3 },
   { title: "Overview", href: "/", icon: LayoutDashboard },
   { title: "Pool & Performance", href: "/pool", icon: Layers },
   { title: "Waterfall", href: "/waterfall", icon: Waves },
