@@ -148,6 +148,29 @@ export interface Citation {
   [key: string]: unknown;
 }
 
+/**
+ * Ingestion provenance for an ESMA tape — mirrors the backend
+ * `EsmaTapeOutput.data_source` (`esma_tape_normaliser.py`, issue #239).
+ * `"deeploans"` = fetched through the deeploans ETL backend; `"direct"` = the
+ * direct CSV/parquet URL read.
+ */
+export type DataSource = "deeploans" | "direct";
+
+/**
+ * Best-effort read of a tape citation's ingestion provenance. The ESMA tape
+ * normaliser records it in the citation excerpt as "(ingested via deeploans)" /
+ * "(ingested via direct)"; this parses that marker so the governance surface can
+ * show honest provenance without a separate API field. Returns `null` when the
+ * citation carries no provenance marker (e.g. a non-tape citation).
+ */
+export function citationDataSource(c: Citation): DataSource | null {
+  if (c.data_source === "deeploans" || c.data_source === "direct") {
+    return c.data_source;
+  }
+  const m = /ingested via (deeploans|direct)/i.exec(c.excerpt ?? "");
+  return m ? (m[1].toLowerCase() as DataSource) : null;
+}
+
 /** One agent tool call within a query (mirrors `ToolCallRecordModel`). */
 export interface ToolCallRecord {
   /** 0-based position in the tool-call sequence. */
@@ -302,6 +325,11 @@ export interface TapeAnalyticsPeriod {
   property_type_breakdown: Record<string, number> | null;
   geographic_breakdown: Record<string, number> | null;
   annex_detected: string;
+  /**
+   * Ingestion provenance for this period's tape (#239). Optional so the page
+   * degrades gracefully against an older API that omits the field.
+   */
+  data_source?: DataSource;
 }
 
 export function getTapeAnalytics(
@@ -588,4 +616,77 @@ export function getValidation(
   dealId: string = DEFAULT_DEAL_ID,
 ): Promise<ValidationReport> {
   return request<ValidationReport>(`/deal/${dealId}/validation`);
+}
+
+// ---------------------------------------------------------------------------
+// Cross-deal capability matrix  —  GET /capability-matrix  (#241, C3 / epic #236)
+// (build_capability_matrix → CapabilityMatrix: the typed primitives × deals grid
+// that makes primitive reusability *visible* across Dutch / Italian / Spanish
+// deals. Each cell is `validated` / `ran` / `not-applicable` with an honest
+// reason + governance evidence. The C4 /showcase view renders this.)
+// ---------------------------------------------------------------------------
+
+/** The three honest cell states — mirrors the backend STATE_* vocabulary. */
+export type CapabilityCellState = "validated" | "ran" | "not-applicable";
+
+/**
+ * Governance evidence attached to one capability cell — mirrors `CellEvidence`.
+ * `confidence` is in `[0,1]` for a cell that ran, or `null` for a
+ * `not-applicable` cell (nothing ran, so no confidence). `citation` grounds the
+ * evidence (the seed artifact, the published report reconciled against, etc.);
+ * `detail` is free-form JSON-serialisable structured detail for the UI.
+ */
+export interface CellEvidence {
+  confidence: number | null;
+  citation: string;
+  detail: Record<string, unknown>;
+}
+
+/**
+ * One (capability × deal) cell — mirrors `CapabilityCell`. `reason` is mandatory
+ * and non-empty (the honesty contract: every `not-applicable` skip carries its
+ * real reason; for `ran` / `validated` it's a short positive note).
+ */
+export interface CapabilityCell {
+  capability_key: string;
+  deal_id: string;
+  state: CapabilityCellState;
+  reason: string;
+  evidence: CellEvidence;
+}
+
+/** A capability (one matrix row) and its metadata — mirrors `CapabilityRow`. */
+export interface CapabilityRow {
+  key: string;
+  primitive_name: string;
+  label: string;
+  description: string;
+}
+
+/** A deal (one matrix column) and its metadata — mirrors `DealColumn`. */
+export interface DealColumn {
+  deal_id: string;
+  deal_name: string;
+  jurisdiction: string;
+  has_seed_model: boolean;
+  /** Extracted-model completeness in [0,1], or null when no model loaded. */
+  completeness_score: number | null;
+}
+
+/**
+ * The full cross-deal capability matrix — mirrors `CapabilityMatrix`. `cells` is
+ * the flat list of every (capability × deal) cell; `tally` is the per-state count
+ * across all cells (e.g. `{validated: 1, ran: 9, "not-applicable": 15}`); `note`
+ * is the standing honesty disclosure.
+ */
+export interface CapabilityMatrix {
+  capabilities: CapabilityRow[];
+  deals: DealColumn[];
+  cells: CapabilityCell[];
+  tally: Record<string, number>;
+  note: string;
+}
+
+export function getCapabilityMatrix(): Promise<CapabilityMatrix> {
+  return request<CapabilityMatrix>("/capability-matrix");
 }

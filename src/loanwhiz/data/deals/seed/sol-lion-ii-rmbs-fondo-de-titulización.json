@@ -1,0 +1,34 @@
+{
+  "metadata": {
+    "deal_name": "Sol-Lion II RMBS Fondo de Titulización",
+    "prospectus_url": "https://ing.com/binaries/content/assets/documents/files/sol-lion-ii-rmbs-fondo-de-titulizacion-prospectus-dated-25-november-2020.pdf",
+    "extracted_at": "2026-06-06T11:09:42.973356+00:00",
+    "extraction_duration_sec": 19.22323203086853,
+    "sections_found": [
+      "definitions",
+      "credit_enhancement",
+      "eligibility_criteria",
+      "available_funds"
+    ],
+    "completeness_score": 0.3,
+    "cache_path": "data/deals/sol-lion-ii-rmbs-fondo-de-titulización.json"
+  },
+  "definitions": {},
+  "waterfalls": {},
+  "covenants": {
+    "deal_name": "FONDO DE TITULIZACIÓN",
+    "triggers": [],
+    "issuer_covenants": [],
+    "extraction_confidence": 0.0
+  },
+  "tranche_structure": [
+    {
+      "name": "Class O",
+      "size_eur": 42.0,
+      "rating": null,
+      "rate": null,
+      "seniority": 14
+    }
+  ],
+  "trigger_names": []
+}

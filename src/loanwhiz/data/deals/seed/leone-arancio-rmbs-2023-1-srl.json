@@ -1,0 +1,67 @@
+{
+  "metadata": {
+    "deal_name": "Leone Arancio RMBS 2023-1 S.r.l.",
+    "prospectus_url": "https://ing.com/binaries/content/assets/documents/files/leone-arancio-rmbs-2023-1-prospectus-dated-12-september-2023.pdf",
+    "extracted_at": "2026-06-06T11:09:23.748347+00:00",
+    "extraction_duration_sec": 36.05172514915466,
+    "sections_found": [
+      "definitions",
+      "credit_enhancement",
+      "conditions_of_notes",
+      "eligibility_criteria",
+      "available_funds"
+    ],
+    "completeness_score": 0.375,
+    "cache_path": "data/deals/leone-arancio-rmbs-2023-1-srl.json"
+  },
+  "definitions": {},
+  "waterfalls": {},
+  "covenants": {
+    "deal_name": "PROSPECTUS DATED 12 SEPTEMBER 2023",
+    "triggers": [
+      {
+        "name": "performance_trigger",
+        "display_name": "Performance Trigger (Trigger Notice)",
+        "description": "Upon the service of a Trigger Notice, the priority of payments for both interest and principal is altered to a post-trigger waterfall, protecting senior noteholders.",
+        "metric": "unknown",
+        "threshold": null,
+        "threshold_unit": null,
+        "direction": "unknown",
+        "consequence": "Principal and interest distribution switches to a post-enforcement priority of payments, ranking Class A notes senior to Junior Notes for both principal and interest.",
+        "section_reference": "Condition 7",
+        "citation": {
+          "page_or_row": "Condition 4.3",
+          "excerpt": "in respect of the obligations of the Issuer to repay principal on the Notes following the service of a Trigger Notice...",
+          "document": "prospectus"
+        }
+      },
+      {
+        "name": "principal_deficiency_ledger_shortfall",
+        "display_name": "Principal Deficiency Ledger Shortfall",
+        "description": "If there is a debit balance on the Principal Deficiency Ledger, Interest Available Funds are used to cure the shortfall.",
+        "metric": "pdl_debit_balance",
+        "threshold": 0.0,
+        "threshold_unit": "eur",
+        "direction": "non_zero",
+        "consequence": "Interest Available Funds are applied to reduce the debit balance on the Principal Deficiency Ledger to zero.",
+        "section_reference": "Pre-Trigger Notice Interest Priority of Payments, item (vii)",
+        "citation": {
+          "page_or_row": "Pre-Trigger Notice Interest Priority of Payments",
+          "excerpt": "in or towards making good any shortfall reflected in the Principal Deficiency Ledger until the debit balance, if any, of the Principal Deficiency Ledger is reduced to zero",
+          "document": "prospectus"
+        }
+      }
+    ],
+    "issuer_covenants": [
+      "The Issuer has covenanted not to enter into any transactions that are not contemplated in the Transaction Documents.",
+      "The Issuer is subject to restrictions on the activities that may be carried out by it.",
+      "Each Other Issuer Creditor has undertaken in the Intercreditor Agreement not to petition or commence proceedings for a declaration of insolvency against the Issuer until two years and one day after the Notes have been redeemed in full."
+    ],
+    "extraction_confidence": 0.6
+  },
+  "tranche_structure": [],
+  "trigger_names": [
+    "performance_trigger",
+    "principal_deficiency_ledger_shortfall"
+  ]
+}

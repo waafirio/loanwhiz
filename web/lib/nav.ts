@@ -6,6 +6,8 @@ import {
   TrendingUp,
   Boxes,
   BadgeCheck,
+  Scale,
+  Grid3x3,
   type LucideIcon,
 } from "lucide-react";
 
@@ -21,6 +23,11 @@ export interface NavItem {
  * Issue #99 fills the page bodies; this is the canonical nav order.
  */
 export const NAV_ITEMS: NavItem[] = [
+  // Showcase — the refreshed demo's headline/landing (#242, C4, epic #236):
+  // the same governed primitives rendered across Dutch / Italian / Spanish RMBS
+  // as the primitives × deals capability matrix (validated / ran / not-applicable,
+  // with the honest reason behind every cell). Placed first as the demo lead.
+  { title: "Showcase", href: "/showcase", icon: Grid3x3 },
   { title: "Overview", href: "/", icon: LayoutDashboard },
   { title: "Pool & Performance", href: "/pool", icon: Layers },
   { title: "Waterfall", href: "/waterfall", icon: Waves },
@@ -33,6 +40,11 @@ export const NAV_ITEMS: NavItem[] = [
   // Framework — the primitive registry catalogue (#137): surfaces the typed
   // primitive contracts that make up the framework the challenge judges.
   { title: "Framework", href: "/primitives", icon: Boxes },
+  // Governance — the FINOS evidence-pack / audit-trail / confidence /
+  // model-risk surface (#239), the challenge's trust differentiator: per agent
+  // query, the auditable reasoning trace, confidence, citations, finos_compliant,
+  // and data provenance (deeploans vs direct).
+  { title: "Governance", href: "/governance", icon: Scale },
 ];
 
 /** The single deal the demo serves, shown in the top-bar deal selector. */

@@ -1,12 +1,14 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { FileText, ShieldCheck } from "lucide-react";
+import { Database, FileText, ShieldCheck } from "lucide-react";
 
 import {
   ApiError,
+  citationDataSource,
   getGovernance,
   type Citation,
+  type DataSource,
   type GovernanceEvidencePack,
   type ToolCallRecord,
 } from "@/lib/api";
@@ -99,7 +101,7 @@ export function EvidencePackSheet({
   );
 }
 
-function PackSkeleton() {
+export function PackSkeleton() {
   return (
     <div className="space-y-3">
       <Skeleton className="h-6 w-2/3" />
@@ -109,7 +111,32 @@ function PackSkeleton() {
   );
 }
 
-function PackBody({ pack }: { pack: GovernanceEvidencePack }) {
+/** Map a data-source label to a human-readable provenance string. */
+function dataSourceLabel(source: DataSource): string {
+  return source === "deeploans"
+    ? "deeploans ETL backend"
+    : "direct URL (HuggingFace / file)";
+}
+
+/**
+ * Pack-level data-provenance summary: which ingestion paths fed the tapes this
+ * answer relied on, derived honestly from the tool-call citations (no field is
+ * invented — the ESMA normaliser records provenance on each tape citation).
+ * Returns the distinct set of sources seen, in deeploans-first order.
+ */
+function packDataSources(pack: GovernanceEvidencePack): DataSource[] {
+  const seen = new Set<DataSource>();
+  for (const tc of pack.tool_calls) {
+    for (const c of tc.citations) {
+      const src = citationDataSource(c);
+      if (src) seen.add(src);
+    }
+  }
+  return (["deeploans", "direct"] as DataSource[]).filter((s) => seen.has(s));
+}
+
+export function PackBody({ pack }: { pack: GovernanceEvidencePack }) {
+  const dataSources = packDataSources(pack);
   return (
     <div className="space-y-5">
       {/* Aggregate governance summary */}
@@ -139,7 +166,19 @@ function PackBody({ pack }: { pack: GovernanceEvidencePack }) {
               FINOS check failed
             </Badge>
           )}
+          {dataSources.map((src) => (
+            <Badge key={src} variant="outline" className="font-normal">
+              <Database className="mr-1 size-3" />
+              {src === "deeploans" ? "deeploans" : "direct"} ingestion
+            </Badge>
+          ))}
         </div>
+        {dataSources.length > 0 ? (
+          <p className="text-xs text-muted-foreground">
+            Data provenance:{" "}
+            {dataSources.map((s) => dataSourceLabel(s)).join(", ")}.
+          </p>
+        ) : null}
         <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 text-xs text-muted-foreground">
           <dt>Model</dt>
           <dd className="text-foreground">{pack.model_used}</dd>
@@ -236,6 +275,7 @@ function ToolCall({ call }: { call: ToolCallRecord }) {
 
 function CitationItem({ citation }: { citation: Citation }) {
   const { document, page_or_row, excerpt } = citation;
+  const source = citationDataSource(citation);
   return (
     <li className="rounded-lg border bg-background px-3 py-2">
       <p className="flex items-start gap-1.5 text-xs font-medium">
@@ -249,6 +289,12 @@ function CitationItem({ citation }: { citation: Citation }) {
             </span>
           ) : null}
         </span>
+        {source ? (
+          <Badge variant="outline" className="ml-auto shrink-0 font-normal">
+            <Database className="mr-1 size-3" />
+            {source}
+          </Badge>
+        ) : null}
       </p>
       {excerpt ? (
         <p className="mt-1 pl-5 text-xs text-muted-foreground italic">
