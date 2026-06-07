@@ -1,6 +1,5 @@
 """LangGraph tool wrappers for all registered LoanWhiz SF primitives."""
 
-import json
 from pathlib import Path
 
 from langchain_core.tools import tool
@@ -15,7 +14,6 @@ from loanwhiz.extraction.assembler import (
 from loanwhiz.primitives.collections_aggregator import CollectionsAggregator, CollectionsInput
 from loanwhiz.primitives.covenant_monitor import CovenantInput, CovenantMonitor
 from loanwhiz.primitives.esma_tape_normaliser import EsmaTapeInput, EsmaTapeNormaliser
-from loanwhiz.primitives.waterfall_runner import WaterfallInput, WaterfallRunner
 
 # Default deal the chat agent serves. The agent is single-deal today; the
 # grounding tools accept a ``deal_id`` for forward generality but fall back to
@@ -121,83 +119,62 @@ def load_esma_tape(file_url: str, reporting_date: str | None = None) -> dict:
 
 
 @tool
-def run_waterfall(
-    reporting_period: str,
-    available_revenue_funds: float,
-    available_principal_funds: float,
-    senior_fees: float,
-    class_a_balance: float,
-    class_a_rate_pct: float,
-    class_b_balance: float,
-    class_c_balance: float,
-    reserve_account_balance: float,
-    reserve_account_target: float,
-    class_a_pdl_balance: float = 0.0,
-    class_b_pdl_balance: float = 0.0,
-) -> dict:
-    """Execute the Green Lion RMBS payment waterfall for a single period.
+def run_waterfall(deal_id: str = DEFAULT_DEAL_ID, period: str | None = None) -> dict:
+    """Execute the deal's payment waterfall (priority of payments) and per-tranche distributions.
 
-    Returns computed distributions per tranche following the 11-step Revenue Priority.
-    Use for: computing what each tranche should receive given available funds.
+    Use for cashflow / distribution / waterfall questions. Pass only the
+    ``deal_id``; the tool reconstructs the latest reported period from the deal's
+    own ledger and runs the 11-step Revenue + Redemption priority of payments
+    itself (``period`` is accepted but the reconstructed waterfall uses the
+    latest reported period). Returns the per-step cascade and the per-tranche
+    interest / principal / closing balances. Do NOT pass funds or balances.
     """
-    primitive = WaterfallRunner()
-    result = primitive.execute(
-        WaterfallInput(
-            reporting_period=reporting_period,
-            available_revenue_funds=available_revenue_funds,
-            available_principal_funds=available_principal_funds,
-            senior_fees=senior_fees,
-            swap_payment=0.0,
-            class_a_balance=class_a_balance,
-            class_a_rate_pct=class_a_rate_pct,
-            class_b_balance=class_b_balance,
-            class_c_balance=class_c_balance,
-            reserve_account_balance=reserve_account_balance,
-            reserve_account_target=reserve_account_target,
-            class_a_pdl_balance=class_a_pdl_balance,
-            class_b_pdl_balance=class_b_pdl_balance,
-        )
-    )
-    return result.output.model_dump() | {
-        "confidence": result.confidence,
-        "citations": [c.model_dump() for c in result.citations],
-        "duration_ms": result.audit_entry.duration_ms,
-    }
+    # Call-time import to reuse the REST /waterfall recipe (the reconstructed
+    # ledger) without an import-time cycle.
+    from loanwhiz.api.main import deal_waterfall
+
+    resp = deal_waterfall(deal_id)
+    data = resp.model_dump() if hasattr(resp, "model_dump") else dict(resp)
+    # Deterministic reconstruction → full confidence; the underlying tape reads
+    # are already cited in the per-period analytics.
+    return data | {"confidence": 1.0, "citations": [], "duration_ms": 0}
 
 
 @tool
-def check_covenants(
-    periods_json: str,
-    class_a_pdl_balance: float = 0.0,
-    class_b_pdl_balance: float = 0.0,
-    reserve_account_balance: float = 0.0,
-    reserve_account_target: float = 0.0,
-    original_pool_balance: float = 1_063_600_000.0,
-) -> dict:
-    """Check RMBS covenant compliance against trigger thresholds.
+def check_covenants(deal_id: str = DEFAULT_DEAL_ID) -> dict:
+    """Check covenant compliance for a deal: trigger status, proximity to breach, and any active breaches.
 
-    periods_json: JSON list of EsmaTapeOutput dicts (from load_esma_tape).
-    Returns trigger status, proximity to breach, active triggers.
+    Use this for ANY question about covenants, triggers, breaches, PDL or
+    reserve-fund shortfalls, or compliance. Pass only the ``deal_id`` — the tool
+    loads the deal's tapes, reconstructs each reporting period's structural state,
+    and runs the covenant monitor against the deal's own extracted triggers
+    itself. Do NOT pass tape data.
 
     Over many periods (> 6) the output is bounded to keep context cheap:
     ``trigger_statuses`` then shows only the latest period, and a
     ``trend_summary`` carries per-trigger min/max/latest proximity and the net
-    trend across all periods. Answer trend questions from ``trend_summary``;
-    ``active_triggers``/``near_miss_triggers``/``summary`` always reflect the
-    latest period regardless of how many periods were analysed.
+    trend across all periods. ``active_triggers``/``near_miss_triggers``/
+    ``summary`` always reflect the latest period.
     """
-    primitive = CovenantMonitor()
-    result = primitive.execute(
-        CovenantInput(
-            periods=json.loads(periods_json),
-            triggers=CovenantMonitor.DEFAULT_TRIGGERS,
-            class_a_pdl_balance=class_a_pdl_balance,
-            class_b_pdl_balance=class_b_pdl_balance,
-            reserve_account_balance=reserve_account_balance,
-            reserve_account_target=reserve_account_target,
-            original_pool_balance=original_pool_balance,
-        )
+    # Call-time import: reuse the REST /compliance recipe (reconstructed states
+    # + the deal's extracted triggers) without an import-time cycle
+    # (api.main -> agent.executor -> agent.tools -> api.main).
+    from loanwhiz.api.main import (
+        _extracted_triggers_to_definitions,
+        _normalised_tape_output,
+        _reconstruct_series,
     )
+
+    deal = DEAL_REGISTRY.get(deal_id) or DEAL_REGISTRY[DEFAULT_DEAL_ID]
+    periods = [_normalised_tape_output(tape["url"]) for tape in deal["tape_urls"]]
+    triggers = _extracted_triggers_to_definitions(deal) or CovenantMonitor.DEFAULT_TRIGGERS
+    series = _reconstruct_series(deal)
+    covenant_input = CovenantInput.from_deal_states(
+        series.states,
+        periods=periods if periods else None,
+        triggers=triggers,
+    )
+    result = CovenantMonitor().execute(covenant_input)
     return _bound_covenant_output(result.output.model_dump()) | {
         "confidence": result.confidence,
         "citations": [c.model_dump() for c in result.citations],
@@ -206,26 +183,25 @@ def check_covenants(
 
 
 @tool
-def aggregate_collections(
-    tape_file_url: str,
-    reporting_period: str,
-    prev_pool_balance: float | None = None,
-    class_a_balance: float = 1_000_000_000.0,
-    class_a_rate_pct: float = 3.62,
-) -> dict:
-    """Aggregate ESMA loan tape into waterfall-ready collection amounts.
+def aggregate_collections(deal_id: str = DEFAULT_DEAL_ID, period: str | None = None) -> dict:
+    """Available revenue and principal funds for a reporting period.
 
-    Returns Available Revenue Funds and Available Principal Funds for the waterfall runner.
+    Use for collections / available-funds questions. Pass only the ``deal_id``
+    and an optional ``period`` substring (e.g. "2026-03"); the tool selects the
+    matching tape (latest by default) and aggregates it itself. Do NOT pass a
+    tape URL.
     """
-    primitive = CollectionsAggregator()
-    result = primitive.execute(
-        CollectionsInput(
-            tape_file_url=tape_file_url,
-            reporting_period=reporting_period,
-            prev_pool_balance=prev_pool_balance,
-            class_a_balance=class_a_balance,
-            class_a_rate_pct=class_a_rate_pct,
-        )
+    deal = DEAL_REGISTRY.get(deal_id) or DEAL_REGISTRY[DEFAULT_DEAL_ID]
+    tapes = deal.get("tape_urls") or []
+    if not tapes:
+        return {
+            "error": f"No loan tapes published for {deal_id}; collections cannot be aggregated.",
+            "confidence": 0.0,
+            "citations": [],
+        }
+    tape = next((t for t in tapes if period and period in t["date"]), tapes[-1])
+    result = CollectionsAggregator().execute(
+        CollectionsInput(tape_file_url=tape["url"], reporting_period=tape["date"])
     )
     return result.output.model_dump() | {
         "confidence": result.confidence,
