@@ -6,11 +6,13 @@ The SF_TOOLS list and list_available_tools() helper are also verified.
 
 from __future__ import annotations
 
-import json
+import types
+from contextlib import ExitStack
 from unittest.mock import patch
 
 from loanwhiz.agent import SF_TOOL_NODE, SF_TOOLS, list_available_tools
 from loanwhiz.agent.tools import (
+    DEFAULT_DEAL_ID,
     aggregate_collections,
     check_covenants,
     get_deal_model,
@@ -18,11 +20,11 @@ from loanwhiz.agent.tools import (
     load_esma_tape,
     run_waterfall,
 )
+from loanwhiz.config import DEAL_REGISTRY
 from loanwhiz.primitives.base import AuditEntry, Citation, PrimitiveResult
 from loanwhiz.primitives.collections_aggregator import CollectionsOutput
 from loanwhiz.primitives.covenant_monitor import CovenantOutput
 from loanwhiz.primitives.esma_tape_normaliser import EsmaTapeOutput
-from loanwhiz.primitives.waterfall_runner import WaterfallOutput
 
 
 # ---------------------------------------------------------------------------
@@ -114,117 +116,54 @@ def test_load_esma_tape_passes_reporting_date():
 # ---------------------------------------------------------------------------
 
 
-def _make_waterfall_output() -> WaterfallOutput:
-    from loanwhiz.primitives.waterfall_runner import TrancheDistribution, WaterfallStep
+# The deal_id-based ``run_waterfall`` delegates to the REST recipe
+# (``loanwhiz.api.main.deal_waterfall``) which reconstructs the latest period
+# from the deal's own ledger — it no longer takes funds/balances directly.
 
-    return WaterfallOutput(
-        reporting_period="April 2026",
-        revenue_waterfall=[
-            WaterfallStep(
-                priority="(a)",
-                recipient="senior_fees",
-                amount_available=10_000_000.0,
-                amount_distributed=50_000.0,
-                shortfall=0.0,
-            )
-        ],
-        redemption_waterfall=[
-            WaterfallStep(
-                priority="(b)",
-                recipient="class_a_principal",
-                amount_available=5_000_000.0,
-                amount_distributed=5_000_000.0,
-                shortfall=0.0,
-            )
-        ],
-        tranche_distributions=[
-            TrancheDistribution(
-                tranche="class_a",
-                interest_received=9_050_000.0,
-                principal_received=5_000_000.0,
-                total_received=14_050_000.0,
-                opening_balance=1_000_000_000.0,
-                closing_balance=995_000_000.0,
-            )
-        ],
-        total_distributed=14_100_000.0,
-        shortfall=0.0,
-    )
+_FAKE_WATERFALL_RESPONSE = {
+    "deal_id": "green-lion-2026-1",
+    "reporting_period": "2026-04-30",
+    "available_revenue_funds": 10_000_000.0,
+    "available_principal_funds": 5_000_000.0,
+    "revenue_waterfall": [
+        {"priority": "(d)", "recipient": "class_a_interest",
+         "amount_available": 10_000_000.0, "amount_distributed": 9_050_000.0,
+         "shortfall": 0.0},
+    ],
+    "tranche_distributions": [
+        {"tranche": "class_a", "interest_received": 9_050_000.0,
+         "principal_received": 5_000_000.0, "closing_balance": 995_000_000.0},
+    ],
+    "shortfall": 0.0,
+}
 
 
-def test_run_waterfall_calls_primitive_with_all_params():
-    fake_output = _make_waterfall_output()
-    fake_result = PrimitiveResult[WaterfallOutput](
-        output=fake_output,
-        confidence=1.0,
-        citations=[],
-        audit_entry=_FAKE_AUDIT,
-    )
-
+def test_run_waterfall_delegates_to_deal_recipe():
+    """The tool delegates to the deal's reconstructed-ledger waterfall recipe
+    and stamps full confidence on the deterministic result."""
     with patch(
-        "loanwhiz.agent.tools.WaterfallRunner.execute", return_value=fake_result
-    ) as mock_exec:
-        result = run_waterfall.invoke(
-            {
-                "reporting_period": "April 2026",
-                "available_revenue_funds": 10_000_000.0,
-                "available_principal_funds": 5_000_000.0,
-                "senior_fees": 50_000.0,
-                "class_a_balance": 1_000_000_000.0,
-                "class_a_rate_pct": 3.62,
-                "class_b_balance": 53_100_000.0,
-                "class_c_balance": 10_500_000.0,
-                "reserve_account_balance": 5_000_000.0,
-                "reserve_account_target": 5_000_000.0,
-            }
-        )
+        "loanwhiz.api.main.deal_waterfall",
+        return_value=dict(_FAKE_WATERFALL_RESPONSE),
+    ) as mock_recipe:
+        result = run_waterfall.invoke({"deal_id": "green-lion-2026-1"})
 
-    mock_exec.assert_called_once()
-    call_arg = mock_exec.call_args[0][0]
-    assert call_arg.reporting_period == "April 2026"
-    assert call_arg.available_revenue_funds == 10_000_000.0
-    assert call_arg.swap_payment == 0.0  # always zero in the tool
-    assert call_arg.class_a_pdl_balance == 0.0  # default
-    assert call_arg.class_b_pdl_balance == 0.0  # default
-
+    mock_recipe.assert_called_once_with("green-lion-2026-1")
     assert isinstance(result, dict)
-    assert result["confidence"] == 1.0
-    assert result["reporting_period"] == "April 2026"
+    assert result["confidence"] == 1.0  # deterministic reconstruction
+    assert result["reporting_period"] == "2026-04-30"
     assert result["shortfall"] == 0.0
+    assert result["tranche_distributions"][0]["tranche"] == "class_a"
 
 
-def test_run_waterfall_passes_pdl_balances():
-    fake_output = _make_waterfall_output()
-    fake_result = PrimitiveResult[WaterfallOutput](
-        output=fake_output,
-        confidence=1.0,
-        citations=[],
-        audit_entry=_FAKE_AUDIT,
-    )
-
+def test_run_waterfall_defaults_to_demo_deal():
+    """With no deal_id the tool serves the default demo deal."""
     with patch(
-        "loanwhiz.agent.tools.WaterfallRunner.execute", return_value=fake_result
-    ) as mock_exec:
-        run_waterfall.invoke(
-            {
-                "reporting_period": "April 2026",
-                "available_revenue_funds": 10_000_000.0,
-                "available_principal_funds": 5_000_000.0,
-                "senior_fees": 50_000.0,
-                "class_a_balance": 1_000_000_000.0,
-                "class_a_rate_pct": 3.62,
-                "class_b_balance": 53_100_000.0,
-                "class_c_balance": 10_500_000.0,
-                "reserve_account_balance": 5_000_000.0,
-                "reserve_account_target": 5_000_000.0,
-                "class_a_pdl_balance": 100_000.0,
-                "class_b_pdl_balance": 50_000.0,
-            }
-        )
+        "loanwhiz.api.main.deal_waterfall",
+        return_value=dict(_FAKE_WATERFALL_RESPONSE),
+    ) as mock_recipe:
+        run_waterfall.invoke({})
 
-    call_arg = mock_exec.call_args[0][0]
-    assert call_arg.class_a_pdl_balance == 100_000.0
-    assert call_arg.class_b_pdl_balance == 50_000.0
+    mock_recipe.assert_called_once_with(DEFAULT_DEAL_ID)
 
 
 # ---------------------------------------------------------------------------
@@ -253,33 +192,59 @@ def _make_covenant_output() -> CovenantOutput:
     )
 
 
-def test_check_covenants_deserializes_periods_json():
-    fake_output = _make_covenant_output()
-    fake_result = PrimitiveResult[CovenantOutput](
-        output=fake_output,
-        confidence=1.0,
-        citations=[],
-        audit_entry=_FAKE_AUDIT,
-    )
+def _patch_covenant_deps(stack: ExitStack, fake_result):
+    """Patch the call-time REST-recipe deps of ``check_covenants`` so the tool
+    runs fully offline. Returns the mocked ``CovenantMonitor.execute``.
 
-    periods = [{"reporting_date": "2026-04-30", "pool_balance_eur": 1_000_000_000.0,
-                "arrears_breakdown": {"default_pct": 0.5}}]
-    periods_json = json.dumps(periods)
+    The deal_id-based tool reconstructs each period's state from the deal's own
+    tapes; here we stub tape normalisation + reconstruction and force the
+    monitor output, so the test exercises the tool's wiring + bounding only.
+    """
+    stack.enter_context(patch(
+        "loanwhiz.api.main._normalised_tape_output",
+        return_value={"reporting_date": "2026-04-30"},
+    ))
+    stack.enter_context(patch(
+        "loanwhiz.api.main._reconstruct_series",
+        return_value=types.SimpleNamespace(states=[]),
+    ))
+    stack.enter_context(patch(
+        "loanwhiz.api.main._extracted_triggers_to_definitions",
+        return_value=[],
+    ))
+    return stack.enter_context(patch(
+        "loanwhiz.agent.tools.CovenantMonitor.execute",
+        return_value=fake_result,
+    ))
 
-    with patch(
-        "loanwhiz.agent.tools.CovenantMonitor.execute", return_value=fake_result
-    ) as mock_exec:
-        result = check_covenants.invoke({"periods_json": periods_json})
+
+def test_check_covenants_runs_for_deal():
+    """The deal_id-based tool runs the monitor for the deal and passes the
+    bounded output + confidence through."""
+    fake_result = _covenant_result(_make_covenant_output())
+
+    with ExitStack() as stack:
+        mock_exec = _patch_covenant_deps(stack, fake_result)
+        result = check_covenants.invoke({"deal_id": "green-lion-2026-1"})
 
     mock_exec.assert_called_once()
-    call_arg = mock_exec.call_args[0][0]
-    assert call_arg.periods == periods
-    assert call_arg.class_a_pdl_balance == 0.0
-    assert call_arg.original_pool_balance == 1_063_600_000.0  # default
-
     assert isinstance(result, dict)
     assert result["confidence"] == 1.0
     assert result["active_triggers"] == []
+
+
+def test_check_covenants_unknown_deal_errors():
+    """An unknown deal_id returns an explicit error and never runs the monitor
+    — NO silent fall-back to the default deal (answering about the wrong deal
+    is worse than a clean miss)."""
+    with ExitStack() as stack:
+        mock_exec = _patch_covenant_deps(stack, _covenant_result(_make_covenant_output()))
+        result = check_covenants.invoke({"deal_id": "no-such-deal"})
+
+    mock_exec.assert_not_called()
+    assert "not found" in result["error"]
+    assert result["confidence"] == 0.0
+    assert "green-lion-2026-1" in result["available_deals"]
 
 
 def _make_multi_period_covenant_output(n_periods: int) -> CovenantOutput:
@@ -346,11 +311,9 @@ def test_check_covenants_bounds_many_periods():
     fake_output = _make_multi_period_covenant_output(48)
     assert len(fake_output.trigger_statuses) == 96  # sanity: primitive is verbose
 
-    with patch(
-        "loanwhiz.agent.tools.CovenantMonitor.execute",
-        return_value=_covenant_result(fake_output),
-    ):
-        result = check_covenants.invoke({"periods_json": "[]"})
+    with ExitStack() as stack:
+        _patch_covenant_deps(stack, _covenant_result(fake_output))
+        result = check_covenants.invoke({"deal_id": "green-lion-2026-1"})
 
     # Only the latest period's rows survive in trigger_statuses (2 triggers).
     assert len(result["trigger_statuses"]) == 2
@@ -386,11 +349,9 @@ def test_check_covenants_preserves_small_period_payload():
     fake_output = _make_multi_period_covenant_output(3)
     raw_row_count = len(fake_output.trigger_statuses)  # 3 periods × 2 triggers = 6
 
-    with patch(
-        "loanwhiz.agent.tools.CovenantMonitor.execute",
-        return_value=_covenant_result(fake_output),
-    ):
-        result = check_covenants.invoke({"periods_json": "[]"})
+    with ExitStack() as stack:
+        _patch_covenant_deps(stack, _covenant_result(fake_output))
+        result = check_covenants.invoke({"deal_id": "green-lion-2026-1"})
 
     # All rows preserved; no summarisation artefacts added.
     assert len(result["trigger_statuses"]) == raw_row_count
@@ -399,35 +360,16 @@ def test_check_covenants_preserves_small_period_payload():
     assert result["confidence"] == 1.0
 
 
-def test_check_covenants_passes_scalar_overrides():
-    fake_output = _make_covenant_output()
-    fake_result = PrimitiveResult[CovenantOutput](
-        output=fake_output,
-        confidence=1.0,
-        citations=[],
-        audit_entry=_FAKE_AUDIT,
-    )
+def test_check_covenants_defaults_to_demo_deal():
+    """With no deal_id the covenant tool serves the default demo deal."""
+    fake_result = _covenant_result(_make_covenant_output())
 
-    with patch(
-        "loanwhiz.agent.tools.CovenantMonitor.execute", return_value=fake_result
-    ) as mock_exec:
-        check_covenants.invoke(
-            {
-                "periods_json": "[]",
-                "class_a_pdl_balance": 100_000.0,
-                "class_b_pdl_balance": 50_000.0,
-                "reserve_account_balance": 5_000_000.0,
-                "reserve_account_target": 5_500_000.0,
-                "original_pool_balance": 1_100_000_000.0,
-            }
-        )
+    with ExitStack() as stack:
+        mock_exec = _patch_covenant_deps(stack, fake_result)
+        result = check_covenants.invoke({})
 
-    call_arg = mock_exec.call_args[0][0]
-    assert call_arg.class_a_pdl_balance == 100_000.0
-    assert call_arg.class_b_pdl_balance == 50_000.0
-    assert call_arg.reserve_account_balance == 5_000_000.0
-    assert call_arg.reserve_account_target == 5_500_000.0
-    assert call_arg.original_pool_balance == 1_100_000_000.0
+    mock_exec.assert_called_once()
+    assert result["confidence"] == 1.0
 
 
 # ---------------------------------------------------------------------------
@@ -453,32 +395,31 @@ def _make_collections_output() -> CollectionsOutput:
     )
 
 
-def test_aggregate_collections_calls_primitive():
-    fake_output = _make_collections_output()
-    fake_result = PrimitiveResult[CollectionsOutput](
-        output=fake_output,
+def _collections_result() -> PrimitiveResult[CollectionsOutput]:
+    return PrimitiveResult[CollectionsOutput](
+        output=_make_collections_output(),
         confidence=0.8,
         citations=[],
         audit_entry=_FAKE_AUDIT,
     )
 
+
+def test_aggregate_collections_runs_for_deal():
+    """Default (no period) selects the deal's latest registered tape and
+    aggregates it — the tool picks the tape itself from the registry."""
+    tapes = DEAL_REGISTRY["green-lion-2026-1"]["tape_urls"]
+    latest = tapes[-1]
+
     with patch(
-        "loanwhiz.agent.tools.CollectionsAggregator.execute", return_value=fake_result
+        "loanwhiz.agent.tools.CollectionsAggregator.execute",
+        return_value=_collections_result(),
     ) as mock_exec:
-        result = aggregate_collections.invoke(
-            {
-                "tape_file_url": "https://example.com/tape.csv",
-                "reporting_period": "April 2026",
-            }
-        )
+        result = aggregate_collections.invoke({"deal_id": "green-lion-2026-1"})
 
     mock_exec.assert_called_once()
     call_arg = mock_exec.call_args[0][0]
-    assert call_arg.tape_file_url == "https://example.com/tape.csv"
-    assert call_arg.reporting_period == "April 2026"
-    assert call_arg.prev_pool_balance is None  # default
-    assert call_arg.class_a_balance == 1_000_000_000.0  # default
-    assert call_arg.class_a_rate_pct == 3.62  # default
+    assert call_arg.tape_file_url == latest["url"]
+    assert call_arg.reporting_period == latest["date"]
 
     assert isinstance(result, dict)
     assert result["confidence"] == 0.8
@@ -486,32 +427,52 @@ def test_aggregate_collections_calls_primitive():
     assert result["available_principal_funds"] == 5_000_000.0
 
 
-def test_aggregate_collections_passes_prev_pool_balance():
-    fake_output = _make_collections_output()
-    fake_result = PrimitiveResult[CollectionsOutput](
-        output=fake_output,
-        confidence=0.8,
-        citations=[],
-        audit_entry=_FAKE_AUDIT,
-    )
+def test_aggregate_collections_selects_tape_by_period():
+    """A ``period`` substring selects the matching tape, not the latest."""
+    tapes = DEAL_REGISTRY["green-lion-2026-1"]["tape_urls"]
+    march = next(t for t in tapes if "2026-03" in t["date"])
 
     with patch(
-        "loanwhiz.agent.tools.CollectionsAggregator.execute", return_value=fake_result
+        "loanwhiz.agent.tools.CollectionsAggregator.execute",
+        return_value=_collections_result(),
     ) as mock_exec:
         aggregate_collections.invoke(
-            {
-                "tape_file_url": "https://example.com/tape.csv",
-                "reporting_period": "April 2026",
-                "prev_pool_balance": 1_005_000_000.0,
-                "class_a_balance": 990_000_000.0,
-                "class_a_rate_pct": 3.75,
-            }
+            {"deal_id": "green-lion-2026-1", "period": "2026-03"}
         )
 
     call_arg = mock_exec.call_args[0][0]
-    assert call_arg.prev_pool_balance == 1_005_000_000.0
-    assert call_arg.class_a_balance == 990_000_000.0
-    assert call_arg.class_a_rate_pct == 3.75
+    assert call_arg.tape_file_url == march["url"]
+    assert call_arg.reporting_period == march["date"]
+
+
+def test_aggregate_collections_unknown_deal_errors():
+    """Unknown deal_id → explicit error, primitive never runs (no silent
+    fall-back to the default deal)."""
+    with patch(
+        "loanwhiz.agent.tools.CollectionsAggregator.execute"
+    ) as mock_exec:
+        result = aggregate_collections.invoke({"deal_id": "no-such-deal"})
+
+    mock_exec.assert_not_called()
+    assert "not found" in result["error"]
+    assert result["confidence"] == 0.0
+
+
+def test_aggregate_collections_no_tapes_errors():
+    """A registered deal that ships no loan tapes → explicit, honest error."""
+    no_tape_deal = next(
+        (d for d, ctx in DEAL_REGISTRY.items() if not ctx.get("tape_urls")), None
+    )
+    assert no_tape_deal is not None, "expected a tape-less registered deal"
+
+    with patch(
+        "loanwhiz.agent.tools.CollectionsAggregator.execute"
+    ) as mock_exec:
+        result = aggregate_collections.invoke({"deal_id": no_tape_deal})
+
+    mock_exec.assert_not_called()
+    assert "No loan tapes" in result["error"]
+    assert result["confidence"] == 0.0
 
 
 # ---------------------------------------------------------------------------

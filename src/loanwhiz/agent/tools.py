@@ -165,7 +165,16 @@ def check_covenants(deal_id: str = DEFAULT_DEAL_ID) -> dict:
         _reconstruct_series,
     )
 
-    deal = DEAL_REGISTRY.get(deal_id) or DEAL_REGISTRY[DEFAULT_DEAL_ID]
+    deal = DEAL_REGISTRY.get(deal_id)
+    if deal is None:
+        # Do NOT silently fall back to the default deal — answering covenant
+        # questions about the wrong deal is worse than an explicit miss.
+        return {
+            "error": f"deal {deal_id!r} not found",
+            "available_deals": list(DEAL_REGISTRY),
+            "confidence": 0.0,
+            "citations": [],
+        }
     periods = [_normalised_tape_output(tape["url"]) for tape in deal["tape_urls"]]
     triggers = _extracted_triggers_to_definitions(deal) or CovenantMonitor.DEFAULT_TRIGGERS
     series = _reconstruct_series(deal)
@@ -191,7 +200,15 @@ def aggregate_collections(deal_id: str = DEFAULT_DEAL_ID, period: str | None = N
     matching tape (latest by default) and aggregates it itself. Do NOT pass a
     tape URL.
     """
-    deal = DEAL_REGISTRY.get(deal_id) or DEAL_REGISTRY[DEFAULT_DEAL_ID]
+    deal = DEAL_REGISTRY.get(deal_id)
+    if deal is None:
+        # Do NOT silently fall back to the default deal (see check_covenants).
+        return {
+            "error": f"deal {deal_id!r} not found",
+            "available_deals": list(DEAL_REGISTRY),
+            "confidence": 0.0,
+            "citations": [],
+        }
     tapes = deal.get("tape_urls") or []
     if not tapes:
         return {

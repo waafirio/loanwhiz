@@ -105,10 +105,13 @@ class ExecutionResult(BaseModel):
         answer:                The planner's final answer.
         overall_status:        Aggregate :class:`ValidationStatus` for the run.
         step_validations:      Per-step validation records, in call order.
-        aggregate_confidence:  ``min`` of all step confidences (``1.0`` when no
-                               tool calls were made).
+        aggregate_confidence:  ``min`` of all step confidences. ``0.0`` when no
+                               tool calls were made — an answer with no
+                               primitive evidence behind it is *ungrounded*,
+                               not maximally confident.
         human_review_required: ``True`` when
-                               ``aggregate_confidence < confidence_threshold``.
+                               ``aggregate_confidence < confidence_threshold``
+                               (always ``True`` for an ungrounded answer).
         evidence_pack_id:      ``pack_id`` of the governance evidence pack that
                                backs this result (links to the full audit log).
         reasoning_trace:       Human-readable, step-by-step trace of the run.
@@ -212,6 +215,7 @@ class DAGExecutor:
         step_validations: list[StepValidation],
         overall_status: ValidationStatus,
         human_review_required: bool,
+        aggregate_confidence: float,
     ) -> list[str]:
         """Build a human-readable, step-by-step reasoning trace."""
         marks = {
@@ -243,18 +247,26 @@ class DAGExecutor:
             trace.append(line)
 
         n = len(pack.tool_calls)
+        if n == 0:
+            trace.append(
+                "Answer synthesised from 0 tool calls — UNGROUNDED "
+                "(no primitive evidence backs this answer)"
+            )
+        else:
+            trace.append(
+                f"Answer synthesised from {n} tool call{'' if n == 1 else 's'}"
+            )
         trace.append(
-            f"Answer synthesised from {n} tool call{'' if n == 1 else 's'}"
-        )
-        trace.append(
-            f"Aggregate confidence {pack.aggregate_confidence:.2f} "
-            f"(min of step confidences) vs threshold {self.confidence_threshold} "
+            f"Aggregate confidence {aggregate_confidence:.2f} "
+            f"({'min of step confidences' if n else 'ungrounded → pinned to 0.00'}) "
+            f"vs threshold {self.confidence_threshold} "
             f"→ overall status: {overall_status.value}"
         )
         if human_review_required:
             trace.append(
                 "Routed to human review queue "
-                "(aggregate confidence below threshold)"
+                + ("(ungrounded — no supporting tool calls)" if n == 0
+                   else "(aggregate confidence below threshold)")
             )
         else:
             trace.append("No human review required")
@@ -299,20 +311,33 @@ class DAGExecutor:
             )
 
         # 3. Aggregate confidence = min of all step confidences (most
-        #    conservative); 1.0 when no tool calls were made. This mirrors
-        #    GovernanceEvidencePack.create, so the two never disagree.
-        if step_validations:
+        #    conservative). An answer produced from ZERO tool calls is
+        #    *ungrounded* — no primitive evidence backs it — so it must NOT
+        #    score 1.0/passed. Otherwise an LLM-only refusal or claim (e.g. the
+        #    synthesise-fallback firing on a malformed tool turn) sails through
+        #    the gate at max confidence. Ungrounded answers are pinned to 0.0.
+        grounded = bool(step_validations)
+        if grounded:
             aggregate_confidence = min(sv.confidence for sv in step_validations)
         else:
-            aggregate_confidence = 1.0
+            aggregate_confidence = 0.0
 
-        # 4. Determine overall status and human-review routing.
-        overall_status = self._overall_status(step_validations)
+        # 4. Determine overall status and human-review routing. An ungrounded
+        #    answer is forced to NEEDS_REVIEW regardless of the (empty) step set.
+        overall_status = (
+            self._overall_status(step_validations)
+            if grounded
+            else ValidationStatus.NEEDS_REVIEW
+        )
         human_review_required = aggregate_confidence < self.confidence_threshold
 
         # 5. Build the human-readable reasoning trace.
         reasoning_trace = self._build_trace(
-            pack, step_validations, overall_status, human_review_required
+            pack,
+            step_validations,
+            overall_status,
+            human_review_required,
+            aggregate_confidence,
         )
 
         return ExecutionResult(
