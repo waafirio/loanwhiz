@@ -6,7 +6,7 @@ import json
 from datetime import datetime, timezone
 from typing import Any, TypedDict
 
-from langchain_core.messages import ToolMessage
+from langchain_core.messages import HumanMessage, SystemMessage, ToolMessage
 from langchain_google_vertexai import ChatVertexAI
 from langgraph.graph.state import CompiledStateGraph
 from langgraph.prebuilt import create_react_agent
@@ -39,16 +39,26 @@ You have access to the following tools:
   never guess or assume URLs.
 - load_esma_tape: Load and analyse an ESMA loan-level tape (pass a URL from
   list_deal_tapes).
-- run_waterfall: Execute the payment waterfall for a period.
-- check_covenants: Check covenant compliance against trigger thresholds.
-- aggregate_collections: Aggregate tape data into waterfall-ready inputs.
+- check_covenants: Covenant compliance, triggers, and breaches for a deal.
+  Self-contained — pass only the deal_id and it loads the tapes, reconstructs
+  each period's structural state, and runs the monitor itself.
+- run_waterfall: The deal's payment waterfall (priority of payments) and
+  per-tranche distributions. Pass the deal_id (and an optional period); it loads
+  the data itself.
+- aggregate_collections: Available revenue / principal funds for a period. Pass
+  the deal_id (and an optional period); it loads the tape itself.
 
-Answer the user's question precisely using the available tools. Always:
-1. For deal-structure questions, call get_deal_model. For pool/period data, use
-   list_deal_tapes to resolve the right tape URL, then load_esma_tape.
-2. Call the relevant tools to get current data — do not rely on memorised URLs.
-3. Cite specific numbers and periods.
-4. Explain what the numbers mean in plain English."""
+Route the user's question to the right tool by intent:
+- Deal structure / terms (reserve target, coupons, what triggers a breach) → get_deal_model.
+- Covenants / triggers / breaches / compliance → check_covenants(deal_id).
+- Pool / collateral / arrears / performance for a period → list_deal_tapes, then load_esma_tape.
+- Cashflow / distributions / the waterfall → run_waterfall(deal_id).
+- Collections / available funds → aggregate_collections(deal_id).
+
+The analytical tools (check_covenants, run_waterfall, aggregate_collections) are
+self-contained: give them the deal_id and they fetch what they need — do NOT
+load_esma_tape first for those. Always call tools for live data (never memorise
+URLs), cite specific numbers and periods, and explain them in plain English."""
 
 
 # ---------------------------------------------------------------------------
@@ -177,6 +187,42 @@ def _summarise_tool_output(payload: dict[str, Any]) -> str:
     return str(visible)[:200]
 
 
+def _synthesise_final_answer(question: str, messages: list[Any]) -> str:
+    """Force a text answer when the agent ends with an empty final message.
+
+    Gemini occasionally closes a tool-using turn with an empty ``AIMessage``
+    (``finish_reason == "MALFORMED_FUNCTION_CALL"``): it tried to emit one more
+    (malformed) tool call instead of prose, so the ReAct loop stops with no
+    answer. Re-prompt a plain, tool-free LLM over the tool results so the caller
+    always gets a real reply instead of an empty string.
+    """
+    tool_outputs = [
+        _content_to_text(m.content)
+        for m in messages
+        if isinstance(m, ToolMessage)
+    ]
+    llm = ChatVertexAI(
+        model=MODEL_FLASH,
+        project=GCP_PROJECT,
+        location=GCP_LOCATION,
+        temperature=0,
+    )
+    resp = llm.invoke(
+        [
+            SystemMessage(
+                content=(
+                    "You are a structured-finance analyst. Using only the tool "
+                    "results provided, answer the user's question in clear, "
+                    "concise prose. Do not call any tools."
+                )
+            ),
+            HumanMessage(content=question),
+            HumanMessage(content="Tool results:\n\n" + "\n\n".join(tool_outputs)),
+        ]
+    )
+    return _content_to_text(resp.content)
+
+
 def run_query(question: str, save_evidence: bool = True) -> AgentResponse:
     """Run a structured finance question through the planner agent.
 
@@ -208,6 +254,13 @@ def run_query(question: str, save_evidence: bool = True) -> AgentResponse:
     # string, so normalise to text before it reaches the (str-typed) evidence
     # pack.
     answer: str = _content_to_text(result["messages"][-1].content)
+
+    # Gemini can end a tool-using turn with an empty final message
+    # (finish_reason MALFORMED_FUNCTION_CALL) — it attempts one more malformed
+    # tool call instead of prose, leaving no answer. Synthesise one from the
+    # tool results so the reply is never empty.
+    if not answer.strip():
+        answer = _synthesise_final_answer(question, result["messages"])
 
     # Index the tool *results* by their tool_call_id. Each tool request lives
     # on an AIMessage's .tool_calls; its result lands in a later ToolMessage
