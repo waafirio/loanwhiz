@@ -7,7 +7,7 @@ Covers:
 - aggregate_confidence == min of step confidences.
 - A mid-band (LOW_CONFIDENCE) tool call → overall LOW_CONFIDENCE, review required,
   retry hook noted in the trace.
-- Empty tool-call pack → aggregate 1.0, PASSED, no review.
+- Empty tool-call pack → UNGROUNDED: aggregate 0.0, NEEDS_REVIEW, human review.
 - reasoning_trace is populated.
 - execute_query convenience function.
 - __init__ re-exports.
@@ -162,12 +162,14 @@ def test_mid_band_step_is_low_confidence_with_retry_hook_noted() -> None:
 
 
 # ---------------------------------------------------------------------------
-# Test 5 — empty tool-call pack → aggregate 1.0, PASSED, no review
+# Test 5 — empty tool-call pack → UNGROUNDED: aggregate 0.0, NEEDS_REVIEW, human review
 # ---------------------------------------------------------------------------
 
 
-def test_no_tool_calls_passes_with_full_confidence() -> None:
-    """When the planner used no tools, aggregate is 1.0 and status PASSED."""
+def test_no_tool_calls_is_ungrounded_and_routed_to_review() -> None:
+    """An answer with no supporting tool calls is ungrounded: it must NOT
+    score full confidence. Pinned to 0.0, NEEDS_REVIEW, human review required —
+    otherwise an LLM-only refusal/claim sails through the gate as 'passed'."""
     answer = "I answered without tools."
     pack = _pack("Trivial?", answer, [])
     ctx, _ = _patched_run_query(pack, answer)
@@ -175,9 +177,11 @@ def test_no_tool_calls_passes_with_full_confidence() -> None:
         result = DAGExecutor().execute("Trivial?")
 
     assert result.step_validations == []
-    assert result.aggregate_confidence == pytest.approx(1.0)
-    assert result.overall_status == ValidationStatus.PASSED
-    assert result.human_review_required is False
+    assert result.aggregate_confidence == pytest.approx(0.0)
+    assert result.overall_status == ValidationStatus.NEEDS_REVIEW
+    assert result.human_review_required is True
+    # The trace names the ungrounded condition explicitly.
+    assert any("UNGROUNDED" in line for line in result.reasoning_trace)
 
 
 # ---------------------------------------------------------------------------
