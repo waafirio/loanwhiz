@@ -14,12 +14,25 @@
       "type": "cards",
       "kicker": "Our approach",
       "title": "Don't chat about the deal — compile it",
-      "intro": "Three concerns a chatbot collapses into one. Read once, execute deterministically, orchestrate with an agent.",
+      "intro": "The deterministic-primitives + dynamic-orchestration hybrid the brief calls for: read once, execute deterministically, orchestrate with an agent — and keep the LLM out of the maths. We have the agent; we just don't let it do arithmetic.",
       "cards": [
         { "title": "1 · Extract", "accent": "primary", "bullets": [{ "lead": "Prospectus → model. ", "text": "Docling + section-routed Gemini 2.5 Pro produce structured JSON." }, { "lead": "Cited. ", "text": "Every fact carries a verbatim source excerpt." }] },
         { "title": "2 · Execute", "accent": "accent", "bullets": [{ "lead": "SF-native primitives. ", "text": "Waterfall, covenant monitor, projector — typed and deterministic." }, { "lead": "No LLM in the maths. ", "text": "Numbers are computed, not generated." }] },
         { "title": "3 · Orchestrate", "accent": "navy", "bullets": [{ "lead": "LangGraph agent. ", "text": "Plans which primitives to call, then explains." }, { "lead": "Governed. ", "text": "Every call carries an audit entry + confidence." }] }
       ]
+    },
+    {
+      "type": "cards",
+      "kicker": "The dynamic orchestration layer",
+      "title": "The meta-agent loop the brief describes",
+      "intro": "Plan → compose → execute → validate → human-review → answer. The LangGraph agent decides which primitives to call; the primitives do the maths deterministically; governance gates the result.",
+      "cards": [
+        { "title": "1 · Plan & decompose", "accent": "primary", "body": "The planner breaks the question into primitive subtasks and orders them as a DAG — which tape, which deal model, which waterfall." },
+        { "title": "2 · Execute primitives", "accent": "accent", "body": "Typed SF primitives run the computation. Numbers are computed, not generated — the agent orchestrates, it never does arithmetic." },
+        { "title": "3 · Validate & gate", "accent": "navy", "body": "Each output is validated and confidence-scored; below threshold is flagged retry-eligible and routed to human review before it can be used." },
+        { "title": "4 · Govern & answer", "accent": "primary", "body": "Min-confidence aggregated, citations deduplicated, an audit entry written — then a grounded answer with its evidence pack is returned." }
+      ],
+      "footnote": "Human-review routing is live; the validator-driven auto-retry is a documented hook, not yet a live re-invocation loop."
     },
     {
       "type": "metrics",
@@ -59,9 +72,9 @@
       "title": "Reusable infrastructure, not a one-off",
       "columns": 3,
       "cards": [
-        { "title": "MCP server", "accent": "primary", "body": "The 8 SF primitives exposed as a governed MCP server — typed I/O + the evidence pack — consumable on any MCP host." },
+        { "title": "MCP server", "accent": "primary", "body": "All 9 SF primitives — including the prospectus parser itself — exposed as a governed MCP server with typed I/O + the evidence pack, consumable on any MCP host." },
         { "title": "Deal = data, not code", "accent": "accent", "body": "Add a deal by dropping JSON into deals.json; no Python. The interpreter executes the deal's extracted model, not hardcoded logic." },
-        { "title": "Open & portable", "accent": "navy", "body": "Apache-2.0; CSV or parquet tapes; deeploans (Algoritmica's ESMA ETL) on the ingestion path with a direct fallback." }
+        { "title": "Open & portable", "accent": "navy", "body": "Apache-2.0; CSV or parquet tapes; either deeploans (Algoritmica's ESMA ETL) or a direct read — selectable per deal. This demo runs direct; the deeploans path is wired but its backend isn't stood up here." }
       ]
     },
     {
@@ -73,8 +86,8 @@
         { "title": "Audit trail", "body": "Append-only entry per call: hashes, model version, timestamp, duration." },
         { "title": "Confidence scoring", "body": "Mandatory on every primitive — coverage · cross-ref · self-assessment." },
         { "title": "Verbatim citations", "body": "Every fact grounded to a section + excerpt a reviewer can locate." },
-        { "title": "Data provenance", "body": "Each tape tagged deeploans vs direct, carried into the evidence pack." },
-        { "title": "Human-review routing", "body": "Confidence < 0.70 → flagged; output can't be used until signed off." },
+        { "title": "Data provenance", "body": "Every tape is tagged with its source — deeploans (the organiser's own ESMA ETL) or a direct read — and the tag travels into the evidence pack. This demo runs direct for infra reasons; the deeploans path is wired and selectable." },
+        { "title": "Human-review routing", "body": "Below the confidence threshold → human_review_required; output can't be used until a reviewer signs off." },
         { "title": "Model-risk class", "body": "Decision-support tier, zero autonomy — outputs are inputs, never actions." }
       ]
     },
@@ -92,7 +105,7 @@
       "type": "section",
       "kicker": "Why it answers the challenge",
       "title": "Reusable, trustworthy, broadly applicable",
-      "body": "SF-native primitives + a registry, packaged as an MCP — not a one-off script. Validated to the cent against a real ING deal, demonstrated across Dutch, Italian and Spanish RMBS, with citations, governance and data-provenance on every output. And honest about its limits — the capability matrix shows exactly what's proven."
+      "body": "SF-native primitives + a registry, packaged as an MCP — not a one-off script. Validated to the cent against a real ING deal, demonstrated across Dutch, Italian and Spanish RMBS, with citations, governance and data-provenance on every output. Built on the organiser's own tools — deeploans wired as a selectable ingestion source (we run direct for this demo's infra), FINOS for governance — as real integration points, not name-drops. And honest about its limits — the capability matrix shows exactly what's proven."
     }
   ]
 }

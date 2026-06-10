@@ -1,0 +1,181 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Library map — c5a24c00621b</title>
+<style>
+:root {
+    --bg: #0b0d12;
+    --panel: #131722;
+    --panel-2: #181d2a;
+    --border: #232a3a;
+    --text: #e6e9ef;
+    --muted: #8892a6;
+    --muted-2: #5e6779;
+    --verified: #2bd4b8;
+    --verified-bg: rgba(43, 212, 184, 0.10);
+    --partial: #5ec5e8;
+    --partial-bg: rgba(94, 197, 232, 0.10);
+    --inferred: #ffb84d;
+    --inferred-bg: rgba(255, 184, 77, 0.10);
+    --drift: #f29248;
+    --drift-bg: rgba(242, 146, 72, 0.10);
+    --evidence-route: #8b9bcc;
+    --evidence-route-bg: rgba(139, 155, 204, 0.08);
+    --evidence-selector: #9d8bcc;
+    --evidence-selector-bg: rgba(157, 139, 204, 0.08);
+    --narration: #6f7891;
+    --narration-bg: rgba(111, 120, 145, 0.08);
+}
+* { box-sizing: border-box; }
+html, body {
+    margin: 0; padding: 0;
+    background: var(--bg); color: var(--text);
+    font: 14px/1.55 -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+}
+.page { max-width: 1120px; margin: 40px auto 80px; padding: 0 24px; }
+header.doc { padding-bottom: 24px; border-bottom: 1px solid var(--border); margin-bottom: 28px; }
+header.doc h1 { font-size: 24px; margin: 0 0 6px; font-weight: 600; letter-spacing: -0.01em; }
+header.doc .meta { color: var(--muted); }
+.summary { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
+.pill {
+    font-size: 11.5px; padding: 4px 10px; border-radius: 999px;
+    background: var(--panel-2); color: var(--muted);
+    border: 1px solid var(--border);
+}
+.pill b { color: var(--text); margin-right: 4px; }
+.pill.fam-verified { background: var(--verified-bg); color: var(--verified); border-color: rgba(43,212,184,0.25); }
+.pill.fam-partial  { background: var(--partial-bg);  color: var(--partial);  border-color: rgba(94,197,232,0.25); }
+.pill.fam-inferred { background: var(--inferred-bg); color: var(--inferred); border-color: rgba(255,184,77,0.3); }
+
+.controls { display: flex; gap: 12px; margin: 18px 0 20px; flex-wrap: wrap; align-items: center; }
+.controls label { font-size: 12.5px; color: var(--muted); display: flex; gap: 6px; align-items: center; }
+.controls select, .controls input {
+    background: var(--panel); color: var(--text); border: 1px solid var(--border);
+    border-radius: 6px; padding: 5px 10px; font: inherit;
+}
+
+.cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(420px, 1fr)); gap: 18px; }
+.recipe-card {
+    background: var(--panel); border: 1px solid var(--border); border-radius: 12px;
+    padding: 16px 18px; display: flex; flex-direction: column; gap: 10px;
+}
+.recipe-card.status-verified { border-color: rgba(43, 212, 184, 0.35); }
+.recipe-card.status-partial  { border-color: rgba(94, 197, 232, 0.35); }
+.recipe-card.status-inferred { border-color: rgba(255, 184, 77, 0.4); border-style: dashed; }
+.recipe-card.status-mixed    { border-color: rgba(94, 197, 232, 0.5); }
+
+.card-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
+.card-title { display: flex; flex-direction: column; gap: 4px; min-width: 0; flex: 1; }
+.card-label { font-weight: 600; font-size: 15px; overflow-wrap: anywhere; }
+.kind-pill {
+    align-self: flex-start;
+    font-size: 10.5px; padding: 2px 8px; border-radius: 999px;
+    text-transform: uppercase; letter-spacing: 0.05em; font-weight: 600;
+    background: var(--panel-2); color: var(--muted);
+}
+.kind-pill-atom { color: var(--muted-2); }
+.status-badge {
+    font-size: 11px; font-weight: 600; letter-spacing: 0.08em;
+    padding: 3px 9px; border-radius: 999px;
+    text-transform: uppercase; flex-shrink: 0;
+}
+.status-badge.fam-verified   { background: var(--verified-bg); color: var(--verified); }
+.status-badge.fam-partial    { background: var(--partial-bg);  color: var(--partial); }
+.status-badge.fam-inferred   { background: var(--inferred-bg); color: var(--inferred); }
+
+.card-slug code {
+    font-family: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
+    font-size: 12px; color: var(--muted);
+    background: rgba(255,255,255,0.04); padding: 2px 7px; border-radius: 4px;
+}
+.card-evidence { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip {
+    display: inline-flex; align-items: center; gap: 5px;
+    font-size: 11px; padding: 2px 8px; border-radius: 999px; font-weight: 500;
+}
+.chip-glyph { font-weight: 700; }
+.chip-src { color: inherit; opacity: 0.85; }
+.chip-label { color: inherit; opacity: 0.7; font-size: 10.5px; margin-left: 2px; }
+.chip.fam-verified         { background: var(--verified-bg); color: var(--verified); }
+.chip.fam-partial          { background: var(--partial-bg);  color: var(--partial); }
+.chip.fam-inferred         { background: var(--inferred-bg); color: var(--inferred); }
+.chip.fam-drift            { background: var(--drift-bg);    color: var(--drift); }
+.chip.fam-evidence-route   { background: var(--evidence-route-bg); color: var(--evidence-route); }
+.chip.fam-evidence-selector { background: var(--evidence-selector-bg); color: var(--evidence-selector); }
+.chip.fam-narration        { background: var(--narration-bg); color: var(--narration); }
+
+.card-meta { display: grid; grid-template-columns: 80px 1fr; gap: 4px 12px; margin: 4px 0 0; font-size: 12.5px; }
+.card-meta dt { color: var(--muted-2); }
+.card-meta dd { margin: 0; display: flex; flex-wrap: wrap; gap: 4px; }
+.tag {
+    font-family: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
+    font-size: 11px; padding: 1px 6px; border-radius: 4px;
+    background: rgba(255,255,255,0.04); color: var(--muted);
+}
+.empty { color: var(--muted-2); font-style: italic; font-size: 12px; }
+.empty-state { color: var(--muted); padding: 40px; text-align: center; border: 1px dashed var(--border); border-radius: 12px; }
+
+.recipe-card.hidden { display: none; }
+</style>
+</head>
+<body>
+<div class="page">
+<header class="doc">
+    <h1>Library map — c5a24c00621b</h1>
+    <div class="meta">Every recipe prodemo has extracted for this project. Click a status pill to filter; type a slug fragment to search.</div>
+    <div class="summary"><span class="pill"><b>6</b> total</span><span class="pill fam-inferred"><b>6</b> inferred status</span><span class="pill"><b>3</b> atom</span><span class="pill"><b>3</b> journey</span><span class="pill"><b>12</b> from docs</span></div>
+</header>
+
+<div class="controls">
+    <label>filter status
+        <select id="filter-status">
+            <option value="">all</option>
+            <option value="verified">verified</option>
+            <option value="partial">partial</option>
+            <option value="mixed">mixed</option>
+            <option value="inferred">inferred</option>
+        </select>
+    </label>
+    <label>filter kind
+        <select id="filter-kind">
+            <option value="">all</option>
+            <option value="journey">journey</option>
+            <option value="atom">atom</option>
+        </select>
+    </label>
+    <label>search
+        <input type="search" id="filter-search" placeholder="slug or label fragment" />
+    </label>
+</div>
+
+<div id="cards" class="cards">
+<article class="recipe-card kind-atom status-inferred" data-slug="data-card-green-lion-2026-1" data-status="inferred" data-kind="atom" data-sources="docs"><header class="card-head"><div class="card-title"><span class="kind-pill kind-pill-atom">atom</span><span class="card-label">Data Card: Green Lion 2026-1</span></div><span class="status-badge fam-inferred">INFERRED</span></header><div class="card-slug"><code>data-card-green-lion-2026-1</code></div><div class="card-evidence"><span class="chip fam-inferred" title="inferred-docs"><span class="chip-glyph">▢</span><span class="chip-src">docs</span><span class="chip-label">inferred · docs</span></span><span class="chip fam-inferred" title="inferred-docs"><span class="chip-glyph">▢</span><span class="chip-src">docs</span><span class="chip-label">inferred · docs</span></span></div><dl class="card-meta"><dt>selectors</dt><dd><span class="empty">none</span></dd><dt>routes</dt><dd><span class="empty">none</span></dd></dl></article><article class="recipe-card kind-atom status-inferred" data-slug="loanwhiz-governance-pattern-document" data-status="inferred" data-kind="atom" data-sources="docs"><header class="card-head"><div class="card-title"><span class="kind-pill kind-pill-atom">atom</span><span class="card-label">LoanWhiz Governance Pattern Document</span></div><span class="status-badge fam-inferred">INFERRED</span></header><div class="card-slug"><code>loanwhiz-governance-pattern-document</code></div><div class="card-evidence"><span class="chip fam-inferred" title="inferred-docs"><span class="chip-glyph">▢</span><span class="chip-src">docs</span><span class="chip-label">inferred · docs</span></span><span class="chip fam-inferred" title="inferred-docs"><span class="chip-glyph">▢</span><span class="chip-src">docs</span><span class="chip-label">inferred · docs</span></span></div><dl class="card-meta"><dt>selectors</dt><dd><span class="empty">none</span></dd><dt>routes</dt><dd><span class="empty">none</span></dd></dl></article><article class="recipe-card kind-atom status-inferred" data-slug="model-card-loanwhiz-extraction-pipeline-v0-1" data-status="inferred" data-kind="atom" data-sources="docs"><header class="card-head"><div class="card-title"><span class="kind-pill kind-pill-atom">atom</span><span class="card-label">Model Card: LoanWhiz Extraction Pipeline v0.1</span></div><span class="status-badge fam-inferred">INFERRED</span></header><div class="card-slug"><code>model-card-loanwhiz-extraction-pipeline-v0-1</code></div><div class="card-evidence"><span class="chip fam-inferred" title="inferred-docs"><span class="chip-glyph">▢</span><span class="chip-src">docs</span><span class="chip-label">inferred · docs</span></span><span class="chip fam-inferred" title="inferred-docs"><span class="chip-glyph">▢</span><span class="chip-src">docs</span><span class="chip-label">inferred · docs</span></span></div><dl class="card-meta"><dt>selectors</dt><dd><span class="empty">none</span></dd><dt>routes</dt><dd><span class="empty">none</span></dd></dl></article><article class="recipe-card kind-journey status-inferred" data-slug="adding-a-new-primitive-checklist" data-status="inferred" data-kind="journey" data-sources="docs"><header class="card-head"><div class="card-title"><span class="kind-pill kind-pill-journey">journey</span><span class="card-label">Adding a New Primitive — Checklist</span></div><span class="status-badge fam-inferred">INFERRED</span></header><div class="card-slug"><code>adding-a-new-primitive-checklist</code></div><div class="card-evidence"><span class="chip fam-drift" title="docs-procedural-ungrounded"><span class="chip-glyph">◌</span><span class="chip-src">docs</span><span class="chip-label">docs · ungrounded</span></span><span class="chip fam-drift" title="docs-procedural-ungrounded"><span class="chip-glyph">◌</span><span class="chip-src">docs</span><span class="chip-label">docs · ungrounded</span></span></div><dl class="card-meta"><dt>selectors</dt><dd><span class="empty">none</span></dd><dt>routes</dt><dd><span class="empty">none</span></dd></dl></article><article class="recipe-card kind-journey status-inferred" data-slug="loanwhiz-primitive-catalogue" data-status="inferred" data-kind="journey" data-sources="docs"><header class="card-head"><div class="card-title"><span class="kind-pill kind-pill-journey">journey</span><span class="card-label">LoanWhiz Primitive Catalogue</span></div><span class="status-badge fam-inferred">INFERRED</span></header><div class="card-slug"><code>loanwhiz-primitive-catalogue</code></div><div class="card-evidence"><span class="chip fam-drift" title="docs-procedural-ungrounded"><span class="chip-glyph">◌</span><span class="chip-src">docs</span><span class="chip-label">docs · ungrounded</span></span><span class="chip fam-drift" title="docs-procedural-ungrounded"><span class="chip-glyph">◌</span><span class="chip-src">docs</span><span class="chip-label">docs · ungrounded</span></span></div><dl class="card-meta"><dt>selectors</dt><dd><span class="empty">none</span></dd><dt>routes</dt><dd><span class="empty">none</span></dd></dl></article><article class="recipe-card kind-journey status-inferred" data-slug="quickstart" data-status="inferred" data-kind="journey" data-sources="docs"><header class="card-head"><div class="card-title"><span class="kind-pill kind-pill-journey">journey</span><span class="card-label">Quickstart</span></div><span class="status-badge fam-inferred">INFERRED</span></header><div class="card-slug"><code>quickstart</code></div><div class="card-evidence"><span class="chip fam-drift" title="docs-procedural-ungrounded"><span class="chip-glyph">◌</span><span class="chip-src">docs</span><span class="chip-label">docs · ungrounded</span></span><span class="chip fam-drift" title="docs-procedural-ungrounded"><span class="chip-glyph">◌</span><span class="chip-src">docs</span><span class="chip-label">docs · ungrounded</span></span></div><dl class="card-meta"><dt>selectors</dt><dd><span class="empty">none</span></dd><dt>routes</dt><dd><span class="empty">none</span></dd></dl></article>
+</div>
+
+<script>
+(() => {
+  const status = document.getElementById('filter-status');
+  const kind   = document.getElementById('filter-kind');
+  const search = document.getElementById('filter-search');
+  const cards  = Array.from(document.querySelectorAll('.recipe-card'));
+  function apply() {
+    const s = status.value;
+    const k = kind.value;
+    const q = (search.value || '').toLowerCase().trim();
+    for (const c of cards) {
+      const matchStatus = !s || c.dataset.status === s;
+      const matchKind   = !k || c.dataset.kind === k;
+      const text = (c.dataset.slug + ' ' + c.querySelector('.card-label').textContent).toLowerCase();
+      const matchQ = !q || text.includes(q);
+      c.classList.toggle('hidden', !(matchStatus && matchKind && matchQ));
+    }
+  }
+  status.addEventListener('change', apply);
+  kind.addEventListener('change', apply);
+  search.addEventListener('input', apply);
+})();
+</script>
+</div>
+</body>
+</html>

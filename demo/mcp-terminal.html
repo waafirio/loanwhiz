@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>agent ▸ loanwhiz-primitives (MCP)</title>
+<style>
+  :root{
+    --bg:#0b0e14; --panel:#0e1320; --chrome:#161c2b; --line:#1e2740;
+    --ink:#cdd6e8; --dim:#7c89a6; --teal:#36d6c3; --blue:#5b8cff;
+    --green:#5ad17f; --amber:#e7b75f; --violet:#b98cff; --white:#eef3fb;
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%;margin:0;background:#0b0e14}
+  body{
+    background:#0b0e14;
+    font-family:"SF Mono",ui-monospace,"JetBrains Mono","Cascadia Code",Menlo,Consolas,monospace;
+    color:var(--ink);display:flex;align-items:center;justify-content:center;padding:44px;
+  }
+  .term{width:min(1180px,94vw);background:var(--panel);
+    border:1px solid var(--line);border-radius:14px;overflow:hidden}
+  .chrome{display:flex;align-items:center;gap:14px;padding:14px 18px;
+    background:var(--chrome);border-bottom:1px solid var(--line)}
+  .dots{display:flex;gap:8px}
+  .dots i{width:13px;height:13px;border-radius:50%;display:block}
+  .dots .r{background:#ff5f57} .dots .y{background:#febc2e} .dots .g{background:#28c840}
+  .title{color:var(--dim);font-size:14px} .title b{color:var(--white);font-weight:600}
+  .badge{margin-left:auto;color:var(--teal);font-size:12.5px;border:1px solid #1d3b3a;
+    background:#0c1a1a;border-radius:999px;padding:4px 12px}
+  .scr{padding:24px 30px 28px;font-size:18px;line-height:1.62;min-height:540px}
+  .ln{white-space:pre-wrap}
+  .blk{display:none}
+  .blk.show{display:block}
+  .blk.fresh .ln{opacity:0;animation:type .26s ease forwards}
+  .blk.fresh .ln:nth-child(1){animation-delay:.02s}
+  .blk.fresh .ln:nth-child(2){animation-delay:.10s}
+  .blk.fresh .ln:nth-child(3){animation-delay:.18s}
+  .blk.fresh .ln:nth-child(4){animation-delay:.26s}
+  .blk.fresh .ln:nth-child(5){animation-delay:.34s}
+  .blk.fresh .ln:nth-child(6){animation-delay:.42s}
+  .blk.fresh .ln:nth-child(7){animation-delay:.50s}
+  .blk.fresh .ln:nth-child(8){animation-delay:.58s}
+  .blk.fresh .ln:nth-child(9){animation-delay:.66s}
+  @keyframes type{from{opacity:0;transform:translateY(3px)}to{opacity:1;transform:none}}
+  .dim{color:var(--dim)} .teal{color:var(--teal)} .blue{color:var(--blue)}
+  .green{color:var(--green)} .amber{color:var(--amber)} .violet{color:var(--violet)}
+  .white{color:var(--white)} .b{font-weight:600}
+  .ar{color:var(--teal);font-weight:700}
+  .kv{color:var(--dim)} .val{color:var(--white)} .ret{color:var(--blue)} .env{color:var(--violet)}
+  .rule{color:#26314f} .indent{padding-left:26px} .indent2{padding-left:46px}
+  .cur{display:inline-block;width:10px;height:18px;background:var(--teal);
+    vertical-align:-3px;margin-left:4px}
+</style>
+</head>
+<body>
+  <div class="term">
+    <div class="chrome">
+      <div class="dots"><i class="r"></i><i class="y"></i><i class="g"></i></div>
+      <div class="title"><b>agent</b> ▸ loanwhiz-primitives <span class="dim">(Model Context Protocol)</span></div>
+      <div class="badge">● MCP connected</div>
+    </div>
+    <div class="scr" id="scr">
+
+      <div class="blk" data-step="0" data-testid="stage-connect">
+        <div class="ln"><span class="ar">$</span> <span class="white">mcp connect</span> loanwhiz-primitives</div>
+        <div class="ln green b">✓ connected <span class="dim" style="font-weight:400">— loanwhiz-primitives-mcp v0.1.0&nbsp;&nbsp;·&nbsp;&nbsp;5 live tools · 1 resource</span></div>
+        <div class="ln">&nbsp;</div>
+      </div>
+
+      <div class="blk" data-step="1" data-testid="stage-catalogue">
+        <div class="ln"><span class="ar">▸</span> <span class="teal b">agent</span> <span class="dim">reads resource</span> <span class="blue">primitives://catalogue</span></div>
+        <div class="ln"><span class="ret">←</span> <span class="white">9 primitives</span> <span class="dim">(5 live · 4 library-only)</span></div>
+        <div class="ln indent dim">esma_tape_normaliser&nbsp;&nbsp;collections_aggregator&nbsp;&nbsp;covenant_monitor&nbsp;&nbsp;waterfall_runner&nbsp;&nbsp;audit_logger</div>
+        <div class="ln indent dim"><span class="amber">prospectus_extractor</span>&nbsp;&nbsp;report_verifier&nbsp;&nbsp;cashflow_projector&nbsp;&nbsp;multi_period_waterfall_runner&nbsp;&nbsp;<span class="dim">· catalogue-only</span></div>
+        <div class="ln">&nbsp;</div>
+      </div>
+
+      <div class="blk" data-step="2" data-testid="stage-tape">
+        <div class="ln"><span class="ar">▸</span> <span class="teal b">agent</span> <span class="dim">calls</span> <span class="white b">esma_tape_normaliser</span> <span class="dim">{ tape: green-lion-2026 · 2026-02-28 }</span></div>
+        <div class="ln"><span class="ret">←</span> <span class="dim">output</span></div>
+        <div class="ln indent"><span class="kv">loan_count</span>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="val b">3,275</span>&nbsp;&nbsp;&nbsp;<span class="kv">pool_balance</span> <span class="val b">€1,048,763,811.94</span></div>
+        <div class="ln indent"><span class="kv">wtd_coupon</span>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="val">3.2021&nbsp;%</span>&nbsp;&nbsp;&nbsp;<span class="kv">wtd_ltv</span> <span class="val">68.45&nbsp;%</span>&nbsp;&nbsp;&nbsp;<span class="kv">arrears</span> <span class="val">0.0305&nbsp;%</span></div>
+        <div class="ln indent"><span class="env">confidence</span> <span class="white b">1.00</span>&nbsp;&nbsp;<span class="env">data_source</span> <span class="teal b">direct</span> <span class="dim">(deeploans path wired)</span>&nbsp;&nbsp;<span class="env">citations</span> <span class="dim">[ ESMA Annex 2 · 2026-02-28 ]</span></div>
+        <div class="ln indent"><span class="env">audit</span> <span class="dim">sha256:9f3c… · 214 ms</span></div>
+        <div class="ln">&nbsp;</div>
+      </div>
+
+      <div class="blk" data-step="3" data-testid="stage-waterfall">
+        <div class="ln"><span class="ar">▸</span> <span class="teal b">agent</span> <span class="dim">calls</span> <span class="white b">waterfall_runner</span> <span class="dim">{ deal: green-lion-2026-1 · period: 2026-04-30 }</span></div>
+        <div class="ln"><span class="ret">←</span> <span class="dim">output</span></div>
+        <div class="ln indent"><span class="kv">available_revenue</span>&nbsp;&nbsp;<span class="val b">€2,738,660.94</span></div>
+        <div class="ln indent"><span class="kv">class_a</span>&nbsp;&nbsp;<span class="dim">interest</span> <span class="val">€2,738,660.94</span>&nbsp;&nbsp;<span class="dim">principal</span> <span class="val">€8,704,453.77</span>&nbsp;&nbsp;<span class="dim">bal</span> <span class="val">€994.0m</span> <span class="dim">→</span> <span class="val b">€985.3m</span></div>
+        <div class="ln indent"><span class="kv">class_b</span>&nbsp;&nbsp;<span class="dim">principal</span> <span class="val">€462,206.49</span>&nbsp;&nbsp;&nbsp;<span class="kv">revenue_steps</span> <span class="green b">11 / 11</span> <span class="dim">distributed · computed, not generated</span></div>
+        <div class="ln indent"><span class="env">confidence</span> <span class="white b">1.00</span>&nbsp;&nbsp;<span class="env">citations</span> <span class="dim">[ Prospectus §5.2 Revenue Priority of Payments ]</span>&nbsp;&nbsp;<span class="env">audit</span> <span class="dim">sha256:b71a… · 38 ms</span></div>
+        <div class="ln">&nbsp;</div>
+      </div>
+
+      <div class="blk" data-step="4" data-testid="stage-covenant">
+        <div class="ln"><span class="ar">▸</span> <span class="teal b">agent</span> <span class="dim">calls</span> <span class="white b">covenant_monitor</span> <span class="dim">{ deal: green-lion-2026-1 · period: 2026-04-30 }</span></div>
+        <div class="ln"><span class="ret">←</span> <span class="dim">output</span></div>
+        <div class="ln indent"><span class="kv">class_a_pdl_trigger</span>&nbsp;&nbsp;<span class="green b">OK</span>&nbsp;&nbsp;<span class="dim">proximity 0.0 %</span></div>
+        <div class="ln indent"><span class="kv">class_b_pdl_trigger</span>&nbsp;&nbsp;<span class="green b">OK</span>&nbsp;&nbsp;<span class="dim">proximity 0.0 %</span></div>
+        <div class="ln indent"><span class="kv">reserve_fund_shortfall_trigger</span>&nbsp;&nbsp;<span class="green b">OK</span>&nbsp;&nbsp;<span class="dim">100% funded</span></div>
+        <div class="ln indent"><span class="kv">triggers_checked</span>&nbsp;&nbsp;<span class="val b">3</span>&nbsp;&nbsp;&nbsp;<span class="kv">breaches</span> <span class="val b">0</span></div>
+        <div class="ln indent"><span class="env">confidence</span> <span class="white b">1.00</span>&nbsp;&nbsp;<span class="env">citations</span> <span class="dim">[ Prospectus §6 Triggers ]</span>&nbsp;&nbsp;<span class="env">audit</span> <span class="dim">sha256:c4e2… · 19 ms</span></div>
+        <div class="ln">&nbsp;<span class="cur"></span></div>
+      </div>
+
+    </div>
+  </div>
+
+<script>
+  // Step-driven: ?step=N reveals blocks 0..N; the Nth block animates in fresh.
+  const params = new URLSearchParams(location.search);
+  const step = Math.max(0, Math.min(4, parseInt(params.get('step') || '0', 10) || 0));
+  document.querySelectorAll('.blk').forEach(b => {
+    const s = parseInt(b.getAttribute('data-step'), 10);
+    if (s <= step) b.classList.add('show');
+    if (s === step) b.classList.add('fresh');
+  });
+</script>
+</body>
+</html>
