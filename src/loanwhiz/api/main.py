@@ -81,6 +81,7 @@ from loanwhiz.primitives.waterfall_runner import WaterfallInput, WaterfallRunner
 from loanwhiz.primitives import (  # noqa: F401  (registration side effects)
     audit_logger,
     cashflow_projector,
+    prospectus_extractor,
     report_verifier,
     waterfall_state,
 )
@@ -185,6 +186,7 @@ _PRIMITIVE_REACHABILITY: dict[str, str] = {
     "cashflow_projector": _REACHABILITY_LIBRARY_ONLY,
     "report_verifier": _REACHABILITY_LIBRARY_ONLY,
     "multi_period_waterfall_runner": _REACHABILITY_LIBRARY_ONLY,
+    "prospectus_extractor": _REACHABILITY_LIBRARY_ONLY,
 }
 
 
@@ -431,6 +433,28 @@ def deal_model(deal_id: str) -> DealModelResponse:
     return base
 
 
+def _normalize_threshold_unit(threshold: float | None, unit: str | None) -> float | None:
+    """Normalise an extracted threshold onto the monitor's percent scale.
+
+    The monitor's ratio metrics (``pool_balance_pct``, ``reserve_fund_ratio``,
+    ``cumulative_loss_rate_pct``, ``default_pct``) are all expressed in percent
+    (0–100). A prospectus may state the same threshold as a fraction (``0.10``),
+    a percentage (``10.0``) or basis points (``1000`` bps). Mapping the raw
+    number without honouring its unit compares a fraction against a percent
+    metric — a 100× error that silently turns a real breach into a non-event
+    (or vice versa). (MODELING-GAPS C8.)
+    """
+    if threshold is None or unit is None:
+        return threshold
+    u = unit.strip().lower()
+    if u in ("fraction", "ratio", "decimal"):
+        return threshold * 100.0
+    if u in ("bps", "basis_points", "basis points", "bp"):
+        return threshold / 100.0
+    # "percentage" / "percent" / "pct" / "eur" / "boolean" / unknown → as-is.
+    return threshold
+
+
 def _map_extracted_trigger(raw: dict) -> TriggerDefinition:
     """Map one extracted-trigger dict onto a covenant_monitor ``TriggerDefinition``.
 
@@ -445,15 +469,16 @@ def _map_extracted_trigger(raw: dict) -> TriggerDefinition:
       fires, e.g. a PDL) maps to ``direction="above"`` with ``threshold=None`` —
       the convention ``covenant_monitor`` already uses (``threshold is None`` →
       any positive value triggers). ``"above"`` / ``"below"`` pass through.
-    - ``threshold_unit`` has no slot on ``TriggerDefinition`` (the monitor
-      reasons numerically from metric + threshold + direction only); it is
-      intentionally not forwarded.
+    - ``threshold_unit`` has no slot on ``TriggerDefinition``, but it is NOT
+      discarded: it normalises the threshold onto the monitor's percent scale
+      (``_normalize_threshold_unit``) so a fraction (0.10) and a percentage
+      (10.0) don't evaluate 100× apart against a percent metric.
     - ``citation`` is a free-form dict in the extracted schema; rebuild a
       :class:`Citation`, falling back to the trigger's ``section_reference`` /
       ``display_name`` when individual keys are absent.
     """
     direction = raw.get("direction", "above")
-    threshold = raw.get("threshold")
+    threshold = _normalize_threshold_unit(raw.get("threshold"), raw.get("threshold_unit"))
     if direction == "non_zero":
         direction = "above"
         threshold = None  # any positive (debit) balance fires the trigger

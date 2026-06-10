@@ -149,6 +149,15 @@ class WaterfallInput(BaseInput):
     class_a_pdl_balance: float
     class_b_pdl_balance: float
     days_in_period: int = 90
+    # Sequential Pay Trigger state for this period. ``None`` (default) leaves the
+    # senior-protective sequential stance (Class A redeems first) — unchanged
+    # legacy behaviour. ``False`` selects pro-rata / pari-passu principal across
+    # the redemption classes (the deal's healthy base case); ``True`` forces
+    # sequential. This lets a caller drive the registered primitive to the same
+    # allocation the platform's trigger engine computes for the period, so a
+    # standalone ``waterfall_runner`` call agrees with the reconstructed ledger
+    # instead of always paying Class A 100% of principal. (MODELING-GAPS B6.)
+    sequential_pay: bool | None = None
 
 
 class WaterfallOutput(BaseModel):
@@ -252,6 +261,7 @@ def _funds_from_input(input: WaterfallInput) -> WaterfallFunds:
         reserve_balance=input.reserve_account_balance,
         reserve_target=input.reserve_account_target,
         days_in_period=input.days_in_period,
+        sequential_pay=input.sequential_pay,
     )
 
 

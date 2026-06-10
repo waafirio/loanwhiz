@@ -2,7 +2,7 @@
 
 Structured finance agent framework — SF-native primitives, deal model extraction, waterfall execution, and LangGraph orchestration. Built for the Barcelona AI Tinkerers Structured Finance Hackathon 2026 (demo day: 10 June).
 
-The same governed primitives run **end-to-end across 5 deals in 3 jurisdictions** — Dutch (Green Lion 2023-1 / 2024-1 / 2026-1), Italian (Leone Arancio RMBS 2023-1), and Spanish (Sol-Lion II RMBS) — and the model-driven waterfall engine has been **validated to the cent against a real published deal** (Green Lion 2024-1's own Notes & Cash Priority of Payments). What is *validated* vs merely *ran* vs *not-applicable* is tracked honestly in a per-cell capability matrix (`GET /capability-matrix` and the **Showcase** view) — the source of truth is **1 validated / 9 ran / 15 not-applicable**, never a blanket "validated everywhere". Extraction on the non-English prospectuses is honestly **partial** (see the data/model cards). The 8 primitives are also packaged as a governed **MCP server** (`mcp/`) for third-party consumption.
+The same governed primitives run **end-to-end across 5 deals in 3 jurisdictions** — Dutch (Green Lion 2023-1 / 2024-1 / 2026-1), Italian (Leone Arancio RMBS 2023-1), and Spanish (Sol-Lion II RMBS) — and the model-driven waterfall engine has been **validated to the cent against a real published deal** (Green Lion 2024-1's own Notes & Cash Priority of Payments). What is *validated* vs merely *ran* vs *not-applicable* is tracked honestly in a per-cell capability matrix (`GET /capability-matrix` and the **Showcase** view) — the source of truth is **1 validated / 9 ran / 15 not-applicable**, never a blanket "validated everywhere". Extraction on the non-English prospectuses is honestly **partial** (see the data/model cards). The 9 primitives — including the prospectus parser itself as a first-class `prospectus_extractor` — are also packaged as a governed **MCP server** (`mcp/`) for third-party consumption.
 
 ---
 
@@ -36,7 +36,7 @@ CLIENTS
 CROSS-DEAL / FRAMEWORK SURFACE
       capability matrix  (primitives x 5 deals, validated/ran/not-applicable; /capability-matrix + Showcase)
       engine validation  (Green Lion 2024-1 Notes & Cash, to the cent; /validation)
-      governed MCP server  (mcp/ — the 8 primitives as MCP tools, evidence pack travels with each call)
+      governed MCP server  (mcp/ — the 9 primitives as MCP tools, evidence pack travels with each call)
       governance surface  (FINOS evidence pack + deeploans-vs-direct provenance; /governance)
 ```
 
@@ -245,8 +245,9 @@ See `GREEN_LION` and `DEAL_REGISTRY` in `config.py` for a fully worked example u
 | `audit_logger` | Wraps every primitive call with provenance: input hash, output, confidence score, citations, timestamp, model version, human review flag | 0.1.0 | Live |
 | `report_verifier` | Compares waterfall-computed distributions against investor-report actuals; flags discrepancies | 0.1.0 | Library-only |
 | `cashflow_projector` | Iterates the waterfall runner forward under base/stress scenarios (a future dedicated projector; the live `/project` route uses the waterfall runner as a single-period stress sensitivity) | 0.1.0 | Library-only |
+| `prospectus_extractor` | Compiles a prospectus PDF into a typed, cited `DealModel` (Docling + Gemini) — the *compile* step as a first-class parser primitive; confidence is the real section-coverage completeness score | 0.1.0 | Library-only |
 
-The same primitives are also packaged as a governed **MCP server** under [`mcp/`](mcp/README.md): each `live` primitive is exposed as an MCP tool whose input is the primitive's own typed Pydantic schema, and every call returns the full `PrimitiveResult` envelope (output **plus** the governance evidence pack — confidence, citations, audit entry). A `primitives://catalogue` resource lists all 8 registered primitives (live + library-only) with honest reachability, so a third party (e.g. the waafir platform, Claude Desktop) can consume the framework without rewriting any primitive.
+The same primitives are also packaged as a governed **MCP server** under [`mcp/`](mcp/README.md): each `live` primitive is exposed as an MCP tool whose input is the primitive's own typed Pydantic schema, and every call returns the full `PrimitiveResult` envelope (output **plus** the governance evidence pack — confidence, citations, audit entry). A `primitives://catalogue` resource lists all 9 registered primitives (live + library-only) with honest reachability, so a third party (e.g. the waafir platform, Claude Desktop) can consume the framework without rewriting any primitive.
 
 ---
 

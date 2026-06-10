@@ -479,14 +479,25 @@ def _evaluate_one(
             ),
         )
 
-    triggered = _is_triggered(metric_value, trigger.threshold, trigger.direction)
-    prox = _compute_proximity(metric_value, trigger.threshold, trigger.direction)
+    # Effective threshold/direction. A reserve-ratio trigger with no extracted
+    # threshold means "the reserve must be fully funded" — a balance below 100%
+    # of target IS the shortfall. Without this, the threshold-None branch in
+    # `_is_triggered` (the PDL heuristic: "any positive value fires") spuriously
+    # breaches a *fully funded* reserve, whose ratio is 100 (> 0). The PDL
+    # heuristic is only correct for debit-balance metrics, where positive = bad.
+    # (MODELING-GAPS B4: reserve_fund_shortfall false breach.)
+    eff_threshold, eff_direction = trigger.threshold, trigger.direction
+    if _canonical_metric(trigger.metric) == "reserve_fund_ratio" and trigger.threshold is None:
+        eff_threshold, eff_direction = 100.0, "below"
+
+    triggered = _is_triggered(metric_value, eff_threshold, eff_direction)
+    prox = _compute_proximity(metric_value, eff_threshold, eff_direction)
     dir_label = _compute_direction(prox, prior_proximity)
     return TriggerStatus(
         trigger_name=trigger.name,
         period=label,
         metric_value=metric_value,
-        threshold=trigger.threshold,
+        threshold=eff_threshold,
         is_triggered=triggered,
         proximity_pct=prox,
         direction=dir_label,

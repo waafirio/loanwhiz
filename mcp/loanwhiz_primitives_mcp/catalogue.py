@@ -33,6 +33,7 @@ _PRIMITIVE_MODULES = (
     "collections_aggregator",
     "covenant_monitor",
     "esma_tape_normaliser",
+    "prospectus_extractor",
     "report_verifier",
     "waterfall_runner",
     "waterfall_state",  # registers multi_period_waterfall_runner

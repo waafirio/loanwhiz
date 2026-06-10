@@ -81,12 +81,14 @@ Everything in Tier 1 is a facet of these two.
 
 ### B4. Reserve target hardcoded to 0 → step (f) inert; reserve covenant always "funded"
 - `api/main.py:593` (`reserve_*=0.0`); `waterfall_runner.py:221-224,279-282`. Reserve fund is a core credit enhancement modeled as absent; inflates residual to Deferred Purchase Price (step k).
+- **✓ RESOLVED (2026-06-10).** Reserve balance/target are now plumbed (registry `reserve_account_balance`/`reserve_account_target`, seeded into `DealState`). With the reserve live, a *new* failure surfaced: a reserve trigger with no extracted threshold fell through the PDL `threshold is None` → "any positive value fires" heuristic, so a *fully funded* reserve (`reserve_fund_ratio = 100`) reported **BREACHED**. Fixed in `covenant_monitor._evaluate_one`: a `reserve_fund_ratio` trigger with no threshold now gets its implicit "must be 100% funded" threshold (`100.0`, below). Live path: green-lion-2026-1 reads "3 of 3 within compliance, no breaches." (`tests/test_covenant_reserve_gap.py`)
 
 ### B5. Investor reports parsed but never ingested to seed structural state
 - 3 monthly report PDFs carry exactly the missing figures (`report_verifier.py:61-67`: reserve, pool, class_a principal/interest) but are used only for (unwired) comparison, never to *source* opening PDL/reserve/tranche state (`config.py:73-77`, no endpoint invokes the verifier). This is *why* Tier-1 falls back to constants.
 
 ### B6. Endpoints source structural state three divergent ways → inconsistent
 - `/waterfall` (`api/main.py:549,593`) vs `/compliance` (`:419-439`) vs `/project` (`:865-891`). Single reconstructed per-period state object should back all three.
+- **✓ RESOLVED (2026-06-10).** `/waterfall` + `/compliance` now read the one reconstructed `DealStateSeries` (S9, #189). The remaining divergence was the **registered `waterfall_runner` primitive** (what the MCP tool/demo terminal calls) vs the reconstructed ledger: same S4 `interpret` engine, but they disagreed on the Sequential Pay decision — the ledger injects a trigger evaluator (healthy → pro-rata, pari passu A+B) while the standalone runner had no way to express that and fell to the conservative sequential default (Class A takes 100% of principal). Fixed by plumbing `sequential_pay` onto `WaterfallInput` (default `None` = unchanged). Driven with the deal's real state, the registered primitive now matches the ledger **to the cent**: Class A €11,443,114.70, Class B €462,206.49. (`tests/test_waterfall_sequential_pay_input.py`)
 
 ### B7. No tape-derivable covenants tracked
 - The tape carries period-varying signals (arrears 1-2m/180d+, default %, WA-LTV, pool balance) — `esma_tape_normaliser.py:181-220` — but only `default_pct` + `pool_balance_eur` are wired (and only under DEFAULT_TRIGGERS). The live data that would make the chart move is unused.
@@ -98,14 +100,14 @@ Everything in Tier 1 is a facet of these two.
 
 ## Tier 3 — Modeling quality / fidelity
 
-- **C1.** `completeness_score` = fraction of 4 section headers found (`assembler.py:126-131`) — can be 1.0 with **zero** waterfall steps. `extraction_confidence` = recipients-non-empty check (`waterfall_extractor.py:516-521`). Both are false confidence signals.
+- **C1.** ~~`completeness_score` = fraction of 4 section headers found — can be 1.0 with **zero** waterfall steps. `extraction_confidence` = recipients-non-empty check. Both are false confidence signals.~~ **✓ RESOLVED.** `assembler._completeness_score` is now a weighted content score (sections 0.30 + waterfalls-with-≥1-step 0.40 + triggers 0.15 + tranches 0.15) — a header-only-but-empty model scores 0.30, not 1.0. `waterfall_extractor._extraction_confidence` now scores fraction of steps carrying **both** a recipient and an `amount_formula` (interpreter-executable), citation-bonused. (`tests/test_assembler.py`, `tests/test_waterfall_extractor.py`)
 - **C2.** Tranche closing balance ignores PDL/loss write-downs (`waterfall_runner.py:433-451`) — junior notes can only fall via cash, never loss allocation.
 - **C3.** `cumulative_loss_trigger` uses point-in-time `default_pct`, not a cumulative realised-loss series (`covenant_monitor.py:301-322`) — non-monotonic, ignores loans that left the pool. `original_pool_balance` is passed but unused for this.
 - **C4.** Reserve-account target modeled as a scalar; should be a per-period formula `max(floor, %·note balance)` (`waterfall_runner.py:221-224`).
 - **C5.** Projector amortization = flat 1%/month (`cashflow_projector.py:61,381`); monthly CDR linearized `/12` (`:339`) inconsistent with the geometric SMM (`:344`).
 - **C6.** Scenario coverage = one dimension (base + 0.7 haircut). No CPR±/CDR-spike/severity/rate grid.
 - **C7.** Definitions stored flat, never linked into steps/triggers; covenant extractor ignores the graph; no term→term edges despite "graph" name (`assembler.py:248-254`, `definitions_graph.py:94-104`).
-- **C8.** `threshold_unit` captured then dropped on mapping → fraction(0.10) vs percent(10.0) 100× risk (`covenant_extractor.py:51`, `api/main.py`).
+- **C8.** ~~`threshold_unit` captured then dropped on mapping → fraction(0.10) vs percent(10.0) 100× risk.~~ **✓ RESOLVED (2026-06-10).** `_map_extracted_trigger` now normalises the threshold onto the monitor's percent scale via `_normalize_threshold_unit` — fraction ×100, bps ÷100, percentage as-is — so a prospectus threshold no longer evaluates 100× apart from a percent metric. (`tests/test_trigger_threshold_unit.py`)
 - **C9.** `is_pari_passu` is a bare bool with no group id/weights (`waterfall_extractor.py:53`) → can't split a shortfall pro-rata among equal-ranking parties.
 - **C10.** Hardcoded constants that should be deal/period-dynamic: original pool balance, coupon, day-count (90), swap=0, capital structure (`waterfall_state.py:91`, `collections_aggregator.py:99-117`, `api/main.py:457-482,588`).
 - **C11.** Fixed confidence 0.7 on projector; no confidence on the `/project` response.

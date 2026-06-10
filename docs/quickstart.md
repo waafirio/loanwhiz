@@ -205,7 +205,7 @@ The capability matrix is the honest source of truth for what is validated vs ran
 
 ### MCP server
 
-The 8 primitives are also consumable as a governed MCP server (`mcp/`) — each `live` primitive becomes an MCP tool that returns the full `PrimitiveResult` evidence pack. See [mcp/README.md](../mcp/README.md) for wiring it into an MCP client.
+The 9 primitives are also consumable as a governed MCP server (`mcp/`) — each `live` primitive becomes an MCP tool that returns the full `PrimitiveResult` evidence pack. See [mcp/README.md](../mcp/README.md) for wiring it into an MCP client.
 
 ---
 

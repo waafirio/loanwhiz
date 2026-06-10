@@ -60,6 +60,7 @@ reach.
 | `cashflow_projector` | `library-only` | catalogue only |
 | `report_verifier` | `library-only` | catalogue only |
 | `multi_period_waterfall_runner` | `library-only` | catalogue only |
+| `prospectus_extractor` | `library-only` | catalogue only |
 
 > The reachability map lives in `loanwhiz_primitives_mcp/reachability.py`, a
 > small mirror of `loanwhiz.api.main._PRIMITIVE_REACHABILITY`. A test
@@ -71,7 +72,7 @@ reach.
 - **Tools** — one per `live` primitive. Each advertises the primitive's typed
   Pydantic input JSON schema (`inputSchema`); calling it validates the
   arguments, runs `execute()`, and returns the serialised `PrimitiveResult`.
-- **Resource** — `primitives://catalogue`: the full JSON catalogue of *all 8*
+- **Resource** — `primitives://catalogue`: the full JSON catalogue of *all 9*
   registered primitives (live + library-only) with name/version/description/
   author/tags, reachability, and input/output JSON schemas. Lets a consumer
   introspect the whole framework, not just the callable tools.
@@ -166,6 +167,6 @@ PYTHONPATH=src python3 -m pytest mcp/tests -m "not slow and not integration" -q
 
 The smoke tests assert: the server lists exactly the `live` primitives as tools,
 each with a valid typed input schema; a tool call returns a `PrimitiveResult`
-carrying the governance evidence; the catalogue resource lists all 8 primitives
+carrying the governance evidence; the catalogue resource lists all 9 primitives
 with honest reachability; and the reachability mirror matches the host API's map.
 ```

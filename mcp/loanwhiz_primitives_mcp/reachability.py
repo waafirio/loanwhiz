@@ -41,6 +41,7 @@ PRIMITIVE_REACHABILITY: dict[str, str] = {
     "cashflow_projector": LIBRARY_ONLY,
     "report_verifier": LIBRARY_ONLY,
     "multi_period_waterfall_runner": LIBRARY_ONLY,
+    "prospectus_extractor": LIBRARY_ONLY,
 }
 
 

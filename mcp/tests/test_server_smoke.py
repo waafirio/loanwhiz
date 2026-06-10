@@ -39,6 +39,7 @@ EXPECTED_LIBRARY_ONLY = {
     "cashflow_projector",
     "report_verifier",
     "multi_period_waterfall_runner",
+    "prospectus_extractor",
 }
 
 
@@ -120,7 +121,7 @@ async def test_unknown_tool_is_rejected():
 
 
 async def test_catalogue_resource_lists_all_primitives_with_honest_reachability():
-    """The catalogue resource surfaces all 8 primitives, marked honestly."""
+    """The catalogue resource surfaces all 9 primitives, marked honestly."""
     server = build_server()
     catalogue = await _read_catalogue(server)
     by_name = {e["name"]: e for e in catalogue}
@@ -139,7 +140,7 @@ async def test_catalogue_resource_lists_all_primitives_with_honest_reachability(
 def test_build_catalogue_is_json_serialisable():
     """The catalogue is plain JSON — safe to ship over the wire / as a resource."""
     catalogue = build_catalogue()
-    assert len(catalogue) == 8
+    assert len(catalogue) == 9
     json.dumps(catalogue)  # must not raise
 
 
