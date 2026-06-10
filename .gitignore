@@ -16,5 +16,11 @@ data/docling_cache/*.md
 data/extraction_cache/*.json
 node_modules/
 dist/
-.liz/state/
+.liz/
 c2-extract.log
+
+# Internal / dev artifacts — kept locally, excluded from the public repo
+library-map.html
+demo/render-recipe.json
+DEMO-RISKS.md
+MODELING-GAPS.md
