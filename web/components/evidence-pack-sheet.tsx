@@ -135,6 +135,21 @@ function packDataSources(pack: GovernanceEvidencePack): DataSource[] {
   return (["deeploans", "direct"] as DataSource[]).filter((s) => seen.has(s));
 }
 
+/**
+ * Compact "FINOS conformance" line for the pack metadata: the framework verdict
+ * + the satisfied/partial/n-a control counts, read from the pack's
+ * `finos_conformance` summary. Returns null for packs round-tripped from JSONL
+ * before the field existed (the summary object is empty / absent).
+ */
+function finosConformanceLabel(pack: GovernanceEvidencePack): string | null {
+  const conf = pack.finos_conformance;
+  // The field is `FinosConformanceSummary | {}` (empty for legacy JSONL packs).
+  // Narrow to the populated summary before reading its counts.
+  if (!conf || !("total_controls" in conf)) return null;
+  const verdict = conf.is_conformant ? "conformant" : "not conformant";
+  return `${verdict} — ${conf.counts.satisfied}/${conf.total_controls} satisfied, ${conf.counts.partial} partial`;
+}
+
 export function PackBody({ pack }: { pack: GovernanceEvidencePack }) {
   const dataSources = packDataSources(pack);
   return (
@@ -159,9 +174,10 @@ export function PackBody({ pack }: { pack: GovernanceEvidencePack }) {
               FINOS compliant
             </Badge>
           ) : (
-            // The compliance flag is now derived from a real consistency check
-            // over the evidence (issue #194), so a false value is a genuine
-            // signal — surface it explicitly rather than silently hiding it.
+            // `finos_compliant` MEANS framework conformance (issue #278): the
+            // conjunction of this pack's consistency check and LoanWhiz
+            // conforming to the FINOS control catalogue. A false value is a
+            // genuine signal — surface it, never hide it.
             <Badge variant="destructive" className="font-normal">
               FINOS check failed
             </Badge>
@@ -184,6 +200,12 @@ export function PackBody({ pack }: { pack: GovernanceEvidencePack }) {
           <dd className="text-foreground">{pack.model_used}</dd>
           <dt>Framework</dt>
           <dd className="text-foreground">{pack.framework_version}</dd>
+          {finosConformanceLabel(pack) ? (
+            <>
+              <dt>FINOS conformance</dt>
+              <dd className="text-foreground">{finosConformanceLabel(pack)}</dd>
+            </>
+          ) : null}
           <dt>Recorded</dt>
           <dd className="text-foreground">{formatTimestamp(pack.timestamp)}</dd>
           <dt>Pack ID</dt>

@@ -167,6 +167,37 @@ class TestFinosComplianceDerivation:
 
 
 # ---------------------------------------------------------------------------
+# Test 1c — finos_compliant now MEANS framework conformance (#278)
+# ---------------------------------------------------------------------------
+
+
+class TestFinosFrameworkConformance:
+    def test_pack_carries_conformance_summary(self) -> None:
+        """The pack explains the boolean with a conformance summary."""
+        pack = _sample_pack()
+        conf = pack.finos_conformance
+        assert conf["is_conformant"] is True
+        assert conf["total_controls"] == 23
+        # The per-primitive conformance assertion rides along on every pack.
+        assert conf["primitive_conformance"]
+
+    def test_compliant_requires_framework_conformance(self, monkeypatch) -> None:
+        """finos_compliant is the conjunction: kill conformance → False."""
+        import loanwhiz.governance.evidence_pack as ep
+
+        # Force the framework verdict to fail; the pack is otherwise consistent.
+        monkeypatch.setattr(ep, "is_framework_conformant", lambda: False)
+        pack = _sample_pack([0.9, 0.8])
+        assert pack.finos_compliant is False
+
+    def test_markdown_renders_conformance_section(self) -> None:
+        pack = _sample_pack()
+        md = pack.to_markdown()
+        assert "## FINOS Framework Conformance" in md
+        assert "controls mapped" in md
+
+
+# ---------------------------------------------------------------------------
 # Test 2 — aggregate_confidence = min of tool call confidences
 # ---------------------------------------------------------------------------
 

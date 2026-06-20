@@ -206,13 +206,61 @@ export interface GovernanceEvidencePack {
 
   model_used: string;
   framework_version: string;
+  /** True iff the pack is internally consistent AND LoanWhiz conforms to the
+   *  FINOS control catalogue (see `finos_conformance`). */
   finos_compliant: boolean;
+  /** The framework-conformance summary explaining `finos_compliant`. May be an
+   *  empty object for packs round-tripped from JSONL before this field existed. */
+  finos_conformance?: FinosConformanceSummary | Record<string, never>;
 }
 
 export function getGovernance(packId: string): Promise<GovernanceEvidencePack> {
   return request<GovernanceEvidencePack>(
     `/governance/${encodeURIComponent(packId)}`,
   );
+}
+
+// ---------------------------------------------------------------------------
+// FINOS framework conformance  —  GET /governance/finos-conformance
+// (The mapped FINOS AI Governance Framework control catalogue + per-primitive
+// conformance — the single source of truth that `finos_compliant` reflects.)
+// ---------------------------------------------------------------------------
+
+/** Honest conformance status for one mapped FINOS control. */
+export type FinosConformanceStatus =
+  | "satisfied"
+  | "partial"
+  | "not_applicable";
+
+/** One FINOS mitigation control mapped to LoanWhiz (mirrors `FinosControl`). */
+export interface FinosControl {
+  control_id: string;
+  title: string;
+  category: "preventative" | "detective";
+  addresses_risks: string[];
+  status: FinosConformanceStatus;
+  rationale: string;
+  loanwhiz_evidence: string[];
+}
+
+/** Mirrors `finos_conformance_summary()` — the framework verdict + catalogue. */
+export interface FinosConformanceSummary {
+  framework: string;
+  reference: string;
+  is_conformant: boolean;
+  total_controls: number;
+  counts: {
+    satisfied: number;
+    partial: number;
+    not_applicable: number;
+  };
+  controls: FinosControl[];
+  /** Per-primitive control ids — the per-primitive conformance assertion. */
+  primitive_conformance: Record<string, string[]>;
+}
+
+export function getFinosConformance(): Promise<FinosConformanceSummary> {
+  return request<FinosConformanceSummary>("/governance/finos-conformance");
 }
 
 // ---------------------------------------------------------------------------
