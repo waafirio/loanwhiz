@@ -32,7 +32,7 @@ from google.genai import types as genai_types
 from pydantic import BaseModel
 
 from loanwhiz.config import GCP_LOCATION, GCP_PROJECT, MODEL_PRO
-from loanwhiz.extraction.section_router import SectionMap
+from loanwhiz.extraction.section_router import Section, SectionMap
 
 
 # ---------------------------------------------------------------------------
@@ -223,8 +223,25 @@ def _build_extract_tool() -> genai_types.Tool:
 def _collect_section_text(
     section_map: SectionMap,
     max_chars_per_section: int = 15_000,
+    extra_sections: list[tuple[str, Section]] | None = None,
 ) -> tuple[str, str]:
     """Collect text from the three target sections.
+
+    Parameters
+    ----------
+    section_map:
+        A :class:`SectionMap` built from the prospectus markdown.
+    max_chars_per_section:
+        Cap on the characters taken from each located section.
+    extra_sections:
+        Optional ``[(label, Section)]`` of pre-resolved sections (e.g. the
+        language-agnostic PoP / triggers spans the assembler resolved via
+        :func:`~loanwhiz.extraction.section_router.resolve_sections` for a
+        non-English prospectus). They supplement the keyword-located text, and —
+        crucially — count as "found" so the blind first-30k-chars fallback below
+        does not fire on a non-English deal whose English keywords matched
+        nothing. Sections already captured by the keyword pass are de-duplicated
+        by their ``start_char``.
 
     Returns
     -------
@@ -242,14 +259,25 @@ def _collect_section_text(
     ]
 
     parts: list[str] = []
+    seen_starts: set[int] = set()
     for section_label, keywords in target_keywords:
         sections = section_map.find_all(*keywords)
         if sections:
             for sec in sections[:2]:  # at most 2 sub-sections per category
                 text = sec.text[:max_chars_per_section]
                 parts.append(f"\n\n=== {section_label.upper().replace('_', ' ')}: {sec.title} ===\n{text}")
+                seen_starts.add(sec.start_char)
         # fall through silently if a section is missing — the LLM will extract
         # what it can from the other sections
+
+    # Language-agnostic supplements: pre-resolved sections the keyword pass could
+    # not locate (the IT/ES case). De-duplicate against keyword-found spans.
+    for label, sec in extra_sections or []:
+        if sec is None or sec.start_char in seen_starts:
+            continue
+        text = sec.text[:max_chars_per_section]
+        parts.append(f"\n\n=== {label.upper().replace('_', ' ')}: {sec.title} ===\n{text}")
+        seen_starts.add(sec.start_char)
 
     # If no specific sections found, send the first 30 k chars of the document
     if not parts:
@@ -270,6 +298,7 @@ def extract_covenants(
     definitions: object,  # DefinitionsGraph — accepted but not required for extraction
     cache_path: str | None = None,
     force_refresh: bool = False,
+    extra_sections: list[tuple[str, Section]] | None = None,
 ) -> ExtractedCovenants:
     """Extract triggers and covenants from prospectus using Gemini 2.5 Pro.
 
@@ -294,6 +323,12 @@ def extract_covenants(
         When ``True``, ignore any cached result on disk and re-run the Gemini
         extraction (the fresh result is still written back to the cache).  This
         is what lets a deal-model ``force_refresh`` bust a stale covenant cache.
+    extra_sections:
+        Optional ``[(label, Section)]`` of pre-resolved sections (the
+        language-agnostic PoP / triggers spans the assembler resolved for a
+        non-English prospectus). Threaded into :func:`_collect_section_text` so
+        a non-English deal extracts triggers from the right spans instead of the
+        blind first-30k-chars fallback. ``None`` → byte-identical English path.
 
     Returns
     -------
@@ -305,7 +340,9 @@ def extract_covenants(
     RuntimeError
         If the Gemini response does not contain the expected function call.
     """
-    section_text, deal_name = _collect_section_text(section_map)
+    section_text, deal_name = _collect_section_text(
+        section_map, extra_sections=extra_sections
+    )
 
     # Resolve cache path
     resolved_cache = Path(cache_path) if cache_path else _default_cache_path(deal_name)

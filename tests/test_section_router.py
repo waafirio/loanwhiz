@@ -17,11 +17,15 @@ from __future__ import annotations
 import re
 import textwrap
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 
+from loanwhiz.extraction import section_router
 from loanwhiz.extraction.section_router import (
+    _LOAD_BEARING_ROLES,
     extract_key_sf_sections,
+    resolve_sections,
     route_sections,
 )
 
@@ -338,6 +342,171 @@ def test_section_text_includes_header_line() -> None:
     first_line = defs.text.split("\n")[0]
     assert first_line.startswith("#")
     assert "Definitions" in first_line
+
+
+# ---------------------------------------------------------------------------
+# Two-tier section resolution (keyword fast-path + LLM fallback) — #274 wiring
+# ---------------------------------------------------------------------------
+
+# A synthetic *non-English* prospectus skeleton whose load-bearing section
+# headings are Italian/Spanish, so the English keyword router
+# (extract_key_sf_sections) matches none of them. Mirrors the real IT/ES failure
+# mode the LLM router exists to rescue.
+_NON_ENGLISH_MD = textwrap.dedent("""\
+    # Prospetto
+
+    ## 1 Definizioni
+
+    "Fondi Disponibili" indica la somma dei seguenti importi.
+
+    ## 2 Ordine di Priorità dei Pagamenti — Interessi
+
+    - (a) commissioni del fiduciario;
+    - (b) interessi sulle Note di Classe A.
+
+    ## 3 Ordine di Priorità dei Pagamenti — Capitale
+
+    - (a) capitale delle Note di Classe A.
+
+    ## 4 Priorità Post-Escussione
+
+    - (a) commissioni del fiduciario.
+""")
+
+
+# An all-English fixture where the keyword router locates EVERY load-bearing
+# role (incl. a Definitions heading) — the byte-identical-English guard case.
+_ALL_ROLES_ENGLISH_MD = textwrap.dedent("""\
+    # Prospectus
+
+    ## 9.1 Definitions
+
+    "Available Revenue Funds" means the aggregate of the following amounts.
+
+    ## Revenue Priority of Payments
+
+    - (a) first, fees of the Security Trustee;
+    - (b) second, interest on the Class A Notes.
+
+    ## Redemption Priority of Payments
+
+    - (a) first, Class A principal.
+
+    ## Post-Enforcement Priority of Payments
+
+    - (a) first, Security Trustee fees.
+""")
+
+
+def test_resolve_sections_english_does_not_call_llm() -> None:
+    """English path: every load-bearing role is found by the keyword router, so
+    the LLM fallback must NEVER be invoked (the byte-identical-English guard).
+
+    Monkeypatches classify_segments_llm to raise — if resolve_sections calls it
+    on an all-found English doc, the test fails loudly instead of silently
+    paying for an LLM call (or changing the English result).
+    """
+    sm = route_sections(_ALL_ROLES_ENGLISH_MD)
+
+    # Precondition: the keyword router already locates every load-bearing role on
+    # this English fixture.
+    keyword = extract_key_sf_sections(sm)
+    assert all(keyword.get(r) is not None for r in _LOAD_BEARING_ROLES), (
+        "fixture precondition: keyword router should find all load-bearing roles"
+    )
+
+    def _boom(*_args, **_kwargs):  # pragma: no cover - must not be reached
+        raise AssertionError("classify_segments_llm must not be called on the English path")
+
+    with patch.object(section_router, "classify_segments_llm", _boom):
+        resolved = resolve_sections(sm)
+
+    # Result is exactly the keyword hits (same Section objects).
+    for role in _LOAD_BEARING_ROLES:
+        assert resolved[role] is keyword[role]
+
+
+def test_resolve_sections_use_llm_false_skips_fallback() -> None:
+    """With use_llm=False the LLM fallback is skipped even when roles are missing
+    (offline determinism): unresolved load-bearing roles stay None."""
+    sm = route_sections(_NON_ENGLISH_MD)
+
+    def _boom(*_args, **_kwargs):  # pragma: no cover - must not be reached
+        raise AssertionError("classify_segments_llm must not be called when use_llm=False")
+
+    with patch.object(section_router, "classify_segments_llm", _boom):
+        resolved = resolve_sections(sm, use_llm=False)
+
+    # Italian headings → English keyword router finds neither definitions nor the
+    # waterfall sections.
+    assert resolved["revenue_priority_of_payments"] is None
+    assert resolved["definitions"] is None
+
+
+def test_resolve_sections_non_english_fallback_fills_missing_roles() -> None:
+    """Non-English path: roles the keyword router misses are filled from the LLM
+    router's result, and that result threads through unchanged.
+
+    The genai boundary is the only thing stubbed — classify_segments_llm is
+    replaced with a fake that maps the canonical roles onto the (Italian)
+    sections by index, exactly as the real LLM would return them.
+    """
+    sm = route_sections(_NON_ENGLISH_MD)
+
+    # Sanity: the English keyword router misses the Italian sections.
+    keyword = extract_key_sf_sections(sm)
+    assert keyword["revenue_priority_of_payments"] is None
+    assert keyword["definitions"] is None
+
+    # Build the section-by-title lookup the fake LLM "returns".
+    by_title = {s.title: s for s in sm.sections}
+    fake_result = {
+        "definitions": by_title["1 Definizioni"],
+        "revenue_priority_of_payments": by_title[
+            "2 Ordine di Priorità dei Pagamenti — Interessi"
+        ],
+        "redemption_priority_of_payments": by_title[
+            "3 Ordine di Priorità dei Pagamenti — Capitale"
+        ],
+        "post_enforcement_priority": by_title["4 Priorità Post-Escussione"],
+    }
+
+    def _fake_llm(section_map, **_kwargs):
+        # Real classify_segments_llm returns {role: Section | None}.
+        return dict(fake_result)
+
+    with patch.object(section_router, "classify_segments_llm", _fake_llm):
+        resolved = resolve_sections(sm)
+
+    # Every load-bearing role is now filled from the LLM fallback.
+    for role in _LOAD_BEARING_ROLES:
+        assert resolved[role] is fake_result[role], f"role {role} not filled from LLM"
+
+    # The revenue section the override threads through carries the real step text
+    # (so the downstream waterfall extractor would feed Gemini a real span).
+    rev = resolved["revenue_priority_of_payments"]
+    assert "Note di Classe A" in rev.text
+
+
+def test_resolve_sections_keyword_hit_not_overridden_by_llm() -> None:
+    """A role the keyword router already located is never overridden by the LLM,
+    even if the LLM would have returned a different section for it."""
+    sm = route_sections(_ALL_ROLES_ENGLISH_MD)
+    keyword = extract_key_sf_sections(sm)
+    assert all(keyword.get(r) is not None for r in _LOAD_BEARING_ROLES)
+
+    # Force a (pathological) LLM that claims a wrong section for every role.
+    wrong = sm.sections[0]
+
+    def _fake_llm(section_map, **_kwargs):
+        return {role: wrong for role in _LOAD_BEARING_ROLES}
+
+    with patch.object(section_router, "classify_segments_llm", _fake_llm):
+        resolved = resolve_sections(sm)
+
+    # Keyword hits win — the LLM is consulted only for *missing* roles (here none).
+    for role in _LOAD_BEARING_ROLES:
+        assert resolved[role] is keyword[role]
 
 
 # ---------------------------------------------------------------------------

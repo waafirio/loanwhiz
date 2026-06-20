@@ -29,7 +29,7 @@ from google import genai
 from google.genai import types as genai_types
 
 from loanwhiz.config import GCP_LOCATION, GCP_PROJECT, MODEL_PRO
-from loanwhiz.extraction.section_router import SectionMap, route_sections
+from loanwhiz.extraction.section_router import Section, SectionMap, route_sections
 
 
 # ---------------------------------------------------------------------------
@@ -155,6 +155,7 @@ def extract_definitions(
     section_map: SectionMap,
     max_chars: int = 40_000,
     force_refresh: bool = False,
+    section: Section | None = None,
 ) -> DefinitionsGraph:
     """Extract defined terms from the Definitions section using Gemini 2.5 Pro.
 
@@ -175,6 +176,16 @@ def extract_definitions(
         (it always calls Gemini against the supplied ``section_map``), so the
         flag is a no-op here — but keeping the parameter avoids a special-case
         at the call site and documents that nothing stale is served.
+    section:
+        Optional pre-resolved Definitions :class:`Section` (e.g. from the
+        assembler's language-agnostic
+        :func:`~loanwhiz.extraction.section_router.resolve_sections`). When
+        supplied it is used directly instead of the English keyword lookup
+        ``section_map.find("definitions", "9.1")`` — this is what lets a
+        non-English (IT/ES) prospectus, whose definitions heading the English
+        keywords don't match, still extract instead of raising ``ValueError``.
+        When ``None`` (the default) the keyword lookup runs unchanged, so the
+        English path is byte-identical.
 
     Raises
     ------
@@ -183,7 +194,7 @@ def extract_definitions(
     RuntimeError
         If the Gemini response does not contain the expected function call.
     """
-    defs_section = section_map.find("definitions", "9.1")
+    defs_section = section if section is not None else section_map.find("definitions", "9.1")
     if not defs_section:
         raise ValueError("Definitions section not found in prospectus")
 

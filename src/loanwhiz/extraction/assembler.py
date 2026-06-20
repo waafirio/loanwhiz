@@ -38,7 +38,7 @@ from loanwhiz.extraction.covenant_extractor import extract_covenants
 from loanwhiz.extraction.definitions_graph import extract_definitions
 from loanwhiz.extraction.section_router import (
     SectionMap,
-    extract_key_sf_sections,
+    resolve_sections,
     route_sections,
 )
 from loanwhiz.extraction.waterfall_extractor import extract_all_waterfalls
@@ -294,30 +294,71 @@ def extract_deal_model(
         force_refresh=force_refresh,
     )
 
-    # 2. Route sections.
+    # 2. Route sections — deterministic English-keyword fast path with the
+    #    language-agnostic LLM router (#273's classify_segments_llm) as a
+    #    fallback for any load-bearing role the keyword router could not locate
+    #    (#274 wiring). For an English Green Lion prospectus the keyword router
+    #    finds everything, the LLM is never invoked, and the resolved sections
+    #    are exactly the keyword hits — so the English path is byte-identical.
+    #    For a non-English (IT/ES) prospectus the LLM fills the gaps by meaning,
+    #    so the waterfall / definitions / covenant extractors below receive real
+    #    sections to extract from instead of raising on the missing English
+    #    headings.
     section_map = route_sections(markdown_text)
-    key_sections = extract_key_sf_sections(section_map)
+    key_sections = resolve_sections(section_map)
     sections_found = [k for k, v in key_sections.items() if v is not None]
+
+    # The pre-resolved sections the downstream extractors should use instead of
+    # re-running their own English keyword lookups.
+    wf_sections = {
+        wf: sec
+        for wf, role in (
+            ("revenue", "revenue_priority_of_payments"),
+            ("redemption", "redemption_priority_of_payments"),
+            ("post_enforcement", "post_enforcement_priority"),
+        )
+        if (sec := key_sections.get(role)) is not None
+    }
+    covenant_sections = [
+        (role, sec)
+        for role in (
+            "revenue_priority_of_payments",
+            "redemption_priority_of_payments",
+            "post_enforcement_priority",
+        )
+        if (sec := key_sections.get(role)) is not None
+    ]
 
     # 3. Extract definitions.  force_refresh propagates so any sub-extractor
     #    disk cache is busted (definitions has none of its own, but the param
-    #    keeps the propagation uniform).
-    definitions_graph = extract_definitions(section_map, force_refresh=force_refresh)
+    #    keeps the propagation uniform).  The resolved definitions section
+    #    (keyword or LLM-located) is passed so a non-English deal does not raise.
+    definitions_graph = extract_definitions(
+        section_map,
+        force_refresh=force_refresh,
+        section=key_sections.get("definitions"),
+    )
 
     # 4. Extract waterfalls.  force_refresh busts the per-waterfall disk cache
     #    (the #132 fix: a re-warm after the #125 revenue-waterfall fix must not
-    #    serve the stale waterfall_{deal}_{type}.json).
+    #    serve the stale waterfall_{deal}_{type}.json).  The pre-resolved
+    #    sections feed the language-agnostic path (#274).
     waterfalls = extract_all_waterfalls(
         section_map,
         definitions_graph,
         deal_name=deal_name,
         force_refresh=force_refresh,
+        sections=wf_sections,
     )
 
     # 5. Extract covenants / triggers.  force_refresh busts the covenants disk
-    #    cache too.
+    #    cache too.  The pre-resolved PoP/triggers spans are supplied so a
+    #    non-English deal extracts triggers from the right text.
     covenants = extract_covenants(
-        section_map, definitions_graph, force_refresh=force_refresh
+        section_map,
+        definitions_graph,
+        force_refresh=force_refresh,
+        extra_sections=covenant_sections,
     )
 
     # 6. Derive the tranche structure (needed both for the model and as a real
