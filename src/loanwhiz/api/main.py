@@ -56,19 +56,27 @@ from loanwhiz.primitives.covenant_monitor import (
     CovenantMonitor,
     TriggerDefinition,
 )
+from loanwhiz.domain.state import DealState as DomainDealState
+from loanwhiz.primitives.deal_state import DealState as PrimitivesDealState
 from loanwhiz.primitives.engine_validation_harness import (
     EngineValidationReport,
+    load_green_lion_2024_1_model,
+    load_green_lion_2024_1_periods,
     validate_green_lion_2024_1,
 )
 from loanwhiz.primitives.esma_tape_normaliser import (
     EsmaTapeInput,
     EsmaTapeNormaliser,
 )
+from loanwhiz.primitives.notes_cash_parser import NotesCashReport
 from loanwhiz.primitives.period_state_machine import (
     DealStateSeries,
     PeriodInput,
     reconstruct_period_series,
+    run_period,
 )
+from loanwhiz.primitives.report_adapter import ReportAdapter
+from loanwhiz.primitives.waterfall_interpreter import StepSpec
 from loanwhiz.primitives.registry import PRIMITIVE_REGISTRY
 from loanwhiz.primitives.waterfall_runner import WaterfallInput, WaterfallRunner
 
@@ -823,10 +831,42 @@ def _days_between(prev_date: str, cur_date: str) -> int:
 def _reconstruct_series(deal_id: str, deal: dict) -> DealStateSeries:
     """Build (and memoise) the deal's full reconstructed ``DealStateSeries``.
 
-    This is the single entry point onto S6's ``reconstruct_period_series`` — the
-    one ledger ``/waterfall``, ``/compliance`` and ``/reconciliation`` all read.
+    This is the single entry point onto the one ledger ``/waterfall``,
+    ``/compliance`` and ``/reconciliation`` all read — and it **selects the
+    ingestion adapter per deal** (#269, the cold-start engine slice, epic #257):
 
-    Construction, per the spine:
+    1. The deal has **loan tapes** (non-empty ``tape_urls``) → the **tape path**:
+       seed period-0 from the prospectus capital structure and fold
+       ``collections_aggregator`` → ``reconstruct_period_series`` (the existing
+       behaviour, unchanged — see ``_reconstruct_series_from_tapes``).
+    2. Else the deal has **investor / Notes & Cash reports** (a
+       ``notes_cash_report_urls`` list) → the **report path**: seed period-0 from
+       the *first report's opening balances* (B5) and fold ``run_period`` over the
+       ``ReportAdapter``-derived ``PeriodInputs`` (see
+       ``_reconstruct_series_from_reports``). This is the no-tape cold-start the
+       dominant reality of EDW deals requires (the design spec's "report-driven"
+       path); Green Lion 2024-1 is the headline cold-start.
+    3. Neither tape nor report → the deal is **not modelable**: raise a labelled
+       422 (``_not_modelable_deal``) rather than silently serving an empty
+       cascade. Honest degradation, not a wall of green.
+
+    The to-the-cent reconciliation of the report path is the next child (#270);
+    this function wires the cold-start so the live endpoints serve the one
+    report-driven ledger.
+    """
+    if deal.get("tape_urls"):
+        return _reconstruct_series_from_tapes(deal_id, deal)
+    if deal.get("notes_cash_report_urls"):
+        return _reconstruct_series_from_reports(deal_id, deal)
+    raise _not_modelable_deal(deal_id)
+
+
+def _reconstruct_series_from_tapes(deal_id: str, deal: dict) -> DealStateSeries:
+    """Build the deal's ``DealStateSeries`` from its loan tapes (the tape path).
+
+    The tape-driven construction, per the spine (unchanged from #189/#268 —
+    extracted verbatim from the old ``_reconstruct_series`` body when #269 added
+    per-deal adapter selection, so the tape path's output stays byte-identical):
 
     1. Resolve the prospectus structural figures for ``deal_id`` — capital
        structure, reserve target, original pool balance — via
@@ -907,6 +947,196 @@ def _reconstruct_series(deal_id: str, deal: dict) -> DealStateSeries:
     cache_path.write_text(series.model_dump_json(), encoding="utf-8")
     _RECONSTRUCTION_MEMO[memo_key] = series
     return series
+
+
+# ---------------------------------------------------------------------------
+# The report-driven (no-tape) adapter path (#269, cold-start GL-2024-1)
+#
+# The dominant reality of EDW deals is that they publish investor / Notes & Cash
+# reports while loan-level tapes require separate licensing — so a deal with no
+# tape but a published report set is modelled top-down from its reports rather
+# than bottom-up from loan rows. This path:
+#
+#   1. resolves the deal's extracted ``DealRules`` (the cached ``DealModel`` —
+#      its waterfall step lists);
+#   2. resolves the deal's parsed Notes & Cash report (offline — a committed
+#      fixture loader, mirroring the offline validation builders, so the request
+#      path never fetches a PDF; a future durable report cache slots in here);
+#   3. runs ``ReportAdapter`` → ``(seed, PeriodInputs[])`` (seed period-0 from the
+#      *first report's opening balances*, B5);
+#   4. folds ``run_period`` over those inputs — seeded from the report, NOT the
+#      prospectus capital structure (that is the tape path's seed) — using the
+#      deal's *extracted* waterfall steps, so NO ``_GREEN_LION_*`` constant is
+#      consulted for a report-driven deal.
+#
+# The result is the SAME ``DealStateSeries`` type the tape path produces, so
+# ``/waterfall`` and ``/compliance`` read it identically. The to-the-cent
+# reconciliation against the published report is the next child (#270); this path
+# wires the cold-start.
+# ---------------------------------------------------------------------------
+
+def _load_green_lion_2024_1_report() -> NotesCashReport:
+    """Green Lion 2024-1's parsed Notes & Cash report from committed fixtures.
+
+    Reuses the offline harness's committed-fixture loaders (the same seed-model
+    name + parsed Notes & Cash period the headline validation proof reads) so the
+    cold-start report path is byte-deterministic and offline — no PDF fetch, no
+    LLM, in the request path.
+    """
+    model = load_green_lion_2024_1_model()
+    periods = load_green_lion_2024_1_periods()
+    return NotesCashReport(deal_name=model.metadata.deal_name, periods=periods)
+
+
+# Per-deal OFFLINE parsed-report loaders. Each returns the deal's
+# ``NotesCashReport`` from committed fixtures (no network, no LLM, no PDF fetch),
+# so the report path is deterministic in the request path and in CI — mirroring
+# ``_VALIDATION_BUILDERS``. A deal absent from this map (and with no durable
+# report cache) cannot cold-start offline yet → ``_not_modelable_deal``. Patchable
+# in tests, like the other module-level seams. As deals gain committed report
+# fixtures (or a durable report cache lands), they are added here as data.
+_REPORT_LOADERS: dict[str, Callable[[], NotesCashReport]] = {
+    "green-lion-2024-1": _load_green_lion_2024_1_report,
+}
+
+
+def _primitives_seed_from_report_seed(seed: DomainDealState) -> PrimitivesDealState:
+    """Bridge a ``ReportAdapter`` (domain) seed onto the fold's ``DealState``.
+
+    The ``ReportAdapter`` returns the canonical ``loanwhiz.domain.state.DealState``
+    (a list of ``tranches``), while the fold kernel ``run_period`` consumes the
+    ``loanwhiz.primitives.deal_state.DealState`` (flat ``class_{a,b,c}_balance``
+    fields). The two schemas coexist during the cold-start engine slice (#257);
+    this is the total, mechanical bridge between them — every domain-seed field
+    maps to a primitives-seed field, no value invented.
+    """
+    by_name = {t.name: t for t in seed.tranches}
+
+    def _bal(name: str) -> float:
+        t = by_name.get(name)
+        return t.balance if t else 0.0
+
+    def _pdl(name: str) -> float:
+        t = by_name.get(name)
+        return t.pdl_balance if t else 0.0
+
+    return PrimitivesDealState(
+        reporting_date=seed.reporting_date,
+        class_a_balance=_bal("class_a"),
+        class_b_balance=_bal("class_b"),
+        class_c_balance=_bal("class_c"),
+        class_a_pdl=_pdl("class_a"),
+        class_b_pdl=_pdl("class_b"),
+        class_c_pdl=_pdl("class_c"),
+        reserve_balance=seed.reserve_balance,
+        reserve_target=seed.reserve_target,
+        cumulative_losses=seed.cumulative_losses,
+        pool_balance=seed.pool_balance,
+        original_pool_balance=seed.original_pool_balance,
+    )
+
+
+def _report_coupon_pct(report: NotesCashReport) -> float:
+    """Class A annual coupon (%) recovered from the first report period.
+
+    The fold needs a coupon rate to compute the engine's Class A interest need.
+    The Notes & Cash report does not print a clean fixed rate, but it does print
+    the Class A interest paid and the Class A balance, so the exact rate is
+    ``interest / (balance × days/360) × 100`` — the same recovery the offline
+    harness uses (``engine_validation_harness._coupon_pct``). Returns ``0.0`` when
+    the first period carries no Class A balance.
+    """
+    first = report.periods[0]
+    nb = first.note_balance("class_a")
+    balance = (nb.principal_balance_after_payment if nb else None) or 0.0
+    interest = (nb.total_interest_payments if nb else None) or 0.0
+    denom = balance * 90 / 360.0
+    if denom <= 0:
+        return 0.0
+    return interest / denom * 100.0
+
+
+def _reconstruct_series_from_reports(deal_id: str, deal: dict) -> DealStateSeries:
+    """Build the deal's ``DealStateSeries`` from its published reports (report path).
+
+    The no-tape cold-start (#269). Resolves the deal's extracted ``DealModel`` and
+    its parsed Notes & Cash report (offline), runs ``ReportAdapter`` to get the
+    period-0 seed + per-period ``PeriodInputs``, and folds ``run_period`` over them
+    using the deal's *extracted* waterfall steps. Seeds from the report (B5), so
+    no Green-Lion-2026-1 constant is consulted for a report-driven deal.
+
+    Raises a labelled 422 (``_not_modelable_deal``) when the deal has reports
+    listed but no committed extracted model or no offline-parseable report — it
+    cannot be cold-started yet, and that is surfaced honestly rather than as an
+    empty series.
+    """
+    memo_key = tuple(r["url"] for r in deal["notes_cash_report_urls"])
+    cached = _RECONSTRUCTION_MEMO.get(memo_key)
+    if cached is not None:
+        return cached
+
+    model = _load_cached_deal_model(deal)
+    loader = _REPORT_LOADERS.get(deal_id)
+    if model is None or loader is None:
+        # Reports are listed, but we have no extracted model and/or no offline
+        # parsed report for this deal — it cannot be modelled in the request path
+        # (we never fetch/parse a PDF live here). Honest, not an empty cascade.
+        raise _not_modelable_deal(deal_id)
+
+    report = loader()
+    adapter = ReportAdapter.from_deal_model(model)
+    domain_seed, inputs = adapter.to_inputs(report)
+
+    seed = _primitives_seed_from_report_seed(domain_seed)
+    revenue_steps = [
+        StepSpec.from_extracted(s) for s in model.waterfalls["revenue"]["steps"]
+    ]
+    redemption_steps = [
+        StepSpec.from_extracted(s) for s in model.waterfalls["redemption"]["steps"]
+    ]
+    rates = {"class_a_rate_pct": _report_coupon_pct(report)}
+
+    # Fold run_period over the report-derived inputs, seeded from the report. The
+    # same loop reconstruct_period_series runs, but seeded from the report's
+    # opening balances (B5) instead of the prospectus capital structure.
+    states: list[PrimitivesDealState] = [seed]
+    period_results = []
+    current = seed
+    for period in inputs:
+        result = run_period(
+            current,
+            period,
+            rates=rates,
+            revenue_steps=revenue_steps,
+            redemption_steps=redemption_steps,
+        )
+        period_results.append(result)
+        states.append(result.closing_state)
+        current = result.closing_state
+
+    series = DealStateSeries(states=states, period_results=period_results)
+    _RECONSTRUCTION_MEMO[memo_key] = series
+    return series
+
+
+def _not_modelable_deal(deal_id: str) -> HTTPException:
+    """A labelled 422 for a deal with neither a tape nor a report to model (#269).
+
+    Raised when ``_reconstruct_series`` can select no ingestion adapter for a
+    deal — it has no loan tape AND no investor / Notes & Cash report the engine
+    can fold. Sibling to ``_misconfigured_deal``: degrade *honestly* (a 422 that
+    names the deal and the reason) rather than serving an empty waterfall /
+    compliance cascade that looks like a real, all-clear result.
+    """
+    return HTTPException(
+        status_code=422,
+        detail=(
+            f"Deal '{deal_id}' is not modelable: it has neither a loan tape "
+            f"(tape_urls) nor an investor / Notes & Cash report the engine can "
+            f"cold-start from. Add a tape or a (committed/cached) report for this "
+            f"deal before requesting its waterfall / compliance."
+        ),
+    )
 
 
 class WaterfallStepModel(BaseModel):
