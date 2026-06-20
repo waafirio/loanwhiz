@@ -104,9 +104,7 @@ def _index_steps_by_label(steps: list[Any]) -> dict[str, int]:
 # ===========================================================================
 
 
-def _mark_reconciled(
-    provenance: ProvenanceMap, path: str
-) -> None:
+def _mark_reconciled(provenance: ProvenanceMap, path: str) -> None:
     """Set ``reconciled=True`` at ``path``, creating the entry if absent.
 
     Preserves an existing entry's source / method / confidence / citation (only
@@ -160,8 +158,6 @@ def _apply_waterfall(
 def apply_reconciliation(
     report: ParsedReport,
     recon: ReconciliationReport,
-    *,
-    period_index_map: dict[int, int] | None = None,
 ) -> int:
     """Mark the ``ParsedReport``'s provenance from a :class:`ReconciliationReport`.
 
@@ -170,31 +166,25 @@ def apply_reconciliation(
     PoP-step amount in ``report``. Mutates ``report.provenance`` in place and
     returns the number of fields newly confirmed.
 
-    The reconciliation periods and the report periods are joined positionally by
-    default (both were built from the same ordered period list — the same
-    positional join :func:`~loanwhiz.primitives.reconciler.reconcile_series`
-    asserts). ``period_index_map`` overrides the join when the report carries more
-    periods than were reconciled (``recon_index -> report_period_index``).
+    The reconciliation periods and the report periods are joined positionally —
+    both were built from the same ordered period list (the same positional join
+    :func:`~loanwhiz.primitives.reconciler.reconcile_series` itself asserts). A
+    reconciliation period with no matching report period is skipped defensively.
     """
     marked = 0
-    for recon_index, pv in enumerate(recon.periods):
-        report_index = (
-            period_index_map.get(recon_index, recon_index)
-            if period_index_map is not None
-            else recon_index
-        )
-        if report_index >= len(report.periods):
+    for index, pv in enumerate(recon.periods):
+        if index >= len(report.periods):
             continue
-        rp = report.periods[report_index]
+        rp = report.periods[index]
         marked += _apply_waterfall(
             provenance=report.provenance,
-            period_index=report_index,
+            period_index=index,
             recon_wf=pv.revenue,
             pop_steps=rp.revenue_pop,
         )
         marked += _apply_waterfall(
             provenance=report.provenance,
-            period_index=report_index,
+            period_index=index,
             recon_wf=pv.redemption,
             pop_steps=rp.redemption_pop,
         )
