@@ -20,13 +20,16 @@ from typing import Any
 
 import pytest
 
+from loanwhiz.primitives.base import AuditEntry, Citation, PrimitiveResult
 from loanwhiz.primitives.notes_cash_parser import (
     NotesCashPeriod,
     NotesCashReport,
     _parse_money,
     _slug,
     parse_notes_cash_report,
+    parse_notes_cash_report_result,
     parse_report_text,
+    parse_report_text_result,
 )
 
 FIXTURE = Path(__file__).parent / "fixtures" / "notes_cash" / "green-lion-2024-1-march-2026.txt"
@@ -347,3 +350,81 @@ def test_warm_cache_skips_extraction_entirely(
     # The round-trip preserved the parsed structure (note balances, PoP, etc.).
     assert served.period_for("2026-04-23").reserve_balance == pytest.approx(10_500_000.00)
     assert served.period_for("2026-04-23").revenue_step("(d)").amount == pytest.approx(6_135_000.00)
+
+
+# ---------------------------------------------------------------------------
+# Governance envelope (#277) — the *_result wrappers return PrimitiveResult
+#
+# The plain parse functions above bypass the framework's PrimitiveResult
+# envelope; #277 closes that bypass by offering envelope-returning wrappers
+# without touching the existing functions. These tests assert the envelope is
+# present (confidence + citations + audit) on the previously-bypassing surface.
+# ---------------------------------------------------------------------------
+
+
+def test_parse_report_text_result_returns_envelope(report_text: str) -> None:
+    result = parse_report_text_result(report_text, period_label="March 2026")
+
+    # It is the governance envelope, wrapping the same parsed period.
+    assert isinstance(result, PrimitiveResult)
+    assert isinstance(result.output, NotesCashPeriod)
+    assert result.output.reporting_date == "2026-04-23"
+    assert result.output.revenue_step("(d)").amount == pytest.approx(6_135_000.00)
+
+    # Confidence is the deterministic-parse 1.0.
+    assert result.confidence == pytest.approx(1.0)
+
+    # At least one citation grounds the period in its source report.
+    assert len(result.citations) >= 1
+    assert all(isinstance(c, Citation) for c in result.citations)
+    assert "Green Lion 2024-1 B.V." in result.citations[0].document
+
+    # The audit entry is fully populated (64-hex input hash, named primitive).
+    audit = result.audit_entry
+    assert isinstance(audit, AuditEntry)
+    assert audit.primitive_name == "notes_cash_parser"
+    assert audit.version == "0.1.0"
+    assert len(audit.input_hash) == 64
+    assert audit.duration_ms >= 0.0
+
+
+def test_parse_report_text_result_matches_plain_function(report_text: str) -> None:
+    # The wrapper must not change the parse — its output equals the plain call.
+    plain = parse_report_text(report_text, period_label="March 2026")
+    enveloped = parse_report_text_result(report_text, period_label="March 2026")
+    assert enveloped.output == plain
+
+
+def test_parse_report_text_result_input_hash_is_deterministic(report_text: str) -> None:
+    a = parse_report_text_result(report_text, period_label="March 2026")
+    b = parse_report_text_result(report_text, period_label="March 2026")
+    assert a.audit_entry.input_hash == b.audit_entry.input_hash
+
+
+def test_parse_notes_cash_report_result_returns_envelope(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, report_text: str
+) -> None:
+    cache_dir = tmp_path / "extraction_cache"
+
+    def _fake_extract(url: str) -> str:
+        return report_text
+
+    monkeypatch.setattr(
+        "loanwhiz.primitives.notes_cash_parser._extract_pdf_text", _fake_extract
+    )
+
+    result = parse_notes_cash_report_result(_DEAL_CONTEXT, cache_dir=cache_dir)
+
+    assert isinstance(result, PrimitiveResult)
+    assert isinstance(result.output, NotesCashReport)
+    assert result.output.reporting_dates == ["2026-04-23"]
+    assert result.confidence == pytest.approx(1.0)
+
+    # One citation per parsed period.
+    assert len(result.citations) == len(result.output.periods) == 1
+    assert all(isinstance(c, Citation) for c in result.citations)
+
+    audit = result.audit_entry
+    assert audit.primitive_name == "notes_cash_parser"
+    assert len(audit.input_hash) == 64
+    assert audit.duration_ms >= 0.0
