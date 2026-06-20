@@ -56,19 +56,26 @@ from loanwhiz.primitives.covenant_monitor import (
     CovenantMonitor,
     TriggerDefinition,
 )
-from loanwhiz.primitives.engine_validation_harness import (
-    EngineValidationReport,
+from loanwhiz.domain.state import DealState as DomainDealState
+from loanwhiz.primitives.deal_state import DealState as PrimitivesDealState
+from loanwhiz.primitives.reconciler import (
+    ReconciliationReport,
+    load_green_lion_2024_1_report,
     validate_green_lion_2024_1,
 )
 from loanwhiz.primitives.esma_tape_normaliser import (
     EsmaTapeInput,
     EsmaTapeNormaliser,
 )
+from loanwhiz.primitives.notes_cash_parser import NotesCashPeriod, NotesCashReport
 from loanwhiz.primitives.period_state_machine import (
     DealStateSeries,
     PeriodInput,
     reconstruct_period_series,
+    run_period,
 )
+from loanwhiz.primitives.report_adapter import ReportAdapter
+from loanwhiz.primitives.waterfall_interpreter import StepSpec
 from loanwhiz.primitives.registry import PRIMITIVE_REGISTRY
 from loanwhiz.primitives.waterfall_runner import WaterfallInput, WaterfallRunner
 
@@ -529,7 +536,7 @@ def deal_compliance(deal_id: str) -> dict:
     # than the flat one a constant scalar snapshot produced. The reconstructed
     # ``states`` align one-to-one with the chronological tape ``periods``
     # (period-0 seed + one closing state per transition).
-    series = _reconstruct_series(deal)
+    series = _reconstruct_series(deal_id, deal)
     covenant_input = CovenantInput.from_deal_states(
         series.states,
         periods=periods if periods else None,
@@ -554,28 +561,34 @@ def deal_compliance(deal_id: str) -> dict:
 # ---------------------------------------------------------------------------
 
 # Green Lion 2026-1 capital structure (prospectus section 5; also the
-# primitives' own defaults). Restated here so the endpoint is explicit about
-# the structure it runs the waterfall against.
+# primitives' own defaults). Restated here so the Green Lion endpoint is explicit
+# about the structure it runs the waterfall against.
+#
+# These ``_GREEN_LION_*`` constants are NOT a generic default. They are a
+# **labelled last-resort fallback** consulted ONLY for the in-code Green Lion
+# 2026-1 deal (``_GREEN_LION_DEAL_ID``) — the one deal for which they ARE the
+# deal's own config (its registry context deliberately omits the structural keys
+# because these constants supply them, and its output must stay byte-identical).
+# For ANY OTHER deal that fails to resolve a structural value from its
+# ``deals.json`` context or its extracted model, the resolver below raises a loud,
+# labelled 422 rather than silently borrowing Green Lion's numbers (#268). See
+# ``_resolve_structural_config`` / ``_resolve_projection_base``.
 _GREEN_LION_CLASS_A_BALANCE = 1_000_000_000.0
 _GREEN_LION_CLASS_A_RATE_PCT = 3.62
 _GREEN_LION_CLASS_B_BALANCE = 53_100_000.0
 _GREEN_LION_CLASS_C_BALANCE = 10_500_000.0
 
 # Green Lion 2026-1 original pool balance at closing (EUR). The denominator for
-# cumulative-loss-rate and the clean-up-call trigger proximity. A deal may carry
-# its own ``original_pool_balance`` in its registry context; ``deal_compliance``
-# resolves it from the deal and falls back to this Green Lion default (mirroring
-# the ``capital_structure`` resolution), so the route is deal-generic without a
-# registry-schema migration. Green Lion (no ``original_pool_balance`` key) is
-# unchanged.
+# cumulative-loss-rate and the clean-up-call trigger proximity. Last-resort
+# fallback for the Green Lion deal only (see the block comment above) — a non-GL
+# deal missing ``original_pool_balance`` fails loudly rather than borrowing this.
 _GREEN_LION_ORIGINAL_POOL_BALANCE = 1_063_600_000.0
 
-# Default capital structure for a deal whose registry context does not carry its
-# own. The deal-context dict (loanwhiz.config.DEAL_REGISTRY entries) may include
-# an optional ``capital_structure`` key with these four fields; ``deal_waterfall``
-# resolves it from the deal and falls back to this Green Lion default so the
-# route is deal-generic without a registry-schema migration. Green Lion (no
-# ``capital_structure`` key) is unchanged.
+# Green Lion 2026-1 capital structure (the four tranche figures the
+# revenue/redemption waterfall runs on). Last-resort fallback for the Green Lion
+# deal only (see the block comment above) — a non-GL deal missing
+# ``capital_structure`` (and lacking a complete extracted-model structure) fails
+# loudly rather than borrowing this.
 _GREEN_LION_CAPITAL_STRUCTURE = {
     "class_a_balance": _GREEN_LION_CLASS_A_BALANCE,
     "class_a_rate_pct": _GREEN_LION_CLASS_A_RATE_PCT,
@@ -584,12 +597,180 @@ _GREEN_LION_CAPITAL_STRUCTURE = {
 }
 
 # Green Lion 2026-1 reserve account target (EUR) — the reserve opens funded at
-# this level (mirrors ``_GREEN_LION_PROJECTION_BASE``). A deal may carry its own
-# ``reserve_account_target`` in the registry; ``deal_compliance`` resolves it
-# from the deal and falls back to this default so the seeded ``DealState`` has a
-# real reserve target (and the reserve trigger is honestly evaluable) without a
-# registry-schema migration.
+# this level (mirrors ``_GREEN_LION_PROJECTION_BASE``). Last-resort fallback for
+# the Green Lion deal only (see the block comment above) — a non-GL deal missing
+# ``reserve_account_target`` fails loudly rather than borrowing this.
 _GREEN_LION_RESERVE_TARGET = 10_636_000.0
+
+# The canonical deal id of the in-code Green Lion 2026-1 deal — the ONE deal
+# whose registry context legitimately omits the structural config keys because
+# the ``_GREEN_LION_*`` constants above ARE its config. Kept in sync with
+# ``loanwhiz.config.GREEN_LION`` (the first entry of ``DEAL_REGISTRY``). The
+# resolver consults the ``_GREEN_LION_*`` last-resort fallback only for this id;
+# every other deal must supply its own config (deals.json or extracted model) or
+# fail loudly (#268).
+_GREEN_LION_DEAL_ID = "green-lion-2026-1"
+
+
+def _extracted_capital_structure(deal: dict) -> dict | None:
+    """Build a complete capital-structure dict from the deal's extracted model.
+
+    Bridges the cached extracted :class:`DealModel` (``tranche_structure``) onto
+    the four-field ``capital_structure`` shape the engine consumes
+    (``class_a_balance``, ``class_a_rate_pct``, ``class_b_balance``,
+    ``class_c_balance``). Returns ``None`` unless ALL four fields can be filled
+    from the extraction — the engine needs a *complete*, numeric structure, so a
+    partial extraction (e.g. a non-numeric coupon string like
+    ``"3m EURIBOR + 0.42"`` from which no ``class_a_rate_pct`` can be parsed, or a
+    missing class) is "no value here", not a half-built structure. Best-effort
+    and failure-isolated: any malformed model yields ``None``, never an exception.
+
+    This is the *secondary* config source (below the deal's explicit ``deals.json``
+    context key, above the Green Lion last-resort fallback) — see
+    ``_resolve_structural_config``.
+    """
+    try:
+        model = _load_cached_deal_model(deal)
+    except Exception:  # noqa: BLE001 — extraction read is best-effort
+        return None
+    if model is None:
+        return None
+
+    # Map tranche balances by seniority (0 = senior = Class A).
+    by_seniority: dict[int, dict] = {}
+    for tranche in model.tranche_structure or []:
+        if not isinstance(tranche, dict):
+            continue
+        seniority = tranche.get("seniority")
+        if isinstance(seniority, int):
+            by_seniority.setdefault(seniority, tranche)
+
+    def _balance(seniority: int) -> float | None:
+        tranche = by_seniority.get(seniority)
+        if tranche is None:
+            return None
+        size = tranche.get("size_eur")
+        return float(size) if isinstance(size, (int, float)) else None
+
+    class_a_balance = _balance(0)
+    class_b_balance = _balance(1)
+    class_c_balance = _balance(2)
+    class_a_rate_pct = _numeric_rate_pct(by_seniority.get(0))
+
+    if None in (class_a_balance, class_b_balance, class_c_balance, class_a_rate_pct):
+        return None
+
+    return {
+        "class_a_balance": class_a_balance,
+        "class_a_rate_pct": class_a_rate_pct,
+        "class_b_balance": class_b_balance,
+        "class_c_balance": class_c_balance,
+    }
+
+
+def _numeric_rate_pct(tranche: dict | None) -> float | None:
+    """Return a tranche's coupon as a numeric percent, or ``None`` if not numeric.
+
+    The extracted ``rate`` is free-form (e.g. ``3.62``, ``"3.62"``,
+    ``"3.62%"``, or a non-numeric ``"3m EURIBOR + 0.43"`` reference rate). The
+    engine needs a numeric ``class_a_rate_pct``; only a value that is itself a
+    plain number (optionally with a trailing ``%``) is usable. A EURIBOR/margin
+    reference string is deliberately NOT coerced — guessing a fixed equivalent
+    would fabricate a rate — so it returns ``None`` and the resolver falls
+    through to the next config source.
+    """
+    if tranche is None:
+        return None
+    rate = tranche.get("rate")
+    if isinstance(rate, (int, float)):
+        return float(rate)
+    if isinstance(rate, str):
+        cleaned = rate.strip().rstrip("%").strip()
+        try:
+            return float(cleaned)
+        except ValueError:
+            return None
+    return None
+
+
+def _resolve_structural_config(deal_id: str, deal: dict) -> tuple[dict, float, float]:
+    """Resolve a deal's (capital_structure, reserve_target, original_pool_balance).
+
+    Each value is resolved independently in priority order (#268):
+
+    1. the deal's **explicit ``deals.json`` context key** (operator-declared);
+    2. the deal's **extracted model**, where it yields a complete engine-ready
+       value (``capital_structure`` only — the extracted model carries no
+       reserve target or original pool balance);
+    3. the ``_GREEN_LION_*`` **last-resort fallback**, permitted ONLY for the
+       in-code Green Lion deal (``_GREEN_LION_DEAL_ID``).
+
+    A non-Green-Lion deal that reaches tier 3 for any value is misconfigured:
+    instead of silently borrowing Green Lion's numbers (the old
+    ``deal.get(..., _GREEN_LION_*)`` behaviour), this raises a labelled
+    ``HTTPException(422)`` naming the deal and the missing key. Green Lion's own
+    resolution is unchanged (its context omits these keys → tier 3 → its own
+    constants), so its output stays byte-identical.
+    """
+    is_green_lion = deal_id == _GREEN_LION_DEAL_ID
+
+    capital_structure = deal.get("capital_structure")
+    if capital_structure is None:
+        capital_structure = _extracted_capital_structure(deal)
+    if capital_structure is None:
+        if not is_green_lion:
+            raise _misconfigured_deal(deal_id, "capital_structure")
+        capital_structure = _GREEN_LION_CAPITAL_STRUCTURE
+
+    reserve_target = deal.get("reserve_account_target")
+    if reserve_target is None:
+        if not is_green_lion:
+            raise _misconfigured_deal(deal_id, "reserve_account_target")
+        reserve_target = _GREEN_LION_RESERVE_TARGET
+
+    original_pool_balance = deal.get("original_pool_balance")
+    if original_pool_balance is None:
+        if not is_green_lion:
+            raise _misconfigured_deal(deal_id, "original_pool_balance")
+        original_pool_balance = _GREEN_LION_ORIGINAL_POOL_BALANCE
+
+    return capital_structure, reserve_target, original_pool_balance
+
+
+def _resolve_projection_base(deal_id: str, deal: dict) -> dict:
+    """Resolve a deal's forward-projection base (#268).
+
+    Same contract as ``_resolve_structural_config``: the deal's explicit
+    ``projection_base`` context key, else the Green Lion last-resort fallback for
+    the Green Lion deal only — a non-GL deal missing ``projection_base`` fails
+    loudly rather than projecting on Green Lion's capital structure / pool.
+    """
+    base = deal.get("projection_base")
+    if base is not None:
+        return base
+    if deal_id != _GREEN_LION_DEAL_ID:
+        raise _misconfigured_deal(deal_id, "projection_base")
+    return _GREEN_LION_PROJECTION_BASE
+
+
+def _misconfigured_deal(deal_id: str, missing_key: str) -> HTTPException:
+    """A labelled 422 for a deal missing required config (#268).
+
+    Raised when a non-Green-Lion deal cannot resolve a required structural config
+    value from its ``deals.json`` context or its extracted model. Failing loudly
+    here is deliberate: the old silent ``deal.get(..., _GREEN_LION_*)`` fallback
+    would have served numbers computed against Green Lion 2026-1's structure for a
+    different deal — a wrong answer presented as the selected deal's.
+    """
+    return HTTPException(
+        status_code=422,
+        detail=(
+            f"Deal '{deal_id}' is missing required config '{missing_key}' and no "
+            f"extracted-model value is available. Refusing to fall back to Green "
+            f"Lion 2026-1's numbers — configure '{missing_key}' for this deal in "
+            f"deals.json (or extract its model)."
+        ),
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -646,19 +827,53 @@ def _days_between(prev_date: str, cur_date: str) -> int:
     return delta if delta > 0 else 30
 
 
-def _reconstruct_series(deal: dict) -> DealStateSeries:
+def _reconstruct_series(deal_id: str, deal: dict) -> DealStateSeries:
     """Build (and memoise) the deal's full reconstructed ``DealStateSeries``.
 
-    This is the single entry point onto S6's ``reconstruct_period_series`` — the
-    one ledger ``/waterfall``, ``/compliance`` and ``/reconciliation`` all read.
+    This is the single entry point onto the one ledger ``/waterfall``,
+    ``/compliance`` and ``/reconciliation`` all read — and it **selects the
+    ingestion adapter per deal** (#269, the cold-start engine slice, epic #257):
 
-    Construction, per the spine:
+    1. The deal has **loan tapes** (non-empty ``tape_urls``) → the **tape path**:
+       seed period-0 from the prospectus capital structure and fold
+       ``collections_aggregator`` → ``reconstruct_period_series`` (the existing
+       behaviour, unchanged — see ``_reconstruct_series_from_tapes``).
+    2. Else the deal has **investor / Notes & Cash reports** (a
+       ``notes_cash_report_urls`` list) → the **report path**: seed period-0 from
+       the *first report's opening balances* (B5) and fold ``run_period`` over the
+       ``ReportAdapter``-derived ``PeriodInputs`` (see
+       ``_reconstruct_series_from_reports``). This is the no-tape cold-start the
+       dominant reality of EDW deals requires (the design spec's "report-driven"
+       path); Green Lion 2024-1 is the headline cold-start.
+    3. Neither tape nor report → the deal is **not modelable**: raise a labelled
+       422 (``_not_modelable_deal``) rather than silently serving an empty
+       cascade. Honest degradation, not a wall of green.
 
-    1. Resolve the prospectus structural figures from the deal context — capital
-       structure, reserve target, original pool balance — with the Green Lion
-       defaults (mirrors the resolution ``/waterfall`` and ``/compliance``
-       already use, so no behaviour change for Green Lion and no registry-schema
-       migration for other deals).
+    The to-the-cent reconciliation of the report path is the next child (#270);
+    this function wires the cold-start so the live endpoints serve the one
+    report-driven ledger.
+    """
+    if deal.get("tape_urls"):
+        return _reconstruct_series_from_tapes(deal_id, deal)
+    if deal.get("notes_cash_report_urls"):
+        return _reconstruct_series_from_reports(deal_id, deal)
+    raise _not_modelable_deal(deal_id)
+
+
+def _reconstruct_series_from_tapes(deal_id: str, deal: dict) -> DealStateSeries:
+    """Build the deal's ``DealStateSeries`` from its loan tapes (the tape path).
+
+    The tape-driven construction, per the spine (unchanged from #189/#268 —
+    extracted verbatim from the old ``_reconstruct_series`` body when #269 added
+    per-deal adapter selection, so the tape path's output stays byte-identical):
+
+    1. Resolve the prospectus structural figures for ``deal_id`` — capital
+       structure, reserve target, original pool balance — via
+       ``_resolve_structural_config`` (deals.json context → extracted model →
+       Green-Lion last-resort, GL deal only). A misconfigured non-GL deal fails
+       loudly (422) here rather than silently borrowing Green Lion's numbers
+       (#268). Resolution runs **before** the memo/cache check so the loud
+       failure is not masked by a prior cache entry.
     2. For each tape in chronological order, run ``CollectionsAggregator`` with
        the prior tape as ``prev_tape_file_url`` (the per-loan derivation regime —
        the only one that separates scheduled principal / prepayment / recovery /
@@ -671,6 +886,13 @@ def _reconstruct_series(deal: dict) -> DealStateSeries:
     The result is memoised by the deal's tape-URL tuple so the (network-fetching,
     per-loan-joining) 27-period reconstruction runs at most once per process.
     """
+    # Resolve config first so a misconfigured deal fails loudly even on a memo /
+    # disk-cache hit (#268). A deal that resolves cleanly has a cached series; a
+    # misconfigured deal never built one, so this only adds the (cheap) resolve.
+    cap, reserve_target, original_pool_balance = _resolve_structural_config(
+        deal_id, deal
+    )
+
     tapes = deal["tape_urls"]
     memo_key = tuple(t["url"] for t in tapes)
     cached = _RECONSTRUCTION_MEMO.get(memo_key)
@@ -685,11 +907,6 @@ def _reconstruct_series(deal: dict) -> DealStateSeries:
         _RECONSTRUCTION_MEMO[memo_key] = series
         return series
 
-    cap = deal.get("capital_structure", _GREEN_LION_CAPITAL_STRUCTURE)
-    reserve_target = deal.get("reserve_account_target", _GREEN_LION_RESERVE_TARGET)
-    original_pool_balance = deal.get(
-        "original_pool_balance", _GREEN_LION_ORIGINAL_POOL_BALANCE
-    )
 
     aggregator = CollectionsAggregator()
     periods: list[PeriodInput] = []
@@ -729,6 +946,242 @@ def _reconstruct_series(deal: dict) -> DealStateSeries:
     cache_path.write_text(series.model_dump_json(), encoding="utf-8")
     _RECONSTRUCTION_MEMO[memo_key] = series
     return series
+
+
+# ---------------------------------------------------------------------------
+# The report-driven (no-tape) adapter path (#269, cold-start GL-2024-1)
+#
+# The dominant reality of EDW deals is that they publish investor / Notes & Cash
+# reports while loan-level tapes require separate licensing — so a deal with no
+# tape but a published report set is modelled top-down from its reports rather
+# than bottom-up from loan rows. This path:
+#
+#   1. resolves the deal's extracted ``DealRules`` (the cached ``DealModel`` —
+#      its waterfall step lists);
+#   2. resolves the deal's parsed Notes & Cash report (offline — a committed
+#      fixture loader, mirroring the offline validation builders, so the request
+#      path never fetches a PDF; a future durable report cache slots in here);
+#   3. runs ``ReportAdapter`` → ``(seed, PeriodInputs[])`` (seed period-0 from the
+#      *first report's opening balances*, B5);
+#   4. folds ``run_period`` over those inputs — seeded from the report, NOT the
+#      prospectus capital structure (that is the tape path's seed) — using the
+#      deal's *extracted* waterfall steps, so NO ``_GREEN_LION_*`` constant is
+#      consulted for a report-driven deal.
+#
+# The result is the SAME ``DealStateSeries`` type the tape path produces, so
+# ``/waterfall`` and ``/compliance`` read it identically. The to-the-cent
+# reconciliation against the published report is the next child (#270); this path
+# wires the cold-start.
+# ---------------------------------------------------------------------------
+
+# Per-deal OFFLINE parsed-report loaders. Each returns the deal's
+# ``NotesCashReport`` from committed fixtures (no network, no LLM, no PDF fetch),
+# so the report path is deterministic in the request path and in CI — mirroring
+# ``_VALIDATION_BUILDERS``. A deal absent from this map (and with no durable
+# report cache) cannot cold-start offline yet → ``_not_modelable_deal``. Patchable
+# in tests, like the other module-level seams. As deals gain committed report
+# fixtures (or a durable report cache lands), they are added here as data.
+#
+# Green Lion 2024-1 loads all 3 committed quarterly Notes & Cash fixtures via the
+# Reconciler's loader, so the live cold-start folds the full quarterly history
+# (the same report the Reconciler proves to the cent — one loader, no drift).
+_REPORT_LOADERS: dict[str, Callable[[], NotesCashReport]] = {
+    "green-lion-2024-1": load_green_lion_2024_1_report,
+}
+
+
+def _primitives_seed_from_report_seed(seed: DomainDealState) -> PrimitivesDealState:
+    """Bridge a ``ReportAdapter`` (domain) seed onto the fold's ``DealState``.
+
+    The ``ReportAdapter`` returns the canonical ``loanwhiz.domain.state.DealState``
+    (a list of ``tranches``), while the fold kernel ``run_period`` consumes the
+    ``loanwhiz.primitives.deal_state.DealState`` (flat ``class_{a,b,c}_balance``
+    fields). The two schemas coexist during the cold-start engine slice (#257);
+    this is the total, mechanical bridge between them — every domain-seed field
+    maps to a primitives-seed field, no value invented.
+    """
+    by_name = {t.name: t for t in seed.tranches}
+
+    def _bal(name: str) -> float:
+        t = by_name.get(name)
+        return t.balance if t else 0.0
+
+    def _pdl(name: str) -> float:
+        t = by_name.get(name)
+        return t.pdl_balance if t else 0.0
+
+    return PrimitivesDealState(
+        reporting_date=seed.reporting_date,
+        class_a_balance=_bal("class_a"),
+        class_b_balance=_bal("class_b"),
+        class_c_balance=_bal("class_c"),
+        class_a_pdl=_pdl("class_a"),
+        class_b_pdl=_pdl("class_b"),
+        class_c_pdl=_pdl("class_c"),
+        reserve_balance=seed.reserve_balance,
+        reserve_target=seed.reserve_target,
+        cumulative_losses=seed.cumulative_losses,
+        pool_balance=seed.pool_balance,
+        original_pool_balance=seed.original_pool_balance,
+    )
+
+
+def _period_coupon_pct(period: NotesCashPeriod) -> float:
+    """Class A annual coupon (%) recovered from ONE report period.
+
+    The fold needs a coupon rate to compute the engine's Class A interest need.
+    The Notes & Cash report does not print a clean fixed rate, but it prints the
+    Class A interest paid and the Class A balance, so the exact rate is
+    ``interest / (balance × days/360) × 100`` — the same recovery the offline
+    proof uses (``reconciler._coupon_pct``). The Green Lion 2024-1 notes are
+    **floating-rate**: the coupon differs each quarter (≈2.44% / 2.51% / 2.45%),
+    so the rate MUST be recovered per period — using the first period's rate for
+    every period drifts the later periods' Class A interest by hundreds of
+    thousands of EUR (#270). Returns ``0.0`` when the period carries no Class A
+    balance.
+    """
+    nb = period.note_balance("class_a")
+    balance = (nb.principal_balance_after_payment if nb else None) or 0.0
+    interest = (nb.total_interest_payments if nb else None) or 0.0
+    denom = balance * 90 / 360.0
+    if denom <= 0:
+        return 0.0
+    return interest / denom * 100.0
+
+
+def _report_coupon_pct(report: NotesCashReport) -> float:
+    """Class A annual coupon (%) from the first report period (back-compat shim).
+
+    Retained for callers that want a single representative rate; the per-period
+    fold uses :func:`_period_coupon_pct` so each floating-rate quarter is exact.
+    """
+    return _period_coupon_pct(report.periods[0]) if report.periods else 0.0
+
+
+def _reconstruct_series_from_reports(deal_id: str, deal: dict) -> DealStateSeries:
+    """Build the deal's ``DealStateSeries`` from its published reports (report path).
+
+    The no-tape cold-start (#269). Resolves the deal's extracted ``DealModel`` and
+    its parsed Notes & Cash report (offline), runs ``ReportAdapter`` to get the
+    period-0 seed + per-period ``PeriodInputs``, and folds ``run_period`` over them
+    using the deal's *extracted* waterfall steps. Seeds from the report (B5), so
+    no Green-Lion-2026-1 constant is consulted for a report-driven deal.
+
+    Raises a labelled 422 (``_not_modelable_deal``) when the deal has reports
+    listed but no committed extracted model or no offline-parseable report — it
+    cannot be cold-started yet, and that is surfaced honestly rather than as an
+    empty series.
+    """
+    memo_key = tuple(r["url"] for r in deal["notes_cash_report_urls"])
+    cached = _RECONSTRUCTION_MEMO.get(memo_key)
+    if cached is not None:
+        return cached
+
+    model = _load_cached_deal_model(deal)
+    loader = _REPORT_LOADERS.get(deal_id)
+    if model is None or loader is None:
+        # Reports are listed, but we have no extracted model and/or no offline
+        # parsed report for this deal — it cannot be modelled in the request path
+        # (we never fetch/parse a PDF live here). Honest, not an empty cascade.
+        raise _not_modelable_deal(deal_id)
+
+    report = loader()
+    adapter = ReportAdapter.from_deal_model(model)
+    series = fold_report_series(model, report, adapter)
+    _RECONSTRUCTION_MEMO[memo_key] = series
+    return series
+
+
+def _report_step_specs(
+    model: Any, adapter: ReportAdapter
+) -> tuple[list[StepSpec], list[StepSpec]]:
+    """Build the report-path revenue/redemption ``StepSpec`` lists.
+
+    Identical to ``StepSpec.from_extracted`` for every step EXCEPT the terminal
+    residual sweep: the adapter knows each waterfall's residual label (revenue
+    ``"(k)"`` — "any Deferred Purchase Price Instalment to the Seller"; redemption
+    ``""`` — no residual sweep this revolving period), and that step MUST carry
+    ``residual=True`` so the interpreter sweeps the remaining pot into it. Without
+    the flag the residual line distributes €0 and the revenue waterfall fails to
+    tie out (#270 — surfaced once the live fold is reconciled to the cent).
+    """
+
+    def _build(steps: list[dict], residual_label: str) -> list[StepSpec]:
+        specs: list[StepSpec] = []
+        for step in steps:
+            spec = StepSpec.from_extracted(step)
+            if residual_label and spec.priority == residual_label:
+                spec = spec.model_copy(update={"residual": True})
+            specs.append(spec)
+        return specs
+
+    return (
+        _build(model.waterfalls["revenue"]["steps"], adapter.revenue_residual_label),
+        _build(
+            model.waterfalls["redemption"]["steps"],
+            adapter.redemption_residual_label,
+        ),
+    )
+
+
+def fold_report_series(
+    model: Any, report: NotesCashReport, adapter: ReportAdapter
+) -> DealStateSeries:
+    """Fold ``run_period`` over a report's periods → ``DealStateSeries`` (report path).
+
+    The single report-path fold both the live endpoints (#269) and the offline
+    Reconciler proof (#270) use, so the two cannot drift. Seeds period-0 from the
+    first report's opening balances (B5) via the adapter, then folds each period:
+
+    - the residual sweep step is flagged (``_report_step_specs``) so the revenue
+      ``(k)`` line ties the pot out;
+    - the Class A coupon is recovered **per period** (the notes are floating-rate),
+      so each quarter's engine-computed Class A interest is exact.
+
+    No Green-Lion-2026-1 constant is consulted — the seed and the rates both come
+    from the report.
+    """
+    domain_seed, inputs = adapter.to_inputs(report)
+    seed = _primitives_seed_from_report_seed(domain_seed)
+    revenue_steps, redemption_steps = _report_step_specs(model, adapter)
+
+    states: list[PrimitivesDealState] = [seed]
+    period_results = []
+    current = seed
+    for period_inputs, report_period in zip(inputs, report.periods):
+        rates = {"class_a_rate_pct": _period_coupon_pct(report_period)}
+        result = run_period(
+            current,
+            period_inputs,
+            rates=rates,
+            revenue_steps=revenue_steps,
+            redemption_steps=redemption_steps,
+        )
+        period_results.append(result)
+        states.append(result.closing_state)
+        current = result.closing_state
+
+    return DealStateSeries(states=states, period_results=period_results)
+
+
+def _not_modelable_deal(deal_id: str) -> HTTPException:
+    """A labelled 422 for a deal with neither a tape nor a report to model (#269).
+
+    Raised when ``_reconstruct_series`` can select no ingestion adapter for a
+    deal — it has no loan tape AND no investor / Notes & Cash report the engine
+    can fold. Sibling to ``_misconfigured_deal``: degrade *honestly* (a 422 that
+    names the deal and the reason) rather than serving an empty waterfall /
+    compliance cascade that looks like a real, all-clear result.
+    """
+    return HTTPException(
+        status_code=422,
+        detail=(
+            f"Deal '{deal_id}' is not modelable: it has neither a loan tape "
+            f"(tape_urls) nor an investor / Notes & Cash report the engine can "
+            f"cold-start from. Add a tape or a (committed/cached) report for this "
+            f"deal before requesting its waterfall / compliance."
+        ),
+    )
 
 
 class WaterfallStepModel(BaseModel):
@@ -793,7 +1246,7 @@ def deal_waterfall(deal_id: str) -> WaterfallResponse:
     period yet → returns an empty cascade for the seed date.
     """
     deal = _require_deal(deal_id)
-    series = _reconstruct_series(deal)
+    series = _reconstruct_series(deal_id, deal)
 
     # No transition reconstructed (deal has <2 tapes) → empty cascade at the
     # seed date. The reconstructed series still carries the seeded opening state.
@@ -915,7 +1368,7 @@ def deal_reconciliation(deal_id: str) -> ReconciliationResponse:
     so S7's reconciliation harness can verify against the one ledger over HTTP.
     """
     deal = _require_deal(deal_id)
-    series = _reconstruct_series(deal)
+    series = _reconstruct_series(deal_id, deal)
     final = series.final_state
     return ReconciliationResponse(
         deal_id=deal_id,
@@ -1215,17 +1668,18 @@ def capability_matrix() -> CapabilityMatrix:
 # --- end cross-deal capability matrix (#241) ---------------------------------
 
 
-# --- engine validation (#212, V6 / epic #206) --------------------------------
+# --- engine validation (#212, V6 / epic #206; #270 Reconciler) ---------------
 # Self-contained block (response models + handler) for GET
-# /deal/{deal_id}/validation — the headline seasoned-deal proof surfaced over
-# HTTP so the demo UI's Validation view can render it. It runs V4's engine
-# -validation harness (engine_validation_harness) OFFLINE: the committed
-# extracted-model seed + the committed Notes & Cash report fixture (no network,
-# no LLM, no PDF fetch), so the endpoint is deterministic and fast. The V3/V4/V5
-# harnesses deliberately avoided touching this module; this issue owns the API
-# seam onto V4.
+# /deal/{deal_id}/validation — the headline cold-start proof surfaced over HTTP so
+# the demo UI's Validation view can render it. It runs the Reconciler
+# (loanwhiz.primitives.reconciler) OFFLINE over the LIVE folded series: the
+# committed extracted-model seed + the committed Notes & Cash report fixtures (no
+# network, no LLM, no PDF fetch), so the endpoint is deterministic and fast and
+# proves the *live engine* lands the published numbers across all 3 quarterly
+# periods (#270 subsumed the old offline engine_validation_harness into the
+# Reconciler reading the fold).
 #
-# Honesty (epic #206): the response preserves V4's per-step `source` label —
+# Honesty (epic #206): the response preserves the per-step `source` label —
 # 'engine' (the interpreter COMPUTED the line from the extracted model with no
 # report input — the independent proof), 'report-supplied' (no prospectus
 # formula; amount taken from the report, the engine only ROUTES it), 'residual'
@@ -1240,10 +1694,10 @@ def capability_matrix() -> CapabilityMatrix:
 # patchable in tests, mirroring the other module-level seams.
 
 #: Per-deal offline validation builders. Each returns an
-#: :class:`EngineValidationReport` from committed fixtures (no network/LLM).
+#: :class:`ReconciliationReport` from committed fixtures (no network/LLM).
 #: Keyed by the canonical deal id used in the /deal/{deal_id}/... routes. A deal
 #: absent from this map is registered-but-unvalidated → `available=false`.
-_VALIDATION_BUILDERS: dict[str, Callable[[], EngineValidationReport]] = {
+_VALIDATION_BUILDERS: dict[str, Callable[[], ReconciliationReport]] = {
     "green-lion-2024-1": validate_green_lion_2024_1,
 }
 
@@ -1369,7 +1823,7 @@ def deal_validation(deal_id: str) -> ValidationResponse:
             note=_VALIDATION_UNAVAILABLE_NOTE,
         )
 
-    report: EngineValidationReport = builder()
+    report: ReconciliationReport = builder()
     return ValidationResponse(
         deal_id=deal_id,
         deal_name=report.deal_name,
@@ -1405,19 +1859,21 @@ def deal_project(deal_id: str, req: ProjectRequest) -> dict:
     returning the per-tranche distributions and any shortfall.
 
     The projection base (pool balance + capital structure) is resolved from
-    the deal context — a deal may carry its own ``projection_base`` in the
-    registry, otherwise the Green Lion default applies. This mirrors the
-    deal-context resolution of ``/waterfall`` (#151) so projections track the
-    *selected* deal rather than always Green Lion; Green Lion (no
-    ``projection_base`` key) is unchanged.
+    the deal context via ``_resolve_projection_base``: a deal carries its own
+    ``projection_base`` in the registry, otherwise the Green-Lion last-resort
+    fallback applies — but ONLY for the in-code Green Lion deal. A non-GL deal
+    missing ``projection_base`` fails loudly (422) rather than projecting on
+    Green Lion's structure (#268). Green Lion (no ``projection_base`` key) is
+    unchanged.
     """
     deal = _require_deal(deal_id)
     runner = WaterfallRunner()
 
-    # Projection base from the deal context, defaulting to Green Lion's when
-    # the deal carries none — keeps the route deal-generic without a registry
-    # schema migration (mirrors the /waterfall capital-structure resolution).
-    base = deal.get("projection_base", _GREEN_LION_PROJECTION_BASE)
+    # Projection base from the deal context; the Green-Lion fallback is the
+    # labelled last-resort consulted only for the Green Lion deal (#268) — a
+    # misconfigured non-GL deal raises a labelled 422 instead of silently
+    # borrowing Green Lion's structure.
+    base = _resolve_projection_base(deal_id, deal)
     # Assume collections roughly track the pool balance over the horizon; this
     # is the base-case revenue/principal split a dedicated projector would
     # refine per period.

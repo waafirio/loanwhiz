@@ -419,7 +419,33 @@ def test_period_inputs_report_path_minimal():
     assert pi.risk_signals is None
     assert pi.step_overrides == {}
     assert pi.step_sources == {}
+    # Per-waterfall maps (#270) default empty too — tape path / flat-map callers
+    # are unchanged.
+    assert pi.revenue_step_overrides == {}
+    assert pi.revenue_step_sources == {}
+    assert pi.redemption_step_overrides == {}
+    assert pi.redemption_step_sources == {}
     assert pi.provenance == {}
+
+
+def test_period_inputs_per_waterfall_maps_carry_distinct_amounts():
+    """The revenue and redemption waterfalls can carry the SAME label with
+    DIFFERENT amounts via the per-waterfall maps (#270) — the flat map cannot."""
+    pi = PeriodInputs(
+        reporting_date="2024-06-30",
+        days_in_period=91,
+        available_revenue=12_500_000.0,
+        available_principal=40_000_000.0,
+        realized_loss=0.0,
+        revenue_step_overrides={"(a)": 12_345.0},
+        revenue_step_sources={"(a)": "reported"},
+        redemption_step_overrides={"(a)": 43_486_010.58},
+        redemption_step_sources={"(a)": "reported"},
+        source="report",
+    )
+    # Same label, different amount per waterfall — no collision.
+    assert pi.revenue_step_overrides["(a)"] == 12_345.0
+    assert pi.redemption_step_overrides["(a)"] == 43_486_010.58
 
 
 def test_period_inputs_tape_path_with_legs_and_signals():

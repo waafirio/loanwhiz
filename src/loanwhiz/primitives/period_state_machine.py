@@ -60,6 +60,7 @@ from __future__ import annotations
 
 from pydantic import BaseModel, Field
 
+from loanwhiz.domain.inputs import PeriodInputs as CanonicalPeriodInputs
 from loanwhiz.primitives.covenant_monitor import (
     TriggerDefinition,
     TriggerEvaluation,
@@ -289,21 +290,31 @@ def _funds_from_state(
     rates: dict[str, float],
     days_in_period: int,
     senior_fees: float,
+    available_revenue: float | None = None,
+    available_principal: float | None = None,
 ) -> WaterfallFunds:
     """Build the S4 ``WaterfallFunds`` view from the opening state + collections.
 
-    The funds pots come from the period's collections (S3): the revenue pot is
+    The funds pots default to the period's collections (S3): the revenue pot is
     the interest collected; the principal pot is scheduled + prepayment +
     recovery (the available principal funds). Tranche balances / PDLs / reserve
     come from the **opening** ``DealState``; coupon rates come from the
     caller-supplied capital structure (rates are not tracked on ``DealState``).
+
+    The report path (#265) supplies the aggregate available funds directly via
+    ``available_revenue`` / ``available_principal`` (the per-leg breakdown is not
+    published); when given, they override the collections-derived defaults. The
+    tape path passes the collections-derived values (or ``None``), so the funds
+    view is unchanged.
     """
-    available_revenue = collections.interest
-    available_principal = (
-        collections.scheduled_principal
-        + collections.prepayment
-        + collections.recovery
-    )
+    if available_revenue is None:
+        available_revenue = collections.interest
+    if available_principal is None:
+        available_principal = (
+            collections.scheduled_principal
+            + collections.prepayment
+            + collections.recovery
+        )
     return WaterfallFunds(
         available_revenue_funds=available_revenue,
         available_principal_funds=available_principal,
@@ -323,9 +334,204 @@ def _funds_from_state(
     )
 
 
+# ---------------------------------------------------------------------------
+# PeriodInputs (canonical) → kernel-internal normalized period
+# ---------------------------------------------------------------------------
+
+
+class _NormalizedPeriod(BaseModel):
+    """The kernel's per-period inputs, normalized from either source shape.
+
+    ``run_period`` accepts *either* the legacy tape-only :class:`PeriodInput`
+    *or* the canonical adapter-agnostic ``domain.PeriodInputs`` (the #265
+    generalisation — spec migration step 1). Both are reduced to this internal
+    shape so the kernel body has a single code path.
+
+    The ``report_sourced`` / ``step_overrides`` / ``step_sources`` fields carry
+    the report-path semantics: report-supplied step amounts (the engine has no
+    formula for them) and the instruction to **clear extracted conditions** on
+    report-sourced steps — the report is the post-resolution actual, so
+    re-gating a step the report already paid (or zeroed) would double-count.
+
+    Attributes
+    ----------
+    collections:
+        The :class:`PeriodCollections` ``DealState.transition`` records. On the
+        tape path this is the real per-leg breakdown; on the report path it is
+        reconstructed from the aggregate available funds (legs unknown).
+    reporting_date / days_in_period / revolving:
+        Period metadata threaded to the funds view and the transition.
+    available_revenue / available_principal:
+        The two waterfall pots. On the tape path these are derived from the
+        collection legs exactly as today; on the report path they come straight
+        from the aggregate ``PeriodInputs.available_revenue/principal``.
+    step_overrides:
+        ``priority_label -> reported amount`` for report-supplied steps. Empty
+        on the tape path → engine behaviour identical to today.
+    step_sources:
+        ``priority_label -> "engine" | "reported" | "residual"``.
+    report_sourced:
+        ``True`` when these inputs are report-actuals (``source == "report"``).
+        Drives the condition-clearing: report-sourced steps are not re-gated.
+    """
+
+    collections: PeriodCollections
+    reporting_date: str
+    days_in_period: int
+    revolving: bool | None
+    available_revenue: float
+    available_principal: float
+    # Per-waterfall report-supplied maps (#270). Each waterfall is fed its OWN
+    # override/source map so the two waterfalls' reused labels (a)…(d) never bleed
+    # across (the #269 cross-waterfall flat-label collision). ``_normalize_period``
+    # resolves these from the canonical ``PeriodInputs``'s per-waterfall fields,
+    # falling back to its flat ``step_overrides`` / ``step_sources`` when a
+    # per-waterfall map is empty (so single-waterfall callers and the tape path are
+    # unchanged).
+    revenue_step_overrides: dict[str, float] = Field(default_factory=dict)
+    revenue_step_sources: dict[str, str] = Field(default_factory=dict)
+    redemption_step_overrides: dict[str, float] = Field(default_factory=dict)
+    redemption_step_sources: dict[str, str] = Field(default_factory=dict)
+    report_sourced: bool = False
+
+
+def _normalize_period(period: "PeriodInput | CanonicalPeriodInputs") -> _NormalizedPeriod:
+    """Reduce the incoming period (legacy or canonical) to ``_NormalizedPeriod``.
+
+    The legacy :class:`PeriodInput` path is the *exact* current behaviour: funds
+    come from the collection legs, no overrides, conditions preserved. The
+    canonical ``domain.PeriodInputs`` path additionally supplies aggregate
+    available funds, ``step_overrides``/``step_sources``, and the report-sourced
+    flag — but a tape-source ``PeriodInputs`` with ``legs`` present and empty
+    overrides reduces to the *same* values the legacy path would, so the engine
+    is byte-for-byte unchanged on the tape path.
+    """
+    if isinstance(period, PeriodInput):
+        collections = period.collections
+        return _NormalizedPeriod(
+            collections=collections,
+            reporting_date=period.reporting_date,
+            days_in_period=period.days_in_period,
+            revolving=period.revolving,
+            available_revenue=collections.interest,
+            available_principal=(
+                collections.scheduled_principal
+                + collections.prepayment
+                + collections.recovery
+            ),
+        )
+
+    # Canonical domain.PeriodInputs.
+    if period.legs is not None:
+        # Tape path: the finer per-leg breakdown is known — record the real
+        # collections, identical to the legacy tape path.
+        legs = period.legs
+        collections = PeriodCollections(
+            interest=legs.interest,
+            scheduled_principal=legs.scheduled_principal,
+            prepayment=legs.prepayment,
+            recovery=legs.recovery,
+            realized_loss=legs.realized_loss,
+        )
+        available_revenue = collections.interest
+        available_principal = (
+            collections.scheduled_principal
+            + collections.prepayment
+            + collections.recovery
+        )
+    else:
+        # Report path: only the aggregates are known. Fold the aggregate
+        # available principal into ``scheduled_principal`` (the legs are not
+        # individually published) so ``DealState.transition`` records the pool
+        # movement; route revenue through ``interest``.
+        collections = PeriodCollections(
+            interest=max(0.0, period.available_revenue),
+            scheduled_principal=max(0.0, period.available_principal),
+            realized_loss=max(0.0, period.realized_loss),
+        )
+        available_revenue = period.available_revenue
+        available_principal = period.available_principal
+
+    # Resolve each waterfall's override/source map: prefer the per-waterfall map
+    # (#270), fall back to the flat map when the per-waterfall one is empty. This
+    # keeps single-waterfall callers (and the tape path, all maps empty) unchanged
+    # while letting the report path feed each waterfall its own report actuals so
+    # the reused labels (a)…(d) never collide across waterfalls.
+    flat_overrides = dict(period.step_overrides)
+    flat_sources = dict(period.step_sources)
+    rev_overrides = dict(period.revenue_step_overrides) or flat_overrides
+    rev_sources = dict(period.revenue_step_sources) or flat_sources
+    red_overrides = dict(period.redemption_step_overrides) or flat_overrides
+    red_sources = dict(period.redemption_step_sources) or flat_sources
+
+    return _NormalizedPeriod(
+        collections=collections,
+        reporting_date=period.reporting_date,
+        days_in_period=period.days_in_period,
+        revolving=None,
+        available_revenue=available_revenue,
+        available_principal=available_principal,
+        revenue_step_overrides=rev_overrides,
+        revenue_step_sources=rev_sources,
+        redemption_step_overrides=red_overrides,
+        redemption_step_sources=red_sources,
+        report_sourced=period.source == "report",
+    )
+
+
+def _apply_step_overrides(
+    steps: list[StepSpec],
+    *,
+    step_overrides: dict[str, float],
+    step_sources: dict[str, str],
+    report_sourced: bool,
+) -> tuple[list[StepSpec], dict[str, float]]:
+    """Thread report-supplied overrides + condition-clearing onto a step list.
+
+    Returns ``(specs, need_overrides)``:
+
+    - ``specs`` — the input steps, with the **condition cleared** on any step
+      that is report-sourced (``report_sourced`` and the step is not explicitly
+      marked ``"engine"`` in ``step_sources``, or the step's own source is
+      ``"reported"``/``"residual"``). Clearing matches the offline harness's
+      ``_build_specs``: the report's published distribution already reflects the
+      conditions' resolution, so re-gating here would double-count. Steps that
+      stay engine-computed keep their conditions (and the live trigger gating).
+    - ``need_overrides`` — ``recipient -> reported amount``, translated from the
+      ``priority_label -> amount`` ``step_overrides`` map via each step's
+      ``priority``/``recipient`` pair (the interpreter keys overrides by
+      recipient, while the report keys by priority label).
+
+    When ``step_overrides`` is empty and ``report_sourced`` is ``False`` (the
+    tape path), this returns the steps unchanged and an empty override map — the
+    engine behaves exactly as it did before #265.
+    """
+    if not step_overrides and not report_sourced:
+        return steps, {}
+
+    out_specs: list[StepSpec] = []
+    need_overrides: dict[str, float] = {}
+    for spec in steps:
+        label = spec.priority
+        source = step_sources.get(label)
+        # A step is report-sourced when the whole period is report-actuals and
+        # the step is not explicitly pinned to "engine", or when the step's own
+        # source says so.
+        step_is_reported = (
+            source in ("reported", "residual")
+            or (report_sourced and source != "engine")
+        )
+        if step_is_reported and spec.condition is not None:
+            spec = spec.model_copy(update={"condition": None})
+        out_specs.append(spec)
+        if label in step_overrides:
+            need_overrides[spec.recipient] = step_overrides[label]
+    return out_specs, need_overrides
+
+
 def run_period(
     opening: DealState,
-    period: PeriodInput,
+    period: "PeriodInput | CanonicalPeriodInputs",
     *,
     rates: dict[str, float],
     triggers: list[TriggerDefinition] | None = None,
@@ -355,12 +561,24 @@ def run_period(
        period's realized loss to the PDLs, redeems tranches, replenishes PDLs,
        tops up / draws the reserve).
 
+    Inputs: legacy or canonical (#265)
+    ----------------------------------
+    ``period`` is **either** the legacy tape-only :class:`PeriodInput` **or** the
+    canonical adapter-agnostic ``domain.PeriodInputs``. The canonical shape
+    additionally carries ``step_overrides`` (report-supplied step amounts the
+    engine has no formula for) and ``step_sources``; report-sourced steps have
+    their extracted conditions cleared before interpretation (the report is the
+    post-resolution actual). A tape-source ``PeriodInputs`` with ``legs`` present
+    and empty overrides is reduced to the *same* values the legacy path produces,
+    so the tape path's output is byte-for-byte unchanged.
+
     Parameters
     ----------
     opening:
         The opening ``DealState`` for this period.
     period:
-        The period's exogenous inputs (collections, reporting date, day count).
+        The period's exogenous inputs — a legacy :class:`PeriodInput` or a
+        canonical ``domain.PeriodInputs``.
     rates:
         ``{class_x_rate_pct: float}`` coupon rates for the interest needs.
     triggers:
@@ -379,58 +597,100 @@ def run_period(
     PeriodResult
         The closing state plus the period's waterfall traces and trigger eval.
     """
+    norm = _normalize_period(period)
+
     # 1. Triggers over the opening state → the condition evaluator.
     trigger_eval = evaluate_triggers(opening, triggers)
     evaluator: ConditionEvaluator = TriggerConditionEvaluator(trigger_eval)
 
-    # 2. Funds view from the opening state + this period's collections.
+    # 2. Funds view from the opening state + this period's available funds.
     funds = _funds_from_state(
         opening,
-        period.collections,
+        norm.collections,
         rates=rates,
-        days_in_period=period.days_in_period,
+        days_in_period=norm.days_in_period,
         senior_fees=senior_fees,
+        available_revenue=norm.available_revenue,
+        available_principal=norm.available_principal,
+    )
+
+    # 2b. Thread report-supplied overrides + clear conditions on report-sourced
+    # steps (no-op on the tape path → empty-overrides behaviour is unchanged).
+    rev_steps, rev_overrides = _apply_step_overrides(
+        revenue_steps,
+        step_overrides=norm.revenue_step_overrides,
+        step_sources=norm.revenue_step_sources,
+        report_sourced=norm.report_sourced,
+    )
+    red_steps, red_overrides = _apply_step_overrides(
+        redemption_steps,
+        step_overrides=norm.redemption_step_overrides,
+        step_sources=norm.redemption_step_sources,
+        report_sourced=norm.report_sourced,
     )
 
     # 3a. Revenue waterfall (a)→(k), gated by the trigger engine.
     revenue_execution = interpret(
-        revenue_steps,
+        rev_steps,
         funds,
         available=funds.available_revenue_funds,
         evaluator=evaluator,
+        need_overrides=rev_overrides or None,
     )
 
-    # 3b. Redemption waterfall — sequential↔pro-rata principal allocation driven
-    # by the same trigger engine, fed back through need_overrides.
-    principal_alloc = allocate_principal(
-        funds,
-        available=funds.available_principal_funds,
-        classes=principal_classes,
-        evaluator=evaluator,
-    )
-    redemption_execution = interpret(
-        redemption_steps,
-        funds,
-        available=funds.available_principal_funds,
-        evaluator=evaluator,
-        need_overrides={
+    # 3b. Redemption waterfall.
+    #
+    # Tape path: the engine computes its own sequential↔pro-rata principal
+    # allocation (driven by the trigger engine), fed back through need_overrides,
+    # and that allocation also drives the tranche redemption in the state
+    # transition.
+    #
+    # Report path (#270): the report's redemption PoP IS the post-resolution
+    # actual — the servicer already decided what principal each tranche received
+    # (e.g. during the revolving period, principal funds the purchase of new
+    # receivables, NOT note redemption, so the report's class_*_notes_principal
+    # lines are 0). Running the engine's own `allocate_principal` here would
+    # synthesise a sequential redemption the report never made and over-redeem the
+    # senior tranche. So on the report path we do NOT compute an allocation: the
+    # report-supplied redemption overrides fully determine the distribution, and
+    # the tranche redemption is read from the redemption execution's own lines.
+    if norm.report_sourced:
+        principal_alloc = None
+        combined_red_overrides = dict(red_overrides)
+    else:
+        principal_alloc = allocate_principal(
+            funds,
+            available=funds.available_principal_funds,
+            classes=principal_classes,
+            evaluator=evaluator,
+        )
+        combined_red_overrides = {
             f"{cls}_principal": principal_alloc.get(cls, 0.0)
             for cls in principal_classes
-        },
+        }
+        combined_red_overrides.update(red_overrides)
+    redemption_execution = interpret(
+        red_steps,
+        funds,
+        available=funds.available_principal_funds,
+        evaluator=evaluator,
+        need_overrides=combined_red_overrides,
     )
 
-    # 4. Map to a WaterfallResult and advance the canonical state (S1).
+    # 4. Map to a WaterfallResult and advance the canonical state (S1). On the
+    # report path `principal_allocation` is None, so `to_waterfall_result` reads
+    # the tranche principal straight from the redemption execution's lines.
     waterfall_result: WaterfallResult = to_waterfall_result(
         revenue=revenue_execution,
         redemption=redemption_execution,
         principal_allocation=principal_alloc,
     )
     closing = opening.transition(
-        collections=period.collections,
+        collections=norm.collections,
         waterfall_result=waterfall_result,
-        realized_loss=period.collections.realized_loss,
-        next_reporting_date=period.reporting_date,
-        next_revolving=period.revolving,
+        realized_loss=norm.collections.realized_loss,
+        next_reporting_date=norm.reporting_date,
+        next_revolving=norm.revolving,
     )
 
     return PeriodResult(

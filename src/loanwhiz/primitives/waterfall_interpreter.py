@@ -759,9 +759,19 @@ def to_waterfall_result(
         class_b_principal = principal_allocation.get("class_b", 0.0)
         class_c_principal = principal_allocation.get("class_c", 0.0)
     else:
-        class_a_principal = red.distributed_to("class_a_principal")
-        class_b_principal = red.distributed_to("class_b_principal")
-        class_c_principal = red.distributed_to("class_c_principal")
+        # Sum the redemption execution's per-class principal lines. Extracted deal
+        # models spell the recipient either ``class_x_principal`` (the builtin /
+        # tape spelling) or ``class_x_notes_principal`` (Green Lion 2024-1's
+        # extracted redemption PoP, #270) — accept both so the report path's
+        # tranche redemption is read from whatever the extracted model named it.
+        def _principal_for(cls: str) -> float:
+            return red.distributed_to(f"{cls}_principal") + red.distributed_to(
+                f"{cls}_notes_principal"
+            )
+
+        class_a_principal = _principal_for("class_a")
+        class_b_principal = _principal_for("class_b")
+        class_c_principal = _principal_for("class_c")
 
     reserve_payment = rev.distributed_to("reserve_replenishment") + rev.distributed_to(
         "reserve_account_replenishment"
