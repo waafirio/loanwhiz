@@ -7,18 +7,20 @@ This is the interface every client (CLI, notebook, demo UI) calls. It wraps:
   ``GET /deal/{id}/model``;
 - the covenant monitor (over normalised ESMA tapes) behind
   ``GET /deal/{id}/compliance``;
-- a forward payment-waterfall projection (:class:`WaterfallRunner`) behind
-  ``POST /deal/{id}/project``.
+- a forward projection over the engine (:class:`ScenarioGenerator` →
+  ``run_period`` fold) behind ``POST /deal/{id}/project``.
 
-Projection primitive note
---------------------------
-The original design referenced a dedicated ``CashflowProjector`` primitive.
-That primitive is not present in this branch's ``loanwhiz.primitives`` package;
-the available deterministic forward-projection primitive is
-:class:`~loanwhiz.primitives.waterfall_runner.WaterfallRunner`, which runs the
-Green Lion Revenue + Redemption waterfalls against per-period collections. The
-``POST /deal/{id}/project`` endpoint is built on it and keeps a scenario-shaped
-request/response so a later swap to a dedicated projector is a drop-in change.
+Projection engine note
+----------------------
+``POST /deal/{id}/project`` runs the deal forward through the SAME engine the
+history endpoints use: a :class:`~loanwhiz.primitives.scenario_generator.ScenarioGenerator`
+produces a synthetic ``PeriodInputs`` stream (CPR / CDR / recovery / rate-shift,
+with one consistent CDR↔SMM decomposition — #275) and that stream is folded
+through ``period_state_machine.run_period``. This replaces the prior faked
+single-period collection-haircut sensitivity; projection is now the same fold as
+history, with a real Class A WAL falling out of the engine-computed amortisation.
+The legacy ``CashflowProjector`` / single-period ``WaterfallRunner`` projection
+path is no longer reached here (the module's physical removal is sibling #276).
 """
 
 from __future__ import annotations
@@ -75,9 +77,22 @@ from loanwhiz.primitives.period_state_machine import (
     run_period,
 )
 from loanwhiz.primitives.report_adapter import ReportAdapter
+from loanwhiz.primitives.scenario_generator import (
+    ScenarioAssumptions,
+    ScenarioGenerator,
+)
 from loanwhiz.primitives.waterfall_interpreter import StepSpec
 from loanwhiz.primitives.registry import PRIMITIVE_REGISTRY
-from loanwhiz.primitives.waterfall_runner import WaterfallInput, WaterfallRunner
+
+# ``waterfall_runner`` is imported for its ``@register_primitive`` side effect
+# (it populates PRIMITIVE_REGISTRY for ``GET /primitives``). ``/project`` no
+# longer calls it — it folds a ``ScenarioGenerator`` stream through
+# ``run_period`` (#275) — so the symbols themselves are unused here; the noqa
+# keeps the registration import without a lint failure.
+from loanwhiz.primitives.waterfall_runner import (  # noqa: F401  (registration side effect)
+    WaterfallInput,
+    WaterfallRunner,
+)
 
 # Import every primitive module so its @register_primitive decorator runs and the
 # PRIMITIVE_REGISTRY is fully populated for GET /primitives. Primitives register
@@ -130,12 +145,29 @@ _GREEN_LION_PROJECTION_BASE = {
     "reserve_account_target": 10_636_000.0,
 }
 
-# Stress multipliers applied to available collections per scenario. "base" runs
-# the deal as reported; "stress" haircuts collections to model a downturn.
-_SCENARIO_COLLECTION_FACTORS = {
-    "base": 1.0,
-    "stress": 0.7,
+# Named scenario presets for the forward projection (#275). Each maps a scenario
+# label to the pool-level assumptions the ``ScenarioGenerator`` rolls forward
+# through the SAME ``run_period`` fold the history path uses — replacing the old
+# faked single-period collection-haircut sensitivity (A5). "base" is the central
+# case (historical CPR, near-zero CDR); "stress" raises the CDR and shifts rates
+# (the downturn the old 0.7 collection haircut crudely approximated). An unknown
+# scenario name falls back to the base preset (with that name) so the response
+# still carries an entry for every requested scenario.
+_SCENARIO_PRESETS: dict[str, dict] = {
+    "base": {"cpr_pct": 15.0, "cdr_pct": 0.03, "recovery_pct": 70.0, "rate_shift_bps": 0.0},
+    "stress": {"cpr_pct": 15.0, "cdr_pct": 2.0, "recovery_pct": 50.0, "rate_shift_bps": 100.0},
 }
+
+
+def _scenario_assumptions(name: str) -> ScenarioAssumptions:
+    """Resolve a scenario label to its :class:`ScenarioAssumptions` preset.
+
+    Unknown labels fall back to the ``base`` preset (carrying the requested
+    name), so a caller asking for a custom scenario name still gets a populated,
+    deterministic projection rather than a 422.
+    """
+    preset = _SCENARIO_PRESETS.get(name, _SCENARIO_PRESETS["base"])
+    return ScenarioAssumptions(name=name, **preset)
 
 # ---------------------------------------------------------------------------
 # Audit trail (audit_logger primitive wired into the REST primitive path)
@@ -1850,77 +1882,138 @@ def deal_validation(deal_id: str) -> ValidationResponse:
 # --- end engine validation (#212) --------------------------------------------
 
 
+def _wal_from_series(series: DealStateSeries) -> ScenarioWal:
+    """Class A weighted-average life from a projected ``DealStateSeries`` (#275).
+
+    WAL is ``sum(t × principal_t) / sum(principal_t)`` over the projection
+    horizon, where ``t`` is the period ordinal (1-based) and ``principal_t`` is
+    the Class A principal repaid in period ``t`` — read as the per-period drop in
+    the Class A outstanding balance across the state chain. ``0.0`` when no Class
+    A principal is returned (avoids divide-by-zero). This is a real WAL derived
+    from the engine-computed amortisation, not the faked "full horizon if any
+    principal" the single-period path used.
+    """
+    numerator = 0.0
+    denominator = 0.0
+    for t in range(1, len(series.states)):
+        principal_t = max(
+            0.0, series.states[t - 1].class_a_balance - series.states[t].class_a_balance
+        )
+        numerator += t * principal_t
+        denominator += principal_t
+    months = numerator / denominator if denominator > 0.0 else 0.0
+    return ScenarioWal(wal_class_a_months=months, wal_class_a_years=months / 12.0)
+
+
+def _projection_payload(series: DealStateSeries, scenario: str) -> dict:
+    """Serialise a projected ``DealStateSeries`` into the per-scenario payload.
+
+    Carries the per-period state series (pool balance, tranche balances, reserve,
+    cumulative losses) plus a final-state summary. WAL is attached additively by
+    the caller. Read off the engine-computed series — there is no separate
+    projection bookkeeping (one engine, one source of truth).
+    """
+    periods = [
+        {
+            "period": idx,
+            "reporting_date": state.reporting_date,
+            "pool_balance_eur": state.pool_balance,
+            "class_a_balance": state.class_a_balance,
+            "class_b_balance": state.class_b_balance,
+            "class_c_balance": state.class_c_balance,
+            "reserve_balance": state.reserve_balance,
+            "cumulative_losses": state.cumulative_losses,
+        }
+        for idx, state in enumerate(series.states)
+    ]
+    final = series.final_state
+    return {
+        "scenario": scenario,
+        "periods": periods,
+        "final_pool_balance_eur": final.pool_balance,
+        "final_class_a_balance": final.class_a_balance,
+        "final_class_b_balance": final.class_b_balance,
+        "final_class_c_balance": final.class_c_balance,
+        "cumulative_losses": final.cumulative_losses,
+    }
+
+
 @app.post("/deal/{deal_id}/project")
 def deal_project(deal_id: str, req: ProjectRequest) -> dict:
-    """Project forward payment waterfalls under the requested scenarios.
+    """Project the deal forward through the engine under the requested scenarios.
 
-    For each scenario, runs the deal's payment waterfall on the base-case
-    capital structure with the scenario's collection stress factor applied,
-    returning the per-tranche distributions and any shortfall.
+    For each scenario, the :class:`ScenarioGenerator` produces a synthetic
+    ``PeriodInputs`` stream (CPR / CDR / recovery / rate-shift, with a single
+    consistent CDR↔SMM decomposition — #275, C5) and that stream is folded
+    through the SAME ``run_period`` kernel the live history path uses. Projection
+    is therefore the same engine as history (the design-spec "one fold, many
+    input streams"), not the prior faked single-period collection-haircut
+    sensitivity (A5). The response carries the per-period projected state series
+    and a real Class A WAL derived from the engine-computed amortisation.
 
     The projection base (pool balance + capital structure) is resolved from
-    the deal context via ``_resolve_projection_base``: a deal carries its own
-    ``projection_base`` in the registry, otherwise the Green-Lion last-resort
-    fallback applies — but ONLY for the in-code Green Lion deal. A non-GL deal
-    missing ``projection_base`` fails loudly (422) rather than projecting on
-    Green Lion's structure (#268). Green Lion (no ``projection_base`` key) is
-    unchanged.
+    the deal context via ``_resolve_projection_base`` / ``_resolve_structural_config``:
+    a deal carries its own config in the registry, otherwise the Green-Lion
+    last-resort fallback applies — but ONLY for the in-code Green Lion deal. A
+    non-GL deal missing that config fails loudly (422) rather than projecting on
+    Green Lion's structure (#268). Green Lion is unchanged.
     """
     deal = _require_deal(deal_id)
-    runner = WaterfallRunner()
 
-    # Projection base from the deal context; the Green-Lion fallback is the
-    # labelled last-resort consulted only for the Green Lion deal (#268) — a
-    # misconfigured non-GL deal raises a labelled 422 instead of silently
-    # borrowing Green Lion's structure.
+    # Projection base + structural config from the deal context; the Green-Lion
+    # fallback is the labelled last-resort consulted only for the Green Lion deal
+    # (#268) — a misconfigured non-GL deal raises a labelled 422 instead of
+    # silently borrowing Green Lion's structure.
     base = _resolve_projection_base(deal_id, deal)
-    # Assume collections roughly track the pool balance over the horizon; this
-    # is the base-case revenue/principal split a dedicated projector would
-    # refine per period.
-    base_revenue = base["current_pool_balance"] * 0.04 * (req.months / 12.0)
-    base_principal = base["current_pool_balance"] * 0.10 * (req.months / 12.0)
+    capital_structure, reserve_target, original_pool_balance = _resolve_structural_config(
+        deal_id, deal
+    )
 
-    projections = {}
-    wal = {}
+    # Seed period-0 from the projection base: the prospectus capital structure,
+    # with the pool opening at the deal's CURRENT balance (the forward starting
+    # point), the reserve at target. The generator rolls this pool forward; the
+    # fold threads the full state.
+    seed_date = "projection-start"
+    generator = ScenarioGenerator()
+
+    projections: dict[str, dict] = {}
+    wal: dict[str, dict] = {}
     for scenario in req.scenarios:
-        factor = _SCENARIO_COLLECTION_FACTORS.get(scenario, 1.0)
-        waterfall_input = WaterfallInput(
-            reporting_period=f"projection+{req.months}m ({scenario})",
-            available_revenue_funds=base_revenue * factor,
-            available_principal_funds=base_principal * factor,
-            senior_fees=base["current_pool_balance"] * 0.0005,
-            swap_payment=0.0,
-            class_a_balance=base["class_a_balance"],
-            class_a_rate_pct=base["class_a_rate_pct"],
-            class_b_balance=base["class_b_balance"],
-            class_c_balance=base["class_c_balance"],
-            reserve_account_balance=base["reserve_account_balance"],
-            reserve_account_target=base["reserve_account_target"],
-            class_a_pdl_balance=0.0,
-            class_b_pdl_balance=0.0,
+        assumptions = _scenario_assumptions(scenario)
+        seed = PrimitivesDealState.seed_from_prospectus(
+            capital_structure,
+            reserve_target=reserve_target,
+            original_pool_balance=original_pool_balance,
+            opening_pool_balance=base["current_pool_balance"],
+            reporting_date=seed_date,
         )
-        result = runner.execute(waterfall_input)
-        _audit(runner, waterfall_input, result)
-        projection = result.output.model_dump()
-
-        # Class A weighted-average life for the scenario. WAL is
-        # sum(t × principal_t) / sum(principal_t); over this single-period
-        # horizon the one Class A principal distribution lands at month
-        # ``req.months``, so a positive Class A principal yields a WAL of the
-        # full horizon and zero principal yields 0.0 (avoids divide-by-zero).
-        class_a_principal = sum(
-            dist.get("principal_received", 0.0)
-            for dist in projection.get("tranche_distributions", [])
-            if dist.get("tranche") == "class_a"
-        )
-        wal_months = float(req.months) if class_a_principal > 0.0 else 0.0
-        scenario_wal = ScenarioWal(
-            wal_class_a_months=wal_months,
-            wal_class_a_years=wal_months / 12.0,
+        period_inputs = generator.generate(
+            seed,
+            assumptions=assumptions,
+            rate_pct=base["class_a_rate_pct"],
+            months=req.months,
         )
 
-        # Surface WAL additively on the per-scenario projection (existing
-        # waterfall fields are untouched) and in a top-level per-scenario map.
+        # Fold the synthetic stream through the same kernel history uses.
+        rates = {
+            k: float(capital_structure[k])
+            for k in ("class_a_rate_pct", "class_b_rate_pct", "class_c_rate_pct")
+            if k in capital_structure
+        }
+        rates.setdefault("class_a_rate_pct", base["class_a_rate_pct"])
+        states = [seed]
+        current = seed
+        for period in period_inputs:
+            result = run_period(current, period, rates=rates)
+            current = result.closing_state
+            states.append(current)
+        series = DealStateSeries(
+            states=states,
+            period_results=[],  # provenance not surfaced in the projection payload
+        )
+
+        projection = _projection_payload(series, scenario)
+        scenario_wal = _wal_from_series(series)
         projection["wal_class_a_months"] = scenario_wal.wal_class_a_months
         projection["wal_class_a_years"] = scenario_wal.wal_class_a_years
         projections[scenario] = projection
