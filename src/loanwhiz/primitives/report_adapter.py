@@ -230,6 +230,10 @@ class ReportAdapter:
         """
         tranches: list[TrancheState] = []
         opening_total = 0.0
+        # The Notes & Cash report prints no cumulative-realised-loss line; the
+        # outstanding PDL (the unrecovered-principal ledger) is the closest
+        # report-stated proxy for losses to date. It is 0 on an unimpaired seed
+        # (the fixtured case); a seasoned deal would seed a nonzero figure here.
         cumulative_losses = 0.0
         for cls in self.tranche_classes:
             nb = first_period.note_balance(cls)
@@ -254,6 +258,11 @@ class ReportAdapter:
         reserve_opening = reserve_balance + reserve_drawings
         reserve_target = first_period.reserve_target or reserve_opening
 
+        # The Notes & Cash report states liabilities, not the asset pool balance;
+        # the report-path seed therefore uses the opening liability total as the
+        # pool/original-pool proxy (spec: the report path seeds liabilities).
+        # Callers with the true closing pool balance pass it as
+        # ``original_pool_balance``.
         original_pool = (
             self.original_pool_balance
             if self.original_pool_balance is not None
