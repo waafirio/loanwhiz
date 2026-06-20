@@ -34,7 +34,7 @@ from pathlib import Path
 from collections.abc import Callable
 from typing import Any
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
@@ -44,7 +44,10 @@ from loanwhiz.extraction.assembler import (
     DEFAULT_DEAL_CACHE_DIR,
     DealModel,
     _slug,
+    build_deal_rules,
 )
+from loanwhiz.api import compare as _compare
+from loanwhiz.domain.rules import DealRules
 from loanwhiz.governance import EvidencePackLogger, finos_conformance_summary
 from loanwhiz.primitives.collections_aggregator import (
     CollectionsAggregator,
@@ -580,6 +583,233 @@ def deal_compliance(deal_id: str) -> dict:
     result = monitor.execute(covenant_input)
     _audit(monitor, covenant_input, result)
     return result.output.model_dump()
+
+
+# ---------------------------------------------------------------------------
+# Cross-deal comparison endpoint (#283, Epic 7 — analyst-facing tools)
+#
+# GET /compare?deals=a,b,c[&target=a] assembles + ALIGNS the per-deal artefacts
+# the platform already produces (canonical DealRules from the cached DealModel,
+# the reconstructed DealStateSeries) into one N-way comparison payload that the
+# dashboard view and the drill-down chat both consume. No new modelling — pure
+# assembly/alignment over existing per-deal outputs (the alignment / median maths
+# lives in loanwhiz.api.compare as pure, unit-testable functions).
+#
+# Honest degradation is load-bearing here: a deal can have a canonical DealRules
+# (so the structural diff renders) without a reconstructable series (no tape, no
+# offline report). Rather than 500 or hide it, each deal carries provenance flags
+# (has_structural / has_performance) + a note so a thinner deal isn't read as
+# equivalent to a fuller one (the spec's provenance-difference requirement).
+# ---------------------------------------------------------------------------
+
+
+def _resolve_deal_rules(deal_id: str, deal: dict) -> DealRules | None:
+    """Canonical ``DealRules`` for a deal from its cached ``DealModel``, or None.
+
+    Reuses the same cached-model resolution ``/deal/{id}/model`` and
+    ``/deal/{id}/compliance`` read, then bridges it onto the canonical
+    ``DealRules`` via the extraction assembler's ``build_deal_rules`` (the #273
+    generalization — taxonomy mapping + honest ``unmapped`` escape). Runs in the
+    deterministic-only (no-LLM) path so the request never fans out to Gemini.
+    Returns ``None`` when the deal has no cached model (a cold deal): the caller
+    degrades honestly rather than 500-ing the whole comparison.
+    """
+    model = _load_cached_deal_model(deal)
+    if model is None:
+        return None
+    jurisdiction = deal.get("jurisdiction") or "Unknown"
+    result = build_deal_rules(
+        model,
+        deal_id=deal_id,
+        jurisdiction=jurisdiction,
+        currency=deal.get("currency", "EUR"),
+        use_llm=False,
+    )
+    return result.output
+
+
+def _deal_risk_summary(
+    deal_id: str, states: list[PrimitivesDealState], triggers: list[TriggerDefinition]
+) -> _compare.RiskSummary:
+    """Latest-period covenant proximity-to-breach summary for one deal.
+
+    Runs the same ``CovenantMonitor`` ``/deal/{id}/compliance`` uses over the
+    deal's reconstructed states (``periods=None`` synthesises the minimal period
+    dicts the monitor needs, so a report-driven deal with no tape still gets a
+    real proximity series). Picks the latest period's tightest (closest-to-
+    breach) evaluable trigger for the at-a-glance triage row.
+    """
+    summary = _compare.RiskSummary(deal_id=deal_id)
+    if not states:
+        return summary
+    latest = states[-1]
+    summary.latest_period = latest.reporting_date
+    summary.latest_pool_factor = latest.pool_factor
+    summary.latest_cumulative_loss_rate_pct = latest.cumulative_loss_rate_pct
+
+    covenant_input = CovenantInput.from_deal_states(
+        states,
+        periods=None,
+        triggers=triggers or CovenantMonitor.DEFAULT_TRIGGERS,
+    )
+    monitor = CovenantMonitor()
+    result = monitor.execute(covenant_input)
+    out = result.output
+    summary.active_triggers = list(out.active_triggers)
+    summary.near_miss_triggers = list(out.near_miss_triggers)
+
+    # Tightest evaluable trigger in the latest period.
+    latest_statuses = [
+        st
+        for st in out.trigger_statuses
+        if st.period == latest.reporting_date
+        and st.evaluable
+        and st.proximity_pct is not None
+    ]
+    if latest_statuses:
+        tightest = max(latest_statuses, key=lambda st: st.proximity_pct or 0.0)
+        summary.tightest_trigger = tightest.trigger_name
+        summary.tightest_proximity_pct = tightest.proximity_pct
+    return summary
+
+
+@app.get("/compare", response_model=_compare.CompareResponse)
+def compare_deals(
+    deals: str = Query(..., description="Comma-separated deal ids, 2..N (e.g. a,b,c)."),
+    target: str | None = Query(
+        default=None, description="Optional deal id to benchmark against the comp set."
+    ),
+) -> _compare.CompareResponse:
+    """Assemble + align ``DealRules`` + ``DealStateSeries`` across N deals.
+
+    Returns one comparison payload: Panel-1 structural diff (rows aligned by the
+    canonical ``RecipientType`` / ``MetricType``), Panel-2 overlaid performance
+    series + a latest-period covenant-proximity risk summary, and — when
+    ``target`` is set — comp-set medians + per-target deviations (the benchmark
+    lens) plus jurisdiction/vintage comp suggestions.
+
+    Honest degradation:
+
+    * ``< 2`` deals, an unknown deal id, or a ``target`` not in ``deals`` →
+      labelled **422** (a comparison needs at least two real deals).
+    * A deal with no cached model (structural unavailable) or no reconstructable
+      series (performance unavailable) is **kept in the set** with provenance
+      flags + a note, never dropped and never a 500.
+    """
+    deal_ids = [d.strip() for d in deals.split(",") if d.strip()]
+    if len(deal_ids) < 2:
+        raise HTTPException(
+            status_code=422,
+            detail="A comparison needs at least 2 deal ids (got "
+            f"{len(deal_ids)}). Pass ?deals=a,b[,c...].",
+        )
+    # Dedupe preserving order (a repeated id is a degenerate column).
+    seen: set[str] = set()
+    order = [d for d in deal_ids if not (d in seen or seen.add(d))]
+    if len(order) < 2:
+        raise HTTPException(
+            status_code=422,
+            detail="A comparison needs at least 2 DISTINCT deal ids.",
+        )
+
+    # Validate every id (404→422: a bad id in the set is a client error on the
+    # comparison request, not a missing top-level resource).
+    contexts: dict[str, dict] = {}
+    for deal_id in order:
+        ctx = DEALS.get(deal_id)
+        if ctx is None:
+            raise HTTPException(
+                status_code=422, detail=f"Unknown deal id '{deal_id}' in comparison set."
+            )
+        contexts[deal_id] = ctx
+
+    if target is not None and target not in order:
+        raise HTTPException(
+            status_code=422,
+            detail=f"target '{target}' is not in the comparison set {order}.",
+        )
+
+    notes: list[str] = []
+    rules_by_deal: dict[str, DealRules] = {}
+    states_by_deal: dict[str, list[PrimitivesDealState]] = {}
+    deal_refs: list[_compare.DealRef] = []
+
+    for deal_id in order:
+        ctx = contexts[deal_id]
+        rules = _resolve_deal_rules(deal_id, ctx)
+        has_structural = rules is not None
+        if rules is not None:
+            rules_by_deal[deal_id] = rules
+
+        states: list[PrimitivesDealState] = []
+        try:
+            series = _reconstruct_series(deal_id, ctx)
+            states = list(series.states)
+        except HTTPException:
+            # _not_modelable_deal / _misconfigured_deal — degrade honestly: this
+            # deal contributes to the structural diff but not the performance panel.
+            states = []
+        has_performance = bool(states)
+        if states:
+            states_by_deal[deal_id] = states
+
+        deal_name = (rules.deal_name if rules else ctx["deal_name"])
+        jurisdiction = (
+            rules.jurisdiction if rules and rules.jurisdiction else ctx.get("jurisdiction") or "Unknown"
+        )
+        ref_note: str | None = None
+        if not has_structural:
+            ref_note = "No cached model — structural diff unavailable for this deal."
+            notes.append(f"{deal_id}: {ref_note}")
+        elif not has_performance:
+            ref_note = "No reconstructable series — performance/risk unavailable for this deal."
+            notes.append(f"{deal_id}: {ref_note}")
+        deal_refs.append(
+            _compare.DealRef(
+                deal_id=deal_id,
+                deal_name=deal_name,
+                jurisdiction=jurisdiction,
+                vintage=_compare.parse_vintage(deal_name),
+                is_target=(deal_id == target),
+                has_structural=has_structural,
+                has_performance=has_performance,
+                note=ref_note,
+            )
+        )
+
+    structural_rows = _compare.build_structural_diff(rules_by_deal, order)
+    performance_series, common_periods = _compare.build_performance_panel(
+        states_by_deal, order
+    )
+
+    risk_summary: list[_compare.RiskSummary] = []
+    for deal_id in order:
+        states = states_by_deal.get(deal_id, [])
+        triggers = _extracted_triggers_to_definitions(contexts[deal_id])
+        risk_summary.append(_deal_risk_summary(deal_id, states, triggers))
+
+    response = _compare.CompareResponse(
+        deals=deal_refs,
+        target_deal_id=target,
+        structural_rows=structural_rows,
+        performance_series=performance_series,
+        risk_summary=risk_summary,
+        common_periods=common_periods,
+        notes=notes,
+    )
+
+    if target is not None:
+        response = _compare.apply_benchmark(response, target)
+        target_ref = next(d for d in deal_refs if d.deal_id == target)
+        response.comp_suggestions = _compare.suggest_comps(
+            target_deal_id=target,
+            target_jurisdiction=target_ref.jurisdiction,
+            target_vintage=target_ref.vintage,
+            registry=DEALS,
+            already_selected=set(order),
+        )
+
+    return response
 
 
 # ---------------------------------------------------------------------------
