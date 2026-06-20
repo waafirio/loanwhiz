@@ -161,14 +161,15 @@ def test_period_inputs_step_sources_canonical_spelling(
     adapter: ReportAdapter, period: NotesCashPeriod
 ) -> None:
     pi = adapter.period_inputs(period)
-    # Canonical spelling only — never the classifier's "report-supplied".
-    assert set(pi.step_sources.values()) <= {"engine", "reported", "residual"}
-    # (d) is class_a_interest — engine-computed.
-    assert pi.step_sources["(d)"] == "engine"
-    # (k) is the terminal residual sweep.
-    assert pi.step_sources[DEFAULT_REVENUE_RESIDUAL_LABEL] == "residual"
-    # (a) security-trustee fees — report-supplied → canonical "reported".
-    assert pi.step_sources["(a)"] == "reported"
+    # Canonical spelling only — never the classifier's "report-supplied". Sources
+    # are now per-waterfall (#270); check the revenue map.
+    assert set(pi.revenue_step_sources.values()) <= {"engine", "reported", "residual"}
+    # Revenue (d) is class_a_interest — engine-computed.
+    assert pi.revenue_step_sources["(d)"] == "engine"
+    # Revenue (k) is the terminal residual sweep.
+    assert pi.revenue_step_sources[DEFAULT_REVENUE_RESIDUAL_LABEL] == "residual"
+    # Revenue (a) security-trustee fees — report-supplied → canonical "reported".
+    assert pi.revenue_step_sources["(a)"] == "reported"
 
 
 def test_period_inputs_overrides_keyed_by_priority_label(
@@ -176,33 +177,40 @@ def test_period_inputs_overrides_keyed_by_priority_label(
 ) -> None:
     pi = adapter.period_inputs(period)
     # Overrides cover report-supplied + residual lines, keyed by priority label
-    # (NOT recipient — that is what run_period re-keys internally).
-    assert "(a)" in pi.step_overrides  # report-supplied
+    # (NOT recipient — that is what run_period re-keys internally), per waterfall.
+    assert "(a)" in pi.revenue_step_overrides  # report-supplied
     # Engine-computed (d) class_a_interest has NO override (engine formulates it).
-    assert "(d)" not in pi.step_overrides
+    assert "(d)" not in pi.revenue_step_overrides
     # The folded (b) override equals the summed (1)…(14) sub-items.
     folded = _fold_revenue_pop(period)
-    assert pi.step_overrides["(b)"] == pytest.approx(folded["(b)"])
+    assert pi.revenue_step_overrides["(b)"] == pytest.approx(folded["(b)"])
 
 
-def test_period_inputs_label_collision_engine_wins(
+def test_period_inputs_per_waterfall_maps_resolve_collision(
     adapter: ReportAdapter, period: NotesCashPeriod
 ) -> None:
-    """Revenue+redemption reuse labels; engine wins, revenue wins reported.
+    """Revenue+redemption reuse labels; per-waterfall maps keep them separate (#270).
 
-    Revenue (d) is engine-computed Class A interest; redemption (d) is a
-    report-supplied principal line. The canonical step maps are a single flat
-    label-keyed dict, so the adapter must pin (d) "engine" (keeping its gating)
-    and never carry a redemption override on it.
+    Revenue (a) is the report-supplied security-trustee-fee line; redemption (a) is
+    the revolving-period purchase of new receivables (~€43.49M). The single FLAT
+    label map dropped redemption (a) and bled revenue's amount onto the redemption
+    waterfall (the #269 collision). With per-waterfall maps, each (a) carries its
+    own waterfall's amount and neither corrupts the other.
     """
     pi = adapter.period_inputs(period)
-    # (d): engine wins over redemption's report-supplied class_b principal line.
-    assert pi.step_sources["(d)"] == "engine"
-    assert "(d)" not in pi.step_overrides
-    # (a): revenue's report-supplied amount wins, not redemption's 43.4m purchase.
+    # Revenue (d): engine-computed Class A interest — no override, keeps its source.
+    assert pi.revenue_step_sources["(d)"] == "engine"
+    assert "(d)" not in pi.revenue_step_overrides
+    # Revenue (a): the report-supplied security-trustee-fee amount.
     revenue_a = _fold_revenue_pop(period)["(a)"]
-    assert pi.step_overrides["(a)"] == pytest.approx(revenue_a)
-    assert pi.step_overrides["(a)"] != pytest.approx(43_486_010.58)
+    assert pi.revenue_step_overrides["(a)"] == pytest.approx(revenue_a)
+    # Redemption (a): the ~€43.49M purchase line, NOT corrupted by revenue's (a).
+    assert pi.redemption_step_sources["(a)"] == "reported"
+    assert pi.redemption_step_overrides["(a)"] == pytest.approx(43_486_010.58)
+    # The two waterfalls' (a) overrides are genuinely different (no collision).
+    assert pi.redemption_step_overrides["(a)"] != pytest.approx(
+        pi.revenue_step_overrides["(a)"]
+    )
 
 
 def test_revenue_pop_folding_collapses_b_subitems(period: NotesCashPeriod) -> None:

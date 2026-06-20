@@ -1,5 +1,19 @@
 """Report verifier primitive — compare investor report figures against waterfall computation.
 
+.. deprecated:: #270 (epic #257)
+   The Reconciler (:mod:`loanwhiz.primitives.reconciler`) is now the canonical
+   engine-vs-report proof: it reconciles the **live folded** engine's full
+   per-step Priority of Payments to the deal's published Notes & Cash report **to
+   the cent** (EUR 0.01), across every period, with honest per-line source labels.
+   This module's coarser 5-figure %-tolerance comparison is **subsumed** by that
+   reader. It is retained only as a **registered MCP primitive** (the demo's "did
+   the servicer apply the waterfall correctly?" tool, ``library-only``
+   reachability) so the MCP server / demo surface keeps working; the registered
+   primitive is removed in the later MCP-collapse migration step (design spec
+   ``2026-06-20-cold-start-edw-deal-engine-design.md`` → "Migration sequence"
+   item 6), not here (#270 = item 4), to avoid breaking the registered-primitive /
+   demo surface mid-epic. **New code should use the Reconciler.**
+
 Extracts key payment figures from a monthly investor report PDF using Gemini 2.5 Flash,
 then compares them against the corresponding values in a WaterfallOutput to detect
 servicer discrepancies.

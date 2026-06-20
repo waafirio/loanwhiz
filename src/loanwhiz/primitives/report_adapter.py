@@ -61,7 +61,7 @@ from loanwhiz.primitives.step_source_classifier import build_step_specs
 
 #: Revenue PoP labels whose amount the prospectus does NOT formulate — taken from
 #: the report (security-trustee/various fees, swap payments, expense top-ups).
-#: Mirrors ``engine_validation_harness._REVENUE_REPORT_SUPPLIED_LABELS``.
+#: Mirrors ``reconciler`` revenue report-supplied labelling (one classifier).
 DEFAULT_REVENUE_REPORT_SUPPLIED_LABELS: frozenset[str] = frozenset(
     {"(a)", "(b)", "(c)", "(g)", "(i)", "(j)"}
 )
@@ -98,8 +98,8 @@ def _fold_revenue_pop(period: NotesCashPeriod) -> dict[str, float]:
     ``(1)…(14)`` (a ``pypdf`` layout artefact). The extracted model carries a
     single ``(b)`` step, so the sub-items' amounts are folded back into one
     ``(b)`` total; top-level ``(a)`` and ``(c)…(k)`` labels pass through. Mirrors
-    ``engine_validation_harness._fold_report_revenue_steps`` so the adapter and
-    harness fold identically.
+    ``reconciler._fold_report_revenue_steps`` so the adapter and the Reconciler
+    fold identically.
     """
     folded: dict[str, float] = {}
     b_total = 0.0
@@ -330,56 +330,48 @@ class ReportAdapter:
         )
 
         # The classifier keys overrides/sources by RECIPIENT; PeriodInputs keys by
-        # PRIORITY LABEL (run_period re-keys label → recipient itself, applying the
-        # SAME flat map across BOTH waterfalls). Re-key via each waterfall's step
-        # list, translating the source vocabulary as we go.
+        # PRIORITY LABEL (run_period re-keys label → recipient via each waterfall's
+        # own step list). Re-key via each waterfall's step list, translating the
+        # source vocabulary as we go.
         #
-        # Label-collision rule (load-bearing). The revenue and redemption
-        # waterfalls REUSE the labels (a)…(d) for DIFFERENT recipients (revenue
-        # (d) is the engine-computed Class A interest; redemption (d) is a
-        # report-supplied principal line), and the canonical maps are a single
-        # FLAT label→… dict that run_period applies to BOTH waterfalls (mapping
-        # ``step_overrides[label]`` to each waterfall's own recipient). Two rules
-        # keep that flat map honest:
-        #
-        # 1. **"engine" wins source collisions.** run_period clears a step's
-        #    extracted condition unless its label is pinned ``"engine"``; a
-        #    report-supplied entry from the other waterfall on the same label would
-        #    un-gate the engine-computed step and double-count. So an engine label
-        #    is never demoted to reported/residual and never carries an override.
-        # 2. **Revenue wins report-supplied override collisions (first-wins).**
-        #    The revenue waterfall is processed first, so a label it owns as
-        #    report-supplied keeps its revenue amount; redemption only contributes
-        #    overrides for labels revenue did not already claim. (The canonical
-        #    flat shape cannot carry two distinct amounts for one shared label —
-        #    this is a #263/#265 schema property, not an adapter choice; revenue
-        #    precedence is the documented, deterministic resolution.)
-        step_overrides: dict[str, float] = {}
-        step_sources: dict[str, Literal["engine", "reported", "residual"]] = {}
-        for steps, overrides, source in (
-            (self.revenue_steps, rev_overrides, rev_source),
-            (self.redemption_steps, red_overrides, red_source),
-        ):
+        # Per-waterfall, NOT flat (#270 — resolving the #269 collision). The
+        # revenue and redemption waterfalls REUSE the labels (a)…(d) for DIFFERENT
+        # recipients (revenue (a) = security-trustee fees / (d) = engine-computed
+        # Class A interest; redemption (a) = the revolving-period purchase of new
+        # receivables / (d) = a report-supplied principal line). A single FLAT
+        # label→amount map applied to both waterfalls dropped redemption (a)'s
+        # ~€43.49M line and bled revenue's (b)/(c) amounts onto redemption. Each
+        # waterfall therefore gets its OWN override/source map, keyed by its own
+        # labels — no cross-waterfall precedence rule is needed because the maps
+        # never share a namespace.
+        def _build_maps(
+            steps: list[dict[str, Any]],
+            overrides: dict[str, float],
+            source: dict[str, str],
+        ) -> tuple[
+            dict[str, float], dict[str, Literal["engine", "reported", "residual"]]
+        ]:
+            label_overrides: dict[str, float] = {}
+            label_sources: dict[
+                str, Literal["engine", "reported", "residual"]
+            ] = {}
             for step in steps:
                 label = str(step.get("priority", ""))
                 recipient = str(step.get("recipient", ""))
                 canonical = _CANONICAL_SOURCE[source[recipient]]
-                if step_sources.get(label) == "engine":
-                    # Rule 1: already pinned engine by an earlier waterfall — keep.
-                    continue
-                if canonical == "engine":
-                    # Rule 1: engine-computed wins; drop any override the other
-                    # waterfall set on this label.
-                    step_sources[label] = "engine"
-                    step_overrides.pop(label, None)
-                    continue
-                # Reported/residual. Rule 2: don't overwrite a label an
-                # earlier (revenue) waterfall already set as reported/residual.
-                if label in step_sources:
-                    continue
-                step_sources[label] = canonical
-                if recipient in overrides:
-                    step_overrides[label] = overrides[recipient]
+                label_sources[label] = canonical
+                # Engine-computed steps carry no override (the engine computes the
+                # amount); only report-supplied steps carry one.
+                if canonical != "engine" and recipient in overrides:
+                    label_overrides[label] = overrides[recipient]
+            return label_overrides, label_sources
+
+        rev_label_overrides, rev_label_sources = _build_maps(
+            self.revenue_steps, rev_overrides, rev_source
+        )
+        red_label_overrides, red_label_sources = _build_maps(
+            self.redemption_steps, red_overrides, red_source
+        )
 
         return PeriodInputs(
             reporting_date=period.reporting_date,
@@ -388,8 +380,10 @@ class ReportAdapter:
             available_principal=period.available_principal_funds or 0.0,
             realized_loss=0.0,
             legs=None,
-            step_overrides=step_overrides,
-            step_sources=step_sources,
+            revenue_step_overrides=rev_label_overrides,
+            revenue_step_sources=rev_label_sources,
+            redemption_step_overrides=red_label_overrides,
+            redemption_step_sources=red_label_sources,
             risk_signals=None,
             source="report",
         )

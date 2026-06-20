@@ -120,11 +120,45 @@ class PeriodInputs(BaseModel):
     )
     step_overrides: dict[str, float] = Field(
         default_factory=dict,
-        description="priority_label -> reported amount (report path).",
+        description=(
+            "priority_label -> reported amount (report path). FLAT map applied to "
+            "BOTH waterfalls; safe only when the two waterfalls do not reuse a "
+            "label for different recipients. Prefer the per-waterfall maps below "
+            "when they do (#270)."
+        ),
     )
     step_sources: dict[str, Literal["engine", "reported", "residual"]] = Field(
         default_factory=dict,
-        description="priority_label -> how the step amount was determined.",
+        description="priority_label -> how the step amount was determined (flat).",
+    )
+    # Per-waterfall report-supplied maps (#270). The revenue and redemption
+    # waterfalls reuse the priority labels (a)…(d) for DIFFERENT recipients (e.g.
+    # revenue (a) = security-trustee fees, redemption (a) = the revolving-period
+    # purchase of new receivables), so a single FLAT label->amount map cannot carry
+    # both — applying revenue's (a) amount to the redemption waterfall corrupts the
+    # redemption line (the #269 cross-waterfall flat-label collision). These
+    # per-waterfall maps namespace the overrides/sources by waterfall so each
+    # waterfall is fed its own report actuals. When a per-waterfall map is empty,
+    # the kernel falls back to the flat ``step_overrides`` / ``step_sources`` above
+    # — so existing single-waterfall callers and the tape path (all maps empty) are
+    # unchanged.
+    revenue_step_overrides: dict[str, float] = Field(
+        default_factory=dict,
+        description="priority_label -> reported amount for the REVENUE waterfall.",
+    )
+    revenue_step_sources: dict[str, Literal["engine", "reported", "residual"]] = Field(
+        default_factory=dict,
+        description="priority_label -> source for the REVENUE waterfall.",
+    )
+    redemption_step_overrides: dict[str, float] = Field(
+        default_factory=dict,
+        description="priority_label -> reported amount for the REDEMPTION waterfall.",
+    )
+    redemption_step_sources: dict[
+        str, Literal["engine", "reported", "residual"]
+    ] = Field(
+        default_factory=dict,
+        description="priority_label -> source for the REDEMPTION waterfall.",
     )
     risk_signals: RiskSignals | None = Field(
         default=None, description="Tape-only pool risk signals."

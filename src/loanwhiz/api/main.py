@@ -58,17 +58,16 @@ from loanwhiz.primitives.covenant_monitor import (
 )
 from loanwhiz.domain.state import DealState as DomainDealState
 from loanwhiz.primitives.deal_state import DealState as PrimitivesDealState
-from loanwhiz.primitives.engine_validation_harness import (
-    EngineValidationReport,
-    load_green_lion_2024_1_model,
-    load_green_lion_2024_1_periods,
+from loanwhiz.primitives.reconciler import (
+    ReconciliationReport,
+    load_green_lion_2024_1_report,
     validate_green_lion_2024_1,
 )
 from loanwhiz.primitives.esma_tape_normaliser import (
     EsmaTapeInput,
     EsmaTapeNormaliser,
 )
-from loanwhiz.primitives.notes_cash_parser import NotesCashReport
+from loanwhiz.primitives.notes_cash_parser import NotesCashPeriod, NotesCashReport
 from loanwhiz.primitives.period_state_machine import (
     DealStateSeries,
     PeriodInput,
@@ -975,19 +974,6 @@ def _reconstruct_series_from_tapes(deal_id: str, deal: dict) -> DealStateSeries:
 # wires the cold-start.
 # ---------------------------------------------------------------------------
 
-def _load_green_lion_2024_1_report() -> NotesCashReport:
-    """Green Lion 2024-1's parsed Notes & Cash report from committed fixtures.
-
-    Reuses the offline harness's committed-fixture loaders (the same seed-model
-    name + parsed Notes & Cash period the headline validation proof reads) so the
-    cold-start report path is byte-deterministic and offline — no PDF fetch, no
-    LLM, in the request path.
-    """
-    model = load_green_lion_2024_1_model()
-    periods = load_green_lion_2024_1_periods()
-    return NotesCashReport(deal_name=model.metadata.deal_name, periods=periods)
-
-
 # Per-deal OFFLINE parsed-report loaders. Each returns the deal's
 # ``NotesCashReport`` from committed fixtures (no network, no LLM, no PDF fetch),
 # so the report path is deterministic in the request path and in CI — mirroring
@@ -995,8 +981,12 @@ def _load_green_lion_2024_1_report() -> NotesCashReport:
 # report cache) cannot cold-start offline yet → ``_not_modelable_deal``. Patchable
 # in tests, like the other module-level seams. As deals gain committed report
 # fixtures (or a durable report cache lands), they are added here as data.
+#
+# Green Lion 2024-1 loads all 3 committed quarterly Notes & Cash fixtures via the
+# Reconciler's loader, so the live cold-start folds the full quarterly history
+# (the same report the Reconciler proves to the cent — one loader, no drift).
 _REPORT_LOADERS: dict[str, Callable[[], NotesCashReport]] = {
-    "green-lion-2024-1": _load_green_lion_2024_1_report,
+    "green-lion-2024-1": load_green_lion_2024_1_report,
 }
 
 
@@ -1036,24 +1026,36 @@ def _primitives_seed_from_report_seed(seed: DomainDealState) -> PrimitivesDealSt
     )
 
 
-def _report_coupon_pct(report: NotesCashReport) -> float:
-    """Class A annual coupon (%) recovered from the first report period.
+def _period_coupon_pct(period: NotesCashPeriod) -> float:
+    """Class A annual coupon (%) recovered from ONE report period.
 
     The fold needs a coupon rate to compute the engine's Class A interest need.
-    The Notes & Cash report does not print a clean fixed rate, but it does print
-    the Class A interest paid and the Class A balance, so the exact rate is
+    The Notes & Cash report does not print a clean fixed rate, but it prints the
+    Class A interest paid and the Class A balance, so the exact rate is
     ``interest / (balance × days/360) × 100`` — the same recovery the offline
-    harness uses (``engine_validation_harness._coupon_pct``). Returns ``0.0`` when
-    the first period carries no Class A balance.
+    proof uses (``reconciler._coupon_pct``). The Green Lion 2024-1 notes are
+    **floating-rate**: the coupon differs each quarter (≈2.44% / 2.51% / 2.45%),
+    so the rate MUST be recovered per period — using the first period's rate for
+    every period drifts the later periods' Class A interest by hundreds of
+    thousands of EUR (#270). Returns ``0.0`` when the period carries no Class A
+    balance.
     """
-    first = report.periods[0]
-    nb = first.note_balance("class_a")
+    nb = period.note_balance("class_a")
     balance = (nb.principal_balance_after_payment if nb else None) or 0.0
     interest = (nb.total_interest_payments if nb else None) or 0.0
     denom = balance * 90 / 360.0
     if denom <= 0:
         return 0.0
     return interest / denom * 100.0
+
+
+def _report_coupon_pct(report: NotesCashReport) -> float:
+    """Class A annual coupon (%) from the first report period (back-compat shim).
+
+    Retained for callers that want a single representative rate; the per-period
+    fold uses :func:`_period_coupon_pct` so each floating-rate quarter is exact.
+    """
+    return _period_coupon_pct(report.periods[0]) if report.periods else 0.0
 
 
 def _reconstruct_series_from_reports(deal_id: str, deal: dict) -> DealStateSeries:
@@ -1085,27 +1087,72 @@ def _reconstruct_series_from_reports(deal_id: str, deal: dict) -> DealStateSerie
 
     report = loader()
     adapter = ReportAdapter.from_deal_model(model)
+    series = fold_report_series(model, report, adapter)
+    _RECONSTRUCTION_MEMO[memo_key] = series
+    return series
+
+
+def _report_step_specs(
+    model: Any, adapter: ReportAdapter
+) -> tuple[list[StepSpec], list[StepSpec]]:
+    """Build the report-path revenue/redemption ``StepSpec`` lists.
+
+    Identical to ``StepSpec.from_extracted`` for every step EXCEPT the terminal
+    residual sweep: the adapter knows each waterfall's residual label (revenue
+    ``"(k)"`` — "any Deferred Purchase Price Instalment to the Seller"; redemption
+    ``""`` — no residual sweep this revolving period), and that step MUST carry
+    ``residual=True`` so the interpreter sweeps the remaining pot into it. Without
+    the flag the residual line distributes €0 and the revenue waterfall fails to
+    tie out (#270 — surfaced once the live fold is reconciled to the cent).
+    """
+
+    def _build(steps: list[dict], residual_label: str) -> list[StepSpec]:
+        specs: list[StepSpec] = []
+        for step in steps:
+            spec = StepSpec.from_extracted(step)
+            if residual_label and spec.priority == residual_label:
+                spec = spec.model_copy(update={"residual": True})
+            specs.append(spec)
+        return specs
+
+    return (
+        _build(model.waterfalls["revenue"]["steps"], adapter.revenue_residual_label),
+        _build(
+            model.waterfalls["redemption"]["steps"],
+            adapter.redemption_residual_label,
+        ),
+    )
+
+
+def fold_report_series(
+    model: Any, report: NotesCashReport, adapter: ReportAdapter
+) -> DealStateSeries:
+    """Fold ``run_period`` over a report's periods → ``DealStateSeries`` (report path).
+
+    The single report-path fold both the live endpoints (#269) and the offline
+    Reconciler proof (#270) use, so the two cannot drift. Seeds period-0 from the
+    first report's opening balances (B5) via the adapter, then folds each period:
+
+    - the residual sweep step is flagged (``_report_step_specs``) so the revenue
+      ``(k)`` line ties the pot out;
+    - the Class A coupon is recovered **per period** (the notes are floating-rate),
+      so each quarter's engine-computed Class A interest is exact.
+
+    No Green-Lion-2026-1 constant is consulted — the seed and the rates both come
+    from the report.
+    """
     domain_seed, inputs = adapter.to_inputs(report)
-
     seed = _primitives_seed_from_report_seed(domain_seed)
-    revenue_steps = [
-        StepSpec.from_extracted(s) for s in model.waterfalls["revenue"]["steps"]
-    ]
-    redemption_steps = [
-        StepSpec.from_extracted(s) for s in model.waterfalls["redemption"]["steps"]
-    ]
-    rates = {"class_a_rate_pct": _report_coupon_pct(report)}
+    revenue_steps, redemption_steps = _report_step_specs(model, adapter)
 
-    # Fold run_period over the report-derived inputs, seeded from the report. The
-    # same loop reconstruct_period_series runs, but seeded from the report's
-    # opening balances (B5) instead of the prospectus capital structure.
     states: list[PrimitivesDealState] = [seed]
     period_results = []
     current = seed
-    for period in inputs:
+    for period_inputs, report_period in zip(inputs, report.periods):
+        rates = {"class_a_rate_pct": _period_coupon_pct(report_period)}
         result = run_period(
             current,
-            period,
+            period_inputs,
             rates=rates,
             revenue_steps=revenue_steps,
             redemption_steps=redemption_steps,
@@ -1114,9 +1161,7 @@ def _reconstruct_series_from_reports(deal_id: str, deal: dict) -> DealStateSerie
         states.append(result.closing_state)
         current = result.closing_state
 
-    series = DealStateSeries(states=states, period_results=period_results)
-    _RECONSTRUCTION_MEMO[memo_key] = series
-    return series
+    return DealStateSeries(states=states, period_results=period_results)
 
 
 def _not_modelable_deal(deal_id: str) -> HTTPException:
@@ -1623,17 +1668,18 @@ def capability_matrix() -> CapabilityMatrix:
 # --- end cross-deal capability matrix (#241) ---------------------------------
 
 
-# --- engine validation (#212, V6 / epic #206) --------------------------------
+# --- engine validation (#212, V6 / epic #206; #270 Reconciler) ---------------
 # Self-contained block (response models + handler) for GET
-# /deal/{deal_id}/validation — the headline seasoned-deal proof surfaced over
-# HTTP so the demo UI's Validation view can render it. It runs V4's engine
-# -validation harness (engine_validation_harness) OFFLINE: the committed
-# extracted-model seed + the committed Notes & Cash report fixture (no network,
-# no LLM, no PDF fetch), so the endpoint is deterministic and fast. The V3/V4/V5
-# harnesses deliberately avoided touching this module; this issue owns the API
-# seam onto V4.
+# /deal/{deal_id}/validation — the headline cold-start proof surfaced over HTTP so
+# the demo UI's Validation view can render it. It runs the Reconciler
+# (loanwhiz.primitives.reconciler) OFFLINE over the LIVE folded series: the
+# committed extracted-model seed + the committed Notes & Cash report fixtures (no
+# network, no LLM, no PDF fetch), so the endpoint is deterministic and fast and
+# proves the *live engine* lands the published numbers across all 3 quarterly
+# periods (#270 subsumed the old offline engine_validation_harness into the
+# Reconciler reading the fold).
 #
-# Honesty (epic #206): the response preserves V4's per-step `source` label —
+# Honesty (epic #206): the response preserves the per-step `source` label —
 # 'engine' (the interpreter COMPUTED the line from the extracted model with no
 # report input — the independent proof), 'report-supplied' (no prospectus
 # formula; amount taken from the report, the engine only ROUTES it), 'residual'
@@ -1648,10 +1694,10 @@ def capability_matrix() -> CapabilityMatrix:
 # patchable in tests, mirroring the other module-level seams.
 
 #: Per-deal offline validation builders. Each returns an
-#: :class:`EngineValidationReport` from committed fixtures (no network/LLM).
+#: :class:`ReconciliationReport` from committed fixtures (no network/LLM).
 #: Keyed by the canonical deal id used in the /deal/{deal_id}/... routes. A deal
 #: absent from this map is registered-but-unvalidated → `available=false`.
-_VALIDATION_BUILDERS: dict[str, Callable[[], EngineValidationReport]] = {
+_VALIDATION_BUILDERS: dict[str, Callable[[], ReconciliationReport]] = {
     "green-lion-2024-1": validate_green_lion_2024_1,
 }
 
@@ -1777,7 +1823,7 @@ def deal_validation(deal_id: str) -> ValidationResponse:
             note=_VALIDATION_UNAVAILABLE_NOTE,
         )
 
-    report: EngineValidationReport = builder()
+    report: ReconciliationReport = builder()
     return ValidationResponse(
         deal_id=deal_id,
         deal_name=report.deal_name,
