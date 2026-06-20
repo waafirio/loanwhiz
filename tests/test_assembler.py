@@ -641,6 +641,113 @@ class TestExtractDealModelMocked:
 
 
 # ---------------------------------------------------------------------------
+# Unit tests — language-agnostic section wiring (#274)
+# ---------------------------------------------------------------------------
+
+
+class TestExtractDealModelLanguageAgnostic:
+    """extract_deal_model wires the LLM section router (classify_segments_llm)
+    behind the keyword router and threads the resolved sections into the
+    sub-extractors — the #274 fix. The genai boundary is the only thing stubbed.
+    """
+
+    # A non-English (Italian) markdown whose load-bearing headings the English
+    # keyword router cannot match — so without the LLM fallback the definitions
+    # extractor raises and the waterfalls come back empty (the original defect).
+    _NON_ENGLISH_MD = (
+        "# Definizioni\n"
+        '"Fondi Disponibili" indica la somma dei seguenti importi.\n'
+        "# Ordine di Priorità dei Pagamenti — Interessi\n"
+        "- (a) commissioni del fiduciario;\n- (b) interessi Classe A.\n"
+        "# Ordine di Priorità dei Pagamenti — Capitale\n"
+        "- (a) capitale Classe A.\n"
+        "# Priorità Post-Escussione\n"
+        "- (a) commissioni del fiduciario.\n"
+    )
+
+    def test_llm_fallback_threads_resolved_sections_to_extractors(self) -> None:
+        from loanwhiz.extraction import section_router
+
+        captured: dict = {}
+
+        def _fake_classify(section_map, **_kwargs):
+            by_title = {s.title: s for s in section_map.sections}
+            return {
+                "definitions": by_title["Definizioni"],
+                "revenue_priority_of_payments": by_title[
+                    "Ordine di Priorità dei Pagamenti — Interessi"
+                ],
+                "redemption_priority_of_payments": by_title[
+                    "Ordine di Priorità dei Pagamenti — Capitale"
+                ],
+                "post_enforcement_priority": by_title["Priorità Post-Escussione"],
+            }
+
+        fake_defs_graph = MagicMock()
+        fake_defs_graph.terms = {}
+
+        fake_covenants = MagicMock()
+        fake_covenants.model_dump.return_value = {
+            "deal_name": "Leone",
+            "triggers": [],
+            "issuer_covenants": [],
+            "extraction_confidence": 0.0,
+        }
+        fake_covenants.triggers = []
+
+        def _capture_defs(section_map, **kwargs):
+            captured["defs_section"] = kwargs.get("section")
+            return fake_defs_graph
+
+        def _capture_wf(section_map, definitions, **kwargs):
+            captured["wf_sections"] = kwargs.get("sections")
+            return {"revenue": _make_waterfall("revenue", n_steps=2)}
+
+        def _capture_cov(section_map, definitions, **kwargs):
+            captured["cov_extra"] = kwargs.get("extra_sections")
+            return fake_covenants
+
+        with tempfile.TemporaryDirectory() as tmpdir, patch.object(
+            section_router, "classify_segments_llm", _fake_classify
+        ), patch(
+            "loanwhiz.extraction.assembler._download_and_convert",
+            return_value=self._NON_ENGLISH_MD,
+        ), patch(
+            "loanwhiz.extraction.assembler.extract_definitions",
+            side_effect=_capture_defs,
+        ), patch(
+            "loanwhiz.extraction.assembler.extract_all_waterfalls",
+            side_effect=_capture_wf,
+        ), patch(
+            "loanwhiz.extraction.assembler.extract_covenants",
+            side_effect=_capture_cov,
+        ):
+            extract_deal_model(
+                prospectus_url="https://example.com/leone.pdf",
+                deal_name="Leone Arancio RMBS 2023-1 S.r.l.",
+                cache_dir=tmpdir,
+            )
+
+        # Definitions extractor received the LLM-located Italian definitions
+        # section (so it won't raise ValueError on the missing English heading).
+        assert captured["defs_section"] is not None
+        assert captured["defs_section"].title == "Definizioni"
+
+        # Waterfall extractor received the resolved sections for all three types.
+        wf_sections = captured["wf_sections"]
+        assert wf_sections is not None
+        assert set(wf_sections) == {"revenue", "redemption", "post_enforcement"}
+        assert wf_sections["revenue"].title.startswith("Ordine di Priorità")
+
+        # Covenant extractor received the resolved PoP/triggers spans.
+        cov_extra = captured["cov_extra"]
+        assert cov_extra and any(
+            sec.title == "Ordine di Priorità dei Pagamenti — Interessi"
+            for _label, sec in cov_extra
+        )
+
+
+# ---------------------------------------------------------------------------
 # Unit tests — durable cache location (#132)
 # ---------------------------------------------------------------------------
 

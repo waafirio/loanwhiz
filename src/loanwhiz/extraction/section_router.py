@@ -242,3 +242,80 @@ def classify_segments_llm(
             idx = -1
         result[role] = sections[idx] if 0 <= idx < len(sections) else None
     return result
+
+
+# ---------------------------------------------------------------------------
+# Two-tier section resolution (deterministic keyword fast-path + LLM fallback)
+# ---------------------------------------------------------------------------
+
+# The load-bearing roles the assembler's extractors need located before they can
+# run. These are the roles for which a *miss* by the deterministic keyword router
+# aborts or silently empties extraction (definitions hard-raises; each waterfall
+# raises a swallowed ``ValueError`` → empty waterfalls). For each, the canonical
+# role name in :data:`CANONICAL_SECTION_ROLES` (the LLM router's vocabulary) is
+# the same string the keyword router (:func:`extract_key_sf_sections`) returns —
+# so a gap in the keyword result can be filled directly from the LLM result.
+_LOAD_BEARING_ROLES: tuple[str, ...] = (
+    "definitions",
+    "revenue_priority_of_payments",
+    "redemption_priority_of_payments",
+    "post_enforcement_priority",
+)
+
+
+def resolve_sections(
+    section_map: SectionMap,
+    *,
+    use_llm: bool = True,
+) -> dict[str, Section | None]:
+    """Resolve the load-bearing sections, keyword-first with an LLM fallback.
+
+    This is the wiring that makes :func:`classify_segments_llm` part of the
+    production extraction path (#274). The deterministic English-keyword router
+    (:func:`extract_key_sf_sections`) stays the **fast path** — it is free,
+    deterministic, and already correct for the English Green Lion prospectuses.
+    Only when it leaves a :data:`_LOAD_BEARING_ROLES` role unresolved (the
+    non-English / non-standard case — e.g. an Italian "priorità dei pagamenti"
+    or Spanish "orden de prelación" heading that no English keyword matches) is
+    the **language-agnostic** LLM router consulted, and only its result for the
+    *still-missing* roles is merged in. A role the keyword router already
+    located is never overridden.
+
+    Consequences:
+
+    - **English path is byte-identical.** When the keyword router finds every
+      load-bearing role (the Green Lion case), ``use_llm`` is moot — the LLM is
+      never invoked — and the returned sections are exactly the keyword hits.
+    - **Non-English path is rescued.** When the keyword router misses (IT/ES),
+      the LLM fills the gap by *meaning*, so the downstream waterfall /
+      definitions extractors receive a real section to extract from instead of
+      raising.
+
+    Parameters
+    ----------
+    section_map:
+        The header-segmented :class:`SectionMap`.
+    use_llm:
+        When ``False`` (offline / tests), the LLM fallback is skipped entirely —
+        the result is the deterministic keyword router's output verbatim, with
+        any unresolved load-bearing role left ``None``. :func:`classify_segments_llm`
+        also degrades to all-``None`` on a credentials/network error, so the
+        fallback never raises into the extraction path regardless.
+
+    Returns
+    -------
+    dict[str, Section | None]
+        Map over :data:`_LOAD_BEARING_ROLES` (plus the remaining keys
+        :func:`extract_key_sf_sections` returns, passed through unchanged), each
+        the resolved :class:`Section` or ``None`` when neither tier located it.
+    """
+    keyword = extract_key_sf_sections(section_map)
+
+    missing = [r for r in _LOAD_BEARING_ROLES if keyword.get(r) is None]
+    if missing and use_llm:
+        llm = classify_segments_llm(section_map)
+        for role in missing:
+            if llm.get(role) is not None:
+                keyword[role] = llm[role]
+
+    return keyword
