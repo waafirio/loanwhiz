@@ -421,6 +421,78 @@ class TestRevenueSectionFedToGemini:
         assert self._result.waterfall_type == "revenue"
 
 
+class TestDescendantSpanSectionFedToGemini:
+    """#316: a pre-resolved (LLM-routed) section whose `.text` is the descendant
+    span must feed Gemini the child-section steps.
+
+    Mirrors the Sol-Lion (ES) structure: a generically-titled parent whose real
+    enumerated cascade lives in a deeper child sub-section. The assembler routes
+    via the LLM and passes the widened section through `section=`; this asserts
+    that span (not a heading-only stub) reaches the prompt.
+    """
+
+    _MD = (
+        "## 3.4.7.4 Application of Available Funds\n\n"
+        "This section governs the application of funds.\n\n"
+        "### 3.4.7.4.2 Application\n\n"
+        "On each Payment Date the Available Funds will be applied:\n\n"
+        "- (a) first, fees of the Management Company;\n"
+        "- (b) second, interest on the Class A Notes;\n"
+        "- (c) third, principal of the Class A Notes;\n\n"
+        "## 4.6.2 Summary Table\n\n"
+        "Rank 1, Rank 2, Rank 3.\n"
+    )
+
+    def test_routed_descendant_span_reaches_gemini(self) -> None:
+        from loanwhiz.extraction.section_router import route_sections
+
+        section_map = route_sections(self._MD)
+        parent = next(
+            s for s in section_map.sections
+            if s.title.startswith("3.4.7.4 Application")
+        )
+        # The widened section the LLM router would hand to the waterfall extractor.
+        routed = section_map.with_descendant_text(parent)
+
+        definitions = MagicMock()
+        definitions.resolve.return_value = None
+        definitions.resolve_all.return_value = {}
+
+        fake_fc = MagicMock()
+        fake_fc.args = {"steps": [], "source_section": "3.4.7.4.2"}
+        fake_part = MagicMock()
+        fake_part.function_call = fake_fc
+        fake_candidate = MagicMock()
+        fake_candidate.content.parts = [fake_part]
+        fake_response = MagicMock()
+        fake_response.candidates = [fake_candidate]
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            cache_file = Path(tmpdir) / "waterfall_test_revenue.json"
+            with patch(
+                "loanwhiz.extraction.waterfall_extractor.genai.Client"
+            ) as mock_client:
+                mock_client.return_value.models.generate_content.return_value = (
+                    fake_response
+                )
+                extract_waterfall(
+                    section_map=section_map,
+                    definitions=definitions,
+                    waterfall_type="revenue",
+                    deal_name="test",
+                    cache_path=str(cache_file),
+                    section=routed,
+                )
+                call = mock_client.return_value.models.generate_content.call_args
+                prompt = call.kwargs["contents"]
+
+        # The child-section steps reached Gemini via the descendant span.
+        assert "- (a) first, fees of the Management Company" in prompt
+        assert "- (c) third, principal of the Class A Notes" in prompt
+        # The next sibling (## 4.6.2) must NOT have leaked into the span.
+        assert "Summary Table" not in prompt
+
+
 class TestCachePathFor:
     """_cache_path_for helper."""
 
