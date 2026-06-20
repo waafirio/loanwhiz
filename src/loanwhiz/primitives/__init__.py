@@ -39,6 +39,15 @@ from loanwhiz.primitives.esma_tape_normaliser import (
     EsmaTapeNormaliser,
     EsmaTapeOutput,
 )
+from loanwhiz.primitives.pool_stratification import (
+    ConcentrationCheck,
+    ConcentrationLimit,
+    MigrationCell,
+    PoolStratification,
+    PoolStratificationInput,
+    PoolStratificationOutput,
+    StratumCell,
+)
 from loanwhiz.primitives.registry import PRIMITIVE_REGISTRY, register_primitive
 
 __all__ = [
@@ -55,6 +64,13 @@ __all__ = [
     "EsmaTapeInput",
     "EsmaTapeNormaliser",
     "EsmaTapeOutput",
+    "ConcentrationCheck",
+    "ConcentrationLimit",
+    "MigrationCell",
+    "PoolStratification",
+    "PoolStratificationInput",
+    "PoolStratificationOutput",
+    "StratumCell",
     "Primitive",
     "PrimitiveMetadata",
     "PrimitiveResult",
