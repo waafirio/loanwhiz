@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 from fastapi.testclient import TestClient
@@ -1770,3 +1770,357 @@ def test_validation_unfixtured_deal_degrades_gracefully():
 def test_validation_unknown_deal_returns_404():
     resp = client.get("/deal/does-not-exist/validation")
     assert resp.status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# Per-deal structural config resolution + loud GL fallback (#268)
+# ---------------------------------------------------------------------------
+#
+# These tests cover the demotion of the ``_GREEN_LION_*`` constants from a
+# silent default to a labelled last-resort fallback consulted ONLY for the
+# in-code Green Lion 2026-1 deal. A non-GL deal that supplies its own config
+# resolves to its own numbers (with no GL constant consulted); a non-GL deal
+# missing required config and lacking a usable extracted model fails loudly
+# (HTTP 422). Green Lion's own resolution is unchanged.
+
+
+def _sponsor_capital_structure() -> dict:
+    return {
+        "class_a_balance": 480_000_000.0,
+        "class_a_rate_pct": 4.10,
+        "class_b_balance": 15_000_000.0,
+        "class_c_balance": 5_000_000.0,
+    }
+
+
+def _sponsor_deal(**extra) -> dict:
+    deal = {
+        "deal_name": "Sponsor Deal 2025-1 B.V.",
+        "prospectus_url": "https://example.test/sponsor-2025-1-prospectus.pdf",
+        "tape_urls": [
+            {"date": "2025-11-30", "url": "https://example.test/sponsor-202511.csv"},
+            {"date": "2025-12-31", "url": "https://example.test/sponsor-202512.csv"},
+        ],
+        "investor_report_urls": [],
+    }
+    deal.update(extra)
+    return deal
+
+
+# --- unit: the resolver itself -----------------------------------------------
+
+
+def test_resolve_structural_config_uses_deal_context_not_green_lion():
+    """A non-GL deal supplying its own config resolves to ITS numbers, no GL.
+
+    This is the spec's "no Green-Lion-2026-1 fallback was consulted" assertion
+    applied to per-deal config: the resolved values must equal the deal's own
+    context, and must NOT equal any ``_GREEN_LION_*`` constant.
+    """
+    from loanwhiz.api import main as api_main
+
+    sponsor = _sponsor_deal(
+        capital_structure=_sponsor_capital_structure(),
+        reserve_account_target=5_000_000.0,
+        original_pool_balance=500_000_000.0,
+    )
+
+    cap, reserve, pool = api_main._resolve_structural_config("sponsor-2025-1", sponsor)
+
+    assert cap == _sponsor_capital_structure()
+    assert reserve == 5_000_000.0
+    assert pool == 500_000_000.0
+    # None of the resolved values is the Green Lion last-resort constant.
+    assert cap is not api_main._GREEN_LION_CAPITAL_STRUCTURE
+    assert cap["class_a_balance"] != api_main._GREEN_LION_CLASS_A_BALANCE
+    assert reserve != api_main._GREEN_LION_RESERVE_TARGET
+    assert pool != api_main._GREEN_LION_ORIGINAL_POOL_BALANCE
+
+
+def test_resolve_structural_config_green_lion_uses_last_resort_constants():
+    """Green Lion (no structural keys) resolves to its labelled constants.
+
+    Regression lock: GL-2026-1's context omits the structural keys on purpose
+    because the constants ARE its config — its resolution must be unchanged so
+    its output stays byte-identical.
+    """
+    from loanwhiz.api import main as api_main
+
+    gl = api_main.DEALS["green-lion-2026-1"]
+    cap, reserve, pool = api_main._resolve_structural_config("green-lion-2026-1", gl)
+
+    assert cap == api_main._GREEN_LION_CAPITAL_STRUCTURE
+    assert reserve == api_main._GREEN_LION_RESERVE_TARGET
+    assert pool == api_main._GREEN_LION_ORIGINAL_POOL_BALANCE
+
+
+@pytest.mark.parametrize(
+    "missing_key,supplied",
+    [
+        ("capital_structure", {"reserve_account_target": 1.0, "original_pool_balance": 2.0}),
+        ("reserve_account_target", {"capital_structure": _sponsor_capital_structure(), "original_pool_balance": 2.0}),
+        ("original_pool_balance", {"capital_structure": _sponsor_capital_structure(), "reserve_account_target": 1.0}),
+    ],
+)
+def test_resolve_structural_config_non_gl_missing_key_raises_422(missing_key, supplied):
+    """A non-GL deal missing any required structural key fails loudly (422).
+
+    The labelled error must name the deal and the missing key — never silently
+    borrow Green Lion's number for it.
+    """
+    from fastapi import HTTPException
+
+    from loanwhiz.api import main as api_main
+
+    sponsor = _sponsor_deal(**supplied)
+    with pytest.raises(HTTPException) as exc:
+        api_main._resolve_structural_config("sponsor-2025-1", sponsor)
+    assert exc.value.status_code == 422
+    assert "sponsor-2025-1" in exc.value.detail
+    assert missing_key in exc.value.detail
+
+
+def test_resolve_projection_base_non_gl_missing_raises_422():
+    from fastapi import HTTPException
+
+    from loanwhiz.api import main as api_main
+
+    with pytest.raises(HTTPException) as exc:
+        api_main._resolve_projection_base("sponsor-2025-1", _sponsor_deal())
+    assert exc.value.status_code == 422
+    assert "projection_base" in exc.value.detail
+    assert "sponsor-2025-1" in exc.value.detail
+
+
+def test_resolve_projection_base_green_lion_uses_last_resort():
+    from loanwhiz.api import main as api_main
+
+    gl = api_main.DEALS["green-lion-2026-1"]
+    assert (
+        api_main._resolve_projection_base("green-lion-2026-1", gl)
+        is api_main._GREEN_LION_PROJECTION_BASE
+    )
+
+
+# --- unit: extracted-model bridge --------------------------------------------
+
+
+def _build_deal_model(tranches: list[dict]):
+    from loanwhiz.extraction.assembler import DealModel, DealModelMetadata
+
+    return DealModel(
+        metadata=DealModelMetadata(
+            deal_name="Sponsor Deal 2025-1 B.V.",
+            prospectus_url="https://example.test/sponsor-2025-1-prospectus.pdf",
+            extracted_at="2026-01-01T00:00:00Z",
+            extraction_duration_sec=1.0,
+            sections_found=[],
+            completeness_score=0.5,
+            cache_path="/tmp/x.json",
+        ),
+        definitions={},
+        waterfalls={},
+        covenants={},
+        tranche_structure=tranches,
+        trigger_names=[],
+    )
+
+
+def test_extracted_capital_structure_complete_numeric_rate():
+    """A complete extracted structure with a numeric coupon resolves to caps."""
+    from loanwhiz.api import main as api_main
+
+    model = _build_deal_model(
+        [
+            {"name": "Class A", "size_eur": 480_000_000.0, "rate": 4.10, "seniority": 0},
+            {"name": "Class B", "size_eur": 15_000_000.0, "rate": None, "seniority": 1},
+            {"name": "Class C", "size_eur": 5_000_000.0, "rate": None, "seniority": 2},
+        ]
+    )
+    with patch("loanwhiz.api.main._load_cached_deal_model", return_value=model):
+        cap = api_main._extracted_capital_structure(_sponsor_deal())
+
+    assert cap == {
+        "class_a_balance": 480_000_000.0,
+        "class_a_rate_pct": 4.10,
+        "class_b_balance": 15_000_000.0,
+        "class_c_balance": 5_000_000.0,
+    }
+
+
+def test_extracted_capital_structure_non_numeric_rate_returns_none():
+    """A EURIBOR/margin reference coupon is not coerced — bridge yields None.
+
+    The engine needs a numeric ``class_a_rate_pct``; a reference-rate string
+    ("3m EURIBOR + 0.42") cannot be turned into one without fabricating a value,
+    so the bridge reports "no usable value" and resolution falls through.
+    """
+    from loanwhiz.api import main as api_main
+
+    model = _build_deal_model(
+        [
+            {"name": "Class A", "size_eur": 480_000_000.0, "rate": "3m EURIBOR + 0.42", "seniority": 0},
+            {"name": "Class B", "size_eur": 15_000_000.0, "rate": None, "seniority": 1},
+            {"name": "Class C", "size_eur": 5_000_000.0, "rate": None, "seniority": 2},
+        ]
+    )
+    with patch("loanwhiz.api.main._load_cached_deal_model", return_value=model):
+        assert api_main._extracted_capital_structure(_sponsor_deal()) is None
+
+
+def test_extracted_capital_structure_missing_class_returns_none():
+    from loanwhiz.api import main as api_main
+
+    model = _build_deal_model(
+        [
+            {"name": "Class A", "size_eur": 480_000_000.0, "rate": 4.10, "seniority": 0},
+        ]
+    )
+    with patch("loanwhiz.api.main._load_cached_deal_model", return_value=model):
+        assert api_main._extracted_capital_structure(_sponsor_deal()) is None
+
+
+def test_resolve_structural_config_falls_through_to_extracted_model():
+    """With no context key, a complete extracted model supplies capital_structure.
+
+    Resolution tier 2: deals.json has no ``capital_structure`` but the cached
+    extracted model does — so the deal resolves to ITS extracted structure, not
+    Green Lion's. (Reserve/pool still must be in the context — the extracted
+    model carries neither — so they are supplied here.)
+    """
+    from loanwhiz.api import main as api_main
+
+    model = _build_deal_model(
+        [
+            {"name": "Class A", "size_eur": 480_000_000.0, "rate": 4.10, "seniority": 0},
+            {"name": "Class B", "size_eur": 15_000_000.0, "rate": None, "seniority": 1},
+            {"name": "Class C", "size_eur": 5_000_000.0, "rate": None, "seniority": 2},
+        ]
+    )
+    sponsor = _sponsor_deal(
+        reserve_account_target=5_000_000.0,
+        original_pool_balance=500_000_000.0,
+    )
+    with patch("loanwhiz.api.main._load_cached_deal_model", return_value=model):
+        cap, reserve, pool = api_main._resolve_structural_config(
+            "sponsor-2025-1", sponsor
+        )
+
+    assert cap == _sponsor_capital_structure()
+    assert cap["class_a_balance"] != api_main._GREEN_LION_CLASS_A_BALANCE
+
+
+# --- integration: endpoints fail loudly for a misconfigured non-GL deal ------
+
+
+def test_waterfall_misconfigured_non_gl_deal_returns_422():
+    """``/waterfall`` on a non-GL deal with no structural config returns 422.
+
+    No ``_reconstruct_series`` patch — the real resolver runs and must raise
+    before any tape fetch, so the misconfiguration surfaces as 422 rather than
+    silently borrowing Green Lion's structure (or 500-ing on a network call).
+    """
+    from loanwhiz.api import main as api_main
+
+    augmented = {**api_main.DEALS, "sponsor-2025-1": _sponsor_deal()}
+    with patch.object(api_main, "DEALS", augmented):
+        resp = client.get("/deal/sponsor-2025-1/waterfall")
+
+    assert resp.status_code == 422
+    assert "sponsor-2025-1" in resp.json()["detail"]
+    assert "capital_structure" in resp.json()["detail"]
+
+
+def test_compliance_misconfigured_non_gl_deal_returns_422():
+    from loanwhiz.api import main as api_main
+
+    augmented = {**api_main.DEALS, "sponsor-2025-1": _sponsor_deal()}
+    # Stub the per-tape normalise (network boundary) — the misconfiguration must
+    # surface as the resolver's 422 from ``_reconstruct_series``, not a network
+    # error from the tape-analytics fetch.
+    with patch.object(api_main, "DEALS", augmented), patch(
+        "loanwhiz.api.main._normalised_tape_output", return_value={"row_count": 1}
+    ):
+        resp = client.get("/deal/sponsor-2025-1/compliance")
+
+    assert resp.status_code == 422
+    assert "sponsor-2025-1" in resp.json()["detail"]
+    assert "capital_structure" in resp.json()["detail"]
+
+
+def test_project_misconfigured_non_gl_deal_returns_422():
+    from loanwhiz.api import main as api_main
+
+    augmented = {**api_main.DEALS, "sponsor-2025-1": _sponsor_deal()}
+    with patch.object(api_main, "DEALS", augmented):
+        resp = client.post(
+            "/deal/sponsor-2025-1/project", json={"scenarios": ["base"], "months": 12}
+        )
+
+    assert resp.status_code == 422
+    assert "projection_base" in resp.json()["detail"]
+
+
+def test_waterfall_self_configured_non_gl_deal_does_not_consult_green_lion(tmp_path):
+    """A self-configured non-GL deal seeds the engine with ITS structure.
+
+    Spies on ``reconstruct_period_series`` (the engine entry the resolved config
+    feeds) to assert the seeded ``capital_structure`` / reserve / pool are the
+    deal's own — and that NO ``_GREEN_LION_*`` constant reached the engine.
+
+    Hits the REAL ``_reconstruct_series`` body (the resolver path), so the
+    in-process memo is cleared and the disk cache is pointed at an empty tmp dir
+    to guarantee the spy actually fires (no stale cache hit short-circuits it).
+    """
+    from loanwhiz.api import main as api_main
+
+    sponsor = _sponsor_deal(
+        capital_structure=_sponsor_capital_structure(),
+        reserve_account_target=5_000_000.0,
+        original_pool_balance=500_000_000.0,
+    )
+    augmented = {**api_main.DEALS, "sponsor-2025-1": sponsor}
+
+    captured = {}
+
+    def _fake_reconstruct(*, capital_structure, reserve_target, original_pool_balance, **kw):
+        captured["capital_structure"] = capital_structure
+        captured["reserve_target"] = reserve_target
+        captured["original_pool_balance"] = original_pool_balance
+        # A minimal real series so the endpoint renders without a tape fetch.
+        return _small_reconstructed_series(original_pool_balance=original_pool_balance)
+
+    from loanwhiz.primitives.deal_state import PeriodCollections
+
+    # The mocked aggregator's ``execute(...).output.to_period_collections()`` must
+    # return a real ``PeriodCollections`` so the (real) ``_reconstruct_series``
+    # period loop validates before the spied engine call.
+    agg_output = MagicMock()
+    agg_output.to_period_collections.return_value = PeriodCollections(
+        interest=1_000.0,
+        scheduled_principal=1_000.0,
+        prepayment=0.0,
+        recovery=0.0,
+        realized_loss=0.0,
+    )
+    mock_aggregator = MagicMock()
+    mock_aggregator.execute.return_value.output = agg_output
+
+    api_main._RECONSTRUCTION_MEMO.clear()
+    with patch.object(api_main, "DEALS", augmented), patch(
+        "loanwhiz.api.main.RECONSTRUCTION_CACHE_DIR", str(tmp_path)
+    ), patch(
+        "loanwhiz.api.main.CollectionsAggregator", return_value=mock_aggregator
+    ), patch(
+        "loanwhiz.api.main.reconstruct_period_series", side_effect=_fake_reconstruct
+    ):
+        resp = client.get("/deal/sponsor-2025-1/waterfall")
+
+    assert resp.status_code == 200
+    assert captured["capital_structure"] == _sponsor_capital_structure()
+    assert captured["reserve_target"] == 5_000_000.0
+    assert captured["original_pool_balance"] == 500_000_000.0
+    # The Green Lion last-resort constants never reached the engine.
+    assert captured["capital_structure"]["class_a_balance"] != api_main._GREEN_LION_CLASS_A_BALANCE
+    assert captured["reserve_target"] != api_main._GREEN_LION_RESERVE_TARGET
+    assert captured["original_pool_balance"] != api_main._GREEN_LION_ORIGINAL_POOL_BALANCE
