@@ -29,13 +29,11 @@ from loanwhiz_primitives_mcp.reachability import LIVE, reachability_of
 # (not ``loanwhiz.api``) so the MCP server has no dependency on the REST app.
 _PRIMITIVE_MODULES = (
     "audit_logger",
-    "cashflow_projector",
     "collections_aggregator",
     "covenant_monitor",
     "esma_tape_normaliser",
     "report_verifier",
     "waterfall_runner",
-    "waterfall_state",  # registers multi_period_waterfall_runner
 )
 
 

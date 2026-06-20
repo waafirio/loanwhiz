@@ -17,6 +17,13 @@ Two test layers:
 
 from __future__ import annotations
 
+# Import the primitives package before any loanwhiz.domain import so the
+# domain<->primitives module graph is populated in the cycle-safe order
+# (a pre-existing import-order sensitivity; see
+# loanwhiz.primitives.__init__.__getattr__). Harmless when domain is
+# already imported by an earlier-collected test.
+import loanwhiz.primitives  # noqa: F401  (import-order guard)
+
 import json
 import tempfile
 from pathlib import Path
@@ -634,6 +641,113 @@ class TestExtractDealModelMocked:
 
 
 # ---------------------------------------------------------------------------
+# Unit tests — language-agnostic section wiring (#274)
+# ---------------------------------------------------------------------------
+
+
+class TestExtractDealModelLanguageAgnostic:
+    """extract_deal_model wires the LLM section router (classify_segments_llm)
+    behind the keyword router and threads the resolved sections into the
+    sub-extractors — the #274 fix. The genai boundary is the only thing stubbed.
+    """
+
+    # A non-English (Italian) markdown whose load-bearing headings the English
+    # keyword router cannot match — so without the LLM fallback the definitions
+    # extractor raises and the waterfalls come back empty (the original defect).
+    _NON_ENGLISH_MD = (
+        "# Definizioni\n"
+        '"Fondi Disponibili" indica la somma dei seguenti importi.\n'
+        "# Ordine di Priorità dei Pagamenti — Interessi\n"
+        "- (a) commissioni del fiduciario;\n- (b) interessi Classe A.\n"
+        "# Ordine di Priorità dei Pagamenti — Capitale\n"
+        "- (a) capitale Classe A.\n"
+        "# Priorità Post-Escussione\n"
+        "- (a) commissioni del fiduciario.\n"
+    )
+
+    def test_llm_fallback_threads_resolved_sections_to_extractors(self) -> None:
+        from loanwhiz.extraction import section_router
+
+        captured: dict = {}
+
+        def _fake_classify(section_map, **_kwargs):
+            by_title = {s.title: s for s in section_map.sections}
+            return {
+                "definitions": by_title["Definizioni"],
+                "revenue_priority_of_payments": by_title[
+                    "Ordine di Priorità dei Pagamenti — Interessi"
+                ],
+                "redemption_priority_of_payments": by_title[
+                    "Ordine di Priorità dei Pagamenti — Capitale"
+                ],
+                "post_enforcement_priority": by_title["Priorità Post-Escussione"],
+            }
+
+        fake_defs_graph = MagicMock()
+        fake_defs_graph.terms = {}
+
+        fake_covenants = MagicMock()
+        fake_covenants.model_dump.return_value = {
+            "deal_name": "Leone",
+            "triggers": [],
+            "issuer_covenants": [],
+            "extraction_confidence": 0.0,
+        }
+        fake_covenants.triggers = []
+
+        def _capture_defs(section_map, **kwargs):
+            captured["defs_section"] = kwargs.get("section")
+            return fake_defs_graph
+
+        def _capture_wf(section_map, definitions, **kwargs):
+            captured["wf_sections"] = kwargs.get("sections")
+            return {"revenue": _make_waterfall("revenue", n_steps=2)}
+
+        def _capture_cov(section_map, definitions, **kwargs):
+            captured["cov_extra"] = kwargs.get("extra_sections")
+            return fake_covenants
+
+        with tempfile.TemporaryDirectory() as tmpdir, patch.object(
+            section_router, "classify_segments_llm", _fake_classify
+        ), patch(
+            "loanwhiz.extraction.assembler._download_and_convert",
+            return_value=self._NON_ENGLISH_MD,
+        ), patch(
+            "loanwhiz.extraction.assembler.extract_definitions",
+            side_effect=_capture_defs,
+        ), patch(
+            "loanwhiz.extraction.assembler.extract_all_waterfalls",
+            side_effect=_capture_wf,
+        ), patch(
+            "loanwhiz.extraction.assembler.extract_covenants",
+            side_effect=_capture_cov,
+        ):
+            extract_deal_model(
+                prospectus_url="https://example.com/leone.pdf",
+                deal_name="Leone Arancio RMBS 2023-1 S.r.l.",
+                cache_dir=tmpdir,
+            )
+
+        # Definitions extractor received the LLM-located Italian definitions
+        # section (so it won't raise ValueError on the missing English heading).
+        assert captured["defs_section"] is not None
+        assert captured["defs_section"].title == "Definizioni"
+
+        # Waterfall extractor received the resolved sections for all three types.
+        wf_sections = captured["wf_sections"]
+        assert wf_sections is not None
+        assert set(wf_sections) == {"revenue", "redemption", "post_enforcement"}
+        assert wf_sections["revenue"].title.startswith("Ordine di Priorità")
+
+        # Covenant extractor received the resolved PoP/triggers spans.
+        cov_extra = captured["cov_extra"]
+        assert cov_extra and any(
+            sec.title == "Ordine di Priorità dei Pagamenti — Interessi"
+            for _label, sec in cov_extra
+        )
+
+
+# ---------------------------------------------------------------------------
 # Unit tests — durable cache location (#132)
 # ---------------------------------------------------------------------------
 
@@ -964,3 +1078,198 @@ class TestGreenLionDealModel:
             _DEAL_CACHE_PATH.read_text(encoding="utf-8")
         )
         assert reloaded.metadata.deal_name == model.metadata.deal_name
+
+
+# ===========================================================================
+# Canonical DealRules assembly (#273) — build_deal_rules + tranche/section paths
+# ===========================================================================
+
+
+def _gl_seed_deal_model() -> "DealModel":
+    """Load the committed Green Lion 2026-1 seed into a DealModel (no network)."""
+    import json as _json
+    from pathlib import Path as _Path
+
+    seed = (
+        _Path(__file__).resolve().parents[1]
+        / "src/loanwhiz/data/deals/seed/green-lion-2026-1-bv.json"
+    )
+    return DealModel.model_validate(_json.loads(seed.read_text(encoding="utf-8")))
+
+
+class TestBuildDealRules:
+    """build_deal_rules maps an extracted DealModel onto canonical DealRules."""
+
+    def test_gl_seed_builds_valid_deal_rules(self) -> None:
+        from loanwhiz.domain.rules import DealRules, RecipientType
+        from loanwhiz.extraction.assembler import build_deal_rules
+
+        model = _gl_seed_deal_model()
+        result = build_deal_rules(model, jurisdiction="Netherlands", use_llm=False)
+        rules = result.output
+        assert isinstance(rules, DealRules)
+
+        rev = rules.waterfalls["revenue"]
+        red = rules.waterfalls["redemption"]
+        assert len(rev) >= 1 and len(red) >= 1
+
+        # The standard noteholder / reserve / fee steps all map onto the canonical
+        # taxonomy (no unmapped) — the executable core. The GL revolving-period
+        # "initial purchase price of new mortgage receivables" step has no
+        # canonical recipient and degrades honestly to unmapped (the design's
+        # explicit escape), so the revenue waterfall (all standard steps) is the
+        # one asserted fully-mapped.
+        for step in rev:
+            assert step.recipient != RecipientType.unmapped, step.priority_label
+        # Redemption is mostly mapped; at least the class principal steps are.
+        red_recipients = {s.recipient for s in red}
+        assert RecipientType.class_a_principal in red_recipients
+        assert RecipientType.class_b_principal in red_recipients
+
+        # The amount basis is bound from the mapped recipient.
+        a_int = next(s for s in rev if s.recipient == RecipientType.class_a_interest)
+        assert a_int.amount.basis == "interest_accrual"
+        assert a_int.amount.raw_text  # prose retained for audit
+
+    def test_gl_seed_tranches_become_tranche_rules(self) -> None:
+        from loanwhiz.extraction.assembler import build_deal_rules
+
+        rules = build_deal_rules(_gl_seed_deal_model(), use_llm=False).output
+        names = {t.name for t in rules.tranches}
+        assert {"Class A", "Class B", "Class C"} <= names
+        class_a = next(t for t in rules.tranches if t.name == "Class A")
+        assert class_a.seniority == 0
+        assert class_a.original_balance == 1_000_000_000.0
+        # "3m EURIBOR + 0.43" parses to a floating rate with a bps margin.
+        assert class_a.rate.kind == "floating"
+        assert class_a.rate.index == "EURIBOR_3M"
+        assert class_a.rate.margin_bps == pytest.approx(43.0)
+
+    def test_gl_seed_triggers_map_to_metric_type(self) -> None:
+        from loanwhiz.domain.rules import MetricType
+        from loanwhiz.extraction.assembler import build_deal_rules
+
+        rules = build_deal_rules(_gl_seed_deal_model(), use_llm=False).output
+        assert len(rules.triggers) >= 1
+        metrics = {t.metric for t in rules.triggers}
+        # The seeded GL PDL triggers map onto the canonical PDL metric.
+        assert MetricType.class_a_pdl in metrics
+        # threshold_unit is normalised to the canonical enum on every trigger.
+        for t in rules.triggers:
+            assert t.threshold_unit in {"percent", "fraction", "bps", "eur"}
+
+    def test_completeness_is_field_based(self) -> None:
+        from loanwhiz.extraction.assembler import build_deal_rules
+
+        rules = build_deal_rules(_gl_seed_deal_model(), use_llm=False).output
+        # Field-based completeness equals compute_completeness() (not a header count).
+        assert rules.completeness == rules.compute_completeness()
+        # GL has tranches, an evaluable revenue step, redemption steps, and
+        # quantified triggers → completeness is high (≥ 0.6 of the 5 checks).
+        assert rules.completeness >= 0.6
+
+    def test_unmapped_step_does_not_lift_completeness(self) -> None:
+        from loanwhiz.domain.rules import RecipientType
+        from loanwhiz.extraction.assembler import build_deal_rules
+
+        model = _gl_seed_deal_model()
+        # Inject an exotic recipient the taxonomy cannot map; offline → unmapped.
+        model.waterfalls["revenue"]["steps"].append(
+            _make_step(
+                priority="(z)",
+                recipient="exotic_equity_kicker_distribution",
+                description="Pay the exotic equity kicker.",
+            ).model_dump()
+        )
+        rules = build_deal_rules(model, use_llm=False).output
+        unmapped = [
+            s for s in rules.waterfalls["revenue"]
+            if s.recipient == RecipientType.unmapped
+        ]
+        assert len(unmapped) == 1
+        # The unmapped step is report_supplied, prose retained, never executed.
+        assert unmapped[0].amount.basis == "report_supplied"
+        assert unmapped[0].amount.raw_text
+
+    def test_per_field_provenance_and_primitive_result_envelope(self) -> None:
+        from loanwhiz.domain.provenance import FieldProvenance
+        from loanwhiz.extraction.assembler import build_deal_rules
+
+        result = build_deal_rules(_gl_seed_deal_model(), use_llm=False)
+        rules = result.output
+        # Per-field provenance is populated for steps and triggers.
+        assert rules.provenance, "provenance map should not be empty"
+        assert any(k.startswith("waterfalls.revenue.") for k in rules.provenance)
+        assert any(k.startswith("triggers.") for k in rules.provenance)
+        for fp in rules.provenance.values():
+            assert isinstance(fp, FieldProvenance)
+            assert 0.0 <= fp.confidence <= 1.0
+        # Governed envelope: confidence + citations + audit travel with the result.
+        assert 0.0 <= result.confidence <= 1.0
+        assert result.citations  # GL steps carry citations
+        assert result.audit_entry.primitive_name == (
+            "prospectus_extractor.build_deal_rules"
+        )
+
+    def test_condition_becomes_condition_ref(self) -> None:
+        from loanwhiz.extraction.assembler import build_deal_rules
+
+        model = _gl_seed_deal_model()
+        injected_label = model.waterfalls["redemption"]["steps"][1]["priority"]
+        model.waterfalls["redemption"]["steps"][1]["condition"] = (
+            "if the Sequential Pay Trigger is not in effect"
+        )
+        rules = build_deal_rules(model, use_llm=False).output
+        # The injected "...is not in effect" condition becomes a not_breached gate.
+        step = next(
+            s for s in rules.waterfalls["redemption"]
+            if s.priority_label == injected_label
+        )
+        assert step.condition is not None
+        assert step.condition.when == "not_breached"
+
+
+class TestClassifySegmentsLlm:
+    """The LLM-semantic section classifier degrades safely and maps indices."""
+
+    def test_returns_all_none_on_empty_section_map(self) -> None:
+        from loanwhiz.extraction.section_router import (
+            classify_segments_llm,
+            route_sections,
+        )
+
+        result = classify_segments_llm(route_sections(""))
+        assert all(v is None for v in result.values())
+
+    def test_maps_llm_indices_to_sections(self) -> None:
+        from unittest.mock import MagicMock, patch
+
+        from loanwhiz.extraction.section_router import (
+            classify_segments_llm,
+            route_sections,
+        )
+
+        md = (
+            "# Definizioni\nText A\n"
+            "# Ordine di priorità dei pagamenti correnti\nText B\n"
+            "# Ordine di priorità dei rimborsi\nText C\n"
+        )
+        section_map = route_sections(md)
+
+        # Stub the Gemini client to return a role→index mapping (Italian titles).
+        fake_response = MagicMock()
+        fake_response.text = (
+            '{"definitions": 0, "revenue_priority_of_payments": 1, '
+            '"redemption_priority_of_payments": 2, "post_enforcement_priority": -1, '
+            '"triggers_covenants": -1, "tranche_table": -1}'
+        )
+        fake_client = MagicMock()
+        fake_client.models.generate_content.return_value = fake_response
+
+        with patch("google.genai.Client", return_value=fake_client):
+            result = classify_segments_llm(section_map)
+
+        assert result["definitions"].title == "Definizioni"
+        assert result["revenue_priority_of_payments"].title.startswith("Ordine")
+        assert result["redemption_priority_of_payments"].title.startswith("Ordine")
+        assert result["post_enforcement_priority"] is None
