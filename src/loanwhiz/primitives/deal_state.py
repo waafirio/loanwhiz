@@ -6,11 +6,11 @@ advancing it one period. It is the spine seam the model-builder epic (#179)
 is built on: every downstream engine and endpoint reads ``DealState`` instead
 of faking structural figures from scattered constants.
 
-Why this module exists (vs ``waterfall_state.WaterfallState``)
---------------------------------------------------------------
-``WaterfallState`` is a thin carry-forward of three PDL/reserve scalars used by
-the (currently dead) ``MultiPeriodWaterfallRunner``. It is intentionally left
-untouched here. ``DealState`` is the *complete* per-period canonical state the
+Why this module exists (vs the deleted ``waterfall_state.WaterfallState``)
+-------------------------------------------------------------------------
+The former ``WaterfallState`` was a thin carry-forward of three PDL/reserve
+scalars used by the (now-deleted) ``MultiPeriodWaterfallRunner`` duplicate engine
+(removed in #276). ``DealState`` is the *complete* per-period canonical state the
 spine needs:
 
 - per-tranche outstanding balances (Class A / B / C),

@@ -38,9 +38,7 @@ PRIMITIVE_REACHABILITY: dict[str, str] = {
     "covenant_monitor": LIVE,
     "waterfall_runner": LIVE,
     "audit_logger": LIVE,
-    "cashflow_projector": LIBRARY_ONLY,
     "report_verifier": LIBRARY_ONLY,
-    "multi_period_waterfall_runner": LIBRARY_ONLY,
 }
 
 
