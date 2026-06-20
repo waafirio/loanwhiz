@@ -15,6 +15,7 @@ from loanwhiz.agent.tools import (
     DEFAULT_DEAL_ID,
     aggregate_collections,
     check_covenants,
+    forecast_trigger_breaches,
     get_deal_model,
     list_deal_tapes,
     load_esma_tape,
@@ -299,6 +300,84 @@ def test_check_covenants_unknown_deal_errors():
     assert "not found" in result["error"]
     assert result["confidence"] == 0.0
     assert "green-lion-2026-1" in result["available_deals"]
+
+
+# ---------------------------------------------------------------------------
+# forecast_trigger_breaches (#322)
+# ---------------------------------------------------------------------------
+
+
+def _make_deteriorating_covenant_output() -> CovenantOutput:
+    """A 3-period covenant output where one trigger trends toward breach (40 →
+    60 → 80 proximity) and another holds flat well clear (10 each)."""
+    from loanwhiz.primitives.covenant_monitor import TriggerStatus
+
+    statuses = []
+    for i, prox in enumerate((40.0, 60.0, 80.0)):
+        statuses.append(
+            TriggerStatus(
+                trigger_name="cumulative_loss_trigger",
+                period=f"2026-{i + 1:02d}-28",
+                metric_value=prox / 100.0 * 1.5,
+                threshold=1.5,
+                is_triggered=False,
+                proximity_pct=prox,
+                direction="deteriorating" if i else "n/a",
+            )
+        )
+        statuses.append(
+            TriggerStatus(
+                trigger_name="clean_up_call",
+                period=f"2026-{i + 1:02d}-28",
+                metric_value=10.0,
+                threshold=10.0,
+                is_triggered=False,
+                proximity_pct=10.0,
+                direction="stable" if i else "n/a",
+            )
+        )
+    return CovenantOutput(
+        trigger_statuses=statuses,
+        active_triggers=[],
+        near_miss_triggers=["cumulative_loss_trigger"],
+        summary="loss trigger near miss",
+    )
+
+
+def test_forecast_trigger_breaches_returns_ranked_projection():
+    """The forecast tool runs the covenant monitor over the deal's series, then
+    the proximity-trend monitor, returning a ranked projection list. The
+    covenant output is a deteriorating series so a projection surfaces and the
+    deteriorating trigger ranks most-urgent."""
+    fake_result = _covenant_result(_make_deteriorating_covenant_output())
+
+    with ExitStack() as stack:
+        mock_exec = _patch_covenant_deps(stack, fake_result)
+        result = forecast_trigger_breaches.invoke({"deal_id": "green-lion-2026-1"})
+
+    mock_exec.assert_called_once()
+    assert isinstance(result, dict)
+    assert result["confidence"] == 1.0
+    assert isinstance(result["projections"], list) and result["projections"]
+    names = [p["trigger_name"] for p in result["projections"]]
+    assert "cumulative_loss_trigger" in names
+    # Ranking puts the deteriorating loss trigger ahead of the flat one.
+    assert names[0] == "cumulative_loss_trigger"
+    assert result["most_urgent"] == "cumulative_loss_trigger"
+
+
+def test_forecast_trigger_breaches_unknown_deal_errors():
+    """Unknown deal_id returns an explicit error without running the monitor —
+    no silent fall-back (see check_covenants)."""
+    with ExitStack() as stack:
+        mock_exec = _patch_covenant_deps(
+            stack, _covenant_result(_make_covenant_output())
+        )
+        result = forecast_trigger_breaches.invoke({"deal_id": "no-such-deal"})
+
+    mock_exec.assert_not_called()
+    assert "not found" in result["error"]
+    assert result["confidence"] == 0.0
 
 
 def _make_multi_period_covenant_output(n_periods: int) -> CovenantOutput:
@@ -668,14 +747,15 @@ def test_sf_tools_has_expected_tools():
         "load_esma_tape",
         "run_waterfall",
         "check_covenants",
+        "forecast_trigger_breaches",
         "aggregate_collections",
         "get_deal_model",
         "list_deal_tapes",
     ]
 
 
-def test_sf_tools_has_exactly_six_tools():
-    assert len(SF_TOOLS) == 6
+def test_sf_tools_has_exactly_seven_tools():
+    assert len(SF_TOOLS) == 7
 
 
 def test_sf_tool_node_is_tool_node_instance():
@@ -703,7 +783,7 @@ def test_sf_tools_all_have_invoke_method():
 def test_list_available_tools_returns_list_of_dicts():
     result = list_available_tools()
     assert isinstance(result, list)
-    assert len(result) == 6
+    assert len(result) == 7
 
 
 def test_list_available_tools_has_name_and_description():

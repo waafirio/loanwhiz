@@ -15,6 +15,10 @@ from loanwhiz.primitives.audit_logger import audit_result
 from loanwhiz.primitives.collections_aggregator import CollectionsAggregator, CollectionsInput
 from loanwhiz.primitives.covenant_monitor import CovenantInput, CovenantMonitor
 from loanwhiz.primitives.esma_tape_normaliser import EsmaTapeInput, EsmaTapeNormaliser
+from loanwhiz.primitives.proximity_trend_monitor import (
+    ProximityTrendInput,
+    ProximityTrendMonitor,
+)
 
 # Audit log dir for primitive calls reached through the agent tools — mirrors
 # the REST API's ``API_AUDIT_LOG_DIR`` so the agent path is governed like the
@@ -201,6 +205,57 @@ def check_covenants(deal_id: str = DEFAULT_DEAL_ID) -> dict:
 
 
 @tool
+def forecast_trigger_breaches(deal_id: str = DEFAULT_DEAL_ID) -> dict:
+    """Early-warning forecast: project periods-to-breach per covenant trigger, ranked by urgency.
+
+    Use this for FORWARD-LOOKING covenant questions — "which trigger breaches
+    first?", "how many periods until the reserve-fund trigger fires?", "is any
+    covenant trending toward breach?". Pass only the ``deal_id`` — the tool loads
+    the deal's tapes, reconstructs each period's structural state, runs the
+    covenant monitor over the full reporting series, then fits each trigger's
+    proximity-to-breach trend and projects when (if ever) it crosses the
+    threshold. Triggers are returned ranked most-urgent first (already-breached,
+    then soonest projected breach, then no-projected-breach).
+
+    This is the trend/projection companion to ``check_covenants`` (which reports
+    current per-period status). Do NOT pass tape data.
+    """
+    from loanwhiz.api.main import (
+        _extracted_triggers_to_definitions,
+        _normalised_tape_output,
+        _reconstruct_series,
+    )
+
+    deal = DEAL_REGISTRY.get(deal_id)
+    if deal is None:
+        # Do NOT silently fall back to the default deal (see check_covenants).
+        return {
+            "error": f"deal {deal_id!r} not found",
+            "available_deals": list(DEAL_REGISTRY),
+            "confidence": 0.0,
+            "citations": [],
+        }
+    periods = [_normalised_tape_output(tape["url"]) for tape in deal["tape_urls"]]
+    triggers = _extracted_triggers_to_definitions(deal) or CovenantMonitor.DEFAULT_TRIGGERS
+    series = _reconstruct_series(deal)
+    covenant_input = CovenantInput.from_deal_states(
+        series.states,
+        periods=periods if periods else None,
+        triggers=triggers,
+    )
+    covenant_result = CovenantMonitor().execute(covenant_input)
+    # The trend monitor analyses the already-evaluated covenant series.
+    trend_result = ProximityTrendMonitor().execute(
+        ProximityTrendInput.from_covenant_output(covenant_result.output)
+    )
+    return trend_result.output.model_dump() | {
+        "confidence": trend_result.confidence,
+        "citations": [c.model_dump() for c in trend_result.citations],
+        "duration_ms": trend_result.audit_entry.duration_ms,
+    }
+
+
+@tool
 def aggregate_collections(deal_id: str = DEFAULT_DEAL_ID, period: str | None = None) -> dict:
     """Available revenue and principal funds for a reporting period.
 
@@ -377,6 +432,7 @@ SF_TOOLS = [
     load_esma_tape,
     run_waterfall,
     check_covenants,
+    forecast_trigger_breaches,
     aggregate_collections,
     get_deal_model,
     list_deal_tapes,
