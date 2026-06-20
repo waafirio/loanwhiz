@@ -381,8 +381,17 @@ class _NormalizedPeriod(BaseModel):
     revolving: bool | None
     available_revenue: float
     available_principal: float
-    step_overrides: dict[str, float] = Field(default_factory=dict)
-    step_sources: dict[str, str] = Field(default_factory=dict)
+    # Per-waterfall report-supplied maps (#270). Each waterfall is fed its OWN
+    # override/source map so the two waterfalls' reused labels (a)…(d) never bleed
+    # across (the #269 cross-waterfall flat-label collision). ``_normalize_period``
+    # resolves these from the canonical ``PeriodInputs``'s per-waterfall fields,
+    # falling back to its flat ``step_overrides`` / ``step_sources`` when a
+    # per-waterfall map is empty (so single-waterfall callers and the tape path are
+    # unchanged).
+    revenue_step_overrides: dict[str, float] = Field(default_factory=dict)
+    revenue_step_sources: dict[str, str] = Field(default_factory=dict)
+    redemption_step_overrides: dict[str, float] = Field(default_factory=dict)
+    redemption_step_sources: dict[str, str] = Field(default_factory=dict)
     report_sourced: bool = False
 
 
@@ -443,6 +452,18 @@ def _normalize_period(period: "PeriodInput | CanonicalPeriodInputs") -> _Normali
         available_revenue = period.available_revenue
         available_principal = period.available_principal
 
+    # Resolve each waterfall's override/source map: prefer the per-waterfall map
+    # (#270), fall back to the flat map when the per-waterfall one is empty. This
+    # keeps single-waterfall callers (and the tape path, all maps empty) unchanged
+    # while letting the report path feed each waterfall its own report actuals so
+    # the reused labels (a)…(d) never collide across waterfalls.
+    flat_overrides = dict(period.step_overrides)
+    flat_sources = dict(period.step_sources)
+    rev_overrides = dict(period.revenue_step_overrides) or flat_overrides
+    rev_sources = dict(period.revenue_step_sources) or flat_sources
+    red_overrides = dict(period.redemption_step_overrides) or flat_overrides
+    red_sources = dict(period.redemption_step_sources) or flat_sources
+
     return _NormalizedPeriod(
         collections=collections,
         reporting_date=period.reporting_date,
@@ -450,8 +471,10 @@ def _normalize_period(period: "PeriodInput | CanonicalPeriodInputs") -> _Normali
         revolving=None,
         available_revenue=available_revenue,
         available_principal=available_principal,
-        step_overrides=dict(period.step_overrides),
-        step_sources=dict(period.step_sources),
+        revenue_step_overrides=rev_overrides,
+        revenue_step_sources=rev_sources,
+        redemption_step_overrides=red_overrides,
+        redemption_step_sources=red_sources,
         report_sourced=period.source == "report",
     )
 
@@ -595,14 +618,14 @@ def run_period(
     # steps (no-op on the tape path → empty-overrides behaviour is unchanged).
     rev_steps, rev_overrides = _apply_step_overrides(
         revenue_steps,
-        step_overrides=norm.step_overrides,
-        step_sources=norm.step_sources,
+        step_overrides=norm.revenue_step_overrides,
+        step_sources=norm.revenue_step_sources,
         report_sourced=norm.report_sourced,
     )
     red_steps, red_overrides = _apply_step_overrides(
         redemption_steps,
-        step_overrides=norm.step_overrides,
-        step_sources=norm.step_sources,
+        step_overrides=norm.redemption_step_overrides,
+        step_sources=norm.redemption_step_sources,
         report_sourced=norm.report_sourced,
     )
 
