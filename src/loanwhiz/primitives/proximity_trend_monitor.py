@@ -66,10 +66,19 @@ _BREACH_PROXIMITY = 100.0
 # has no slope. The projection is then ``insufficient-data``.
 _MIN_POINTS_FOR_TREND = 2
 
-# Slope magnitudes below this (proximity-points per period) are treated as flat:
-# floating-point noise around a genuinely stable series should not project a
-# spurious (astronomically distant) breach.
-_FLAT_SLOPE_EPS = 1e-9
+# Slope magnitudes below this (proximity-points per period) are treated as flat.
+# Two reasons for a non-infinitesimal floor rather than raw fp-epsilon:
+#   1. floating-point noise around a genuinely stable series should not project
+#      a breach at all; and
+#   2. a slope marginally above raw epsilon (say 1e-9 proximity-points/period)
+#      is *practically* flat but would otherwise project an absurd breach tens
+#      of billions of periods out — noise dressed up as a finite forecast.
+# At 1e-4 proximity-points/period, even a 100-point gap to breach is >1e6
+# periods away (centuries of monthly reporting) — below any actionable horizon,
+# so we report it as "no projected breach". ``_trend_label`` and
+# ``_periods_to_breach`` share this single threshold so the trend label and the
+# projection never disagree (a "deteriorating" label with no projected breach).
+_FLAT_SLOPE_EPS = 1e-4
 
 
 # ---------------------------------------------------------------------------
@@ -186,7 +195,11 @@ def _trend_label(slope: float | None) -> str:
     """Map a fitted slope onto a trend label (proximity rises toward breach)."""
     if slope is None:
         return "n/a"
-    if abs(slope) < _FLAT_SLOPE_EPS:
+    # ``<=`` (not ``<``) so the exact-threshold boundary lands on "stable",
+    # matching ``_periods_to_breach``'s ``slope <= _FLAT_SLOPE_EPS → None``: a
+    # slope at the flat threshold is never labelled "deteriorating" while
+    # projecting no breach.
+    if abs(slope) <= _FLAT_SLOPE_EPS:
         return "stable"
     return "deteriorating" if slope > 0 else "improving"
 

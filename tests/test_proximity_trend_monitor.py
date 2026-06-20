@@ -132,6 +132,15 @@ class TestPeriodsToBreach:
     def test_unfit_slope_none(self) -> None:
         assert _periods_to_breach(70.0, None) is None
 
+    def test_near_flat_slope_no_absurd_projection(self) -> None:
+        # A slope marginally above raw fp-epsilon is practically flat and must
+        # NOT yield a finite (astronomically distant) breach projection.
+        assert _periods_to_breach(70.0, 1e-9) is None
+        # The trend label agrees: such a slope is "stable", not "deteriorating".
+        from loanwhiz.primitives.proximity_trend_monitor import _trend_label
+
+        assert _trend_label(1e-9) == "stable"
+
     def test_at_least_one_period_when_close(self) -> None:
         # 99 proximity, big slope → ceil(1/1000) would be 0, floored to 1.
         assert _periods_to_breach(99.0, 1000.0) == 1
