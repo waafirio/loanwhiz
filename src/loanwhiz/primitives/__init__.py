@@ -72,6 +72,13 @@ __all__ = [
     "ReportFormat",
     "FORMAT_REGISTRY",
     "extract_report",
+    # reconciliation_gate (#272) — lazily exposed (see __getattr__)
+    "reconcile_as_gate",
+    "apply_reconciliation",
+    "fields_for_human_review",
+    "ReconciliationGateResult",
+    "ReviewItem",
+    "DEFAULT_REVIEW_CONFIDENCE_THRESHOLD",
 ]
 
 # Names re-exported lazily from modules that import the canonical
@@ -88,6 +95,18 @@ _LAZY_REPORT_EXTRACTOR = {
     "ReportFormat",
     "FORMAT_REGISTRY",
     "extract_report",
+}
+
+# reconciliation_gate (#272) also imports the canonical ``domain`` schema (via
+# the extractor + reconciler), so it is exposed lazily for the same import-cycle
+# reason as the report extractor above.
+_LAZY_RECONCILIATION_GATE = {
+    "reconcile_as_gate",
+    "apply_reconciliation",
+    "fields_for_human_review",
+    "ReconciliationGateResult",
+    "ReviewItem",
+    "DEFAULT_REVIEW_CONFIDENCE_THRESHOLD",
 }
 
 
@@ -110,4 +129,8 @@ def __getattr__(name: str) -> object:
         from loanwhiz.primitives import report_extractor
 
         return getattr(report_extractor, name)
+    if name in _LAZY_RECONCILIATION_GATE:
+        from loanwhiz.primitives import reconciliation_gate
+
+        return getattr(reconciliation_gate, name)
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
