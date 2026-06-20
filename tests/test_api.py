@@ -2394,3 +2394,70 @@ def test_green_lion_2026_1_still_uses_tape_path():
     assert result is sentinel
     tapes.assert_called_once()
     reports.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# GET /relative-value-screener — cross-deal relative-value screener (#324)
+# ---------------------------------------------------------------------------
+
+
+def test_relative_value_screener_endpoint_returns_scorecard():
+    """The screener endpoint returns the cross-deal scorecard over the real seeds.
+
+    The autouse fixture points ``DEAL_MODEL_SEED_DIR`` at an empty dir, so we
+    override it back to the real committed seeds (mirroring the cold-start
+    endpoint tests) to exercise the real cross-deal cohort.
+    """
+    with patch("loanwhiz.api.main.DEAL_MODEL_SEED_DIR", _REAL_SEED_DIR):
+        resp = client.get("/relative-value-screener")
+    assert resp.status_code == 200, resp.json()
+    body = resp.json()
+    # Shape: the four named relative-value dimensions, a weights map, ranked rows.
+    assert body["dimensions"] == [
+        "subordination_ce",
+        "wal",
+        "trigger_headroom",
+        "pool_quality",
+    ]
+    assert abs(sum(body["weights"].values()) - 1.0) < 1e-9
+    assert body["tally"]["tranches_scored"] >= 3
+    assert body["tranches"], "no tranches scored over the real seeds"
+
+
+def test_relative_value_screener_endpoint_is_honest_and_ranked():
+    """Each row carries all four dimensions; unavailable ones are not fabricated."""
+    with patch("loanwhiz.api.main.DEAL_MODEL_SEED_DIR", _REAL_SEED_DIR):
+        body = client.get("/relative-value-screener").json()
+    for row in body["tranches"]:
+        assert set(row["factors"]) == {
+            "subordination_ce",
+            "wal",
+            "trigger_headroom",
+            "pool_quality",
+        }
+        for factor in row["factors"].values():
+            assert factor["reason"].strip()
+            if not factor["available"]:
+                # Honesty contract: no fabricated value/score when unavailable.
+                assert factor["value"] is None
+                assert factor["score"] is None
+    # Scored rows form a contiguous 1..N rank prefix (best→worst by composite).
+    scored = [r for r in body["tranches"] if r["composite_score"] is not None]
+    assert [r["rank"] for r in scored] == list(range(1, len(scored) + 1))
+
+
+def test_relative_value_screener_endpoint_is_deterministic_and_offline():
+    """Two calls return identical rankings; no tape fetch happens in the path.
+
+    Determinism + offline is the same contract as /capability-matrix. We assert
+    determinism directly and offline-ness by patching the tape-series builders
+    to blow up if the request path ever touches them.
+    """
+    with patch("loanwhiz.api.main.DEAL_MODEL_SEED_DIR", _REAL_SEED_DIR), patch.object(
+        api_main, "_reconstruct_series_from_tapes", side_effect=AssertionError("tape fetched")
+    ):
+        first = client.get("/relative-value-screener").json()
+        second = client.get("/relative-value-screener").json()
+    assert [(r["deal_id"], r["tranche_name"], r["rank"]) for r in first["tranches"]] == [
+        (r["deal_id"], r["tranche_name"], r["rank"]) for r in second["tranches"]
+    ]
