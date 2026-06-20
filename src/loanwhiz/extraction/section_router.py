@@ -130,3 +130,192 @@ def extract_key_sf_sections(section_map: SectionMap) -> dict[str, Section | None
         "eligibility_criteria": section_map.find("eligibility"),
         "available_funds": section_map.find("available funds", "5.1"),
     }
+
+
+# ---------------------------------------------------------------------------
+# LLM-semantic section classification (language-agnostic)
+# ---------------------------------------------------------------------------
+
+# The canonical section roles the assembler needs, regardless of source language
+# or numbering. Mirrors the keys :func:`extract_key_sf_sections` returns for the
+# roles that are load-bearing for ``DealRules`` assembly.
+CANONICAL_SECTION_ROLES: tuple[str, ...] = (
+    "definitions",
+    "revenue_priority_of_payments",
+    "redemption_priority_of_payments",
+    "post_enforcement_priority",
+    "triggers_covenants",
+    "tranche_table",
+)
+
+
+def classify_segments_llm(
+    section_map: SectionMap,
+    *,
+    roles: tuple[str, ...] = CANONICAL_SECTION_ROLES,
+    max_title_chars: int = 120,
+) -> dict[str, Section | None]:
+    """Classify the header segments into canonical section roles via the LLM.
+
+    This is the **language-agnostic** generalisation that replaces the GL-keyword
+    regex (:func:`extract_key_sf_sections`) for non-English / non-standard
+    prospectuses (spec: "LLM-semantic section routing"). The markdown is already
+    segmented deterministically by ``#`` headers (cheap, language-neutral);
+    here the LLM is asked, given the ordered list of segment **titles**, which
+    segment index best fills each canonical role — regardless of language or
+    numbering. The keyword router stays the deterministic fast path; the
+    assembler falls back to this only for roles the keyword router could not
+    locate.
+
+    Returns a ``{role: Section | None}`` map. On any LLM error (no credentials,
+    network, malformed response) returns all-``None`` so the caller degrades to
+    the keyword result rather than crashing — never raises into the extraction
+    path.
+
+    Parameters
+    ----------
+    section_map:
+        The header-segmented :class:`SectionMap`.
+    roles:
+        The canonical roles to fill (defaults to :data:`CANONICAL_SECTION_ROLES`).
+    max_title_chars:
+        Truncate each segment title to this many characters in the prompt.
+    """
+    sections = section_map.sections
+    if not sections:
+        return {role: None for role in roles}
+
+    try:
+        from google import genai
+        from google.genai import types as genai_types
+
+        from loanwhiz.config import GCP_LOCATION, GCP_PROJECT, MODEL_FLASH
+    except Exception:
+        return {role: None for role in roles}
+
+    numbered = "\n".join(
+        f"{i}: {sec.title[:max_title_chars]}" for i, sec in enumerate(sections)
+    )
+    role_lines = "\n".join(f"- {r}" for r in roles)
+    prompt = (
+        "You are routing the sections of a structured-finance prospectus "
+        "(RMBS/ABS) onto a fixed set of canonical roles. The section titles "
+        "below may be in any language (English, Italian, Spanish, ...) and use "
+        "any numbering scheme.\n\n"
+        "Numbered section titles (index: title):\n"
+        f"{numbered}\n\n"
+        "For each canonical role, return the index of the single section whose "
+        "title best matches it by meaning, or -1 if no section fits. Roles:\n"
+        f"{role_lines}\n\n"
+        'Respond as compact JSON mapping each role to an index, e.g. '
+        '{"definitions": 12, "revenue_priority_of_payments": 30, ...}. '
+        "Use -1 for a role with no matching section."
+    )
+
+    try:
+        client = genai.Client(vertexai=True, project=GCP_PROJECT, location=GCP_LOCATION)
+        response = client.models.generate_content(
+            model=MODEL_FLASH,
+            contents=prompt,
+            config=genai_types.GenerateContentConfig(temperature=0.0),
+        )
+        text = (response.text or "").strip()
+    except Exception:
+        return {role: None for role in roles}
+
+    import json
+
+    match = re.search(r"\{.*\}", text, re.DOTALL)
+    if not match:
+        return {role: None for role in roles}
+    try:
+        mapping = json.loads(match.group(0))
+    except (ValueError, json.JSONDecodeError):
+        return {role: None for role in roles}
+
+    result: dict[str, Section | None] = {}
+    for role in roles:
+        idx = mapping.get(role, -1)
+        try:
+            idx = int(idx)
+        except (TypeError, ValueError):
+            idx = -1
+        result[role] = sections[idx] if 0 <= idx < len(sections) else None
+    return result
+
+
+# ---------------------------------------------------------------------------
+# Two-tier section resolution (deterministic keyword fast-path + LLM fallback)
+# ---------------------------------------------------------------------------
+
+# The load-bearing roles the assembler's extractors need located before they can
+# run. These are the roles for which a *miss* by the deterministic keyword router
+# aborts or silently empties extraction (definitions hard-raises; each waterfall
+# raises a swallowed ``ValueError`` → empty waterfalls). For each, the canonical
+# role name in :data:`CANONICAL_SECTION_ROLES` (the LLM router's vocabulary) is
+# the same string the keyword router (:func:`extract_key_sf_sections`) returns —
+# so a gap in the keyword result can be filled directly from the LLM result.
+_LOAD_BEARING_ROLES: tuple[str, ...] = (
+    "definitions",
+    "revenue_priority_of_payments",
+    "redemption_priority_of_payments",
+    "post_enforcement_priority",
+)
+
+
+def resolve_sections(
+    section_map: SectionMap,
+    *,
+    use_llm: bool = True,
+) -> dict[str, Section | None]:
+    """Resolve the load-bearing sections, keyword-first with an LLM fallback.
+
+    This is the wiring that makes :func:`classify_segments_llm` part of the
+    production extraction path (#274). The deterministic English-keyword router
+    (:func:`extract_key_sf_sections`) stays the **fast path** — it is free,
+    deterministic, and already correct for the English Green Lion prospectuses.
+    Only when it leaves a :data:`_LOAD_BEARING_ROLES` role unresolved (the
+    non-English / non-standard case — e.g. an Italian "priorità dei pagamenti"
+    or Spanish "orden de prelación" heading that no English keyword matches) is
+    the **language-agnostic** LLM router consulted, and only its result for the
+    *still-missing* roles is merged in. A role the keyword router already
+    located is never overridden.
+
+    Consequences:
+
+    - **English path is byte-identical.** When the keyword router finds every
+      load-bearing role (the Green Lion case), ``use_llm`` is moot — the LLM is
+      never invoked — and the returned sections are exactly the keyword hits.
+    - **Non-English path is rescued.** When the keyword router misses (IT/ES),
+      the LLM fills the gap by *meaning*, so the downstream waterfall /
+      definitions extractors receive a real section to extract from instead of
+      raising.
+
+    Parameters
+    ----------
+    section_map:
+        The header-segmented :class:`SectionMap`.
+    use_llm:
+        When ``False`` (offline / tests), the LLM fallback is skipped entirely —
+        the result is the deterministic keyword router's output verbatim, with
+        any unresolved load-bearing role left ``None``. :func:`classify_segments_llm`
+        also degrades to all-``None`` on a credentials/network error, so the
+        fallback never raises into the extraction path regardless.
+
+    Returns
+    -------
+    dict[str, Section | None]
+        Map over :data:`_LOAD_BEARING_ROLES` (plus the remaining keys
+        :func:`extract_key_sf_sections` returns, passed through unchanged), each
+        the resolved :class:`Section` or ``None`` when neither tier located it.
+    """
+    keyword = extract_key_sf_sections(section_map)
+
+    missing = [r for r in _LOAD_BEARING_ROLES if keyword.get(r) is None]
+    if missing and use_llm:
+        llm = classify_segments_llm(section_map)
+        for role in missing:
+            if llm.get(role) is not None:
+                keyword[role] = llm[role]
+
+    return keyword

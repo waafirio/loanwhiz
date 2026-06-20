@@ -34,7 +34,7 @@ from pydantic import BaseModel
 
 from loanwhiz.config import GCP_LOCATION, GCP_PROJECT, MODEL_PRO
 from loanwhiz.extraction.definitions_graph import DefinitionsGraph
-from loanwhiz.extraction.section_router import SectionMap
+from loanwhiz.extraction.section_router import Section, SectionMap
 
 
 # ---------------------------------------------------------------------------
@@ -420,6 +420,7 @@ def extract_waterfall(
     cache_path: str | None = None,
     max_chars: int = 20_000,
     force_refresh: bool = False,
+    section: Section | None = None,
 ) -> ExtractedWaterfall:
     """Extract waterfall steps from the prospectus using Gemini 2.5 Pro.
 
@@ -447,6 +448,16 @@ def extract_waterfall(
         When ``True``, ignore any cached result on disk and re-run the Gemini
         extraction (the fresh result is still written back to the cache).  This
         is what lets a deal-model ``force_refresh`` bust a stale waterfall cache.
+    section:
+        Optional pre-resolved :class:`Section` for this waterfall type. When
+        supplied (e.g. by the assembler's language-agnostic
+        :func:`~loanwhiz.extraction.section_router.resolve_sections`), it is used
+        directly instead of re-locating the section via the English keyword
+        lookup ``section_map.find(*keywords)`` — this is what lets a non-English
+        (IT/ES) prospectus, whose headings the English keywords don't match,
+        still feed Gemini the right span. When ``None`` (the default) the
+        existing keyword lookup runs unchanged, so the English path is
+        byte-identical.
 
     Returns
     -------
@@ -472,14 +483,17 @@ def extract_waterfall(
         data = json.loads(resolved_cache.read_text(encoding="utf-8"))
         return _waterfall_from_dict(data)
 
-    # Locate the section.
-    keywords = _WATERFALL_SECTION_KEYWORDS[waterfall_type]
-    section = section_map.find(*keywords)
+    # Locate the section. Prefer a pre-resolved override (the language-agnostic
+    # path); else fall back to the English keyword lookup (byte-identical to the
+    # pre-#274 behaviour).
     if section is None:
-        raise ValueError(
-            f"No {waterfall_type!r} waterfall section found in the prospectus. "
-            f"Tried keywords: {keywords}"
-        )
+        keywords = _WATERFALL_SECTION_KEYWORDS[waterfall_type]
+        section = section_map.find(*keywords)
+        if section is None:
+            raise ValueError(
+                f"No {waterfall_type!r} waterfall section found in the prospectus. "
+                f"Tried keywords: {keywords}"
+            )
 
     section_text = section.text[:max_chars]
     section_name = _WATERFALL_SECTION_NAMES[waterfall_type]
@@ -582,6 +596,7 @@ def extract_all_waterfalls(
     deal_name: str = "deal",
     cache_dir: str | None = None,
     force_refresh: bool = False,
+    sections: dict[str, Section] | None = None,
 ) -> dict[str, ExtractedWaterfall]:
     """Extract revenue, redemption, and post-enforcement waterfalls.
 
@@ -598,6 +613,15 @@ def extract_all_waterfalls(
         are written to ``<cache_dir>/waterfall_{deal_name}_{type}.json``.
     force_refresh:
         When ``True``, bust each waterfall's disk cache and re-extract.
+    sections:
+        Optional ``{waterfall_type: Section}`` map of pre-resolved sections (e.g.
+        from the assembler's language-agnostic
+        :func:`~loanwhiz.extraction.section_router.resolve_sections`). For each
+        waterfall type present in the map, the resolved :class:`Section` is
+        passed straight through to :func:`extract_waterfall` instead of the
+        English keyword lookup — so a non-English (IT/ES) prospectus whose
+        headings the keywords don't match still extracts. Types absent from the
+        map fall back to the keyword lookup, so the English path is unchanged.
 
     Returns
     -------
@@ -606,6 +630,7 @@ def extract_all_waterfalls(
         Only includes waterfall types whose sections were found in the
         prospectus (missing sections are silently skipped).
     """
+    sections = sections or {}
     results: dict[str, ExtractedWaterfall] = {}
     for waterfall_type in ("revenue", "redemption", "post_enforcement"):
         cache_path: str | None = None
@@ -622,6 +647,7 @@ def extract_all_waterfalls(
                 deal_name=deal_name,
                 cache_path=cache_path,
                 force_refresh=force_refresh,
+                section=sections.get(waterfall_type),
             )
         except ValueError:
             # Section not found in this prospectus — skip silently.

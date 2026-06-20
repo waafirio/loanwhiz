@@ -473,6 +473,7 @@ class TestExtractAllWaterfalls:
             deal_name,
             cache_path=None,
             force_refresh=False,
+            section=None,
         ):
             return _make_waterfall(waterfall_type=waterfall_type)
 
@@ -500,6 +501,7 @@ class TestExtractAllWaterfalls:
             deal_name,
             cache_path=None,
             force_refresh=False,
+            section=None,
         ):
             if waterfall_type == "revenue":
                 return _make_waterfall(waterfall_type="revenue")
@@ -644,6 +646,7 @@ class TestForceRefresh:
             deal_name,
             cache_path=None,
             force_refresh=False,
+            section=None,
         ):
             captured.append(force_refresh)
             return _make_waterfall(waterfall_type=waterfall_type)

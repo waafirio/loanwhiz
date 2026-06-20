@@ -17,4 +17,4 @@ data/extraction_cache/*.json
 node_modules/
 dist/
 .liz/state/
-c2-extract.log
+c2-extract*.log

@@ -147,15 +147,14 @@ def test_green_lion_2026_1_synthetic_runs_most_primitives() -> None:
     assert _cell(matrix, "green-lion-2026-1", "engine_validation").state == STATE_NOT_APPLICABLE
 
 
-def test_leone_arancio_italian_covenant_runs_tape_and_waterfall_na() -> None:
+def test_leone_arancio_italian_covenant_and_waterfall_run_tape_na() -> None:
     matrix = _real_matrix()
     deal_id = "leone-arancio-2023-1"
-    # Partial Italian model: real extracted triggers → covenant runs.
+    # Full Italian model (refreshed seed, #274): real extracted triggers → covenant
+    # runs, and the extracted revenue/redemption/post-enforcement waterfalls execute.
     assert _cell(matrix, deal_id, "covenant_monitoring").state == STATE_RAN
-    # No waterfall extracted, no tapes → not-applicable, each with a real reason.
-    wf = _cell(matrix, deal_id, "waterfall_execution")
-    assert wf.state == STATE_NOT_APPLICABLE
-    assert "waterfall" in wf.reason.lower()
+    assert _cell(matrix, deal_id, "waterfall_execution").state == STATE_RAN
+    # Still no tapes registered for this deal → tape analytics not-applicable.
     tape = _cell(matrix, deal_id, "tape_analytics")
     assert tape.state == STATE_NOT_APPLICABLE
     assert "tape" in tape.reason.lower()
