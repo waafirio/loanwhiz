@@ -309,6 +309,7 @@ class WaterfallRunner(Primitive[WaterfallInput, WaterfallOutput]):
             redemption_steps=DEFAULT_REDEMPTION_STEPS,
             principal_classes=("class_a", "class_b"),
             senior_fees=input.senior_fees,
+            swap_payment=input.swap_payment,
         )
 
         rev_execution = result.revenue_execution

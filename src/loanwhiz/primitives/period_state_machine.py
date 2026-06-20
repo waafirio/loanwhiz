@@ -345,6 +345,7 @@ def _funds_from_state(
     rates: dict[str, float],
     days_in_period: int,
     senior_fees: float,
+    swap_payment: float = 0.0,
     available_revenue: float | None = None,
     available_principal: float | None = None,
 ) -> WaterfallFunds:
@@ -374,6 +375,7 @@ def _funds_from_state(
         available_revenue_funds=available_revenue,
         available_principal_funds=available_principal,
         senior_fees=senior_fees,
+        swap_payment=swap_payment,
         class_a_balance=state.class_a_balance,
         class_b_balance=state.class_b_balance,
         class_c_balance=state.class_c_balance,
@@ -594,6 +596,7 @@ def run_period(
     redemption_steps: list[StepSpec] = DEFAULT_REDEMPTION_STEPS,
     principal_classes: tuple[str, ...] = ("class_a", "class_b"),
     senior_fees: float = 0.0,
+    swap_payment: float = 0.0,
 ) -> PeriodResult:
     """Advance one period: opening ``DealState`` → closing, composing S3/S4/S5/S1.
 
@@ -647,6 +650,12 @@ def run_period(
         Class C from revenue, not principal).
     senior_fees:
         Senior-fee need for the revenue waterfall's senior-fees step.
+    swap_payment:
+        Net non-subordinated swap need for the revenue waterfall's swap step
+        (c). Defaults to ``0.0``; the tape/report fold paths carry no swap leg
+        (it is not on ``DealState`` or ``PeriodInputs``), so they are unchanged.
+        The single-period ``waterfall_runner`` MCP wrapper threads its input's
+        ``swap_payment`` through here so step (c) is modelled as before.
 
     Returns
     -------
@@ -666,6 +675,7 @@ def run_period(
         rates=rates,
         days_in_period=norm.days_in_period,
         senior_fees=senior_fees,
+        swap_payment=swap_payment,
         available_revenue=norm.available_revenue,
         available_principal=norm.available_principal,
     )
