@@ -62,16 +62,39 @@ GREEN_LION = {
 # selector filters rows to ``reporting_date == period``) — a primitive-level
 # capability, not a registry key.
 #
-# Optional deal-context keys
-# --------------------------
-# Beyond the four required keys above, a deal-context dict may carry these
-# OPTIONAL keys. Omitting any of them falls back to the Green Lion defaults
-# (defined in ``loanwhiz.api.main`` as ``_GREEN_LION_*``), so the API stays
-# deal-generic and Green Lion's behaviour is unchanged:
+# Per-deal structural config keys (resolution + loud fallback, #268)
+# ------------------------------------------------------------------
+# Beyond the four required keys above, the deal engine needs per-deal STRUCTURAL
+# config — the tranche figures, the reserve target, the original pool balance,
+# the projection base. The API resolves each value, independently, in this
+# priority order:
+#
+#   1. the deal's explicit ``deals.json`` context key (one of those below);
+#   2. the deal's *extracted model* (the cached ``DealModel`` from the
+#      extraction pipeline), where it yields a complete engine-ready value —
+#      today only ``capital_structure``, and only when the extracted tranches
+#      carry a numeric coupon (a EURIBOR/margin reference string is not coerced);
+#   3. the ``_GREEN_LION_*`` constants in ``loanwhiz.api.main`` as a **labelled
+#      last-resort fallback consulted ONLY for the in-code Green Lion 2026-1
+#      deal** (whose context deliberately omits these keys because those
+#      constants ARE its config).
+#
+# A NON-Green-Lion deal that resolves no value for a required structural key
+# (no context key, no usable extracted value) **fails loudly** — the endpoint
+# returns HTTP 422 naming the deal and the missing key — rather than silently
+# borrowing Green Lion's numbers. (This reverses the old silent
+# ``deal.get(..., _GREEN_LION_*)`` fallback, which would have served a different
+# deal numbers computed against Green Lion's structure.) Green Lion 2026-1's own
+# resolution is unchanged, so its output stays byte-identical.
+#
+# The structural config keys a deal-context dict may carry:
 #
 #   - ``capital_structure``: dict of ``class_a_balance``, ``class_a_rate_pct``,
 #       ``class_b_balance``, ``class_c_balance`` — the tranche figures the
 #       revenue/redemption waterfall runs on. Used by ``/deal/{id}/waterfall``.
+#   - ``reserve_account_target``: float (EUR) — the reserve account's funded
+#       target, seeding the reconstructed ``DealState``. Used by
+#       ``/deal/{id}/compliance`` (and the reconstructed series).
 #   - ``original_pool_balance``: float (EUR) — the pool balance at deal closing,
 #       used as the denominator for clean-up-call proximity and the loss-rate.
 #       Used by ``/deal/{id}/compliance``.
