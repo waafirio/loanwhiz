@@ -61,21 +61,53 @@ __all__ = [
     "PRIMITIVE_REGISTRY",
     "register_primitive",
     "ReportAdapter",
+    # report_extractor (#271) — lazily exposed (see __getattr__)
+    "ReportExtractor",
+    "ReportExtractInput",
+    "ParsedReport",
+    "ParsedReportPeriod",
+    "NoteBalance",
+    "ReportedStep",
+    "ReportedTrigger",
+    "ReportFormat",
+    "FORMAT_REGISTRY",
+    "extract_report",
 ]
+
+# Names re-exported lazily from modules that import the canonical
+# ``loanwhiz.domain`` schema — see __getattr__ for why eager import closes the
+# import cycle.
+_LAZY_REPORT_EXTRACTOR = {
+    "ReportExtractor",
+    "ReportExtractInput",
+    "ParsedReport",
+    "ParsedReportPeriod",
+    "NoteBalance",
+    "ReportedStep",
+    "ReportedTrigger",
+    "ReportFormat",
+    "FORMAT_REGISTRY",
+    "extract_report",
+}
 
 
 def __getattr__(name: str) -> object:
-    """Lazily expose ``ReportAdapter`` on the package surface (PEP 562).
+    """Lazily expose ``domain``-importing primitives on the package surface (PEP 562).
 
-    ``report_adapter`` imports the canonical ``loanwhiz.domain`` schema, which in
-    turn imports ``loanwhiz.primitives.base`` — eagerly importing the adapter at
-    module top level would close that cycle and break ``import loanwhiz.domain``.
-    The same reason ``period_state_machine`` (which also imports ``domain``) is
-    not eagerly imported here. A lazy ``__getattr__`` keeps
-    ``from loanwhiz.primitives import ReportAdapter`` working without the cycle.
+    ``report_adapter`` and ``report_extractor`` import the canonical
+    ``loanwhiz.domain`` schema, which in turn imports ``loanwhiz.primitives.base``
+    — eagerly importing them at module top level would close that cycle and break
+    ``import loanwhiz.domain``. The same reason ``period_state_machine`` (which
+    also imports ``domain``) is not eagerly imported here. A lazy ``__getattr__``
+    keeps ``from loanwhiz.primitives import ReportAdapter`` / ``ReportExtractor``
+    working without the cycle.
     """
     if name == "ReportAdapter":
         from loanwhiz.primitives.report_adapter import ReportAdapter
 
         return ReportAdapter
+    if name in _LAZY_REPORT_EXTRACTOR:
+        from loanwhiz.primitives import report_extractor
+
+        return getattr(report_extractor, name)
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
