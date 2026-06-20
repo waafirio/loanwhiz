@@ -450,3 +450,65 @@ class TestEsmaTapeNormaliserIntegration:
         # Green Lion has 'province' column
         assert result.output.geographic_breakdown is not None
         assert len(result.output.geographic_breakdown) > 0
+
+
+# ---------------------------------------------------------------------------
+# ESMA Annex 2 canonical-column resolution + citation anchoring (#280)
+# ---------------------------------------------------------------------------
+
+
+class TestAnnex2ColumnResolution:
+    """Issuer/vintage column-name synonyms resolve onto canonical names via the
+    ESMA Annex 2 table, and the output citation is anchored to RREL codes."""
+
+    def test_canonical_green_lion_tape_is_byte_stable(self, tmp_path: Path) -> None:
+        # A tape already in canonical column names must produce the exact same
+        # analytics it did before Annex-2 resolution was wired in.
+        df = _rmbs_frame("2026-04-30", balances=[100_000.0, 300_000.0])
+        csv = tmp_path / "canon.csv"
+        df.to_csv(csv, index=False)
+        out = EsmaTapeNormaliser().execute(
+            EsmaTapeInput(file_url=f"file://{csv}")
+        ).output
+        assert out.pool_balance_eur == 400_000.0
+        assert out.pool_stats["wtd_ltv"] == 70.0
+        assert out.arrears_breakdown["current_pct"] == 100.0
+        assert out.annex_detected == "Annex 2 (RMBS)"
+
+    def test_synonym_columns_resolve(self, tmp_path: Path) -> None:
+        # A tape using issuer-variant column names still produces correct pool
+        # analytics because the Annex 2 table resolves them to canonical names.
+        df = pd.DataFrame(
+            {
+                "outstanding_balance": [100_000.0, 300_000.0],  # → current_balance
+                "current_ltv": [60.0, 80.0],                    # → cltomv_current
+                "arrears_status": ["Performing", "180+d"],      # → arrears_bucket
+                "default_flag": ["N", "N"],                     # → default_crr_flag
+                "epc_rating": ["A", "B"],                       # → epc_label
+                "property_type": ["House", "Apartment"],
+                "deal_name": ["Variant Deal", "Variant Deal"],  # → transaction_name
+                "data_cut_off_date": ["2026-04-30", "2026-04-30"],  # → reporting_date
+            }
+        )
+        csv = tmp_path / "variant.csv"
+        df.to_csv(csv, index=False)
+        out = EsmaTapeNormaliser().execute(
+            EsmaTapeInput(file_url=f"file://{csv}", reporting_date="2026-04-30")
+        ).output
+        # Balance resolved from the synonym column.
+        assert out.pool_balance_eur == 400_000.0
+        # Balance-weighted LTV: (100k*60 + 300k*80)/400k = 75.0
+        assert out.pool_stats["wtd_ltv"] == 75.0
+        # 180+d arrears bucket resolved from the synonym column.
+        assert out.arrears_breakdown["arrears_180d_plus_pct"] == 50.0
+
+    def test_citation_is_annex2_anchored(self, tmp_path: Path) -> None:
+        df = _rmbs_frame("2026-04-30", balances=[100_000.0])
+        csv = tmp_path / "anchor.csv"
+        df.to_csv(csv, index=False)
+        result = EsmaTapeNormaliser().execute(EsmaTapeInput(file_url=f"file://{csv}"))
+        citation = result.citations[0]
+        # RREL codes for the mapped columns appear in the locator + excerpt.
+        assert "RREL" in citation.page_or_row
+        assert "RREL18" in citation.excerpt  # current_balance
+        assert "RREL40" in citation.excerpt  # cltomv_current (LTV)
