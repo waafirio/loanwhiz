@@ -4,9 +4,9 @@ The classifier is the ONE place the engine slice decides, per waterfall step,
 whether its amount is engine-computed, report-supplied, or a residual sweep — so
 the live path and the validation harness cannot drift. These are focused unit
 tests over the pure ``build_step_specs`` kernel with small hand-built step dicts
-(no fixtures, no network). The harness's to-the-cent reconciliation
-(``test_engine_validation_harness.py``) is the integration guard that proves the
-in-tree caller still routes correctly.
+(no fixtures, no network). The Reconciler's to-the-cent reconciliation
+(``test_reconciler.py``) is the integration guard that proves the in-tree
+callers (``ReportAdapter`` / the live fold) still route correctly.
 """
 
 from __future__ import annotations
@@ -203,25 +203,32 @@ def test_mixed_waterfall_produces_all_three_sources() -> None:
 
 
 # ---------------------------------------------------------------------------
-# the "one classifier" guarantee — harness delegates to this module identically
+# the "one classifier" guarantee — the in-tree callers consume this module
 # ---------------------------------------------------------------------------
 
 
-def test_harness_build_specs_delegates_to_shared_classifier() -> None:
-    from loanwhiz.primitives import engine_validation_harness as harness
-
+def test_report_adapter_consumes_shared_classifier() -> None:
+    """The ``ReportAdapter`` builds its per-waterfall maps off this same
+    ``build_step_specs`` kernel, so the live path and the classifier cannot
+    drift. (The old ``engine_validation_harness._build_specs`` alias that this
+    test used to compare against was deleted when its proof folded into the
+    Reconciler, #270 — the Reconciler's to-the-cent test is now the integration
+    guard.)"""
     steps = [
         _step("(a)", "swap_payment"),
         _step("(d)", "class_a_interest"),
         _step("(k)", "deferred_purchase_price"),
     ]
-    kwargs = dict(
+    specs, overrides, source = build_step_specs(
+        steps,
         residual_label="(k)",
         report_supplied_labels=frozenset({"(a)"}),
         report_amounts={"(a)": 100.0, "(d)": 200.0, "(k)": 300.0},
     )
-    h_specs, h_over, h_src = harness._build_specs(steps, **kwargs)
-    s_specs, s_over, s_src = build_step_specs(steps, **kwargs)
-    assert h_over == s_over
-    assert h_src == s_src
-    assert [s.model_dump() for s in h_specs] == [s.model_dump() for s in s_specs]
+    assert source == {
+        "swap_payment": "report-supplied",
+        "class_a_interest": "engine",
+        "deferred_purchase_price": "residual",
+    }
+    assert overrides == {"swap_payment": 100.0}
+    assert [s.priority for s in specs] == ["(a)", "(d)", "(k)"]

@@ -638,21 +638,37 @@ def run_period(
         need_overrides=rev_overrides or None,
     )
 
-    # 3b. Redemption waterfall — sequential↔pro-rata principal allocation driven
-    # by the same trigger engine, fed back through need_overrides. Report-
-    # supplied redemption overrides (if any) take precedence over the computed
-    # sequential/pro-rata allocation for those specific steps.
-    principal_alloc = allocate_principal(
-        funds,
-        available=funds.available_principal_funds,
-        classes=principal_classes,
-        evaluator=evaluator,
-    )
-    combined_red_overrides: dict[str, float] = {
-        f"{cls}_principal": principal_alloc.get(cls, 0.0)
-        for cls in principal_classes
-    }
-    combined_red_overrides.update(red_overrides)
+    # 3b. Redemption waterfall.
+    #
+    # Tape path: the engine computes its own sequential↔pro-rata principal
+    # allocation (driven by the trigger engine), fed back through need_overrides,
+    # and that allocation also drives the tranche redemption in the state
+    # transition.
+    #
+    # Report path (#270): the report's redemption PoP IS the post-resolution
+    # actual — the servicer already decided what principal each tranche received
+    # (e.g. during the revolving period, principal funds the purchase of new
+    # receivables, NOT note redemption, so the report's class_*_notes_principal
+    # lines are 0). Running the engine's own `allocate_principal` here would
+    # synthesise a sequential redemption the report never made and over-redeem the
+    # senior tranche. So on the report path we do NOT compute an allocation: the
+    # report-supplied redemption overrides fully determine the distribution, and
+    # the tranche redemption is read from the redemption execution's own lines.
+    if norm.report_sourced:
+        principal_alloc = None
+        combined_red_overrides = dict(red_overrides)
+    else:
+        principal_alloc = allocate_principal(
+            funds,
+            available=funds.available_principal_funds,
+            classes=principal_classes,
+            evaluator=evaluator,
+        )
+        combined_red_overrides = {
+            f"{cls}_principal": principal_alloc.get(cls, 0.0)
+            for cls in principal_classes
+        }
+        combined_red_overrides.update(red_overrides)
     redemption_execution = interpret(
         red_steps,
         funds,
@@ -661,7 +677,9 @@ def run_period(
         need_overrides=combined_red_overrides,
     )
 
-    # 4. Map to a WaterfallResult and advance the canonical state (S1).
+    # 4. Map to a WaterfallResult and advance the canonical state (S1). On the
+    # report path `principal_allocation` is None, so `to_waterfall_result` reads
+    # the tranche principal straight from the redemption execution's lines.
     waterfall_result: WaterfallResult = to_waterfall_result(
         revenue=revenue_execution,
         redemption=redemption_execution,

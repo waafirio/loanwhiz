@@ -12,7 +12,7 @@ the *true* cross-jurisdiction story, not a wall of green):
 - ``validated`` — the primitive ran **and** its output reconciled to external
   truth. The only ``validated`` cell today is Green Lion 2024-1's engine vs. its
   **own published Notes & Cash Priority of Payments**, reconciled to the cent by
-  :func:`loanwhiz.primitives.engine_validation_harness.validate_green_lion_2024_1`.
+  :func:`loanwhiz.primitives.reconciler.validate_green_lion_2024_1`.
 - ``ran`` — the primitive's inputs exist and it executes, but there is **no
   external ground truth** to reconcile against (e.g. a deal with an extracted
   waterfall but no published per-step distribution).
@@ -48,7 +48,7 @@ from typing import Any
 from pydantic import BaseModel, Field
 
 from loanwhiz.extraction.assembler import DealModel
-from loanwhiz.primitives.engine_validation_harness import EngineValidationReport
+from loanwhiz.primitives.reconciler import ReconciliationReport
 
 # ---------------------------------------------------------------------------
 # Cell state vocabulary — the three honest outcomes.
@@ -176,7 +176,7 @@ class CapabilityMatrix(BaseModel):
 
 #: Signature of a cell classifier.
 CellClassifier = Callable[
-    [str, Mapping[str, Any], "DealModel | None", "Mapping[str, Callable[[], EngineValidationReport]]"],
+    [str, Mapping[str, Any], "DealModel | None", "Mapping[str, Callable[[], ReconciliationReport]]"],
     "tuple[str, str, CellEvidence]",
 ]
 
@@ -192,7 +192,7 @@ def _classify_tape_analytics(
     deal_id: str,
     deal_ctx: Mapping[str, Any],
     model: DealModel | None,
-    validators: Mapping[str, Callable[[], EngineValidationReport]],
+    validators: Mapping[str, Callable[[], ReconciliationReport]],
 ) -> tuple[str, str, CellEvidence]:
     """ESMA tape normalisation / pool analytics — applies only when loan tapes exist."""
     tapes = deal_ctx.get("tape_urls") or []
@@ -221,7 +221,7 @@ def _classify_covenant_monitor(
     deal_id: str,
     deal_ctx: Mapping[str, Any],
     model: DealModel | None,
-    validators: Mapping[str, Callable[[], EngineValidationReport]],
+    validators: Mapping[str, Callable[[], ReconciliationReport]],
 ) -> tuple[str, str, CellEvidence]:
     """Covenant monitoring — applies when the deal has extracted triggers."""
     triggers = (model.covenants.get("triggers") if model else None) or []
@@ -251,7 +251,7 @@ def _classify_waterfall_execution(
     deal_id: str,
     deal_ctx: Mapping[str, Any],
     model: DealModel | None,
-    validators: Mapping[str, Callable[[], EngineValidationReport]],
+    validators: Mapping[str, Callable[[], ReconciliationReport]],
 ) -> tuple[str, str, CellEvidence]:
     """Waterfall execution — applies when a revenue waterfall was extracted."""
     waterfalls = model.waterfalls if model else {}
@@ -285,7 +285,7 @@ def _classify_collateral_reconciliation(
     deal_id: str,
     deal_ctx: Mapping[str, Any],
     model: DealModel | None,
-    validators: Mapping[str, Callable[[], EngineValidationReport]],
+    validators: Mapping[str, Callable[[], ReconciliationReport]],
 ) -> tuple[str, str, CellEvidence]:
     """Collateral / pool-state reconstruction — applies when loan tapes exist.
 
@@ -319,7 +319,7 @@ def _classify_engine_validation(
     deal_id: str,
     deal_ctx: Mapping[str, Any],
     model: DealModel | None,
-    validators: Mapping[str, Callable[[], EngineValidationReport]],
+    validators: Mapping[str, Callable[[], ReconciliationReport]],
 ) -> tuple[str, str, CellEvidence]:
     """Engine validation vs. published PoP — ``validated`` only with a committed builder.
 
@@ -342,7 +342,7 @@ def _classify_engine_validation(
                 detail={},
             ),
         )
-    report: EngineValidationReport = builder()
+    report: ReconciliationReport = builder()
     passed = report.passed
     return (
         STATE_VALIDATED if passed else STATE_RAN,
@@ -411,7 +411,7 @@ _CAPABILITIES: list[tuple[CapabilityRow, CellClassifier]] = [
     (
         CapabilityRow(
             key="engine_validation",
-            primitive_name="engine_validation_harness",
+            primitive_name="reconciler",
             label="Engine validation (vs. published PoP)",
             description="Reconcile the waterfall engine against the deal's own published PoP, to the cent.",
         ),
@@ -434,7 +434,7 @@ def build_capability_matrix(
     deals: Mapping[str, Mapping[str, Any]],
     *,
     seed_loader: Callable[[Mapping[str, Any]], DealModel | None],
-    validators: Mapping[str, Callable[[], EngineValidationReport]],
+    validators: Mapping[str, Callable[[], ReconciliationReport]],
 ) -> CapabilityMatrix:
     """Build the cross-deal capability matrix.
 
@@ -450,7 +450,7 @@ def build_capability_matrix(
         passes ``_load_cached_deal_model``; tests pass a fake.
     validators:
         ``{deal_id: offline-validation-builder}`` — a builder returns an
-        :class:`EngineValidationReport` reconciling the engine against the deal's
+        :class:`ReconciliationReport` reconciling the engine against the deal's
         own published PoP. The API passes ``_VALIDATION_BUILDERS``.
 
     Returns

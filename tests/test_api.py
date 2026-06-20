@@ -1791,14 +1791,15 @@ def test_deal_tape_analytics_integration():
 # ---------------------------------------------------------------------------
 # Engine validation  —  GET /deal/{deal_id}/validation  (#212, V6 / epic #206)
 # ---------------------------------------------------------------------------
-# Offline + deterministic: runs V4's engine_validation_harness against the
-# committed seed + committed Notes & Cash fixture (no network, no LLM). These
-# are NOT integration-marked — they must run in the fast suite, mirroring
-# test_engine_validation_harness.
+# Offline + deterministic: runs the Reconciler over the LIVE folded series
+# against the committed seed + the 3 committed Notes & Cash fixtures (no network,
+# no LLM). These are NOT integration-marked — they must run in the fast suite,
+# mirroring test_reconciler (#270 subsumed the offline engine_validation_harness).
 
 
 def test_validation_green_lion_2024_1_reproduces_published_pop():
-    """The headline proof, over HTTP: revenue 11/11, redemption 4/4, to the cent."""
+    """The headline proof, over HTTP: every period revenue 11/11, redemption 4/4,
+    to the cent — across all 3 quarterly Notes & Cash periods (#270)."""
     resp = client.get("/deal/green-lion-2024-1/validation")
     assert resp.status_code == 200
     body = resp.json()
@@ -1806,21 +1807,21 @@ def test_validation_green_lion_2024_1_reproduces_published_pop():
     assert body["available"] is True
     assert body["deal_id"] == "green-lion-2024-1"
     assert body["passed"] is True
-    assert body["periods_checked"] >= 1
-    assert body["periods_passed"] == body["periods_checked"]
+    assert body["periods_checked"] == 3
+    assert body["periods_passed"] == 3
     assert body["tolerance_eur"] == pytest.approx(0.01)
     assert body["source_note"]
     assert body["summary"]
 
-    period = body["periods"][0]
-    # Revenue: 11 steps, every one reconciled to the cent.
-    assert len(period["revenue"]["steps"]) == 11
-    assert period["revenue"]["steps_passed"] == 11
-    assert period["revenue"]["passed"] is True
-    # Redemption: 4 steps, every one reconciled.
-    assert len(period["redemption"]["steps"]) == 4
-    assert period["redemption"]["steps_passed"] == 4
-    assert period["redemption"]["passed"] is True
+    for period in body["periods"]:
+        # Revenue: 11 steps, every one reconciled to the cent.
+        assert len(period["revenue"]["steps"]) == 11
+        assert period["revenue"]["steps_passed"] == 11
+        assert period["revenue"]["passed"] is True
+        # Redemption: 4 steps, every one reconciled.
+        assert len(period["redemption"]["steps"]) == 4
+        assert period["redemption"]["steps_passed"] == 4
+        assert period["redemption"]["passed"] is True
 
 
 def test_validation_carries_honest_source_labels():
@@ -1843,12 +1844,18 @@ def test_validation_carries_honest_source_labels():
 
 
 def test_validation_surfaces_redemption_unapplied_rounding():
-    """The documented ~€0.69 redemption rounding remainder is surfaced, not hidden."""
+    """The documented redemption rounding remainder is surfaced, not hidden.
+
+    The March 2026 period leaves €0.69 of redemption funds unapplied due to
+    rounding — a real published line, presented honestly. (Each quarter has its
+    own small remainder; we pin March's known €0.69.)"""
     body = client.get("/deal/green-lion-2024-1/validation").json()
-    redemption = body["periods"][0]["redemption"]
-    # The fixtured period leaves €0.69 of redemption funds unapplied due to
-    # rounding — a real published line, presented honestly.
+    march = next(p for p in body["periods"] if p["period_label"] == "March 2026")
+    redemption = march["redemption"]
     assert redemption["unapplied_rounding"] == pytest.approx(0.69, abs=0.01)
+    # Every period surfaces its own non-negative remainder honestly.
+    for p in body["periods"]:
+        assert p["redemption"]["unapplied_rounding"] >= 0.0
 
 
 def test_validation_unfixtured_deal_degrades_gracefully():

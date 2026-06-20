@@ -173,7 +173,7 @@ FINOS_CONTROL_CATALOGUE: list[FinosControl] = [
             "assert outputs against ground truth before they are trusted."
         ),
         loanwhiz_evidence=[
-            "engine_validation_harness.py",
+            "reconciler.py",
             "report_verifier.py",
             "tests/ (per-primitive suites)",
         ],
@@ -455,7 +455,7 @@ FINOS_CONTROL_CATALOGUE: list[FinosControl] = [
         ),
         loanwhiz_evidence=[
             "report_verifier.py",
-            "engine_validation_harness.py",
+            "reconciler.py",
         ],
     ),
     FinosControl(

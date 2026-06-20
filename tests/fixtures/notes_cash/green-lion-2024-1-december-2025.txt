@@ -1,0 +1,1376 @@
+Green Lion 2024-1 B.V.
+ESMA identifier: 724500R0FRROYTJMBC30N202401
+Notes and Cash Report
+Reporting period: 23 October 2025 - 23 January 2026
+Reporting Date: 23 January 2026
+AMOUNTS IN EURO
+Green Lion 2024-1 B.V.
+www.dutchsecuritisation.nl
+Report Version 2.0
+
+Page
+Key Dates
+3
+Bond Report
+4
+Revenue Priority of Payments
+6
+Redemption Priority of Payments
+7
+Issuer Transaction Accounts
+8
+Additional Information
+9
+Transaction Triggers and Events
+10
+Counterparty Rating Triggers
+12
+Glossary
+13
+Contact Information
+15
+Table of Contents
+2 of 16
+Green Lion 2024-1 B.V.
+Notes and Cash Report: 23 October 2025 - 23 January 2026
+
+Note Class
+Class A Notes
+Class B Notes
+Class C Notes
+Key Dates
+Issue Date
+10 Jul 2024
+10 Jul 2024
+10 Jul 2024
+First Optional Redemption 
+Date
+23 Apr 2029
+23 Apr 2029
+23 Apr 2029
+Step Up Date
+23 Apr 2029
+23 Apr 2029
+N/A
+Fixing Date Reference Rate
+21 Oct 2025
+N/A
+N/A
+Notes Calculation Date
+23 Jan 2026
+23 Jan 2026
+23 Jan 2026
+Notes Interest Payment Date
+23 Jan 2026
+N/A
+N/A
+Notes Principal Payment Date
+23 Jan 2026
+23 Jan 2026
+23 Jan 2026
+Accrual Start Date
+23 Oct 2025
+N/A
+N/A
+Accrual End Date
+23 Jan 2026
+N/A
+N/A
+Day Count Convention
+act/360
+act/360
+act/360
+Accrual Period (in days)
+92
+N/A
+N/A
+Key Dates
+Securitisation Dates
+Key Dates
+Closing Date
+10 Jul 2024
+Revolving Period End-Date
+23 Apr 2029
+Final Maturity Date
+23 Oct 2060
+Portfolio Cut-off Date
+31 Dec 2025
+Class Dates
+3 of 16
+Green Lion 2024-1 B.V.
+Notes and Cash Report: 23 October 2025 - 23 January 2026
+
+Note Class
+Class A Notes
+Class B Notes
+Class C Notes
+General information
+Issuer
+Green Lion 2024-1 
+RMBS B.V.
+Green Lion 2024-1 
+RMBS B.V.
+Green Lion 2024-1 
+RMBS B.V.
+ISIN Code
+XS2802104120
+XS2802104559
+XS2802104716
+Common code
+280210412
+280210455
+280210471
+Security code
+Stock Exchange Listing(s)
+Euronext Exchange
+N/A
+N/A
+Currency
+EUR
+EUR
+EUR
+Applicable exchange rate
+Not Applicable
+Not Applicable
+Not Applicable
+Tranche Type
+Controlled 
+Amortisation
+Controlled 
+Amortisation
+Controlled 
+Amortisation
+Mortgage backed (yes / no)
+Yes
+Yes
+Yes
+Original Credit Rating(s) (S&P/Moody's/Fitch/DBRS)
+- / Aaa (sf) / AAA (sf) / 
+- / - 
+- / NR (sf) / NR (sf) / - / 
+- 
+- / NR (sf) / NR (sf) / - / 
+- 
+Current Credit Rating(s) 
+(S&P/Moody's/Fitch/DBRS/Scope)
+- / Aaa (sf) / AAA (sf) / 
+- / - 
+- / NR (sf) / NR (sf) / - / 
+- 
+- / NR (sf) / NR (sf) / - / 
+- 
+Original Weighted Average Life (expected)
+Credit enhancement after payments
+Seniority Ranking
+1
+2
+3
+Principal Balance minus Deficiency Ledger
+1,000,000,000.00
+53,100,000.00
+10,500,000.00
+-Through reserve fund
+0.00
+0.00
+10,500,000.00
+-Through subordination
+63,600,000.00
+10,500,000.00
+0.00
+Total
+63,600,000.00
+10,500,000.00
+10,500,000.00
+Current Attachment Point
+5.00
+0.00
+0.00
+Original Attachment Point
+4.94
+0.00
+0.00
+Current Credit Enhancement
+6.04
+1.00
+1.00
+Original Credit Enhancement
+6.05
+1.00
+1.00
+Liquidity support after payments
+-Through cash advance facility
+0.00
+N/A
+N/A
+-Through reserve fund
+10,500,000.00
+N/A
+N/A
+Total
+10,500,000.00
+N/A
+N/A
+Risk Retention Method
+First loss tranche - i.e. 
+Article 6(3)(d) (FLTR)
+Risk Retention Holder
+Seller (SELL)
+Total percentage retained at Closing Date
+5.98%
+Percentage retained at Closing Date
+0.00%
+100.00%
+100.00%
+Percentage placed at Closing Date (privately and/or 
+publicly)
+100.00%
+0.00%
+0.00%
+Total
+100.00%
+100.00%
+100.00%
+Total percentage retained at Reporting Date
+5.98%
+Percentage retained at Reporting Date
+0.00%
+100.00%
+100.00%
+Percentage placed at Reporting Date (privately and/or 
+publicly)
+100.00%
+0.00%
+0.00%
+Total
+100.00%
+100.00%
+100.00%
+Bond Report
+4 of 16
+Green Lion 2024-1 B.V.
+Notes and Cash Report: 23 October 2025 - 23 January 2026
+
+Bond Report (2)
+Note Class
+Class A Notes
+Class B Notes
+Class C Notes
+Principal information
+Original Principal Balance
+1,000,000,000.00
+53,100,000.00
+10,500,000.00
+Number of notes
+10,000
+531
+105
+Principal Balance before Payment
+1,000,000,000.00
+53,100,000.00
+10,500,000.00
+Total Principal Payments
+0.00
+0.00
+0.00
+Principal Balance after Payment
+1,000,000,000.00
+53,100,000.00
+10,500,000.00
+Principal Payments per Note
+0.00
+0.00
+0.00
+Principal Balance per Note after 
+Payment
+100,000.00
+100,000.00
+100,000.00
+Factor after Payment
+1.00000
+1.00000
+1.00000
+Principal Deficiency Ledger (PDL)
+PDL Balance at start of the period
+0.00
+0.00
+N/A
+Additions to PDL in the period
+0.00
+0.00
+N/A
+Releases from PDL in the period
+0.00
+0.00
+N/A
+PDL Balance after the Payment Date
+0.00
+0.00
+N/A
+Cumulative Additions to PDL
+0.00
+0.00
+N/A
+Cumulative Releases from PDL
+0.00
+0.00
+N/A
+Interest information
+Current Interest Rate Index and Tenor
+Euribor3M
+N/A
+N/A
+Coupon Reference Rate (in bps)
+203.80
+N/A
+N/A
+Relevant Margin (in bps)
+42.00
+N/A
+N/A
+Step Up Margin (in bps)
+84.00
+N/A
+N/A
+Current Coupon (in bps)
+245.800
+N/A
+N/A
+Coupon Floor
+0.00%
+0.00%
+0.00%
+Scheduled Interest Payments
+6,281,555.56
+N/A
+N/A
+Total Interest Payments
+6,281,555.56
+N/A
+N/A
+Interest Payments Per Note
+628.16
+N/A
+N/A
+Current Interest Shortfall
+0.00
+N/A
+N/A
+Cumulative Interest Shortfall
+0.00
+N/A
+N/A
+Total Principal + Interest Payments
+6,281,555.56
+0.00
+0.00
+5 of 16
+Green Lion 2024-1 B.V.
+Notes and Cash Report: 23 October 2025 - 23 January 2026
+
+Previous Period
+Current Period
+Available Revenue Funds
+(a) the amount of Revenue Funds received by the Issuer in respect of the three Mortgage Calculation 
+Periods;
+7,313,960.04
+7,371,161.03
+(b) all amounts of interest received by the Issuer on the Issuer Transaction Accounts;
+92,856.79
+97,324.68
+(c) all amounts received by the Issuer under the Swap Agreement;
+6,110,333.33
+6,281,555.56
+(d) amounts received from a replacement swap counterparty
+0.00
+0.00
+(e) any other amount standing to the credit of the Income Ledger;
+0.00
+0.00
+(f) amounts to be drawn from the Reserve Account
+0.00
+0.00
+(g) any amounts standing to the credit of the Issuer Expense Account in excess of the Minimum Required 
+Expense Account Amount
+0.00
+0.00
+(h) any amounts standing to the credit of the Reserve Account in excess of the Reserve Account Target 
+Level;
+0.00
+0.00
+less:
+(i) on the first Notes Calculation Date of each calendar year, a minimum EUR 2,500.
+-/-
+0.00
+0.00
+(j) any NHG Return Amount
+-/-
+0.00
+0.00
+Total Available Revenue Funds
+13,517,150.16
+13,750,041.27
+Revenue Priority of Payments
+(a) first, any fees payable to the Security Trustee;
+0.00
+0.00
+(b) second, any fees payable to any of the
+   (1) the Paying Agent, 
+0.00
+0.00
+   (2) the Servicer,
+0.00
+0.00
+   (3) the Issuer Administrator, 
+0.00
+0.00
+   (4) the Issuer Account Bank, 
+0.00
+0.00
+   (5) the Directors, 
+0.00
+0.00
+   (6) any stock exchange on which the Class A Notes are listed, 
+0.00
+0.00
+   (7) the Issuer's auditors, legal counsel and tax advisers, 
+85,184.00
+0.00
+   (8) the Credit Rating Agencies, 
+0.00
+0.00
+   (9) any independent accountant or calculation agent appointed under the Swap Agreement, 
+0.00
+0.00
+   (10) any custodian, 
+0.00
+0.00
+   (11) any taxing authority having power and authority to tax the Issuer,
+0.00
+0.00
+   (12) any Benchmark Rate Modification Costs (if applicable)
+0.00
+0.00
+   (
+13
+) the fees and expenses due and payable to the Data Key Trustee under the Deposit
+          Agreement and
+0.00
+0.00
+   (14) any other creditor (other than the Swap Counterparty)
+0.00
+0.00
+(c) third, any amounts due and payable to the Swap Counterparty other than Subordinated Swap Payments;
+5,908,495.43
+6,054,310.34
+(d) fourth, on a pari passu and pro rata basis, all interest due (or accrued due) and payable on the Class A 
+Notes;
+6,110,333.33
+6,281,555.56
+(e) fifth, the amount required to replenish any shortfall reflected in the Class A Principal Deficiency Ledger;
+0.00
+0.00
+(f) sixth, the amount required to replenish the Reserve Account up to the Reserve Account Target Level;
+0.00
+0.00
+(g) seventh, the amount required to replenish the Issuer Expense Account to the Minimum Required 
+Expense Account Amount (if any);
+24,224.27
+11,283.95
+(h) eighth, the amount required to replenish any shortfall reflected in the Class B Principal Deficiency 
+Ledger;
+0.00
+0.00
+(i) ninth, Subordinated Swap Payments due and payable under the Swap Agreement;
+0.00
+0.00
+(j) tenth, after (i) the Notes Payment Date on which all amounts of interest on the Class A
+   Notes and principal on the Secured Green Collateralised Notes will have been paid and (ii) the First
+   Optional Redemption Date, in or towards satisfaction of principal amounts due on the Class C Notes; and
+0.00
+0.00
+Unapplied Revenue amounts due to rounding
+0.00
+0.00
+(k) eleventh, any Deferred Purchase Price Instalment to the Seller.
+1,388,913.13
+1,402,891.43
+Total Revenue Priority of Payments
+13,517,150.16
+13,750,041.27
+Revenue Priority of Payments
+6 of 16
+Green Lion 2024-1 B.V.
+Notes and Cash Report: 23 October 2025 - 23 January 2026
+
+Redemption Priority of Payments
+Previous Period
+Current Period
+Available Principal Funds
+(a) the amount of Principal Funds received by the Issuer in respect of the three Mortgage Calculation 
+Periods;
+38,941,270.02
+41,719,927.24
+(b) interest amounts allocated in accordance with the Revenue Priority of Payments to cure any Realised 
+Loss reflected on the Principal Deficiency Ledger
+0.00
+0.00
+(c) any amounts equal to the excess (if any) of (a) the sum of the aggregate proceeds of the issue of the 
+Secured Green Collateralised Notes over (b) the Initial Purchase Price in respect of the Mortgage 
+Receivables comprising the Initial Portfolio
+0.00
+0.00
+(d) all amounts to be credited to any sub-ledger of the Principal Deficiency Ledgers under the Revenue 
+Priority of Payments;
+0.00
+0.00
+(e) the Reserved Amount as calculated on the immediately preceding Notes Calculation Date; and
+0.00
+0.00
+(f) any other amount standing to the credit of the Redemption Ledger.
+0.00
+0.00
+Unapplied Redemption Funds previous period.
+0.26
+0.89
+Total Available Principal Funds
+38,941,270.28
+41,719,928.13
+Redemption Priority of Payments
+(a) first, during the Revolving Period, in or towards satisfaction of the Initial Purchase Price of any New 
+Mortgage Receivables, subject to the Additional Purchase Conditions being met, up to the New Mortgage 
+Receivables Available Amount 
+38,941,269.39
+41,719,928.03
+(b) second, in or towards, on a pari passu and pro rata basis, satisfaction of principal amounts due and
+payable on the Class A Notes, until fully redeemed
+0.00
+0.00
+(c) third, in or towards, on a pari passu and pro rata basis satisfaction of principal amounts due and payable 
+on the Class B Notes, until fully redeemed
+0.00
+0.00
+Unapplied Redemption Funds due to rounding
+0.89
+0.10
+(d) fourth, to pay any Deferred Purchase Price Instalment to the Originator.
+0.00
+0.00
+Total Redemption Priority of Payments
+38,941,270.28
+41,719,928.13
+7 of 16
+Green Lion 2024-1 B.V.
+Notes and Cash Report: 23 October 2025 - 23 January 2026
+
+Issuer Transaction Accounts
+Previous Period
+Current Period
+Issuer Collection Account
+Issuer Transaction Account balance at the beginning of the Reporting Period
+0.26
+0.89
+Issuer Transaction Account balance at the end of the Reporting Period
+0.89
+0.10
+Reserve Account
+Target Reserve Account Balance at the end of the Reporting Period
+10,500,000.00
+10,500,000.00
+Reserve Account balance at the beginning of the Reporting Period
+10,500,000.00
+10,500,000.00
+Deposited on Reserve Account
+0.00
+0.00
+Drawings from Reserve Account
+-/-
+0.00
+0.00
+Reserve Account Balance at the end of the Reporting Period
+10,500,000.00
+10,500,000.00
+Construction Deposit Account
+Construction Deposit Account balance at the beginning of the Reporting Period
+428,986.78
+490,803.13
+Increase/Decrease on the Construction Deposit Account
+61,816.35
+-67,557.12
+Construction Deposit Account balance at the end of the Reporting Period
+490,803.13
+423,246.01
+Swap Collateral Account
+Swap Collateral Account balance at the beginning of the Reporting Period 
+0.00
+0.00
+Increase/Decrease on the Swap Collateral Account
+0.00
+0.00
+Swap Collateral Account balance at the end of the Reporting Period 
+0.00
+0.00
+Issuer Expense Account
+Issuer Expense Account balance at the beginning of the Reporting Period
+50,000.00
+50,000.00
+Issuer Expense Account Balance at the end of the Reporting Period
+50,000.00
+50,000.00
+8 of 16
+Green Lion 2024-1 B.V.
+Notes and Cash Report: 23 October 2025 - 23 January 2026
+
+Additional Information
+Previous Period
+Current Period
+Additional Margin
+Excess Spread Percentage (%)
+0.50
+0.50
+Calculated Excess Spread Margin (gross)
+1,345,627.78
+1,345,627.78
+Interest on Issuer Accounts not paid to the Swap
+54,787.54
+56,856.51
+Losses during Reporting Period 
+0.00
+0.00
+Recoveries or Post-Foreclosure Proceeds during Reporting Period
+0.00
+0.00
+Swap Payout Ratio Discount
+0.00
+0.00
+Revenue Income not in the Swap
+12,722.08
+11,691.09
+Changes to the balance of the Reserve Account
+0.00
+0.00
+Redemption of Class C Notes
+0.00
+0.00
+Change of Class A and B Principal Deficiency Ledger
+0.00
+0.00
+Change of Class A Interest Deficiency Ledger
+0.00
+0.00
+Replenishment Issuer Expense Account
+-24,224.27
+-11,283.95
+Other
+0.00
+0.00
+Available for Deferred Purchase Price / Equity (net)
+1,388,913.13
+1,402,891.43
+Cash Advance Facility
+Not Applicable
+Swap
+Swap definition
+As defined on page 148-150 
+O.C.
+As defined on page 148-150 O.C.
+Swap notional
+1,000,000,000.00
+1,000,000,000.00
+Swap applicable rates
+3 months Euribor
+3 months Euribor
+Swap collateral postings
+0.00
+0.00
+Swap calculations paying leg
+As per O.C. Chapter 5.4 p.148
+-150
+As per O.C. Chapter 5.4 p.148-150
+Swap calculations receiving leg
+As per O.C. Chapter 5.4 p.148
+-150
+As per O.C. Chapter 5.4 p.148-150
+Swap payments receiving leg
+6,110,333.33
+6,281,555.56
+Swap payments paying leg
+5,908,495.43
+6,054,310.34
+Net swap payments
+-201,837.90
+-227,245.22
+Set off
+Total Balance of Deposits Related to Borrowers in the Mortgage Loan Portfolio
+84,877,851.36
+90,204,930.96
+Reconciliation of Mortgage Loan Portfolio versus Notes
+Principal balance of Mortgage Loans after Payment Date (excluding negative loanparts)
+1,053,069,956.46
+1,053,073,353.58
+Balance of Negative Loanparts
+0.00
+0.00
+Principal balance of Mortgage Loans after Payment Date
+1,053,069,956.46
+1,053,073,353.58
+Balance of Saving Deposits at Portfolio Date
+0.00
+0.00
+Principal amounts in arrears
+30,042.65
+26,646.32
+Unapplied principal amounts due to rounding
+0.89
+0.10
+Principal balance of Notes after Payment Date
+-/-
+1,053,100,000.00
+1,053,100,000.00
+Total Balance of PDL's after Payment Date
+0.00
+0.00
+Difference
+0.00
+0.00
+9 of 16
+Green Lion 2024-1 B.V.
+Notes and Cash Report: 23 October 2025 - 23 January 2026
+
+Transaction Triggers and Events
+Required Value
+Current Value
+Status Breached
+Consequence if breached
+(a) the weighted average Loan to Income Ratio of all Mortgage Receivables, including the 
+Mortgage Receivables to be purchased by the Issuer, does not exceed 4.8
+4.80
+3.99
+OK
+No purchase of such New Mortgage 
+Receivable
+(b) the aggregate Outstanding Principal Balance of all the Mortgage Receivables with a 
+Loan to Income Ratio higher than 5, including the Mortgage Receivables to be purchased by 
+the Issuer, does not exceed 25 per cent. of the aggregate Outstanding Principal Balance of 
+all Mortgage Receivables
+25.00 %
+7.86 %
+OK
+No purchase of such New Mortgage 
+Receivable
+(c) the aggregate Outstanding Principal Balance of all Interest-only Mortgage Receivables, 
+including the Interest-only Mortgage Receivables to be purchased by the Issuer, does not 
+exceed 25 per cent. of the aggregate Outstanding Principal Balance of all Mortgage 
+Receivables
+25.00 %
+18.16 %
+OK
+No purchase of such New Mortgage 
+Receivable
+(d) the aggregate Outstanding Principal Balance of all Mortgage Receivables with a related 
+Construction Deposit, including the Mortgage Receivables to be purchased by the Issuer, 
+does not exceed 10 per cent. of the aggregate Outstanding Principal Balance of all 
+Mortgage Receivables
+10.00 %
+1.84 %
+OK
+No purchase of such New Mortgage 
+Receivable
+(e) the aggregate amount of the Construction Deposits does not exceed EUR 10,000,000
+10,000,000.00
+423,246.01
+OK
+No purchase of such New Mortgage 
+Receivable
+(f) the aggregate Outstanding Principal Balance of all Mortgage Receivables under all NHG 
+Mortgage Loans, including the Mortgage Receivables to be purchased by the Issuer, is at 
+least 12 per cent. of the aggregate Outstanding Principal Balance of all Mortgage 
+Receivables
+12.00 %
+20.75 %
+OK
+No purchase of such New Mortgage 
+Receivable
+(g) as a result of the purchase of the relevant Mortgage Receivables the aggregate 
+Outstanding Principal Balance of the Mortgage Receivables due from employed Borrowers 
+is at least 65 per cent of the aggregate Outstanding Principal Balance of all Mortgage 
+Receivables at that time
+65.00 %
+73.01 %
+OK
+No purchase of such New Mortgage 
+Receivable
+(h) the aggregate Outstanding Principal Balance of all Mortgage Receivables with an 
+Outstanding Principal Balance higher than EUR 500,000, including the Mortgage 
+Receivables to be purchased by the Issuer, does not exceed 30 per cent. of the aggregate 
+Outstanding Principal Balance of all Mortgage Receivables
+30.00 %
+20.68 %
+OK
+No purchase of such New Mortgage 
+Receivable
+(i) the weighted average original loan to original market value of the Mortgage Loans 
+comprising the Portfolio as at the relevant Cut-Off Date was not greater than 87 per cent
+0.87
+0.79
+OK
+No purchase of such New Mortgage 
+Receivable
+(k) the weighted average current loan to original market value of the Mortgage Loans 
+comprising the Portfolio as at the relevant Cut-Off Date was not greater than 83 per cent
+0.83
+0.73
+OK
+No purchase of such New Mortgage 
+Receivable
+J) non NHG loans with OLTOMV >100% should not exceed 5% of portfolio
+5.00 %
+1.44 %
+OK
+No purchase of such New Mortgage 
+Receivable
+Weighted Average RWA% <= 40%
+0.40
+0.37
+OK
+No purchase of such New Mortgage 
+Receivable
+* Portfolio after Repurchases and Replenishment
+Trigger Event
+Required Value
+Current Value
+Status Breached
+Consequence if breached
+(a) the Seller has taken corporate action or steps have been taken or legal proceedings 
+have been instituted against it for bankruptcy (faillissement) or for any analogous insolvency 
+proceedings under applicable law or for the appointment of a receiver or a similar officer of it 
+or of any or all of its assets
+True
+True
+OK
+Early Amortisation Event (CHPP)
+(b) an Event of Default having occurred
+True
+True
+OK
+Early Amortisation Event (CHPP)
+(c) an Assignment Notification Event having occurred
+True
+True
+OK
+Early Amortisation Event (CHPP)
+(d) the 3rd successive Notes Payment Date on which the Reserved Amount is higher than 
+€50,000,000
+True
+True
+OK
+Early Amortisation Event (CHPP)
+(e) the appointment of the Servicer is terminated other than a voluntary termination by the 
+Servicer in accordance with the terms and conditions of the Servicing Agreement
+True
+True
+OK
+Early Amortisation Event (CHPP)
+(f) on any Notes Payment Date the Class B Principal Deficiency Ledger has a debit balance 
+in an amount larger than zero (for the avoidance of doubt, after the application of the Pre-
+Enforcement Revenue Priority of Payments on such Notes Payment Date)
+True
+True
+OK
+Early Amortisation Event (CHPP)
+(g) on any Notes Calculation Date: (i) the Realised Loss Ratio exceeds 0.40%; and/or (ii) the 
+Arrears Ratio calculated in respect of the immediately following Notes Payment Date 
+exceeds 1.50%
+True
+True
+OK
+Early Amortisation Event (CHPP)
+* Portfolio after Repurchases and Replenishment
+Notification Events
+Required Value
+Current Value
+Status Breached
+Consequence if breached
+(a) the purchase of the relevant New Mortgage Receivable takes place during the Revolving 
+Period;
+True
+True
+OK
+No purchase of such New Mortgage 
+Receivable (CHPP)
+(b) the Initial Purchase Price in respect of the New Mortgage Receivables does not exceed 
+the New Mortgage Receivables Available Amount
+True
+True
+OK
+No purchase of such New Mortgage 
+Receivable (CHPP)
+(c) the relevant New Mortgage Receivable(s) meet the Eligibility Criteria as at the relevant 
+Cut-Off Date and any Further Advance relates to a Mortgage Receivable
+True
+True
+OK
+No purchase of such New Mortgage 
+Receivable (CHPP)
+(d) the relevant New Mortgage Receivable(s) meet the Green Eligibility Criteria as at the 
+relevant Cut-Off Date
+True
+True
+OK
+No purchase of such New Mortgage 
+Receivable (CHPP)
+(e) the Seller will represent and warrant to the Issuer and the Security Trustee the matters 
+specified in (i) up to and including (iv) as listed in Section 7.2 (Representations and 
+Warranties) in respect of such New Mortgage Receivable
+True
+True
+OK
+No purchase of such New Mortgage 
+Receivable (CHPP)
+(f) no Assignment Notification Event has occurred and is continuing
+True
+True
+OK
+No purchase of such New Mortgage 
+Receivable (CHPP)
+(g) there is no breach of any Portfolio Condition as of the relevant Cut-Off Date
+True
+True
+OK
+No purchase of such New Mortgage 
+Receivable (CHPP)
+10 of 16
+Green Lion 2024-1 B.V.
+Notes and Cash Report: 23 October 2025 - 23 January 2026
+
+(h) there has been no failure by the Seller to repurchase any Mortgage Receivable which it 
+is required to repurchase pursuant to the Mortgage Receivables Purchase Agreement
+True
+True
+OK
+No purchase of such New Mortgage 
+Receivable (CHPP)
+(i) all receivables with a higher ranking than the New Mortgage Receivable are owned by the 
+Issuer
+True
+True
+OK
+No purchase of such New Mortgage 
+Receivable (CHPP)
+* Portfolio after Repurchases and Replenishment
+11 of 16
+Green Lion 2024-1 B.V.
+Notes and Cash Report: 23 October 2025 - 23 January 2026
+
+Counterparty Rating Triggers
+Counterparty Credit Ratings
+S&P (ST/LT)
+Moody's (ST/LT)
+Fitch (ST/LT)
+DBRS (ST/LT)
+Role
+Party
+Rank
+Rating 
+Trigger
+Current 
+Rating
+Rating 
+Trigger
+Current 
+Rating
+Rating 
+Trigger
+Current 
+Rating
+Rating 
+Trigger
+Current 
+Rating
+Consequence if breached
+ACCOUNT BANK (ABNK)
+ING Bank N.V.
+1
+ / 
+/
+ / 
+/
+F1 / A
+F1+ / AA-
+ / 
+/
+Obtain a guarantee of its obligations 
+under the Issuer Account Agreement 
+(OTHR)
+ACCOUNT BANK (ABNK)
+ING Bank N.V.
+2
+ / 
+/
+ / A2
+ / Aa3
+ / 
+/
+ / 
+/
+Take action resulting in continuing 
+the then current ratings of the Class 
+A Notes (OTHR)
+SELLER (SELL)
+ING Bank N.V.
+1
+ / 
+/
+ / 
+/
+F2 / BBB
+F1+ / AA-
+ / 
+/
+Within 60 calendar days open an 
+escrow account in the name of the 
+Issuer (OTHR)
+SELLER (SELL)
+ING Bank N.V.
+2
+ / 
+/
+P-2 / Baa2
+P-1 / Aa3
+ / 
+/
+ / 
+/
+Within 60 calendar days deposit 
+cash collateral in the Deposit Ledger 
+(CHPP)
+SWAP COUNTERPARTY 
+(IRSP)
+ING Bank N.V.
+1
+ / 
+/
+ / A3
+ / Aa3
+F1 / A
+F1+ / AA-
+ / 
+/
+Within 60 calendar days 
+replacement of the swap 
+counterparty, procure another 
+person to become co-obligor or 
+guarantor or resulting in continuing 
+the then current ratings of the Class 
+A Notes (CHCP)
+SWAP COUNTERPARTY 
+(IRSP)
+ING Bank N.V.
+2
+ / 
+/
+ / Baa2
+ / Aa3
+ / 
+/
+ / 
+/
+Post collateral in the form of Swap 
+Collateral and either replace the 
+swap counterparty, procure a 
+guarantee or take action resulting in 
+continuing the then current ratings of 
+the Class A Notes (BOTH)
+12 of 16
+Green Lion 2024-1 B.V.
+Notes and Cash Report: 23 October 2025 - 23 January 2026
+
+Term
+Definition / Calculation
+Article 122a CRD
+means article 122a of the directive 2006/48/EC of the European Parliament and of the Council 
+(as amended by directive 2009/111/EC);
+Construction Deposit
+means in respect of a Mortgage Loan, that part of the Mortgage Loan which the relevant 
+Borrower requested to be disbursed into a blocked account held in his name with the relevant 
+Seller, the proceeds of which may be applied towards construction of, or improvements to, the 
+relevant Mortgaged Asset;
+Coupon
+means the interest coupons appertaining to the Notes;
+Credit Rating Agency
+means any credit rating agency (including any successor to its rating business) who, at the 
+request of the Seller, assigns, and for as long as it assigns, one or more ratings to the Notes, 
+from time to time, which as at the Closing Date includes Fitch and Moody's;
+Cut-Off Date
+means in relation to a Transfer Date, a Mortgage Calculation Date or a Notes Calculation 
+Date, the final day of the calendar month preceding the calendar month in which such 
+Transfer Date, Mortgage Calculation Date or Notes Calculation Date falls, and in relation to 
+the Transfer Date falling on the Closing Date means 
+26
+ January 
+2018
+Deferred Purchase Price
+means part of the purchase price for the Mortgage Receivables equal to the sum of all 
+Deferred Purchase Price Instalments;
+Deferred Purchase Price Installment
+means, after application of the relevant available amounts in accordance with the relevant 
+Priority of Payments, any amount remaining after all items ranking higher than the item 
+relating to the Deferred Purchase Price have been satisfied;
+Final Maturity Date
+means the Notes Payment Date falling in October 2060;
+First Optional Redemption Date
+means the Notes Payment Date falling in April 
+2029
+;
+Foreclosure Value
+means the foreclosure value of the Mortgaged Asset;
+Further Advances / Modified Loans
+means a loan or a further advance to be made to a Borrower under a Mortgage Loan, which is 
+secured by the same Mortgage;
+Indexed Foreclosure Value
+means the value of the Mortgaged Asset calculated by indexing the Original Foreclosure 
+Value with a property price index (weighted average of houses and apartments prices), as 
+provided by the Land Registry for the province where the Mortgaged Asset is located;
+Indexed Market Value
+means the value of the Mortgaged Asset calculated by indexing the Original Market Value 
+with a property price index (weighted average of houses and apartments prices), as provided 
+by the Land Registry for the province where the Mortgaged Asset is located;
+Issuer Account Bank
+means ING;
+Issuer Transaction Account
+means any of the Issuer Collection Account and the Reserve Account;
+Loanpart
+means one or more of the loan parts (leningdelen) of which a Mortgage Loan consists;
+Market Value
+means (i) the market value (marktwaarde) of the relevant Mortgaged Asset based on (a) if 
+available, the most recent valuation by an external valuer, or (b) if no valuation is available, 
+the assessment by the Dutch tax authorities on the basis of the WOZ at the time of application 
+by the Borrower or (ii) in respect of a Mortgaged Asset to be constructed or in construction at 
+the time of application by the Borrower, the construction costs of such Mortgaged Asset [plus 
+the purchase price of the relevant building lot];
+Mortgage Loan
+means the mortgage loans granted by the Seller (which includes an originator (A) which has 
+merged (gefuseerd) into the Seller or (B) whose relevant assets and liabilities have been 
+acquired by the Seller pursuant to a demerger (afsplitsing)) to the relevant borrowers which 
+may consist of one or more Loan Parts as set forth in the list of loans attached to the 
+Mortgage Receivables Purchase Agreement and, after any purchase and assignment of any 
+Further Advance Receivables has taken place in accordance with the Mortgage Receivables 
+Purchase Agreement, the relevant Further Advances, to the extent any and all rights under 
+and in connection therewith are not retransferred or otherwise disposed of by the Issuer;
+Mortgage Receivables
+means any and all rights of the Seller (and after assignment of such rights to the Issuer, of the 
+Issuer) against the Borrower under or in connection with a Mortgage Loan, including any and 
+all claims of the Seller (or the Issuer after assignment) on the Borrower as a result of the 
+Mortgage Loan being terminated, dissolved or declared null and void;
+NHG Guarantee
+means a guarantee (borgtocht) under the NHG Conditions granted by Stichting WEW;
+NHG Loan
+means a Mortgage Loan that has the benefit of an NHG Guarantee;
+Original Foreclosure Value
+means the Foreclosure Value as assessed by the Originator at the time of granting the 
+Mortgage Loan;
+Original Market Value
+means the Market Value as assessed by the Originator at the time of granting the Mortgage 
+Loan;
+Originator
+means the Seller;
+Outstanding Principal Amount
+means, at any moment in time, (i) the outstanding principal amount of a Mortgage Receivable 
+at such time and (ii), after a Realised Loss, zero;
+Glossary
+13 of 16
+Green Lion 2024-1 B.V.
+Notes and Cash Report: 23 October 2025 - 23 January 2026
+
+Term
+Definition / Calculation
+Principal Deficiency Ledger
+means the principal deficiency ledger relating to the relevant Classes of Notes and comprising 
+sub-ledgers for each such Class of Notes;
+Realised Losses
+"means on any Notes Calculation Date, an amount equal to the sum of:
+(i) the amount of the difference between (x) the aggregate principal amount outstanding of all 
+Mortgage Receivables, which the Seller, the Servicer, the Issuer or the Security Trustee (as 
+the case may be) has foreclosed during the related Notes Calculation Period less the 
+Participations, and (y) the sum of the Net Foreclosure Proceeds applied to reduce the 
+principal amounts under such Mortgage Receivables less the Participations;
+(ii) the aggregate principal amount outstanding of all Mortgage Receivables sold by or on 
+behalf of the Issuer or the Security Trustee pursuant to the Mortgage Receivables Purchase 
+Agreement and/or the Trust Deed, less the Participations, and less the net purchase price (to 
+the extent relating to principal) received by or on behalf of the Issuer in respect of such sold 
+Mortgage Receivables during the related Notes Calculation Period, less the Participations ; 
+and
+(iii) with respect to Mortgage Receivables which have been extinguished (teniet gegaan), in 
+part or in full, during the related Notes Calculation Period as a result of a set-off right having 
+been invoked by the relevant Borrower or theSeller, as the case may be, the positive 
+difference, if any, between the amount by which the Mortgage Receivables have been 
+extinguished (teniet gegaan) and the amount paid by the Seller pursuant to the Mortgage 
+Receivables Purchase Agreement in connection with such set-off;"
+Redemption Priority of Payments
+means the priority of payments set out as such in section 
+5.2
+ (Priority of Payments) of this 
+Prospectus;
+Reserve Account Target Level
+means on any Notes Calculation Date a level equal to an amount equal to EUR 
+9,000,000
+ or 
+zero, on the Notes Payment Date on which the Notes (other than the Class C Notes) have 
+been or are to be redeemed in full;
+Reserve Fund/Account
+means the bank account of the Issuer, designated as such in the Issuer Account Agreement;
+Revenue Priority of Payments
+means the priority of payments set out in section 
+5.2
+ (Priority of Payments) of this 
+Prospectus;
+Revolving Period
+means the period from the Closing Date until and including the Revolving Period End Date;
+Revolving Period End Date
+means the earlier of: the Notes Payment Date falling in July 2028; and the date on which an 
+Early Amortisation Event occurs;
+Saving Deposits
+means in relation to a Participation means with respect to (i) a Savings Mortgage Receivable, 
+all Savings Premiums received by the relevant Insurance Savings Participant from the 
+relevant Borrower under or pursuant to the relevant Mixed Insurance Policy,  and (ii) a Bank 
+Savings Mortgage Receivable, all payments made by the relevant Borrower to the related 
+Bank Savings Account;
+Seller
+means ING;
+Servicer
+means ING;
+Signing Date
+means 
+8
+ July 
+2024
+ or such later date as may be agreed between the Issuer and the Lead 
+Managers;
+Swap Counterparty
+means ING;
+Trust Deed
+means the trust deed entered into by, amongst others, the Issuer and the Security Trustee 
+dated the Signing Date;
+WEW
+means Stichting Waarborgfonds Eigen Woningen;
+14 of 16
+Green Lion 2024-1 B.V.
+Notes and Cash Report: 23 October 2025 - 23 January 2026
+
+Contact Information
+ACCOUNT BANK (ABNK)
+ING Bank N.V.
+Bijlmerdreef 106
+1102 CT Amsterdam
+The Netherlands (NL)
+3TK20IVIUJ8J3ZU0QE75
+ISSUER (ISSR)
+Green Lion 2024-1 B.V.
+Basisweg 10
+1043AP Amsterdam
+The Netherlands (NL)
+724500R0FRROYTJMBC30
+JOINT LEAD MANAGERS (MNGR)
+Banco Santander, S.A./ Ciudad Grupo Santander
+Avenida de Cantabria s/n Edificio Encinar
+28660 BdeMonte Madrid
+Spain (ES)
+5493006QMFDDMYWIAM13
+JOINT LEAD MANAGERS (MNGR)
+Credit Agricole CIB
+12 place des Etats-Unis
+92120 Montrouge
+France (FR)
+1VUV7VQFKUOQSJ21A208
+LEGAL ADVISERS TO THE JOINT LEAD 
+MANAGERS (CNSL)
+Freshfields Bruckhaus Deringer LLP
+Strawinskylaan 10
+1077 XZ Amsterdam
+The Netherlands (NL)
+213800MT17LM2ZDT5B78
+LISTING AGENT (OTHR)
+ING Bank N.V.
+Treasury Center, Foppingadreef 7
+1102 BD Amsterdam
+The Netherlands (NL)
+3TK20IVIUJ8J3ZU0QE75
+RATING AGENCY (OTHR)
+Fitch Ratings (RMBS)
+30 North Colonnade, Canary Wharf
+E14 5GN London
+United Kingdom (UK)
+2138009F8YAHVC8W3Q52
+SECURITY TRUSTEE (TRUS)
+Stichting Security Trustee Green Lion 2024-1
+Basisweg 10
+1043 AP Amsterdam
+The Netherlands (NL)
+724500R0FRROYTJMBC30
+ARRANGER (ARRG)
+ING Bank N.V.
+Treasury Center, Foppingadreef 7
+1102 BD Amsterdam
+The Netherlands (NL)
+3TK20IVIUJ8J3ZU0QE75
+ISSUER or ADMINISTRATOR (ADMI)
+ING Bank N.V.
+Treasury Center, Foppingadreef 7
+1102 BD Amsterdam
+The Netherlands (NL)
+3TK20IVIUJ8J3ZU0QE75
+JOINT LEAD MANAGERS (MNGR)
+BofA Securities
+51, rue La Boétie 
+75008 Paris
+France
+549300FH0WJAPEHTIQ77
+JOINT LEAD MANAGERS (MNGR)
+ING Bank N.V.
+Treasury Center, Foppingadreef 7
+1102 BD Amsterdam
+The Netherlands (NL)
+3TK20IVIUJ8J3ZU0QE75
+LEGAL ADVISERS TO THE SELLER 
+(CNSL)
+Hogan Lovells International LLP
+Strawinskylaan 4129
+1077 ZX Amsterdam
+The Netherlands (NL)
+2138005XRJF6W7IIYE10
+PAYING AGENT (PAYA)
+ING Bank N.V.
+Treasury Center, Foppingadreef 7
+1102 BD Amsterdam
+The Netherlands (NL)
+3TK20IVIUJ8J3ZU0QE75
+RATING AGENCY (OTHR)
+Moody's (RMBS)
+One Canada Square, Canary Wharf
+E14 5FA London
+United Kingdom (UK)
+549300VRS9KIQPMTQR45
+SELLER (SELL)
+ING Bank N.V.
+Bijlmerdreef 106
+1102 CT Amsterdam
+The Netherlands (NL)
+3TK20IVIUJ8J3ZU0QE75
+15 of 16
+Green Lion 2024-1 B.V.
+Notes and Cash Report: 23 October 2025 - 23 January 2026
+
+SERVICER (OTHR)
+ING Bank N.V.
+Bijlmerdreef 106
+1102 CT Amsterdam
+The Netherlands (NL)
+3TK20IVIUJ8J3ZU0QE75
+SWAP COUNTERPARTY (IRSP)
+ING Bank N.V.
+Bijlmerdreef 106
+1102 CT Amsterdam
+The Netherlands (NL)
+3TK20IVIUJ8J3ZU0QE75
+16 of 16
+Green Lion 2024-1 B.V.
+Notes and Cash Report: 23 October 2025 - 23 January 2026

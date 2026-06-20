@@ -61,7 +61,7 @@ from loanwhiz.primitives.step_source_classifier import build_step_specs
 
 #: Revenue PoP labels whose amount the prospectus does NOT formulate — taken from
 #: the report (security-trustee/various fees, swap payments, expense top-ups).
-#: Mirrors ``engine_validation_harness._REVENUE_REPORT_SUPPLIED_LABELS``.
+#: Mirrors ``reconciler`` revenue report-supplied labelling (one classifier).
 DEFAULT_REVENUE_REPORT_SUPPLIED_LABELS: frozenset[str] = frozenset(
     {"(a)", "(b)", "(c)", "(g)", "(i)", "(j)"}
 )
@@ -98,8 +98,8 @@ def _fold_revenue_pop(period: NotesCashPeriod) -> dict[str, float]:
     ``(1)…(14)`` (a ``pypdf`` layout artefact). The extracted model carries a
     single ``(b)`` step, so the sub-items' amounts are folded back into one
     ``(b)`` total; top-level ``(a)`` and ``(c)…(k)`` labels pass through. Mirrors
-    ``engine_validation_harness._fold_report_revenue_steps`` so the adapter and
-    harness fold identically.
+    ``reconciler._fold_report_revenue_steps`` so the adapter and the Reconciler
+    fold identically.
     """
     folded: dict[str, float] = {}
     b_total = 0.0
