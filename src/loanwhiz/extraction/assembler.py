@@ -747,3 +747,353 @@ def _download_and_convert(
     cache_path.parent.mkdir(parents=True, exist_ok=True)
     cache_path.write_text(markdown, encoding="utf-8")
     return markdown
+
+
+# ===========================================================================
+# Canonical DealRules assembly (#273 — the generalization).
+# ===========================================================================
+#
+# The functions above produce the legacy ``DealModel`` (free-string recipients /
+# metrics), still consumed by the API and the report/reconciler primitives. The
+# functions below map an extracted ``DealModel`` (or its parts) onto the
+# canonical ``loanwhiz.domain.rules.DealRules`` — the executable program the
+# engine folds directly — via the recipient/metric taxonomy mapping, LLM-assisted
+# tranche extraction, per-field provenance, and honest field-based completeness
+# (spec ``2026-06-20-prospectus-extractor-generalization-design.md``).
+#
+# Domain + governance imports are kept *inside* the functions (lazy) so importing
+# this module's legacy path (e.g. via ``capability_matrix``) does not pull the
+# canonical ``loanwhiz.domain`` package at module-load time — that would close the
+# documented domain<->primitives import cycle (see
+# ``loanwhiz.primitives.__init__.__getattr__``).
+
+
+def _rate_rule_from_str(rate_str: str | None):
+    """Parse a coupon string into a canonical ``RateRule`` (fixed or floating).
+
+    Recognises floating forms like ``"3m EURIBOR + 0.43"`` / ``"EURIBOR + 0.43%"``
+    and fixed forms like ``"3.5%"``. Defaults to a 0% fixed coupon when the string
+    is absent or unparseable — a usable-but-flagged-by-provenance fallback.
+    """
+    from loanwhiz.domain.rules import RateRule
+
+    if not rate_str or not rate_str.strip():
+        return RateRule(kind="fixed", fixed_pct=0.0)
+
+    text = rate_str.strip()
+    lower = text.lower()
+
+    # Floating: an index (EURIBOR/LIBOR/SOFR/...) + a margin.
+    index_match = re.search(r"(euribor|libor|sofr|estr|sonia)", lower)
+    if index_match:
+        index_token = index_match.group(1).upper()
+        tenor = re.search(r"(\d+)\s*(?:m|month)", lower)
+        index = f"{index_token}_{tenor.group(1)}M" if tenor else index_token
+        margin = re.search(r"[+\-]\s*([0-9]*\.?[0-9]+)\s*(%|bps)?", text)
+        margin_bps = None
+        if margin:
+            val = float(margin.group(1))
+            unit = (margin.group(2) or "").lower()
+            # "+ 0.43" / "+ 0.43%" are percent → bps; "+ 43 bps" already bps.
+            margin_bps = val if unit == "bps" else val * 100.0
+        return RateRule(kind="floating", index=index, margin_bps=margin_bps)
+
+    # Fixed: a bare percentage.
+    pct = re.search(r"([0-9]*\.?[0-9]+)\s*%", text)
+    if pct:
+        return RateRule(kind="fixed", fixed_pct=float(pct.group(1)) / 100.0)
+
+    return RateRule(kind="fixed", fixed_pct=0.0)
+
+
+def tranche_rules_from_structure(tranche_structure: list[dict]) -> list:
+    """Map the legacy ``tranche_structure`` dicts onto canonical ``TrancheRule``.
+
+    Each dict (``{name, size_eur, rating, rate, seniority}``) becomes a
+    ``TrancheRule`` with a parsed ``RateRule``. A tranche whose ``size_eur`` is
+    missing is given ``original_balance=0.0`` (the field is required by the
+    schema; provenance flags the low confidence) so the seniority skeleton is
+    still carried.
+    """
+    from loanwhiz.domain.rules import TrancheRule
+
+    rules: list[TrancheRule] = []
+    for t in tranche_structure:
+        rules.append(
+            TrancheRule(
+                name=t.get("name", "Unknown"),
+                seniority=int(t.get("seniority", len(rules))),
+                original_balance=float(t.get("size_eur") or 0.0),
+                rate=_rate_rule_from_str(t.get("rate")),
+                rating=t.get("rating"),
+            )
+        )
+    return sorted(rules, key=lambda r: r.seniority)
+
+
+def _citation_from_step(raw_citation: dict, default_doc: str):
+    """Build a ``primitives.base.Citation`` from an extracted step/trigger citation."""
+    from loanwhiz.primitives.base import Citation
+
+    c = raw_citation if isinstance(raw_citation, dict) else {}
+    return Citation(
+        document=c.get("document") or default_doc,
+        page_or_row=c.get("page_or_row"),
+        excerpt=c.get("excerpt") or "",
+    )
+
+
+def _step_rules_from_waterfall(
+    waterfall: dict,
+    *,
+    deal_name: str,
+    provenance: dict,
+    wf_kind: str,
+    use_llm: bool,
+) -> list:
+    """Map one extracted waterfall's steps onto canonical ``StepRule`` objects.
+
+    Each step's free-string recipient is classified onto ``RecipientType`` via the
+    taxonomy mapper (``unmapped`` escape); the amount basis is bound from the
+    mapped recipient; the prose is retained as ``AmountRule.raw_text``. A free-text
+    ``condition`` becomes a ``ConditionRef`` (gate ``not_breached`` for the common
+    "if X is not in effect" form, else ``breached``). Per-step provenance is
+    written into ``provenance`` keyed ``waterfalls.<kind>.<order>.recipient``.
+    """
+    from loanwhiz.domain.provenance import FieldProvenance
+    from loanwhiz.domain.rules import ConditionRef, StepRule
+    from loanwhiz.extraction.taxonomy import build_amount_rule, map_recipient
+
+    steps_in = waterfall.get("steps", []) if isinstance(waterfall, dict) else []
+    rules: list[StepRule] = []
+    for order, raw in enumerate(steps_in):
+        recipient_str = raw.get("recipient", "")
+        description = raw.get("description", "")
+        mapping = map_recipient(recipient_str, description, use_llm=use_llm)
+        amount = build_amount_rule(
+            mapping.value, raw.get("amount_formula") or description
+        )
+
+        condition = None
+        cond_text = (raw.get("condition") or "").strip()
+        if cond_text:
+            when = "not_breached" if re.search(r"not\b", cond_text, re.I) else "breached"
+            condition = ConditionRef(trigger_name=cond_text, when=when)
+
+        group = None
+        if raw.get("is_pari_passu"):
+            group = f"pp:{raw.get('priority', order)}"
+
+        rule = StepRule(
+            order=order,
+            priority_label=str(raw.get("priority", f"({order})")),
+            recipient=mapping.value,
+            amount=amount,
+            condition=condition,
+            pari_passu_group=group,
+        )
+        rules.append(rule)
+
+        key = f"waterfalls.{wf_kind}.{order}.recipient"
+        provenance[key] = FieldProvenance(
+            source="prospectus",
+            method=mapping.method,  # type: ignore[arg-type]
+            confidence=mapping.confidence,
+            citation=_citation_from_step(raw.get("citation", {}), f"{deal_name} Prospectus"),
+        )
+    return rules
+
+
+def _trigger_rules_from_covenants(
+    covenants: dict,
+    *,
+    deal_name: str,
+    provenance: dict,
+    use_llm: bool,
+) -> list:
+    """Map extracted triggers onto canonical ``TriggerRule`` objects.
+
+    Each free-string metric is classified onto ``MetricType`` (``unmapped``
+    escape); ``threshold_unit`` is normalised once here; the extracted
+    ``direction`` (above/below/non_zero) becomes the canonical comparison
+    operator. Per-trigger provenance is keyed ``triggers.<name>.metric``.
+    """
+    from loanwhiz.domain.provenance import FieldProvenance
+    from loanwhiz.domain.rules import TriggerRule
+    from loanwhiz.extraction.taxonomy import map_metric, normalize_threshold_unit
+
+    _OP = {"above": ">", "below": "<", "non_zero": ">"}
+
+    triggers_in = covenants.get("triggers", []) if isinstance(covenants, dict) else []
+    rules: list[TriggerRule] = []
+    for raw in triggers_in:
+        metric_str = raw.get("metric", "")
+        mapping = map_metric(metric_str, raw.get("description", ""), use_llm=use_llm)
+        threshold = raw.get("threshold")
+        # A non_zero trigger fires on any positive balance → threshold 0.
+        if threshold is None and raw.get("direction") == "non_zero":
+            threshold = 0.0
+        unit = normalize_threshold_unit(raw.get("threshold_unit"))
+
+        rule = TriggerRule(
+            name=raw.get("name", "unknown_trigger"),
+            metric=mapping.value,
+            operator=_OP.get(raw.get("direction", "above"), ">"),  # type: ignore[arg-type]
+            threshold=float(threshold) if threshold is not None else None,
+            threshold_unit=unit,  # type: ignore[arg-type]
+            consequence=raw.get("consequence", ""),
+        )
+        rules.append(rule)
+
+        key = f"triggers.{rule.name}.metric"
+        provenance[key] = FieldProvenance(
+            source="prospectus",
+            method=mapping.method,  # type: ignore[arg-type]
+            confidence=mapping.confidence,
+            citation=_citation_from_step(raw.get("citation", {}), f"{deal_name} Prospectus"),
+        )
+    return rules
+
+
+def _reserve_rule_from(covenants: dict, definitions: dict):
+    """Derive a canonical ``ReserveRule`` from the extracted artifacts.
+
+    Best-effort: looks for a reserve-fund trigger/definition mentioning a target
+    percentage of note balance; falls back to a flat ``floor=0.0`` reserve when
+    nothing quantified is found (provenance reflects the low confidence). The
+    engine treats ``pct_of_note_balance`` / ``floor`` per ``ReserveRule``.
+    """
+    from loanwhiz.domain.rules import ReserveRule
+
+    # Scan trigger consequences / definitions for a "X% of ... note balance" form.
+    haystacks: list[str] = []
+    for t in (covenants.get("triggers", []) if isinstance(covenants, dict) else []):
+        if "reserve" in (t.get("name", "") + t.get("metric", "")).lower():
+            haystacks.append(t.get("consequence", "") + " " + t.get("description", ""))
+    for term, body in (definitions or {}).items():
+        if "reserve" in term.lower():
+            d = body.get("definition", "") if isinstance(body, dict) else str(body)
+            haystacks.append(d)
+
+    for text in haystacks:
+        pct = re.search(r"([0-9]*\.?[0-9]+)\s*%[^.]*?(?:note|principal|balance)", text, re.I)
+        if pct:
+            return ReserveRule(floor=0.0, pct_of_note_balance=float(pct.group(1)) / 100.0)
+
+    return ReserveRule(floor=0.0, pct_of_note_balance=None)
+
+
+def build_deal_rules(
+    model: "DealModel",
+    *,
+    deal_id: str | None = None,
+    jurisdiction: str = "Unknown",
+    currency: str = "EUR",
+    use_llm: bool = True,
+):
+    """Assemble a canonical :class:`~loanwhiz.domain.rules.DealRules` from a ``DealModel``.
+
+    This is the load-bearing generalization (#273): it maps the extracted
+    artifacts onto the executable canonical program via the recipient/metric
+    taxonomy (with the honest ``unmapped`` escape), parsed tranche rules,
+    per-field provenance, and the field-based completeness score. The result is
+    returned **wrapped in a governed** :class:`~loanwhiz.primitives.base.PrimitiveResult`
+    (confidence + citations + audit) so the governance layer can route low-
+    confidence fields to human review.
+
+    Parameters
+    ----------
+    model:
+        The extracted :class:`DealModel` (legacy artifact).
+    deal_id:
+        Stable deal id; defaults to the slug of the deal name.
+    jurisdiction / currency:
+        Deal metadata for the canonical record.
+    use_llm:
+        When ``False`` (tests / offline), the taxonomy mapper takes the
+        deterministic-only path — unrecognised strings degrade to ``unmapped``
+        rather than calling Gemini.
+
+    Returns
+    -------
+    PrimitiveResult[DealRules]
+        The canonical rules plus governance envelope. Access the rules via
+        ``result.output``.
+    """
+    import time as _time
+
+    from loanwhiz.domain.rules import DealRules
+    from loanwhiz.primitives.base import AuditEntry, Citation, PrimitiveResult
+
+    t0 = _time.time()
+    deal_name = model.metadata.deal_name
+    provenance: dict = {}
+
+    # Tranches → TrancheRule.
+    tranches = tranche_rules_from_structure(model.tranche_structure)
+
+    # Waterfalls → StepRule lists (keyed by canonical WaterfallKind).
+    _WF_MAP = {
+        "revenue": "revenue",
+        "redemption": "redemption",
+        "post_enforcement": "post_enforcement",
+    }
+    waterfalls: dict = {}
+    for src_kind, canon_kind in _WF_MAP.items():
+        wf = model.waterfalls.get(src_kind)
+        if wf is not None:
+            waterfalls[canon_kind] = _step_rules_from_waterfall(
+                wf,
+                deal_name=deal_name,
+                provenance=provenance,
+                wf_kind=canon_kind,
+                use_llm=use_llm,
+            )
+    # The schema requires the three keys present (lists may be empty).
+    for canon_kind in ("revenue", "redemption", "post_enforcement"):
+        waterfalls.setdefault(canon_kind, [])
+
+    # Triggers → TriggerRule.
+    triggers = _trigger_rules_from_covenants(
+        model.covenants, deal_name=deal_name, provenance=provenance, use_llm=use_llm
+    )
+
+    # Reserve → ReserveRule.
+    reserve = _reserve_rule_from(model.covenants, model.definitions)
+
+    rules = DealRules(
+        deal_id=deal_id or _slug(deal_name),
+        deal_name=deal_name,
+        jurisdiction=jurisdiction,
+        currency=currency,
+        tranches=tranches,
+        waterfalls=waterfalls,
+        triggers=triggers,
+        reserve=reserve,
+        provenance=provenance,
+    )
+    # Honest field-based completeness (unmapped steps don't count).
+    rules.completeness = rules.compute_completeness()
+
+    # Governed envelope: confidence is the mean per-field provenance confidence
+    # (a weak proxy for overall extraction quality); citations are the distinct
+    # per-field citations.
+    confidences = [fp.confidence for fp in provenance.values()]
+    overall_conf = sum(confidences) / len(confidences) if confidences else 0.0
+    citations: list[Citation] = [fp.citation for fp in provenance.values() if fp.citation]
+
+    audit = AuditEntry.now(
+        primitive_name="prospectus_extractor.build_deal_rules",
+        version="1.0.0",
+        input_hash=hashlib.sha256(
+            model.model_dump_json().encode("utf-8")
+        ).hexdigest(),
+        duration_ms=(_time.time() - t0) * 1000.0,
+    )
+
+    return PrimitiveResult(
+        output=rules,
+        confidence=overall_conf,
+        citations=citations,
+        audit_entry=audit,
+    )

@@ -130,3 +130,115 @@ def extract_key_sf_sections(section_map: SectionMap) -> dict[str, Section | None
         "eligibility_criteria": section_map.find("eligibility"),
         "available_funds": section_map.find("available funds", "5.1"),
     }
+
+
+# ---------------------------------------------------------------------------
+# LLM-semantic section classification (language-agnostic)
+# ---------------------------------------------------------------------------
+
+# The canonical section roles the assembler needs, regardless of source language
+# or numbering. Mirrors the keys :func:`extract_key_sf_sections` returns for the
+# roles that are load-bearing for ``DealRules`` assembly.
+CANONICAL_SECTION_ROLES: tuple[str, ...] = (
+    "definitions",
+    "revenue_priority_of_payments",
+    "redemption_priority_of_payments",
+    "post_enforcement_priority",
+    "triggers_covenants",
+    "tranche_table",
+)
+
+
+def classify_segments_llm(
+    section_map: SectionMap,
+    *,
+    roles: tuple[str, ...] = CANONICAL_SECTION_ROLES,
+    max_title_chars: int = 120,
+) -> dict[str, Section | None]:
+    """Classify the header segments into canonical section roles via the LLM.
+
+    This is the **language-agnostic** generalisation that replaces the GL-keyword
+    regex (:func:`extract_key_sf_sections`) for non-English / non-standard
+    prospectuses (spec: "LLM-semantic section routing"). The markdown is already
+    segmented deterministically by ``#`` headers (cheap, language-neutral);
+    here the LLM is asked, given the ordered list of segment **titles**, which
+    segment index best fills each canonical role — regardless of language or
+    numbering. The keyword router stays the deterministic fast path; the
+    assembler falls back to this only for roles the keyword router could not
+    locate.
+
+    Returns a ``{role: Section | None}`` map. On any LLM error (no credentials,
+    network, malformed response) returns all-``None`` so the caller degrades to
+    the keyword result rather than crashing — never raises into the extraction
+    path.
+
+    Parameters
+    ----------
+    section_map:
+        The header-segmented :class:`SectionMap`.
+    roles:
+        The canonical roles to fill (defaults to :data:`CANONICAL_SECTION_ROLES`).
+    max_title_chars:
+        Truncate each segment title to this many characters in the prompt.
+    """
+    sections = section_map.sections
+    if not sections:
+        return {role: None for role in roles}
+
+    try:
+        from google import genai
+        from google.genai import types as genai_types
+
+        from loanwhiz.config import GCP_LOCATION, GCP_PROJECT, MODEL_FLASH
+    except Exception:
+        return {role: None for role in roles}
+
+    numbered = "\n".join(
+        f"{i}: {sec.title[:max_title_chars]}" for i, sec in enumerate(sections)
+    )
+    role_lines = "\n".join(f"- {r}" for r in roles)
+    prompt = (
+        "You are routing the sections of a structured-finance prospectus "
+        "(RMBS/ABS) onto a fixed set of canonical roles. The section titles "
+        "below may be in any language (English, Italian, Spanish, ...) and use "
+        "any numbering scheme.\n\n"
+        "Numbered section titles (index: title):\n"
+        f"{numbered}\n\n"
+        "For each canonical role, return the index of the single section whose "
+        "title best matches it by meaning, or -1 if no section fits. Roles:\n"
+        f"{role_lines}\n\n"
+        'Respond as compact JSON mapping each role to an index, e.g. '
+        '{"definitions": 12, "revenue_priority_of_payments": 30, ...}. '
+        "Use -1 for a role with no matching section."
+    )
+
+    try:
+        client = genai.Client(vertexai=True, project=GCP_PROJECT, location=GCP_LOCATION)
+        response = client.models.generate_content(
+            model=MODEL_FLASH,
+            contents=prompt,
+            config=genai_types.GenerateContentConfig(temperature=0.0),
+        )
+        text = (response.text or "").strip()
+    except Exception:
+        return {role: None for role in roles}
+
+    import json
+
+    match = re.search(r"\{.*\}", text, re.DOTALL)
+    if not match:
+        return {role: None for role in roles}
+    try:
+        mapping = json.loads(match.group(0))
+    except (ValueError, json.JSONDecodeError):
+        return {role: None for role in roles}
+
+    result: dict[str, Section | None] = {}
+    for role in roles:
+        idx = mapping.get(role, -1)
+        try:
+            idx = int(idx)
+        except (TypeError, ValueError):
+            idx = -1
+        result[role] = sections[idx] if 0 <= idx < len(sections) else None
+    return result
