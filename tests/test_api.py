@@ -981,6 +981,137 @@ def test_deal_project_unknown_returns_404():
     assert resp.status_code == 404
 
 
+# ---------------------------------------------------------------------------
+# Forward projection — custom assumptions, per-tranche cashflows, per-tranche
+# WAL (#319). All additive over the #275 ScenarioGenerator-over-the-fold surface.
+# ---------------------------------------------------------------------------
+
+
+def test_deal_project_per_tranche_cashflows():
+    """Each period carries per-tranche principal cashflow = the per-period drop
+    in that tranche's outstanding balance, floored at 0; period-0 (seed) is 0."""
+    resp = client.post(
+        "/deal/green-lion-2026-1/project",
+        json={"scenarios": ["base"], "months": 6},
+    )
+    assert resp.status_code == 200
+    periods = resp.json()["projections"]["base"]["periods"]
+    # Seed period has zero cashflow (no transition yet).
+    seed = periods[0]
+    assert seed["class_a_principal_eur"] == 0.0
+    assert seed["class_b_principal_eur"] == 0.0
+    assert seed["class_c_principal_eur"] == 0.0
+    # Each subsequent period's per-tranche cashflow equals the balance drop.
+    for tranche in ("class_a", "class_b", "class_c"):
+        for prior, cur in zip(periods, periods[1:]):
+            expected = max(0.0, prior[f"{tranche}_balance"] - cur[f"{tranche}_balance"])
+            assert cur[f"{tranche}_principal_eur"] == pytest.approx(expected)
+
+
+def test_deal_project_per_tranche_wal():
+    """Per-tranche WAL (A/B/C) is surfaced additively; Class A keys are unchanged."""
+    resp = client.post(
+        "/deal/green-lion-2026-1/project",
+        json={"scenarios": ["base"], "months": 12},
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    wal = body["wal"]["base"]
+    for key in (
+        "wal_class_a_months",
+        "wal_class_a_years",
+        "wal_class_b_months",
+        "wal_class_b_years",
+        "wal_class_c_months",
+        "wal_class_c_years",
+    ):
+        assert key in wal
+    # Class A still in the (0, months] window (the #275 invariant).
+    assert 0.0 < wal["wal_class_a_months"] <= 12
+    # The per-scenario projection also carries the full WAL block inline.
+    assert body["projections"]["base"]["wal"] == wal
+
+
+def test_deal_project_custom_assumptions_change_result():
+    """Caller-supplied CDR/recovery override the preset and worsen losses."""
+    base = client.post(
+        "/deal/green-lion-2026-1/project",
+        json={"scenarios": ["base"], "months": 6},
+    ).json()
+    overridden = client.post(
+        "/deal/green-lion-2026-1/project",
+        json={
+            "scenarios": ["base"],
+            "months": 6,
+            "assumptions": {"base": {"cdr_pct": 8.0, "recovery_pct": 20.0}},
+        },
+    ).json()
+    assert (
+        overridden["projections"]["base"]["cumulative_losses"]
+        > base["projections"]["base"]["cumulative_losses"]
+    )
+
+
+def test_deal_project_partial_override_keeps_preset_fields():
+    """An override of only CDR leaves CPR/recovery/rate-shift at the base preset
+    — i.e. it does not reset the un-overridden fields to defaults."""
+    # Overriding CDR to the base preset's own value (0.03) must reproduce base.
+    base = client.post(
+        "/deal/green-lion-2026-1/project",
+        json={"scenarios": ["base"], "months": 6},
+    ).json()
+    same = client.post(
+        "/deal/green-lion-2026-1/project",
+        json={
+            "scenarios": ["base"],
+            "months": 6,
+            "assumptions": {"base": {"cdr_pct": 0.03}},
+        },
+    ).json()
+    assert (
+        same["projections"]["base"]["cumulative_losses"]
+        == pytest.approx(base["projections"]["base"]["cumulative_losses"])
+    )
+
+
+def test_deal_project_backward_compatible_without_assumptions():
+    """A no-``assumptions`` request returns the prior payload shape — existing
+    balance + Class A WAL fields all present."""
+    resp = client.post(
+        "/deal/green-lion-2026-1/project",
+        json={"scenarios": ["base", "stress"], "months": 6},
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    for scenario in ("base", "stress"):
+        proj = body["projections"][scenario]
+        period = proj["periods"][0]
+        for key in (
+            "pool_balance_eur",
+            "class_a_balance",
+            "class_b_balance",
+            "class_c_balance",
+            "reserve_balance",
+            "cumulative_losses",
+        ):
+            assert key in period
+        assert "wal_class_a_months" in proj
+        assert "wal_class_a_years" in proj
+
+
+def test_deal_project_invalid_assumption_returns_422():
+    """A CPR outside [0, 100] is a validation error (422), not a 500."""
+    resp = client.post(
+        "/deal/green-lion-2026-1/project",
+        json={
+            "scenarios": ["base"],
+            "months": 6,
+            "assumptions": {"base": {"cpr_pct": 150.0}},
+        },
+    )
+    assert resp.status_code == 422
+
+
 def test_deal_project_default_base_is_green_lion():
     """With no ``projection_base``/config, the projection seeds from Green Lion.
 

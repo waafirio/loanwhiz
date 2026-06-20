@@ -162,14 +162,28 @@ _SCENARIO_PRESETS: dict[str, dict] = {
 }
 
 
-def _scenario_assumptions(name: str) -> ScenarioAssumptions:
+def _scenario_assumptions(
+    name: str, override: "ScenarioAssumptionsOverride | None" = None
+) -> ScenarioAssumptions:
     """Resolve a scenario label to its :class:`ScenarioAssumptions` preset.
 
     Unknown labels fall back to the ``base`` preset (carrying the requested
     name), so a caller asking for a custom scenario name still gets a populated,
     deterministic projection rather than a 422.
+
+    When a caller supplies an ``override`` (#319), each present field wins over
+    the preset; omitted override fields keep the preset value. This is what makes
+    ``/project`` a real CPR/CDR/recovery tool rather than two hardcoded presets —
+    an analyst can project at, e.g., CPR 20 / CDR 5 / recovery 40 against a named
+    or ad-hoc scenario. With no override the behaviour is byte-for-byte the prior
+    preset/base resolution.
     """
-    preset = _SCENARIO_PRESETS.get(name, _SCENARIO_PRESETS["base"])
+    preset = dict(_SCENARIO_PRESETS.get(name, _SCENARIO_PRESETS["base"]))
+    if override is not None:
+        for key in ("cpr_pct", "cdr_pct", "recovery_pct", "rate_shift_bps"):
+            value = getattr(override, key)
+            if value is not None:
+                preset[key] = value
     return ScenarioAssumptions(name=name, **preset)
 
 # ---------------------------------------------------------------------------
@@ -252,11 +266,39 @@ class QueryResponse(BaseModel):
     evidence_pack_id: str
 
 
+class ScenarioAssumptionsOverride(BaseModel):
+    """Caller-supplied CPR / CDR / recovery / rate-shift for one scenario (#319).
+
+    All fields are optional: an omitted field falls back to the named preset's
+    value (or the ``base`` preset when the scenario name is unknown), so a caller
+    can override just the CDR while leaving CPR / recovery / rate-shift at the
+    preset. Bounds mirror :class:`ScenarioAssumptions` so a malformed override is
+    a 422 (validation error) rather than a 500 in the engine.
+    """
+
+    cpr_pct: float | None = Field(
+        default=None, ge=0.0, le=100.0, description="Annual CPR (%)."
+    )
+    cdr_pct: float | None = Field(
+        default=None, ge=0.0, le=100.0, description="Annual CDR (%)."
+    )
+    recovery_pct: float | None = Field(
+        default=None, ge=0.0, le=100.0, description="Recovery on defaults (%)."
+    )
+    rate_shift_bps: float | None = Field(
+        default=None, description="Additive rate shift (bps)."
+    )
+
+
 class ProjectRequest(BaseModel):
     """Request body for ``POST /deal/{deal_id}/project``."""
 
     scenarios: list[str] = Field(default_factory=lambda: ["base", "stress"])
     months: int = 12
+    # Optional per-scenario CPR / CDR / recovery / rate-shift overrides (#319).
+    # Keyed by scenario name; absent → the named preset / base fallback is used
+    # exactly as before, so existing no-``assumptions`` requests are unchanged.
+    assumptions: dict[str, ScenarioAssumptionsOverride] | None = None
 
 
 # Directory where ``loanwhiz.extraction.assembler.extract_deal_model`` caches
@@ -350,10 +392,19 @@ class ScenarioWal(BaseModel):
                              projection horizon. ``0.0`` when no Class A principal
                              is returned.
         wal_class_a_years:   ``wal_class_a_months / 12`` for convenience.
+        wal_class_b_months / wal_class_b_years:  Class B WAL (#319), same convention.
+        wal_class_c_months / wal_class_c_years:  Class C WAL (#319), same convention.
+
+    Class B / C WAL default to ``0.0`` so older call sites that constructed this
+    model with only the Class A fields remain valid (additive surface).
     """
 
     wal_class_a_months: float
     wal_class_a_years: float
+    wal_class_b_months: float = 0.0
+    wal_class_b_years: float = 0.0
+    wal_class_c_months: float = 0.0
+    wal_class_c_years: float = 0.0
 
 
 # ---------------------------------------------------------------------------
@@ -1884,27 +1935,52 @@ def deal_validation(deal_id: str) -> ValidationResponse:
 # --- end engine validation (#212) --------------------------------------------
 
 
-def _wal_from_series(series: DealStateSeries) -> ScenarioWal:
-    """Class A weighted-average life from a projected ``DealStateSeries`` (#275).
+def _wal_months_for_tranche(series: DealStateSeries, balance_attr: str) -> float:
+    """Weighted-average life (months) of one tranche over a projected series (#319).
 
-    WAL is ``sum(t × principal_t) / sum(principal_t)`` over the projection
-    horizon, where ``t`` is the period ordinal (1-based) and ``principal_t`` is
-    the Class A principal repaid in period ``t`` — read as the per-period drop in
-    the Class A outstanding balance across the state chain. ``0.0`` when no Class
-    A principal is returned (avoids divide-by-zero). This is a real WAL derived
-    from the engine-computed amortisation, not the faked "full horizon if any
-    principal" the single-period path used.
+    Generic over the tranche balance attribute (``class_a_balance`` /
+    ``class_b_balance`` / ``class_c_balance``). WAL is
+    ``sum(t × principal_t) / sum(principal_t)`` over the projection horizon, where
+    ``t`` is the period ordinal (1-based) and ``principal_t`` is the principal
+    repaid to that tranche in period ``t`` — read as the per-period drop in the
+    tranche's outstanding balance across the engine-computed state chain. ``0.0``
+    when the tranche returns no principal (avoids divide-by-zero), e.g. a
+    junior tranche that never amortises over the horizon.
     """
     numerator = 0.0
     denominator = 0.0
     for t in range(1, len(series.states)):
         principal_t = max(
-            0.0, series.states[t - 1].class_a_balance - series.states[t].class_a_balance
+            0.0,
+            getattr(series.states[t - 1], balance_attr)
+            - getattr(series.states[t], balance_attr),
         )
         numerator += t * principal_t
         denominator += principal_t
-    months = numerator / denominator if denominator > 0.0 else 0.0
-    return ScenarioWal(wal_class_a_months=months, wal_class_a_years=months / 12.0)
+    return numerator / denominator if denominator > 0.0 else 0.0
+
+
+def _wal_from_series(series: DealStateSeries) -> ScenarioWal:
+    """Per-tranche weighted-average life from a projected ``DealStateSeries`` (#275/#319).
+
+    Class A WAL is the original #275 surface (kept by name + value); Class B / C
+    WAL are added additively (#319) using the same engine-derived amortisation,
+    so the projection answers "WAL under CPR/CDR/recovery" for every tranche, not
+    just the senior. This is a real WAL derived from the engine-computed
+    amortisation, not the faked "full horizon if any principal" the single-period
+    path used.
+    """
+    class_a = _wal_months_for_tranche(series, "class_a_balance")
+    class_b = _wal_months_for_tranche(series, "class_b_balance")
+    class_c = _wal_months_for_tranche(series, "class_c_balance")
+    return ScenarioWal(
+        wal_class_a_months=class_a,
+        wal_class_a_years=class_a / 12.0,
+        wal_class_b_months=class_b,
+        wal_class_b_years=class_b / 12.0,
+        wal_class_c_months=class_c,
+        wal_class_c_years=class_c / 12.0,
+    )
 
 
 def _projection_payload(series: DealStateSeries, scenario: str) -> dict:
@@ -1915,19 +1991,40 @@ def _projection_payload(series: DealStateSeries, scenario: str) -> dict:
     the caller. Read off the engine-computed series — there is no separate
     projection bookkeeping (one engine, one source of truth).
     """
-    periods = [
-        {
-            "period": idx,
-            "reporting_date": state.reporting_date,
-            "pool_balance_eur": state.pool_balance,
-            "class_a_balance": state.class_a_balance,
-            "class_b_balance": state.class_b_balance,
-            "class_c_balance": state.class_c_balance,
-            "reserve_balance": state.reserve_balance,
-            "cumulative_losses": state.cumulative_losses,
-        }
-        for idx, state in enumerate(series.states)
-    ]
+    periods = []
+    for idx, state in enumerate(series.states):
+        prior = series.states[idx - 1] if idx > 0 else None
+        # Per-tranche principal cashflow = the period-over-period drop in the
+        # tranche's outstanding balance, floored at 0 (#319). Period 0 is the
+        # seed (no transition yet), so its cashflows are 0. Read off the
+        # engine-computed series — no separate cashflow bookkeeping.
+        periods.append(
+            {
+                "period": idx,
+                "reporting_date": state.reporting_date,
+                "pool_balance_eur": state.pool_balance,
+                "class_a_balance": state.class_a_balance,
+                "class_b_balance": state.class_b_balance,
+                "class_c_balance": state.class_c_balance,
+                "class_a_principal_eur": (
+                    max(0.0, prior.class_a_balance - state.class_a_balance)
+                    if prior is not None
+                    else 0.0
+                ),
+                "class_b_principal_eur": (
+                    max(0.0, prior.class_b_balance - state.class_b_balance)
+                    if prior is not None
+                    else 0.0
+                ),
+                "class_c_principal_eur": (
+                    max(0.0, prior.class_c_balance - state.class_c_balance)
+                    if prior is not None
+                    else 0.0
+                ),
+                "reserve_balance": state.reserve_balance,
+                "cumulative_losses": state.cumulative_losses,
+            }
+        )
     final = series.final_state
     return {
         "scenario": scenario,
@@ -1978,10 +2075,11 @@ def deal_project(deal_id: str, req: ProjectRequest) -> dict:
     seed_date = "projection-start"
     generator = ScenarioGenerator()
 
+    overrides = req.assumptions or {}
     projections: dict[str, dict] = {}
     wal: dict[str, dict] = {}
     for scenario in req.scenarios:
-        assumptions = _scenario_assumptions(scenario)
+        assumptions = _scenario_assumptions(scenario, overrides.get(scenario))
         seed = PrimitivesDealState.seed_from_prospectus(
             capital_structure,
             reserve_target=reserve_target,
@@ -2016,8 +2114,12 @@ def deal_project(deal_id: str, req: ProjectRequest) -> dict:
 
         projection = _projection_payload(series, scenario)
         scenario_wal = _wal_from_series(series)
+        # Class A WAL stays inline by its original keys (#275); the full
+        # per-tranche WAL (A/B/C) is also surfaced inline under "wal" and in the
+        # top-level "wal" map (#319).
         projection["wal_class_a_months"] = scenario_wal.wal_class_a_months
         projection["wal_class_a_years"] = scenario_wal.wal_class_a_years
+        projection["wal"] = scenario_wal.model_dump()
         projections[scenario] = projection
         wal[scenario] = scenario_wal.model_dump()
 
