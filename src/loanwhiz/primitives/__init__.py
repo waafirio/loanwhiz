@@ -79,6 +79,9 @@ __all__ = [
     "ReconciliationGateResult",
     "ReviewItem",
     "DEFAULT_REVIEW_CONFIDENCE_THRESHOLD",
+    # scenario_generator — lazily exposed (see __getattr__)
+    "ScenarioAssumptions",
+    "ScenarioGenerator",
 ]
 
 # Names re-exported lazily from modules that import the canonical
@@ -113,13 +116,14 @@ _LAZY_RECONCILIATION_GATE = {
 def __getattr__(name: str) -> object:
     """Lazily expose ``domain``-importing primitives on the package surface (PEP 562).
 
-    ``report_adapter`` and ``report_extractor`` import the canonical
-    ``loanwhiz.domain`` schema, which in turn imports ``loanwhiz.primitives.base``
-    — eagerly importing them at module top level would close that cycle and break
-    ``import loanwhiz.domain``. The same reason ``period_state_machine`` (which
-    also imports ``domain``) is not eagerly imported here. A lazy ``__getattr__``
-    keeps ``from loanwhiz.primitives import ReportAdapter`` / ``ReportExtractor``
-    working without the cycle.
+    ``report_adapter``, ``report_extractor``, ``reconciliation_gate`` and
+    ``scenario_generator`` import the canonical ``loanwhiz.domain`` schema, which
+    in turn imports ``loanwhiz.primitives.base`` — eagerly importing any of them
+    at module top level would close that cycle and break ``import
+    loanwhiz.domain``. The same reason ``period_state_machine`` (which also
+    imports ``domain``) is not eagerly imported here. A lazy ``__getattr__`` keeps
+    ``from loanwhiz.primitives import ReportAdapter`` / ``ReportExtractor`` /
+    ``ScenarioGenerator`` working without the cycle.
     """
     if name == "ReportAdapter":
         from loanwhiz.primitives.report_adapter import ReportAdapter
@@ -133,4 +137,11 @@ def __getattr__(name: str) -> object:
         from loanwhiz.primitives import reconciliation_gate
 
         return getattr(reconciliation_gate, name)
+    if name in ("ScenarioGenerator", "ScenarioAssumptions"):
+        from loanwhiz.primitives.scenario_generator import (
+            ScenarioAssumptions,
+            ScenarioGenerator,
+        )
+
+        return {"ScenarioGenerator": ScenarioGenerator, "ScenarioAssumptions": ScenarioAssumptions}[name]
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

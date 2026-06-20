@@ -280,7 +280,7 @@ arrow(Inches(9.4), ay+Inches(1.25), Inches(0.5), Inches(0.4), vert=True)
 my = Inches(4.62)
 box(Inches(0.7), my, Inches(5.75), Inches(1.18),
     "SF PRIMITIVES  (registry)",
-    "tape_normaliser · collections_aggregator · waterfall_runner · multi_period_runner\ncovenant_monitor · report_verifier · cashflow_projector · audit_logger",
+    "tape_normaliser · collections_aggregator · waterfall_runner\ncovenant_monitor · report_verifier · audit_logger",
     CLOUD, NAVY)
 box(Inches(6.85), my, Inches(5.75), Inches(1.18),
     "DEAL MODEL  (JSON, per deal)",
@@ -350,13 +350,11 @@ prims = [
     ("esma_tape_normaliser", "Normalise Annex-2 tapes → pool analytics: WAL, arrears, EPC / geo / rate distributions."),
     ("collections_aggregator", "Aggregate monthly interest, principal, prepayments and recoveries into waterfall inputs."),
     ("waterfall_runner", "Execute the extracted waterfall against a period's collections; per-tranche distributions + trace."),
-    ("multi_period_waterfall_runner", "Run the waterfall across periods with persistent PDL and reserve-account state."),
     ("covenant_monitor", "Check tape metrics against extracted trigger thresholds; track breach proximity over time."),
     ("report_verifier", "Reconcile reconstructed collateral against the investor reports to the cent; flag discrepancies."),
-    ("cashflow_projector", "Single-period stress sensitivity: re-run the waterfall under base/stress collection factors; Class-A WAL."),
     ("audit_logger", "Wrap every call with FINOS provenance: input/output hashes, confidence, citations, model version."),
 ]
-cols, rows = 2, 4
+cols, rows = 2, 3
 cw, chh = Inches(5.9), Inches(1.02)
 gx, gy = Inches(0.1), Inches(0.12)
 x0, y0 = Inches(0.7), Inches(2.42)

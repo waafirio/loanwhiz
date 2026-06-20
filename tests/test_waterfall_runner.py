@@ -111,10 +111,15 @@ class TestHappyPath:
         )
 
     def test_no_shortfall(self, runner: WaterfallRunner):
-        """Overall shortfall must be zero when revenue covers all steps."""
+        """Overall shortfall must be zero when revenue covers all steps.
+
+        The tool now folds the period through ``run_period`` (#276), whose
+        PDL/reserve arithmetic can leave a sub-cent floating-point residue, so
+        assert ``≈ 0`` (well within EUR 0.01) rather than exact equality.
+        """
         result = runner.execute(_base_input())
-        assert result.output.shortfall == 0.0, (
-            f"Expected shortfall=0.0, got {result.output.shortfall}"
+        assert result.output.shortfall == pytest.approx(0.0, abs=1e-6), (
+            f"Expected shortfall≈0.0, got {result.output.shortfall}"
         )
 
     def test_confidence_is_1(self, runner: WaterfallRunner):
@@ -148,6 +153,22 @@ class TestHappyPath:
             "5.2" in (c.page_or_row or "") or "5.2" in c.excerpt
             for c in result.citations
         )
+
+    def test_swap_payment_is_distributed_at_step_c(self, runner: WaterfallRunner):
+        """A non-zero ``swap_payment`` input must flow to revenue step (c).
+
+        Regression guard for the #276 rewire onto ``run_period``: the wrapper
+        must thread ``swap_payment`` through to the kernel's funds view, or the
+        swap step silently distributes 0 (the kernel defaults it to 0). Revenue
+        amply covers the swap here, so the full amount is distributed.
+        """
+        swap = 250_000.0
+        result = runner.execute(_base_input(swap_payment=swap))
+        swap_step = _step(result.output, "revenue", "swap_payment")
+        assert math.isclose(
+            swap_step.amount_distributed, swap, rel_tol=1e-9, abs_tol=1e-6
+        )
+        assert math.isclose(swap_step.shortfall, 0.0, abs_tol=1e-6)
 
     def test_revenue_waterfall_step_count(self, runner: WaterfallRunner):
         """Revenue waterfall must have exactly 11 steps (a)–(k)."""

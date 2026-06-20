@@ -368,7 +368,7 @@ def _classify_engine_validation(
 
 #: The declared, ordered catalogue of deal-facing capabilities (matrix rows).
 #: Each entry pairs the row metadata with its cell classifier. Library-only
-#: primitives (cashflow_projector / report_verifier / audit_logger) are
+#: primitives (report_verifier / audit_logger) are
 #: deliberately excluded — they have no per-deal applicability story, so a row
 #: that is not-applicable for every deal would add noise, not signal.
 _CAPABILITIES: list[tuple[CapabilityRow, CellClassifier]] = [

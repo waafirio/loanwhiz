@@ -35,22 +35,26 @@ S7 (reconciliation), S8 (invariants) and S9 (endpoints) consume — plus a
 per-period diagnostic record (the waterfall execution traces and the trigger
 evaluation) so downstream callers get both the state and its provenance.
 
-Supersedes the dead machine
----------------------------
-``waterfall_state.MultiPeriodWaterfallRunner`` was the old, never-wired
-multi-period runner over the thin ``WaterfallState`` scalars. This module is the
-single canonical ``DealState``-based loop; ``waterfall_state`` is left in place
-only because the API still imports it (its rewire onto this engine is S9's job),
-and is marked there as superseded.
+The single canonical waterfall engine
+-------------------------------------
+This module is the one ``DealState``-based per-period loop. The old duplicate
+execution paths — ``waterfall_runner.WaterfallRunner`` (single-period snapshot),
+``waterfall_state.MultiPeriodWaterfallRunner`` over the thin ``WaterfallState``
+scalars, and ``cashflow_projector.CashflowProjector`` — were deleted in #276.
+Nothing else executes a waterfall: the registered ``waterfall_runner`` MCP tool
+is now a thin single-period wrapper over ``run_period`` (it imports the
+``DEFAULT_*_STEPS`` lists below), and ``/project`` folds a ``ScenarioGenerator``
+stream through ``run_period`` (#275).
 
 Deal-agnostic by construction
 -----------------------------
 Nothing here branches on a specific deal. The prospectus figures (capital
 structure, reserve target, original pool) and the ordered waterfall steps enter
 as **arguments** — never as hardcoded constants in this module. A builtin
-Green-Lion default step list is provided as a *convenience* (mirroring how S4
-ships a ``DefaultConditionEvaluator``), re-using the canonical step lists already
-defined in ``waterfall_runner`` rather than duplicating them.
+Green-Lion default step list (``DEFAULT_REVENUE_STEPS`` / ``DEFAULT_REDEMPTION_STEPS``)
+is provided as a *convenience* (mirroring how S4 ships a
+``DefaultConditionEvaluator``); the steps are expressed as data, so an extracted
+``DealModel.waterfalls[*].steps`` runs through the same kernel.
 
 Pure & deterministic — no LLM, no network. Mirrors the immutable typed-pydantic
 conventions of the surrounding primitives.
@@ -81,15 +85,66 @@ from loanwhiz.primitives.waterfall_interpreter import (
     to_waterfall_result,
 )
 
-# The canonical Green-Lion priority-of-payments step lists live in
-# ``waterfall_runner`` (expressed as data). Re-use them as the builtin default so
-# the engine is runnable/testable today without duplicating the step vocabulary.
-from loanwhiz.primitives.waterfall_runner import (
-    _GREEN_LION_REDEMPTION_STEPS as DEFAULT_REDEMPTION_STEPS,
-)
-from loanwhiz.primitives.waterfall_runner import (
-    _GREEN_LION_REVENUE_STEPS as DEFAULT_REVENUE_STEPS,
-)
+# The canonical Green-Lion priority-of-payments step lists, expressed as *data*
+# (an ordered ``StepSpec`` list the generic interpreter executes — the same shape
+# the extraction layer produces in ``DealModel.waterfalls[*].steps``). These live
+# here, in the kernel module, because ``run_period`` / ``reconstruct_period_series``
+# are now their sole runtime consumers (the old ``WaterfallRunner`` /
+# ``CashflowProjector`` / ``MultiPeriodWaterfallRunner`` execution paths that once
+# shared them were deleted in #276). The thin ``waterfall_runner`` MCP wrapper
+# imports these back from here. Recipients not in the interpreter's
+# need-calculator registry (operating fees, expense account, subordinated swap,
+# new receivables, deferred purchase price) contribute need 0 and are recorded
+# ``not_evaluable`` — the audit trace stays structurally complete without
+# inventing figures the inputs do not carry.
+
+DEFAULT_REVENUE_STEPS: list[StepSpec] = [
+    StepSpec(priority="(a)", recipient="senior_fees"),
+    StepSpec(
+        priority="(b)",
+        recipient="operating_fees",
+        condition="pari passu: servicer, administrator, paying agent",
+    ),
+    StepSpec(priority="(c)", recipient="swap_payment"),
+    StepSpec(priority="(d)", recipient="class_a_interest"),
+    StepSpec(priority="(e)", recipient="class_a_pdl_replenishment"),
+    StepSpec(priority="(f)", recipient="reserve_account_replenishment"),
+    StepSpec(priority="(g)", recipient="expense_account_replenishment"),
+    StepSpec(priority="(h)", recipient="class_b_pdl_replenishment"),
+    StepSpec(
+        priority="(i)",
+        recipient="subordinated_swap_payment",
+        condition="subordinated swap",
+    ),
+    StepSpec(
+        priority="(j)",
+        recipient="class_c_principal_from_revenue",
+        condition="from First Optional Redemption Date",
+    ),
+    StepSpec(
+        priority="(k)", recipient="deferred_purchase_price_seller", residual=True
+    ),
+]
+
+# Redemption (principal) steps. Steps (b)/(c) carry the principal allocation,
+# which ``run_period`` computes via the sequential-pay branch
+# (``allocate_principal``) and feeds back through ``need_overrides`` — so the
+# pro-rata ↔ sequential choice (MODELING-GAPS.md A3) actually gates Class B's
+# principal instead of Class A always taking 100%.
+DEFAULT_REDEMPTION_STEPS: list[StepSpec] = [
+    StepSpec(
+        priority="(a)",
+        recipient="new_mortgage_receivables",
+        condition="during Revolving Period",
+    ),
+    StepSpec(priority="(b)", recipient="class_a_principal"),
+    StepSpec(priority="(c)", recipient="class_b_principal"),
+    StepSpec(
+        priority="(d)",
+        recipient="deferred_purchase_price_seller_principal",
+        residual=True,
+    ),
+]
 
 # Trigger name (in ``CovenantMonitor.DEFAULT_TRIGGERS``) whose breach flips the
 # deal from pro-rata to sequential principal distribution.
@@ -290,6 +345,7 @@ def _funds_from_state(
     rates: dict[str, float],
     days_in_period: int,
     senior_fees: float,
+    swap_payment: float = 0.0,
     available_revenue: float | None = None,
     available_principal: float | None = None,
 ) -> WaterfallFunds:
@@ -319,6 +375,7 @@ def _funds_from_state(
         available_revenue_funds=available_revenue,
         available_principal_funds=available_principal,
         senior_fees=senior_fees,
+        swap_payment=swap_payment,
         class_a_balance=state.class_a_balance,
         class_b_balance=state.class_b_balance,
         class_c_balance=state.class_c_balance,
@@ -539,6 +596,7 @@ def run_period(
     redemption_steps: list[StepSpec] = DEFAULT_REDEMPTION_STEPS,
     principal_classes: tuple[str, ...] = ("class_a", "class_b"),
     senior_fees: float = 0.0,
+    swap_payment: float = 0.0,
 ) -> PeriodResult:
     """Advance one period: opening ``DealState`` → closing, composing S3/S4/S5/S1.
 
@@ -555,7 +613,8 @@ def run_period(
     3. Run the revenue waterfall and the redemption waterfall through S4's
        ``interpret``, with the principal sequential↔pro-rata allocation
        (``allocate_principal``) fed back as ``need_overrides`` — exactly the S4
-       composition the single-period ``WaterfallRunner`` uses.
+       composition the thin single-period ``waterfall_runner`` MCP wrapper folds
+       a single period through.
     4. Map the two executions to a :class:`WaterfallResult` and advance the state
        via S1's ``DealState.transition`` (records collections, allocates the
        period's realized loss to the PDLs, redeems tranches, replenishes PDLs,
@@ -591,6 +650,12 @@ def run_period(
         Class C from revenue, not principal).
     senior_fees:
         Senior-fee need for the revenue waterfall's senior-fees step.
+    swap_payment:
+        Net non-subordinated swap need for the revenue waterfall's swap step
+        (c). Defaults to ``0.0``; the tape/report fold paths carry no swap leg
+        (it is not on ``DealState`` or ``PeriodInputs``), so they are unchanged.
+        The single-period ``waterfall_runner`` MCP wrapper threads its input's
+        ``swap_payment`` through here so step (c) is modelled as before.
 
     Returns
     -------
@@ -610,6 +675,7 @@ def run_period(
         rates=rates,
         days_in_period=norm.days_in_period,
         senior_fees=senior_fees,
+        swap_payment=swap_payment,
         available_revenue=norm.available_revenue,
         available_principal=norm.available_principal,
     )
