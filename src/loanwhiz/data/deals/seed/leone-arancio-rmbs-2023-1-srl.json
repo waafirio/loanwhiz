@@ -2,66 +2,638 @@
   "metadata": {
     "deal_name": "Leone Arancio RMBS 2023-1 S.r.l.",
     "prospectus_url": "https://ing.com/binaries/content/assets/documents/files/leone-arancio-rmbs-2023-1-prospectus-dated-12-september-2023.pdf",
-    "extracted_at": "2026-06-06T11:09:23.748347+00:00",
-    "extraction_duration_sec": 36.05172514915466,
+    "extracted_at": "2026-06-20T21:33:58.763510+00:00",
+    "extraction_duration_sec": 1708.3227648735046,
     "sections_found": [
       "definitions",
+      "revenue_priority_of_payments",
+      "redemption_priority_of_payments",
+      "post_enforcement_priority",
       "credit_enhancement",
       "conditions_of_notes",
       "eligibility_criteria",
       "available_funds"
     ],
-    "completeness_score": 0.375,
+    "completeness_score": 1.0,
     "cache_path": "data/deals/leone-arancio-rmbs-2023-1-srl.json"
   },
   "definitions": {},
-  "waterfalls": {},
+  "waterfalls": {
+    "revenue": {
+      "deal_name": "Leone Arancio RMBS 2023-1 S.r.l.",
+      "waterfall_type": "revenue",
+      "steps": [
+        {
+          "priority": "(i)",
+          "recipient": "expenses_and_expenses_account_replenishment",
+          "description": "First , to pay (i) pari passu and pro rata according to the respective amounts thereof, any Expenses (to the extent that amounts standing to the credit of the Expenses Account have been insufficient to pay such costs during the immediately preceding Interest Period) and (ii) to credit into the Expenses Account such an amount as will bring the balance of such account up to (but not in excess of) the Retention Amount;",
+          "amount_formula": "Any Expenses not covered by the Expenses Account, and an amount to bring the Expenses Account to the Retention Amount",
+          "condition": null,
+          "is_pari_passu": true,
+          "citation": {
+            "excerpt": "First , to pay (i) pari passu and pro rata according to the respective amounts thereof, any Expenses (to the extent that amounts standing to the credit o",
+            "page_or_row": "7.1.1(i)",
+            "document": "Green Lion 2026-1 Prospectus"
+          }
+        },
+        {
+          "priority": "(ii)",
+          "recipient": "noteholder_representative_remuneration",
+          "description": "Second , to pay the remuneration due to the Representative of the Noteholders and to pay any indemnity amounts properly due and any proper costs and expenses incurred by the Representative of the Noteholders under the provisions of, or in connection with, any of the Transaction Documents;",
+          "amount_formula": "Remuneration due, indemnity amounts, and any proper costs and expenses",
+          "condition": null,
+          "is_pari_passu": false,
+          "citation": {
+            "excerpt": "Second , to pay the remuneration due to the Representative of the Noteholders and to pay any indemnity amounts properly due and any proper costs and expe",
+            "page_or_row": "7.1.1(ii)",
+            "document": "Green Lion 2026-1 Prospectus"
+          }
+        },
+        {
+          "priority": "(iii)",
+          "recipient": "agent_fees_and_expenses",
+          "description": "Third , to pay, pari passu and pro rata according to the respective amounts thereof, any amount due and payable on account of remuneration, indemnities or proper costs and expenses incurred by the relevant agent on such Payment Date to the Swap Counterparty, the Cash Manager, the Account Banks, the Calculation Agent, the Principal Paying Agent, the Corporate Services Provider and the Servicer;",
+          "amount_formula": "Any amount due and payable on account of remuneration, indemnities or proper costs and expenses",
+          "condition": null,
+          "is_pari_passu": true,
+          "citation": {
+            "document": "Green Lion 2026-1 Prospectus",
+            "excerpt": "Third , to pay, pari passu and pro rata according to the respective amounts thereof, any amount due and payable on account of remuneration, indemnities or",
+            "page_or_row": "7.1.1(iii)"
+          }
+        },
+        {
+          "priority": "(iv)",
+          "recipient": "liquidity_facility_provider_fees_and_advances",
+          "description": "Fourth , to pay to the Liquidity Facility Provider pari passu and pro rata : (i) all amounts due and payable in respect of any commitment fee; (ii) all amounts due and payable in respect of any interest and principal on any Revolving Advances: and (iii) up to an amount equal to the interest accrued and paid on the immediately preceding Quarterly Collection Period on the relevant Liquidity Reserve Account, all amounts due and payable in respect of any interest on any Reserve Advances, in accordance with the terms of the Liquidity Facility Agreement;",
+          "amount_formula": "(i) commitment fee, (ii) interest and principal on Revolving Advances, (iii) interest on Reserve Advances",
+          "condition": null,
+          "is_pari_passu": true,
+          "citation": {
+            "document": "Green Lion 2026-1 Prospectus",
+            "excerpt": "Fourth , to pay to the Liquidity Facility Provider pari passu and pro rata : (i) all amounts due and payable in respect of any commitment fee; (ii) all a",
+            "page_or_row": "7.1.1(iv)"
+          }
+        },
+        {
+          "priority": "(v)",
+          "recipient": "swap_counterparty_payments",
+          "description": "Fifth , to pay to the Swap Counterparty any amount due and payable under the Swap Agreement, including any hedging termination payments upon early termination of the Swap Agreement, except where the Swap Counterparty is the Defaulting Party or the Sole Affected Party;",
+          "amount_formula": "Any amount due and payable under the Swap Agreement, including termination payments",
+          "condition": "except where the Swap Counterparty is the Defaulting Party or the Sole Affected Party",
+          "is_pari_passu": false,
+          "citation": {
+            "page_or_row": "7.1.1(v)",
+            "excerpt": "Fifth , to pay to the Swap Counterparty any amount due and payable under the Swap Agreement, including any hedging termination payments upon early terminat",
+            "document": "Green Lion 2026-1 Prospectus"
+          }
+        },
+        {
+          "priority": "(vi)",
+          "recipient": "class_a_notes_interest",
+          "description": "Sixth , to pay, pari passu and pro rata , all amounts of interest due and payable on the Class A1 Notes and on the Class A2 Notes on such Payment Date;",
+          "amount_formula": "All amounts of interest due and payable",
+          "condition": null,
+          "is_pari_passu": true,
+          "citation": {
+            "page_or_row": "7.1.1(vi)",
+            "excerpt": "Sixth , to pay, pari passu and pro rata , all amounts of interest due and payable on the Class A1 Notes and on the Class A2 Notes on such Payment Date;",
+            "document": "Green Lion 2026-1 Prospectus"
+          }
+        },
+        {
+          "priority": "(vii)",
+          "recipient": "principal_deficiency_ledger_replenishment",
+          "description": "Seventh , in or towards making good any shortfall reflected in the Principal Deficiency Ledger until the debit balance, if any, of the Principal Deficiency Ledger is reduced to zero by allocating the relevant amounts to the Principal Available Funds;",
+          "amount_formula": "Amount to reduce the debit balance of the Principal Deficiency Ledger to zero",
+          "condition": null,
+          "is_pari_passu": false,
+          "citation": {
+            "document": "Green Lion 2026-1 Prospectus",
+            "excerpt": "Seventh , in or towards making good any shortfall reflected in the Principal Deficiency Ledger until the debit balance, if any, of the Principal Deficien",
+            "page_or_row": "7.1.1(vii)"
+          }
+        },
+        {
+          "priority": "(viii)",
+          "recipient": "principal_available_funds_transfer",
+          "description": "Eighth , to transfer to the Principal Available Funds an amount equal to the amounts, if any, allocated on the immediately preceding Payment Date and on any preceding Payment Date as Interest Shortfall Amount;",
+          "amount_formula": "Amount equal to the Interest Shortfall Amount allocated on preceding Payment Dates",
+          "condition": null,
+          "is_pari_passu": false,
+          "citation": {
+            "document": "Green Lion 2026-1 Prospectus",
+            "excerpt": "Eighth , to transfer to the Principal Available Funds an amount equal to the amounts, if any, allocated on the immediately preceding Payment Date and on a",
+            "page_or_row": "7.1.1(viii)"
+          }
+        },
+        {
+          "priority": "(ix)",
+          "recipient": "liquidity_facility_provider_reserve_advances_interest",
+          "description": "Ninth , to pay to the Liquidity Facility Provider all amounts of interest due and payable in respect of any Reserve Advances and not already paid under item Fourth, limb(iii) above;",
+          "amount_formula": "All amounts of interest due and payable in respect of any Reserve Advances",
+          "condition": "not already paid under item Fourth, limb(iii) above",
+          "is_pari_passu": false,
+          "citation": {
+            "page_or_row": "7.1.1(ix)",
+            "excerpt": "Ninth , to pay to the Liquidity Facility Provider all amounts of interest due and payable in respect of any Reserve Advances and not already paid under i",
+            "document": "Green Lion 2026-1 Prospectus"
+          }
+        },
+        {
+          "priority": "(x)",
+          "recipient": "originator_accrued_interest",
+          "description": "Tenth , to pay to the Originator in respect of each Portfolio transferred to the Issuer in accordance with the Master Receivables Purchase Agreement, the portion of the Individual Purchase Price constituted by any Accrued Interest of the Receivables included in any such Portfolio;",
+          "amount_formula": "The portion of the Individual Purchase Price constituted by any Accrued Interest of the Receivables",
+          "condition": null,
+          "is_pari_passu": false,
+          "citation": {
+            "document": "Green Lion 2026-1 Prospectus",
+            "excerpt": "Tenth , to pay to the Originator in respect of each Portfolio transferred to the Issuer in accordance with the Master Receivables Purchase Agreement, the ",
+            "page_or_row": "7.1.1(x)"
+          }
+        },
+        {
+          "priority": "(xi)",
+          "recipient": "swap_counterparty_additional_amounts",
+          "description": "Eleventh , to pay any amounts due and payable to the Swap Counterparty under the Swap Agreement, in addition to the amounts paid under item Third and Fifth above;",
+          "amount_formula": "Any amounts due and payable",
+          "condition": "in addition to the amounts paid under item Third and Fifth above",
+          "is_pari_passu": false,
+          "citation": {
+            "document": "Green Lion 2026-1 Prospectus",
+            "excerpt": "Eleventh , to pay any amounts due and payable to the Swap Counterparty under the Swap Agreement, in addition to the amounts paid under item Third and Fif",
+            "page_or_row": "7.1.1(xi)"
+          }
+        },
+        {
+          "priority": "(xii)",
+          "recipient": "liquidity_facility_provider_principal",
+          "description": "Twelfth , to pay all amounts of principal due and payable to the Liquidity Facility Provider under the Liquidity Facility Agreement (other than any amount paid under item Fourth and Ninth above);",
+          "amount_formula": "All amounts of principal due and payable",
+          "condition": "other than any amount paid under item Fourth and Ninth above",
+          "is_pari_passu": false,
+          "citation": {
+            "document": "Green Lion 2026-1 Prospectus",
+            "page_or_row": "7.1.1(xii)",
+            "excerpt": "Twelfth , to pay all amounts of principal due and payable to the Liquidity Facility Provider under the Liquidity Facility Agreement (other than any amoun"
+          }
+        },
+        {
+          "priority": "(xiii)",
+          "recipient": "junior_notes_premium",
+          "description": "Thirteenth , to pay, pari passu and pro rata , the Premium on the Junior Notes.",
+          "amount_formula": "The Premium on the Junior Notes",
+          "condition": null,
+          "is_pari_passu": true,
+          "citation": {
+            "document": "Green Lion 2026-1 Prospectus",
+            "excerpt": "Thirteenth , to pay, pari passu and pro rata , the Premium on the Junior Notes.",
+            "page_or_row": "7.1.1(xiii)"
+          }
+        },
+        {
+          "priority": "(i)",
+          "recipient": "interest_shortfall_amount",
+          "description": "First , to pay any amount payable as Interest Shortfall Amount, to the extent that the Interest Available Funds (following application of the amounts drawn down by the Issuer under the Liquidity Facility Agreement under item (iv) of the definition of Interest Available Funds) are not sufficient on such Payment Date to make such payments in full;",
+          "amount_formula": "Any amount payable as Interest Shortfall Amount",
+          "condition": "to the extent that the Interest Available Funds are not sufficient",
+          "is_pari_passu": false,
+          "citation": {
+            "document": "Green Lion 2026-1 Prospectus",
+            "excerpt": "First , to pay any amount payable as Interest Shortfall Amount, to the extent that the Interest Available Funds (following application of the amounts dr",
+            "page_or_row": "7.1.2(i)"
+          }
+        },
+        {
+          "priority": "(ii)",
+          "recipient": "originator_subsequent_portfolio_purchase_price",
+          "description": "Second , to pay to the Originator - or to reserve such amount in satisfaction of -, in respect of each Subsequent Portfolio transferred to the Issuer in accordance with the Master Receivables Purchase Agreement, the portion of the Individual Purchase Price constituted by the Outstanding Principal Due of the Receivables included in any such Subsequent Portfolio;",
+          "amount_formula": "The portion of the Individual Purchase Price constituted by the Outstanding Principal Due",
+          "condition": null,
+          "is_pari_passu": false,
+          "citation": {
+            "excerpt": "Second , to pay to the Originator - or to reserve such amount in satisfaction of -, in respect of each Subsequent Portfolio transferred to the Issuer in",
+            "page_or_row": "7.1.2(ii)",
+            "document": "Green Lion 2026-1 Prospectus"
+          }
+        },
+        {
+          "priority": "(iii)",
+          "recipient": "class_a1_notes_principal",
+          "description": "Third , to pay, pari passu and pro rata , all amounts outstanding in respect of principal on the Class A1 Notes until the Class A1 Notes are redeemed in full;",
+          "amount_formula": "All amounts outstanding in respect of principal",
+          "condition": "until the Class A1 Notes are redeemed in full",
+          "is_pari_passu": true,
+          "citation": {
+            "page_or_row": "7.1.2(iii)",
+            "excerpt": "Third , to pay, pari passu and pro rata , all amounts outstanding in respect of principal on the Class A1 Notes until the Class A1 Notes are redeemed i",
+            "document": "Green Lion 2026-1 Prospectus"
+          }
+        },
+        {
+          "priority": "(iv)",
+          "recipient": "class_a2_notes_principal",
+          "description": "Fourth , all amounts outstanding in respect of principal on the Class A2 Notes until the Class A2 Notes are redeemed in full;",
+          "amount_formula": "All amounts outstanding in respect of principal",
+          "condition": "until the Class A2 Notes are redeemed in full",
+          "is_pari_passu": false,
+          "citation": {
+            "document": "Green Lion 2026-1 Prospectus",
+            "excerpt": "Fourth , all amounts outstanding in respect of principal on the Class A2 Notes until the Class A2 Notes are redeemed in full;",
+            "page_or_row": "7.1.2(iv)"
+          }
+        },
+        {
+          "priority": "(v)",
+          "recipient": "liquidity_facility_provider_other_amounts",
+          "description": "Fifth , to pay to the Liquidity Facility Provider any other amounts due under the Liquidity Facility Agreement (other than those already paid under the Pre-Trigger Notice Interest Priority of Payments);",
+          "amount_formula": "Any other amounts due",
+          "condition": "other than those already paid under the Pre-Trigger Notice Interest Priority of Payments",
+          "is_pari_passu": false,
+          "citation": {
+            "page_or_row": "7.1.2(v)",
+            "excerpt": "Fifth , to pay to the Liquidity Facility Provider any other amounts due under the Liquidity Facility Agreement (other than those already paid under the P",
+            "document": "Green Lion 2026-1 Prospectus"
+          }
+        },
+        {
+          "priority": "(vi)",
+          "recipient": "swap_counterparty_other_amounts",
+          "description": "Sixth , to pay to the Swap Counterparty any other amounts due under the Swap Agreement (other than those already paid under the Pre-Trigger Notice Interest Priority of Payments);",
+          "amount_formula": "Any other amounts due",
+          "condition": "other than those already paid under the Pre-Trigger Notice Interest Priority of Payments",
+          "is_pari_passu": false,
+          "citation": {
+            "page_or_row": "7.1.2(vi)",
+            "excerpt": "Sixth , to pay to the Swap Counterparty any other amounts due under the Swap Agreement (other than those already paid under the Pre-Trigger Notice Intere",
+            "document": "Green Lion 2026-1 Prospectus"
+          }
+        },
+        {
+          "priority": "(vii)",
+          "recipient": "junior_notes_principal",
+          "description": "Seventh , to pay, pari passu and pro rata , all amounts outstanding in respect of principal on the Junior Notes;",
+          "amount_formula": "All amounts outstanding in respect of principal",
+          "condition": null,
+          "is_pari_passu": true,
+          "citation": {
+            "excerpt": "Seventh , to pay, pari passu and pro rata , all amounts outstanding in respect of principal on the Junior Notes;",
+            "page_or_row": "7.1.2(vii)",
+            "document": "Green Lion 2026-1 Prospectus"
+          }
+        },
+        {
+          "priority": "(viii)",
+          "recipient": "originator_adjusted_purchase_price",
+          "description": "Eighth , to pay to the Originator any Adjusted Purchase Price pursuant to clause 5 of the Master Receivables Purchase Agreement;",
+          "amount_formula": "Any Adjusted Purchase Price",
+          "condition": null,
+          "is_pari_passu": false,
+          "citation": {
+            "document": "Green Lion 2026-1 Prospectus",
+            "excerpt": "Eighth , to pay to the Originator any Adjusted Purchase Price pursuant to clause 5 of the Master Receivables Purchase Agreement;",
+            "page_or_row": "7.1.2(viii)"
+          }
+        },
+        {
+          "priority": "(ix)",
+          "recipient": "other_transaction_document_amounts",
+          "description": "Ninth , to pay any amount due and payable under the Transaction Documents, to the extent not already paid or payable under other items of this Priority of Payments;",
+          "amount_formula": "Any amount due and payable",
+          "condition": "to the extent not already paid or payable under other items of this Priority of Payments",
+          "is_pari_passu": false,
+          "citation": {
+            "excerpt": "Ninth , to pay any amount due and payable under the Transaction Documents, to the extent not already paid or payable under other items of this Priority ",
+            "page_or_row": "7.1.2(ix)",
+            "document": "Green Lion 2026-1 Prospectus"
+          }
+        },
+        {
+          "priority": "(x)",
+          "recipient": "interest_available_funds_transfer",
+          "description": "Tenth , to transfer, to the Interest Available Funds any remaining amount after all the other payments under this Principal Priority of Payments have been made in full.",
+          "amount_formula": "Any remaining amount",
+          "condition": "after all the other payments under this Principal Priority of Payments have been made in full",
+          "is_pari_passu": false,
+          "citation": {
+            "page_or_row": "7.1.2(x)",
+            "excerpt": "Tenth , to transfer, to the Interest Available Funds any remaining amount after all the other payments under this Principal Priority of Payments have be",
+            "document": "Green Lion 2026-1 Prospectus"
+          }
+        }
+      ],
+      "source_section": "7.1",
+      "extraction_confidence": 1.0
+    },
+    "redemption": {
+      "deal_name": "Leone Arancio RMBS 2023-1 S.r.l.",
+      "waterfall_type": "redemption",
+      "steps": [
+        {
+          "priority": "(i)",
+          "recipient": "interest_shortfall_amount",
+          "description": "to pay any amount payable as Interest Shortfall Amount, to the extent that the Interest Available Funds (following application of the amounts drawn down by the Issuer under the Liquidity Facility Agreement under item (iv) of the definition of Interest Available Funds) are not sufficient on such Payment Date to make such payments in full",
+          "amount_formula": "Interest Shortfall Amount",
+          "condition": "to the extent that the Interest Available Funds (following application of the amounts drawn down by the Issuer under the Liquidity Facility Agreement under item (iv) of the definition of Interest Available Funds) are not sufficient on such Payment Date to make such payments in full",
+          "is_pari_passu": false,
+          "citation": {
+            "excerpt": "First , to pay any amount payable as Interest Shortfall Amount, to the extent that the Interest Available Funds (following application of the amounts d",
+            "document": "Green Lion 2026-1 Prospectus",
+            "page_or_row": "Pre-Trigger Notice Principal Priority of Payments (i)"
+          }
+        },
+        {
+          "priority": "(ii)",
+          "recipient": "originator_subsequent_portfolio_purchase_price",
+          "description": "to pay to the Originator - or to reserve such amount in satisfaction of -, in respect of each Subsequent Portfolio transferred to the Issuer in accordance with the Master Receivables Purchase Agreement, the portion of the Individual Purchase Price constituted by the Outstanding Principal Due of the Receivables included in any such Subsequent Portfolio",
+          "amount_formula": "the portion of the Individual Purchase Price constituted by the Outstanding Principal Due of the Receivables included in any such Subsequent Portfolio",
+          "condition": null,
+          "is_pari_passu": false,
+          "citation": {
+            "page_or_row": "Pre-Trigger Notice Principal Priority of Payments (ii)",
+            "document": "Green Lion 2026-1 Prospectus",
+            "excerpt": "Second, to pay to the Originator - or to reserve such amount in satisfaction of -, in respect of each Subsequent Portfolio transferred to the Issuer in"
+          }
+        },
+        {
+          "priority": "(iii)",
+          "recipient": "class_a1_notes_principal",
+          "description": "to pay , pari passu and pro rata, all amounts outstanding in respect of principal on the Class A1 Notes until the Class A1 Notes are redeemed in full",
+          "amount_formula": "all amounts outstanding in respect of principal",
+          "condition": "until the Class A1 Notes are redeemed in full",
+          "is_pari_passu": true,
+          "citation": {
+            "page_or_row": "Pre-Trigger Notice Principal Priority of Payments (iii)",
+            "document": "Green Lion 2026-1 Prospectus",
+            "excerpt": "Third, to pay , pari passu and pro rata, all amounts outstanding in respect of principal on the Class A1 Notes until the Class A1 Notes are redeemed i"
+          }
+        },
+        {
+          "priority": "(iv)",
+          "recipient": "class_a2_notes_principal",
+          "description": "all amounts outstanding in respect of principal on the Class A2 Notes until the Class A2 Notes are redeemed in full",
+          "amount_formula": "all amounts outstanding in respect of principal",
+          "condition": "until the Class A2 Notes are redeemed in full",
+          "is_pari_passu": false,
+          "citation": {
+            "excerpt": "Fourth , all amounts outstanding in respect of principal on the Class A2 Notes until the Class A2 Notes are redeemed in full;",
+            "document": "Green Lion 2026-1 Prospectus",
+            "page_or_row": "Pre-Trigger Notice Principal Priority of Payments (iv)"
+          }
+        },
+        {
+          "priority": "(v)",
+          "recipient": "liquidity_facility_provider_other_amounts",
+          "description": "to pay to the Liquidity Facility Provider any other amounts due under the Liquidity Facility Agreement (other than those already paid under the Pre-Trigger Notice Interest Priority of Payments)",
+          "amount_formula": "any other amounts due under the Liquidity Facility Agreement",
+          "condition": "other than those already paid under the Pre-Trigger Notice Interest Priority of Payments",
+          "is_pari_passu": false,
+          "citation": {
+            "document": "Green Lion 2026-1 Prospectus",
+            "page_or_row": "Pre-Trigger Notice Principal Priority of Payments (v)",
+            "excerpt": "Fifth , to pay to the Liquidity Facility Provider any other amounts due under the Liquidity Facility Agreement (other than those already paid under the"
+          }
+        }
+      ],
+      "source_section": "Pre-Trigger Notice Principal Priority of Payments",
+      "extraction_confidence": 1.0
+    },
+    "post_enforcement": {
+      "deal_name": "Leone Arancio RMBS 2023-1 S.r.l.",
+      "waterfall_type": "post_enforcement",
+      "steps": [
+        {
+          "priority": "(i)",
+          "recipient": "expenses",
+          "description": "to pay, pari passu and pro rata according to the respective amounts thereof, any Expenses (to the extent that amounts standing to the credit of the Expenses Account have been insufficient to pay such Expenses during the immediately preceding Interest Period)",
+          "amount_formula": "any Expenses",
+          "condition": "to the extent that amounts standing to the credit of the Expenses Account have been insufficient to pay such Expenses during the immediately preceding Interest Period",
+          "is_pari_passu": true,
+          "citation": {
+            "page_or_row": "Section 7.2(i)",
+            "document": "Green Lion 2026-1 Prospectus",
+            "excerpt": "First ,  to  pay, pari  passu and pro  rata according  to  the  respective amounts thereof, any Expenses (to the extent that amounts standing to the credit of t"
+          }
+        },
+        {
+          "priority": "(ii)",
+          "recipient": "noteholder_representative_and_receiver_fees",
+          "description": "to pay, pari passu and pro rata, according to the respective amounts thereof, (a) the remuneration due to the Representative of the Noteholders and to pay any indemnity amounts properly due under and any proper costs and expenses incurred by the Representative of the Noteholders under the provisions of, or in connection with, any of the Transaction Documents; and (b) the remuneration and any indemnity amount due to any receiver and any proper costs and expenses incurred by it in connection with the Security Assignment and the Dutch Deed of Pledge",
+          "amount_formula": "remuneration, indemnity amounts, proper costs and expenses",
+          "condition": null,
+          "is_pari_passu": true,
+          "citation": {
+            "excerpt": "Second ,  to  pay, pari  passu and pro  rata ,  according  to  the  respective amounts thereof, (a) the remuneration due to the Representative of the Noteholder",
+            "document": "Green Lion 2026-1 Prospectus",
+            "page_or_row": "Section 7.2(ii)"
+          }
+        },
+        {
+          "priority": "(iii)",
+          "recipient": "agent_fees",
+          "description": "to pay, pari passu and pro rata according to the respective amounts thereof, any amount due and payable on account of remuneration, indemnities or proper costs and expenses incurred by the relevant agent on such Payment Date to the Swap Counterparty, the Cash Manager, the Account Banks, the Calculation Agent, the Principal Paying Agent, the Corporate Services Provider and the Servicer",
+          "amount_formula": "remuneration, indemnities or proper costs and expenses",
+          "condition": null,
+          "is_pari_passu": true,
+          "citation": {
+            "page_or_row": "Section 7.2(iii)",
+            "document": "Green Lion 2026-1 Prospectus",
+            "excerpt": "Third ,  to  pay, pari  passu and pro  rata according  to  the  respective amounts thereof, any amount due and payable on account of remuneration, indemnities o"
+          }
+        },
+        {
+          "priority": "(iv)",
+          "recipient": "swap_counterparty",
+          "description": "to pay to the Swap Counterparty any amount due and payable under the Swap Agreement, including any swap termination payments upon early termination of the Swap Agreement, except where the Swap Counterparty is the Defaulting Party or the Sole Affected Party",
+          "amount_formula": "any amount due and payable under the Swap Agreement, including any swap termination payments",
+          "condition": "except where the Swap Counterparty is the Defaulting Party or the Sole Affected Party",
+          "is_pari_passu": false,
+          "citation": {
+            "page_or_row": "Section 7.2(iv)",
+            "document": "Green Lion 2026-1 Prospectus",
+            "excerpt": "Fourth , to pay to the Swap Counterparty any amount due and payable under the Swap Agreement, including any swap termination payments upon early terminat"
+          }
+        },
+        {
+          "priority": "(v)",
+          "recipient": "liquidity_facility_provider",
+          "description": "to pay to the Liquidity Facility Provider any amounts due under the Liquidity Facility Agreement",
+          "amount_formula": "any amounts due under the Liquidity Facility Agreement",
+          "condition": null,
+          "is_pari_passu": false,
+          "citation": {
+            "page_or_row": "Section 7.2(v)",
+            "document": "Green Lion 2026-1 Prospectus",
+            "excerpt": "Fifth , to pay to the Liquidity Facility Provider any amounts due under the Liquidity Facility Agreement;"
+          }
+        },
+        {
+          "priority": "(vi)",
+          "recipient": "class_a_notes_interest",
+          "description": "to pay, pari passu and pro rata, all amounts of interest due and payable on the Class A1 Notes and on the Class A2 Notes on such Payment Date",
+          "amount_formula": "all amounts of interest due and payable",
+          "condition": null,
+          "is_pari_passu": true,
+          "citation": {
+            "document": "Green Lion 2026-1 Prospectus",
+            "page_or_row": "Section 7.2(vi)",
+            "excerpt": "Sixth , to pay, pari passu and pro rata , all amounts of interest due and payable  on  the  Class  A1  Notes  and  on  the  Class  A2  Notes  on  such Payment Date;"
+          }
+        },
+        {
+          "priority": "(vii)",
+          "recipient": "class_a_notes_principal",
+          "description": "to pay, pari passu and pro rata, all amounts in respect of principal outstanding on the Class A1 Notes and on the Class A2 Notes",
+          "amount_formula": "all amounts in respect of principal outstanding",
+          "condition": null,
+          "is_pari_passu": true,
+          "citation": {
+            "document": "Green Lion 2026-1 Prospectus",
+            "page_or_row": "Section 7.2(vii)",
+            "excerpt": "Seventh ,  to  pay, pari  passu and pro  rata ,  all  amounts  in  respect  of principal outstanding on the Class A1 Notes and on the Class A2 Notes;"
+          }
+        },
+        {
+          "priority": "(viii)",
+          "recipient": "swap_counterparty_additional",
+          "description": "to pay any amounts due and payable to the Swap Counterparty under the Swap Agreement, in addition to the amounts paid under item Third and Fourth above",
+          "amount_formula": "any amounts due and payable",
+          "condition": null,
+          "is_pari_passu": false,
+          "citation": {
+            "page_or_row": "Section 7.2(viii)",
+            "document": "Green Lion 2026-1 Prospectus",
+            "excerpt": "Eighth , to pay any amounts due and payable to the Swap Counterparty under the Swap Agreement, in addition to the amounts paid under item Third and Fourt"
+          }
+        },
+        {
+          "priority": "(ix)",
+          "recipient": "originator_adjusted_purchase_price",
+          "description": "to pay to the Originator any Adjusted Purchase Price pursuant to clause 5 of the Master Receivables Purchase Agreement",
+          "amount_formula": "any Adjusted Purchase Price",
+          "condition": null,
+          "is_pari_passu": false,
+          "citation": {
+            "excerpt": "Ninth , to pay to the Originator any Adjusted Purchase Price pursuant to clause 5 of the Master Receivables Purchase Agreement;",
+            "document": "Green Lion 2026-1 Prospectus",
+            "page_or_row": "Section 7.2(ix)"
+          }
+        },
+        {
+          "priority": "(x)",
+          "recipient": "originator_other",
+          "description": "to pay to the Originator any amount due and payable under the Transaction Documents, to the extent not already paid or payable under other items of this Priority of Payments",
+          "amount_formula": "any amount due and payable",
+          "condition": "to the extent not already paid or payable under other items of this Priority of Payments",
+          "is_pari_passu": false,
+          "citation": {
+            "excerpt": "Tenth , to pay to the Originator any amount due and payable under the Transaction Documents, to the extent not already paid or payable under other items",
+            "document": "Green Lion 2026-1 Prospectus",
+            "page_or_row": "Section 7.2(x)"
+          }
+        },
+        {
+          "priority": "(xi)",
+          "recipient": "junior_notes_principal",
+          "description": "to pay, pari passu and pro rata, all amounts outstanding in respect of principal due and payable on the Junior Notes",
+          "amount_formula": "all amounts outstanding in respect of principal due and payable",
+          "condition": null,
+          "is_pari_passu": true,
+          "citation": {
+            "page_or_row": "Section 7.2(xi)",
+            "document": "Green Lion 2026-1 Prospectus",
+            "excerpt": "Eleventh ,  to  pay, pari passu and pro rata ,  all  amounts outstanding in respect of principal due and payable on the Junior Notes; and"
+          }
+        },
+        {
+          "priority": "(xii)",
+          "recipient": "junior_notes_premium",
+          "description": "to pay, pari passu and pro rata, the Premium on the Junior Notes",
+          "amount_formula": "the Premium on the Junior Notes",
+          "condition": null,
+          "is_pari_passu": true,
+          "citation": {
+            "excerpt": "Twelfth ,  to  pay, pari  passu and pro rata, the  Premium  on  the  Junior Notes.",
+            "page_or_row": "Section 7.2(xii)",
+            "document": "Green Lion 2026-1 Prospectus"
+          }
+        }
+      ],
+      "source_section": "7.2 Post Trigger Notice Priority of Payments",
+      "extraction_confidence": 1.0
+    }
+  },
   "covenants": {
     "deal_name": "PROSPECTUS DATED 12 SEPTEMBER 2023",
     "triggers": [
       {
-        "name": "performance_trigger",
-        "display_name": "Performance Trigger (Trigger Notice)",
-        "description": "Upon the service of a Trigger Notice, the priority of payments for both interest and principal is altered to a post-trigger waterfall, protecting senior noteholders.",
-        "metric": "unknown",
-        "threshold": null,
-        "threshold_unit": null,
-        "direction": "unknown",
-        "consequence": "Principal and interest distribution switches to a post-enforcement priority of payments, ranking Class A notes senior to Junior Notes for both principal and interest.",
-        "section_reference": "Condition 7",
-        "citation": {
-          "page_or_row": "Condition 4.3",
-          "excerpt": "in respect of the obligations of the Issuer to repay principal on the Notes following the service of a Trigger Notice...",
-          "document": "prospectus"
-        }
-      },
-      {
-        "name": "principal_deficiency_ledger_shortfall",
-        "display_name": "Principal Deficiency Ledger Shortfall",
-        "description": "If there is a debit balance on the Principal Deficiency Ledger, Interest Available Funds are used to cure the shortfall.",
+        "name": "principal_deficiency_ledger_trigger",
+        "display_name": "Principal Deficiency Ledger Trigger",
+        "description": "A debit balance on the Principal Deficiency Ledger (PDL) triggers a diversion of funds from the interest waterfall to cure the shortfall.",
         "metric": "pdl_debit_balance",
         "threshold": 0.0,
         "threshold_unit": "eur",
         "direction": "non_zero",
-        "consequence": "Interest Available Funds are applied to reduce the debit balance on the Principal Deficiency Ledger to zero.",
-        "section_reference": "Pre-Trigger Notice Interest Priority of Payments, item (vii)",
+        "consequence": "Interest Available Funds are used to reduce the debit balance on the Principal Deficiency Ledger to zero.",
+        "section_reference": "7.1.1 Interest Priority of Payments",
         "citation": {
-          "page_or_row": "Pre-Trigger Notice Interest Priority of Payments",
-          "excerpt": "in or towards making good any shortfall reflected in the Principal Deficiency Ledger until the debit balance, if any, of the Principal Deficiency Ledger is reduced to zero",
+          "page_or_row": "7.1.1 Interest Priority of Payments",
+          "excerpt": "...in or towards making good any shortfall reflected in the Principal Deficiency Ledger until the debit balance, if any, of the Principal Deficiency Ledger is reduced to zero...",
           "document": "prospectus"
+        }
+      },
+      {
+        "name": "event_of_default_trigger",
+        "display_name": "Event of Default Trigger (Trigger Notice)",
+        "description": "Upon an event of default as defined in Condition 13.2, a Trigger Notice is served, which alters the priority of payments to the Post-Trigger Notice waterfall, accelerating payments.",
+        "metric": "event_of_default",
+        "threshold": 1.0,
+        "threshold_unit": "boolean",
+        "direction": "non_zero",
+        "consequence": "The Priority of Payments switches to the Post Trigger Notice Priority of Payments, accelerating payments to senior noteholders.",
+        "section_reference": "Rated Notes Condition 13.2",
+        "citation": {
+          "page_or_row": "7.2 Post Trigger Notice Priority of Payments",
+          "excerpt": "Following the delivery of a Trigger Notice under Rated Notes Condition 13.2 ( Delivery of Trigger Notice )... the Issuer Available Funds... will be applied...",
+          "document": "prospectus"
+        }
+      },
+      {
+        "name": "clean_up_call_option",
+        "display_name": "Clean-Up Call Option",
+        "description": "The Issuer has the option to redeem the Notes early, which leads to the application of the Post Trigger Notice Priority of Payments.",
+        "metric": "pool_balance_fraction",
+        "threshold": null,
+        "threshold_unit": "fraction",
+        "direction": "below",
+        "consequence": "The Issuer may opt for an early redemption of the Notes, leading to the application of the Post Trigger Notice Priority of Payments.",
+        "section_reference": "Rated Notes Condition 9.3",
+        "citation": {
+          "document": "prospectus",
+          "excerpt": "...in the event that the Issuer opts for an early redemption of the Notes under Rated Notes Condition 9.3 ( Optional redemption )...",
+          "page_or_row": "7.2 Post Trigger Notice Priority of Payments"
         }
       }
     ],
     "issuer_covenants": [
-      "The Issuer has covenanted not to enter into any transactions that are not contemplated in the Transaction Documents.",
-      "The Issuer is subject to restrictions on the activities that may be carried out by it.",
-      "Each Other Issuer Creditor has undertaken in the Intercreditor Agreement not to petition or commence proceedings for a declaration of insolvency against the Issuer until two years and one day after the Notes have been redeemed in full."
+      "The corporate object of the Issuer as contained in its by-laws is limited and the Issuer has also agreed to certain covenants in the Intercreditor Agreement and the Conditions restricting the activities that may be carried out by the Issuer.",
+      "The Issuer has covenanted not to enter into any transactions that are not contemplated in the Transaction Documents."
     ],
-    "extraction_confidence": 0.6
+    "extraction_confidence": 0.7
   },
-  "tranche_structure": [],
+  "tranche_structure": [
+    {
+      "name": "Class A",
+      "size_eur": null,
+      "rating": null,
+      "rate": null,
+      "seniority": 0
+    }
+  ],
   "trigger_names": [
-    "performance_trigger",
-    "principal_deficiency_ledger_shortfall"
+    "principal_deficiency_ledger_trigger",
+    "event_of_default_trigger",
+    "clean_up_call_option"
   ]
 }
