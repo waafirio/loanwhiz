@@ -104,12 +104,16 @@ not asserted:
 - `human_review_required = aggregate_confidence < 0.70`.
 - `all_citations` is the order-preserving deduplicated union of the tool
   calls' own citations (no dropped or invented sources).
-- `finos_compliant` is the result of a **real consistency check**
+- `finos_compliant` MEANS **FINOS framework conformance**: it is the
+  conjunction of (a) a real per-pack consistency check
   (`_check_finos_compliant`) over the above — every per-tool confidence a
   valid probability, the aggregate equal to the `min`, the citation trail
-  exactly the dedup union, and the review flag matching the threshold
-  rule. It is no longer a hardcoded `True`; a pack with inconsistent
-  evidence is reported as non-compliant.
+  exactly the dedup union, and the review flag matching the threshold rule —
+  and (b) LoanWhiz conforming to the FINOS control catalogue
+  (`finos_conformance.is_framework_conformant`, see §9). It is no longer a
+  hardcoded `True`; a pack with inconsistent evidence, or a framework
+  non-conformance, is reported as non-compliant. The pack also carries a
+  `finos_conformance` summary explaining the boolean.
 
 ### Human Review Routing
 
@@ -275,18 +279,100 @@ It does not apply to:
 
 ---
 
-## 9. FINOS AI Governance Framework Alignment
+## 9. FINOS AI Governance Framework Conformance
 
-| FINOS Pattern | LoanWhiz Implementation |
+LoanWhiz treats FINOS as a **real compliance target**, not a brand label. The
+framework's full control catalogue is mapped to concrete LoanWhiz
+implementations in **[`src/loanwhiz/governance/finos_conformance.py`](../src/loanwhiz/governance/finos_conformance.py)**
+— the single source of truth that the code (`evidence_pack.finos_compliant`),
+the API (`GET /governance/finos-conformance`), the model card, and the
+Governance UI all read so they tell the same story.
+
+`finos_compliant` on an evidence pack now MEANS framework conformance: it is the
+conjunction of (a) the pack's own evidence being internally consistent and
+(b) LoanWhiz conforming to the control catalogue below.
+
+### Conformance posture
+
+This is an **honest first-party self-assessment** against the framework's
+published catalogue — exactly what the framework prescribes (a reasoned
+applicability + conformance assessment, not a blanket "compliant" claim). Each
+control is `satisfied`, `partial`, or `not_applicable` with a stated rationale.
+`partial` and `not_applicable` are reasoned, bounded states (often deferring a
+deployment-edge concern to the calling application per §8); they do not fail
+conformance, but they are surfaced so the posture is never overstated. It is
+*not* a third-party audit attestation.
+
+The framework publishes **23 mitigation controls** (15 preventative
+`AIR-PREV-*` + 8 detective `AIR-DET-*`) addressing 23 risks. LoanWhiz's current
+mapping: **10 satisfied · 7 partial · 6 not applicable**.
+
+### Preventative controls (`AIR-PREV-*`)
+
+| Control | Title | Status | LoanWhiz evidence |
+|---|---|---|---|
+| AIR-PREV-002 | Data Filtering From External Knowledge Bases | partial | Typed ESMA/prospectus ingestion only; tape provenance recorded (§7) |
+| AIR-PREV-003 | User/App/Model Firewalling/Filtering | n/a | Deployment-edge concern (§8) |
+| AIR-PREV-005 | System Acceptance Testing | satisfied | Per-primitive validation harness + report verifier + test suites |
+| AIR-PREV-006 | Data Quality & Classification/Sensitivity | satisfied | Coverage-derived extraction confidence (§2) |
+| AIR-PREV-007 | Legal and Contractual Frameworks | partial | Apache-2.0 stack; deployment contracts are the institution's |
+| AIR-PREV-008 | QoS and DDoS Prevention | n/a | Infrastructure-edge concern (§8) |
+| AIR-PREV-010 | AI Model Version Pinning | satisfied | Pinned backbone; `model_used` + `AuditEntry.version` (§4) |
+| AIR-PREV-012 | Role-Based Access Control for AI Data | partial | `AuditEntry.operator_id` substrate; RBAC is the caller's (§8) |
+| AIR-PREV-014 | Encryption of AI Data at Rest | n/a | Storage-layer concern of the deployment (§8) |
+| AIR-PREV-017 | AI Firewall Implementation | n/a | Overreach constrained via model card + fixed tool set instead |
+| AIR-PREV-018 | Agent Authority Least Privilege | satisfied | Fixed, enumerated read-only tool set on the model card |
+| AIR-PREV-019 | Tool Chain Validation and Sanitization | satisfied | Typed pydantic `BaseInput`/`PrimitiveResult` at every boundary |
+| AIR-PREV-020 | MCP Server Security Governance | partial | `mcp/` wraps the same read-only primitives; host hardening is the deployment's |
+| AIR-PREV-022 | Multi-Agent Isolation and Segmentation | n/a | Single LangGraph ReAct agent — no multi-agent topology |
+| AIR-PREV-023 | Agentic System Credential Protection | partial | No end-user creds; packs store summaries/hashes, not raw inputs |
+
+### Detective controls (`AIR-DET-*`)
+
+| Control | Title | Status | LoanWhiz evidence |
+|---|---|---|---|
+| AIR-DET-001 | AI Data Leakage Prevention and Detection | partial | Audit trail stores input *summaries* + hashes, not raw inputs |
+| AIR-DET-004 | AI System Observability | satisfied | `AuditEntry` per call + full evidence-pack tool-call trace (§1) |
+| AIR-DET-009 | Alerting and Denial of Wallet / Spend Monitoring | n/a | Deployment-platform concern (§8) |
+| AIR-DET-011 | Human Feedback Loop | satisfied | `human_review_required` routing below 0.70 (§5) |
+| AIR-DET-013 | Citations and Source Traceability | satisfied | Verbatim citations; dedup union in the evidence pack (§3) |
+| AIR-DET-015 | LLM-as-a-Judge / Automated Evaluation | satisfied | Report verifier re-checks figures vs reconstructed waterfall |
+| AIR-DET-016 | Preserving Source Data Access Controls | partial | Provenance preserved per citation; upstream ACL enforcement is the caller's |
+| AIR-DET-021 | Agent Decision Audit and Explainability | satisfied | Replayable reasoning trace + consistency check (§4) |
+
+### Per-primitive conformance
+
+Conformance is asserted **per-primitive**, not only at the aggregate evidence
+pack. Every registered primitive satisfies a universal set by virtue of the
+`Primitive` base contract (it returns a typed `PrimitiveResult` with a
+confidence score, `Citation` list, and append-only `AuditEntry`):
+
+- `AIR-DET-004` (observability), `AIR-DET-013` (citations),
+  `AIR-DET-021` (decision audit), `AIR-PREV-010` (version pinning),
+  `AIR-PREV-019` (tool-chain validation).
+
+Individual primitives add controls on top — e.g. `report_verifier` →
+`AIR-DET-015`, `covenant_monitor` → `AIR-DET-011`, `esma_tape_normaliser` →
+`AIR-PREV-002`/`AIR-PREV-006`/`AIR-DET-016`. The full per-primitive map is
+returned by `primitive_conformance()` and `GET /governance/finos-conformance`.
+
+### Out-of-scope controls and why
+
+Six controls are `not_applicable`. They are deployment-edge or topology
+concerns that a self-hosted analytics library does not own:
+firewalling/QoS/DDoS (`AIR-PREV-003`/`008`, `AIR-DET-009`), at-rest encryption
+(`AIR-PREV-014`), AI-firewall management (`AIR-PREV-017`), and multi-agent
+isolation (`AIR-PREV-022` — LoanWhiz runs a single agent). Marking these
+honestly out-of-scope, with a reason, is itself the FINOS-faithful posture.
+
+### Cross-references
+
+| Surface | Where |
 |---|---|
-| Audit trail | `AuditEntry` per primitive call (§1) |
-| Confidence scoring | Coverage-derived confidence on every primitive; agent answers aggregate it as `min(per-tool confidence)` (§2) |
-| Citations | Verbatim citations on all extracted facts (§3) |
-| Replayability | Input hash + model version in every `AuditEntry` (§4) |
-| Human review routing | `human_review_required` flag; confidence < 0.7 triggers mandatory review (§5) |
-| Model risk classification | Decision-support tier; no autonomous decisions (§6) |
-| Data provenance | `data_source` (deeploans vs direct) recorded on every tape and carried into the evidence pack (§7) |
+| Control catalogue (source of truth) | [`finos_conformance.py`](../src/loanwhiz/governance/finos_conformance.py) |
+| `finos_compliant` derivation | [`evidence_pack.py`](../src/loanwhiz/governance/evidence_pack.py) |
+| Conformance API | `GET /governance/finos-conformance` |
 | Model card | [docs/model-card.md](model-card.md) |
 | Data card | [docs/data-card.md](data-card.md) |
 
-**Reference:** [https://github.com/finos/ai-governance-framework](https://github.com/finos/ai-governance-framework)
+**Reference:** [https://air-governance-framework.finos.org](https://air-governance-framework.finos.org) · [https://github.com/finos/ai-governance-framework](https://github.com/finos/ai-governance-framework)

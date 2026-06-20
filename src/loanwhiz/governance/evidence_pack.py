@@ -10,6 +10,13 @@ requirements:
 - Replayable reasoning: the ordered tool-call sequence can be reproduced.
 - Human review flag: aggregate_confidence < 0.7 triggers flag.
 
+``finos_compliant`` is the conjunction of two things: the pack's own evidence
+is internally consistent (the per-pack consistency check below) **and**
+LoanWhiz conforms to the FINOS AI Governance Framework control catalogue
+(``finos_conformance.is_framework_conformant`` — the mapped control set). So
+the flag now MEANS genuine framework conformance, not merely per-pack
+arithmetic.
+
 ``EvidencePackLogger`` persists packs to disk in JSONL format, one
 daily file per log directory, and supports retrieval by pack_id and
 listing of recent packs.
@@ -23,6 +30,11 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from pydantic import BaseModel
+
+from loanwhiz.governance.finos_conformance import (
+    finos_conformance_summary,
+    is_framework_conformant,
+)
 
 
 # Aggregate confidence below this triggers the human-review flag.
@@ -104,10 +116,20 @@ class GovernanceEvidencePack(BaseModel):
         human_review_required:   True when aggregate_confidence < 0.7.
         model_used:              LLM backbone for this query.
         framework_version:       LoanWhiz framework version string.
-        finos_compliant:         Whether the pack's governance evidence is
-                                 internally consistent — derived by
-                                 ``_check_finos_compliant`` in ``create``, not
-                                 a hardcoded constant.
+        finos_compliant:         Whether this answer is FINOS-compliant — the
+                                 conjunction of (a) the pack's governance
+                                 evidence being internally consistent
+                                 (``_check_finos_compliant``) and (b) LoanWhiz
+                                 conforming to the FINOS AI Governance Framework
+                                 control catalogue
+                                 (``finos_conformance.is_framework_conformant``).
+                                 Derived in ``create``, never a hardcoded
+                                 constant.
+        finos_conformance:       The framework-level conformance summary (the
+                                 mapped control catalogue + per-primitive
+                                 conformance) that explains *why*
+                                 ``finos_compliant`` holds — see
+                                 ``governance/finos_conformance.py``.
     """
 
     pack_id: str = ""
@@ -123,13 +145,21 @@ class GovernanceEvidencePack(BaseModel):
     # Governance metadata
     model_used: str = "gemini-2.5-flash"
     framework_version: str = "loanwhiz-0.1.0"
-    # Derived in `create()` by `_check_finos_compliant`, not a constant — a
-    # pack is FINOS-compliant only when its governance evidence is internally
-    # consistent (aggregate confidence, citation trail, and review flag all
-    # correctly computed from the tool calls). The default here is the
-    # validation fallback for packs constructed directly (e.g. round-tripped
-    # from JSONL); `create()` always overrides it with the real check.
+    # Derived in `create()`, not a constant — a pack is FINOS-compliant only
+    # when (a) its governance evidence is internally consistent (aggregate
+    # confidence, citation trail, and review flag all correctly computed from
+    # the tool calls) AND (b) LoanWhiz conforms to the FINOS control catalogue
+    # (`finos_conformance`). The default here is the validation fallback for
+    # packs constructed directly (e.g. round-tripped from JSONL); `create()`
+    # always overrides it with the real check.
     finos_compliant: bool = True
+
+    # The framework-level conformance summary explaining the boolean above:
+    # the mapped FINOS control catalogue (satisfied/partial/not-applicable per
+    # control, with rationale + LoanWhiz evidence) and per-primitive
+    # conformance. Populated by `create()`; round-tripped packs that omit it
+    # fall back to the current catalogue summary so the field is never empty.
+    finos_conformance: dict = {}
 
     # ------------------------------------------------------------------
     # FINOS compliance check
@@ -204,8 +234,12 @@ class GovernanceEvidencePack(BaseModel):
           order) of every tool call's citation list.
         - ``human_review_required`` — ``True`` when
           ``aggregate_confidence < REVIEW_THRESHOLD`` (0.7).
-        - ``finos_compliant`` — derived by :meth:`_check_finos_compliant` from
-          the consistency of the evidence above; not a hardcoded constant.
+        - ``finos_compliant`` — the conjunction of the per-pack consistency
+          check (:meth:`_check_finos_compliant`) and framework conformance
+          (:func:`finos_conformance.is_framework_conformant`); not a hardcoded
+          constant.
+        - ``finos_conformance`` — the framework conformance summary that
+          explains the boolean.
 
         Parameters
         ----------
@@ -229,14 +263,17 @@ class GovernanceEvidencePack(BaseModel):
 
         human_review_required = aggregate_confidence < REVIEW_THRESHOLD
 
-        # Derive FINOS compliance from a real check over the evidence, rather
-        # than asserting it unconditionally.
-        finos_compliant = cls._check_finos_compliant(
+        # FINOS compliance is the conjunction of (a) this pack's evidence being
+        # internally consistent and (b) LoanWhiz conforming to the FINOS control
+        # catalogue. Neither is asserted unconditionally.
+        pack_consistent = cls._check_finos_compliant(
             tool_calls=tool_calls,
             aggregate_confidence=aggregate_confidence,
             all_citations=all_citations,
             human_review_required=human_review_required,
         )
+        finos_conformance = finos_conformance_summary()
+        finos_compliant = pack_consistent and is_framework_conformant()
 
         return cls(
             pack_id=pack_id,
@@ -248,6 +285,7 @@ class GovernanceEvidencePack(BaseModel):
             all_citations=all_citations,
             human_review_required=human_review_required,
             finos_compliant=finos_compliant,
+            finos_conformance=finos_conformance,
         )
 
     # ------------------------------------------------------------------
@@ -275,6 +313,24 @@ class GovernanceEvidencePack(BaseModel):
         lines.append(f"**Framework:** {self.framework_version}")
         lines.append(f"**FINOS Compliant:** {self.finos_compliant}")
         lines.append("")
+
+        conformance = self.finos_conformance or {}
+        if conformance:
+            counts = conformance.get("counts", {})
+            lines.append("## FINOS Framework Conformance")
+            lines.append("")
+            lines.append(
+                f"**{conformance.get('framework', 'FINOS AI Governance Framework')}** "
+                f"— {conformance.get('total_controls', 0)} controls mapped: "
+                f"{counts.get('satisfied', 0)} satisfied, "
+                f"{counts.get('partial', 0)} partial, "
+                f"{counts.get('not_applicable', 0)} not applicable. "
+                f"Conformant: {conformance.get('is_conformant', False)}."
+            )
+            ref = conformance.get("reference")
+            if ref:
+                lines.append(f"Reference: {ref}")
+            lines.append("")
 
         lines.append("## Query")
         lines.append("")

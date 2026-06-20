@@ -15,6 +15,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from loanwhiz.config import GREEN_LION
+from loanwhiz.primitives.base import AuditEntry, Citation, PrimitiveResult
 from loanwhiz.primitives.registry import PRIMITIVE_REGISTRY
 from loanwhiz.primitives.report_verifier import (
     ReportVerifier,
@@ -128,6 +129,42 @@ def no_cache(tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch):
         "loanwhiz.primitives.report_verifier._CACHE_DIR",
         tmp_path / "loanwhiz_cache",
     )
+
+
+# ---------------------------------------------------------------------------
+# Governance envelope (#277)
+#
+# The #277 issue body asserted report_verifier "returns a bare dict" and bypasses
+# the PrimitiveResult envelope. That assertion is stale: the #76/#187 work already
+# made execute() return the full envelope. This test is the regression lock that
+# the envelope stays present on this surface, so a future change can't silently
+# reintroduce the bypass.
+# ---------------------------------------------------------------------------
+
+
+class TestGovernanceEnvelope:
+    def test_execute_returns_primitive_result_envelope(self, verifier: ReportVerifier):
+        with _mock_extract(_MATCHING_REPORTED):
+            result = verifier.execute(_make_input())
+
+        # The envelope, not a bare dict.
+        assert isinstance(result, PrimitiveResult)
+        assert isinstance(result.output, ReportVerifierOutput)
+
+        # confidence ∈ [0, 1].
+        assert 0.0 <= result.confidence <= 1.0
+
+        # citations are real Citation objects.
+        assert len(result.citations) >= 1
+        assert all(isinstance(c, Citation) for c in result.citations)
+
+        # audit entry is fully populated.
+        audit = result.audit_entry
+        assert isinstance(audit, AuditEntry)
+        assert audit.primitive_name == "report_verifier"
+        assert audit.version == "0.1.0"
+        assert len(audit.input_hash) == 64
+        assert audit.duration_ms >= 0.0
 
 
 # ---------------------------------------------------------------------------

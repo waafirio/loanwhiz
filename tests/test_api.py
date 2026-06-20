@@ -1507,6 +1507,82 @@ def test_deal_project_writes_audit_entries(tmp_path):
         assert isinstance(entry["human_review_required"], bool)
 
 
+def test_reconstruct_series_audits_collections_aggregator(tmp_path):
+    """The collections_aggregator calls in the reconstruction loop are audited.
+
+    #277: audit_logger must wrap *every* primitive call. The aggregator call in
+    `_reconstruct_series`'s per-tape loop previously bypassed `_audit`. This drives
+    the loop with the network-fetching aggregator + the downstream S6 reconstruction
+    mocked, and asserts one AuditLogEntry lands per tape transition (3 tapes → 2).
+    """
+    from unittest.mock import MagicMock
+
+    from loanwhiz.api import main as api_main
+    from loanwhiz.primitives.base import AuditEntry, Citation, PrimitiveResult
+    from loanwhiz.primitives.collections_aggregator import CollectionsOutput
+
+    fake_collections = CollectionsOutput(
+        reporting_period="2026-02-28",
+        interest_collected=9_050_000.0,
+        swap_receipts=0.0,
+        available_revenue_funds=9_050_000.0,
+        scheduled_principal=5_000_000.0,
+        unscheduled_principal=0.0,
+        recoveries=0.0,
+        available_principal_funds=5_000_000.0,
+        pool_balance_eur=1_000_000_000.0,
+        loan_count=1000,
+        class_a_interest_due=9_050_000.0,
+        senior_fees=50_000.0,
+        summary="mock period",
+    )
+    fake_result = PrimitiveResult[CollectionsOutput](
+        output=fake_collections,
+        confidence=0.8,
+        citations=[Citation(document="tape.csv", excerpt="mock")],
+        audit_entry=AuditEntry(
+            primitive_name="collections_aggregator",
+            version="0.1.0",
+            input_hash="b" * 64,
+            executed_at="2026-04-30T00:00:00+00:00",
+            duration_ms=1.0,
+        ),
+    )
+
+    deal = {
+        "tape_urls": [
+            {"url": "https://example/t0.csv", "date": "2026-01-31"},
+            {"url": "https://example/t1.csv", "date": "2026-02-28"},
+            {"url": "https://example/t2.csv", "date": "2026-03-31"},
+        ]
+    }
+
+    # S6's result is serialised to the cache path, so the stub must json-dump.
+    fake_series = MagicMock()
+    fake_series.model_dump_json.return_value = "{}"
+
+    # Isolate: fresh memo, tmp cache dir, mocked aggregator + S6 reconstruction.
+    api_main._RECONSTRUCTION_MEMO.clear()
+    with patch("loanwhiz.api.main.API_AUDIT_LOG_DIR", str(tmp_path)), patch(
+        "loanwhiz.api.main._reconstruction_cache_path",
+        return_value=tmp_path / "recon.json",
+    ), patch(
+        "loanwhiz.api.main.CollectionsAggregator.execute", return_value=fake_result
+    ), patch(
+        "loanwhiz.api.main.reconstruct_period_series", return_value=fake_series
+    ):
+        api_main._reconstruct_series(deal)
+
+    api_main._RECONSTRUCTION_MEMO.clear()
+
+    entries = _read_audit_entries(tmp_path)
+    # 3 tapes → 2 transitions → 2 aggregator calls → 2 audit entries.
+    assert len(entries) == 2
+    for entry in entries:
+        assert entry["primitive_name"] == "collections_aggregator"
+        assert len(entry["input_hash"]) == 64
+
+
 def test_audit_side_write_does_not_break_mocked_endpoint(tmp_path):
     """The best-effort audit wrapper never 500s an endpoint.
 
@@ -1602,6 +1678,9 @@ def test_governance_pack_returns_stored_pack(tmp_path):
     assert body["finos_compliant"] is True
     assert body["framework_version"] == pack.framework_version
     assert body["model_used"] == pack.model_used
+    # The framework-conformance summary rides along, explaining the boolean.
+    assert body["finos_conformance"]["is_conformant"] is True
+    assert body["finos_conformance"]["total_controls"] == 23
 
 
 def test_governance_pack_flags_human_review_when_low_confidence(tmp_path):
@@ -1645,6 +1724,20 @@ def test_governance_pack_unknown_returns_404(tmp_path):
         resp = client.get("/governance/does-not-exist")
     assert resp.status_code == 404
     assert resp.json()["detail"] == "Evidence pack does-not-exist not found"
+
+
+def test_finos_conformance_endpoint_returns_full_catalogue():
+    """GET /governance/finos-conformance returns the mapped control catalogue."""
+    resp = client.get("/governance/finos-conformance")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["is_conformant"] is True
+    assert body["total_controls"] == 23
+    assert len(body["controls"]) == 23
+    # Per-primitive conformance is asserted, not just the aggregate.
+    assert body["primitive_conformance"]
+    # The static path is not captured by the /governance/{pack_id} route.
+    assert body["framework"] == "FINOS AI Governance Framework"
 
 
 # ---------------------------------------------------------------------------

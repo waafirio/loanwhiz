@@ -41,7 +41,7 @@ from loanwhiz.extraction.assembler import (
     DealModel,
     _slug,
 )
-from loanwhiz.governance import EvidencePackLogger
+from loanwhiz.governance import EvidencePackLogger, finos_conformance_summary
 from loanwhiz.primitives.collections_aggregator import (
     CollectionsAggregator,
     CollectionsInput,
@@ -875,18 +875,19 @@ def _reconstruct_series(deal_id: str, deal: dict) -> DealStateSeries:
         prev_tape = tapes[idx - 1]
         cur_tape = tapes[idx]
         days = _days_between(prev_tape["date"], cur_tape["date"])
-        collections = aggregator.execute(
-            CollectionsInput(
-                tape_file_url=cur_tape["url"],
-                reporting_period=cur_tape["date"],
-                prev_tape_file_url=prev_tape["url"],
-                days_in_period=days,
-                class_a_rate_pct=cap["class_a_rate_pct"],
-                class_a_balance=cap["class_a_balance"],
-                class_b_balance=cap["class_b_balance"],
-                class_c_balance=cap["class_c_balance"],
-            )
-        ).output
+        collections_input = CollectionsInput(
+            tape_file_url=cur_tape["url"],
+            reporting_period=cur_tape["date"],
+            prev_tape_file_url=prev_tape["url"],
+            days_in_period=days,
+            class_a_rate_pct=cap["class_a_rate_pct"],
+            class_a_balance=cap["class_a_balance"],
+            class_b_balance=cap["class_b_balance"],
+            class_c_balance=cap["class_c_balance"],
+        )
+        collections_result = aggregator.execute(collections_input)
+        _audit(aggregator, collections_input, collections_result)
+        collections = collections_result.output
         periods.append(
             PeriodInput(
                 reporting_date=cur_tape["date"],
@@ -1714,6 +1715,24 @@ class GovernanceEvidencePackResponse(BaseModel):
     model_used: str
     framework_version: str
     finos_compliant: bool
+    # The framework-conformance summary explaining `finos_compliant` — the
+    # mapped FINOS control catalogue + per-primitive conformance. Defaults to an
+    # empty dict for packs round-tripped from JSONL before this field existed.
+    finos_conformance: dict = {}
+
+
+@app.get("/governance/finos-conformance")
+def finos_conformance() -> dict:
+    """Return LoanWhiz's FINOS AI Governance Framework conformance summary.
+
+    The single source of truth (``governance/finos_conformance.py``): the mapped
+    control catalogue (each control's status + rationale + LoanWhiz evidence),
+    the satisfied/partial/not-applicable counts, the overall ``is_conformant``
+    verdict, and the per-primitive conformance assertion. Read-only,
+    deterministic, no LLM. The Governance UI and docs read this so they tell the
+    same story as ``finos_compliant``.
+    """
+    return finos_conformance_summary()
 
 
 @app.get("/governance/{pack_id}", response_model=GovernanceEvidencePackResponse)
