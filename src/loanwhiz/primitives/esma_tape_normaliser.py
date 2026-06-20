@@ -12,21 +12,27 @@ Annex 8 SME, etc.), and computes a comprehensive set of pool analytics:
 Implements the ``Primitive[EsmaTapeInput, EsmaTapeOutput]`` contract so it can
 be composed with other LoanWhiz primitives by the LangGraph agent.
 
-Green Lion 2026-1 field mapping (validated against Algoritmica/green-lion-2026)
--------------------------------------------------------------------------------
-- ``current_balance``         — loan outstanding balance (EUR)
-- ``current_interest_rate_pct`` — coupon rate (%)
-- ``remaining_term_months``   — months to contractual maturity
-- ``seasoning_months``        — months since origination
-- ``cltomv_current``          — current loan-to-value ratio (%)
-- ``arrears_bucket``          — "Performing" | "<29d" | "180+d"
-- ``default_crr_flag``        — "Y" | "N"
-- ``epc_label``               — "A" | "A+" | "B" | etc.
-- ``rate_type``               — "Fixed" | "Floating"
-- ``property_type``           — "House" | "Apartment" | etc.
-- ``province``                — NUTS-2 / regional identifier
-- ``transaction_name``        — deal name from the tape
-- ``reporting_date``          — reporting cut-off date (YYYY-MM-DD)
+Canonical column resolution (ESMA Annex 2 RREL field codes)
+-----------------------------------------------------------
+Tape column names vary across issuers and vintages, but each maps to a stable
+ESMA RTS Annex 2 **RREL field code**. The canonical code → field → column table
+lives in :mod:`loanwhiz.domain.esma_annex2`; the normaliser resolves each tape's
+columns onto LoanWhiz canonical names through that single source
+(:func:`~loanwhiz.domain.esma_annex2.canonical_column_for`), so an issuer that
+spells a column ``outstanding_balance`` still resolves to ``current_balance``.
+A column already in canonical form resolves to itself, so the validated Green
+Lion 2026-1 behaviour is preserved byte-for-byte. The output ``Citation`` is
+anchored to the matched RREL codes for governance traceability.
+
+Canonical names the pool analytics key on (each backed by an Annex 2 RREL code
+in ``esma_annex2.ANNEX2_RMBS_FIELDS``):
+
+- ``current_balance`` (RREL18), ``current_interest_rate_pct`` (RREL22),
+  ``remaining_term_months`` (RREL30), ``seasoning_months`` (RREL31),
+  ``cltomv_current`` current LTV (RREL40), ``arrears_bucket`` (RREL64),
+  ``default_crr_flag`` (RREL66), ``epc_label`` (RREL17), ``rate_type`` (RREL24),
+  ``property_type`` (RREL16), ``province`` region (RREL15),
+  ``transaction_name`` (RREL3), ``reporting_date`` (RREL5).
 """
 
 from __future__ import annotations
@@ -41,6 +47,7 @@ from loanwhiz.data.deeploans_client import (
     DeepLoansClient,
     parse_deeploans_url,
 )
+from loanwhiz.domain.esma_annex2 import canonical_column_for, code_for_column
 from loanwhiz.primitives.base import (
     AuditEntry,
     BaseInput,
@@ -408,6 +415,41 @@ def _optional_breakdown(df: pd.DataFrame, col: str) -> dict[str, float] | None:
     return _pct_distribution(df[col])
 
 
+def _resolve_columns(columns: list[str]) -> dict[str, str]:
+    """Build a ``canonical-column → original-column`` map for a tape.
+
+    Each tape column name is looked up in the canonical **ESMA Annex 2**
+    field-code table (:func:`loanwhiz.domain.esma_annex2.canonical_column_for`).
+    When a column is a known canonical name *or* a registered issuer/vintage
+    synonym, its canonical name maps to the original column header — so the
+    normaliser's downstream lookups (which use canonical names like
+    ``"current_balance"`` / ``"cltomv_current"``) still find the data even when
+    the tape spells the column differently across issuers.
+
+    A column already in canonical form maps to itself (the historical
+    Green-Lion behaviour is preserved byte-for-byte: every Green-Lion column is
+    its own canonical name, so this map is the identity on that tape). The first
+    occurrence of a canonical target wins, so a synonym never overrides a column
+    that is already present under its canonical name.
+
+    Returns a dict keyed by **lower-cased canonical column name**; columns not
+    in the Annex 2 table are simply absent (callers keep their existing
+    fallbacks).
+    """
+    resolved: dict[str, str] = {}
+    for orig in columns:
+        canonical = canonical_column_for(orig)
+        if canonical is None:
+            continue
+        # A column present under its own canonical name always wins; a synonym
+        # only fills a canonical slot that nothing else has claimed.
+        if canonical == orig.lower():
+            resolved[canonical] = orig
+        else:
+            resolved.setdefault(canonical, orig)
+    return resolved
+
+
 # ---------------------------------------------------------------------------
 # Primitive
 # ---------------------------------------------------------------------------
@@ -464,6 +506,14 @@ class EsmaTapeNormaliser(Primitive[EsmaTapeInput, EsmaTapeOutput]):
         cols_lower = {c.lower() for c in df.columns}
         # Map original -> lower for column lookup
         col_map = {c.lower(): c for c in df.columns}
+        # Overlay ESMA Annex 2 canonical-name resolution so issuer/vintage
+        # column-name variants resolve onto the canonical names the lookups
+        # below expect (e.g. ``outstanding_balance`` → ``current_balance``).
+        # ``setdefault`` keeps a column already present under its canonical name
+        # authoritative — so Green-Lion tapes (already canonical) are unchanged.
+        for canonical, orig in _resolve_columns(list(df.columns)).items():
+            col_map.setdefault(canonical, orig)
+            cols_lower.add(canonical)
 
         annex_detected, annex_certain = _detect_annex(cols_lower)
 
@@ -546,7 +596,17 @@ class EsmaTapeNormaliser(Primitive[EsmaTapeInput, EsmaTapeOutput]):
         # -----------------------------------------------------------------
         # Arrears breakdown — build normalised df with lower-case cols
         # -----------------------------------------------------------------
-        df_lower = df.rename(columns={c: c.lower() for c in df.columns})
+        # Lower-case all columns, then rename any ESMA Annex 2 synonym columns
+        # onto their canonical names so the arrears / categorical extractors
+        # (which key on canonical names like ``arrears_bucket`` /
+        # ``default_crr_flag`` / ``epc_label``) resolve issuer-variant spellings.
+        # ``setdefault`` semantics in ``_resolve_columns`` guarantee a column
+        # already present under its canonical name is never overwritten, so a
+        # Green-Lion tape is renamed to itself (identity).
+        lower_rename = {c: c.lower() for c in df.columns}
+        for canonical, orig in _resolve_columns(list(df.columns)).items():
+            lower_rename[orig] = canonical
+        df_lower = df.rename(columns=lower_rename)
         arrears_breakdown = _extract_arrears(df_lower)
 
         # -----------------------------------------------------------------
@@ -575,14 +635,34 @@ class EsmaTapeNormaliser(Primitive[EsmaTapeInput, EsmaTapeOutput]):
         confidence = max(0.0, round(confidence, 4))
 
         # -----------------------------------------------------------------
-        # Citation
+        # Citation — anchored to ESMA RTS Annex 2 RREL field codes
         # -----------------------------------------------------------------
+        # Surface which regulatory Annex 2 fields the loaded tape's columns map
+        # to, so the governance view can trace pool analytics back to the RREL
+        # codes they came from (the locator mechanism fixed in the schema design,
+        # decision D8). Codes are de-duplicated and sorted for a stable string.
+        matched_codes = sorted(
+            {
+                code
+                for c in df.columns
+                if (code := code_for_column(c)) is not None
+            }
+        )
+        annex2_anchor = (
+            f" ESMA Annex 2 fields: {', '.join(matched_codes)}."
+            if matched_codes
+            else ""
+        )
         citation = Citation(
             document=input.file_url,
-            page_or_row=f"rows 1-{loan_count}",
+            page_or_row=(
+                f"rows 1-{loan_count}"
+                + (f" · {', '.join(matched_codes)}" if matched_codes else "")
+            ),
             excerpt=(
                 f"ESMA {annex_detected} tape with {loan_count} loans "
-                f"(ingested via {data_source})"
+                f"(ingested via {data_source})."
+                f"{annex2_anchor}"
             ),
         )
 
