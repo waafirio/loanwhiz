@@ -697,18 +697,19 @@ def _reconstruct_series(deal: dict) -> DealStateSeries:
         prev_tape = tapes[idx - 1]
         cur_tape = tapes[idx]
         days = _days_between(prev_tape["date"], cur_tape["date"])
-        collections = aggregator.execute(
-            CollectionsInput(
-                tape_file_url=cur_tape["url"],
-                reporting_period=cur_tape["date"],
-                prev_tape_file_url=prev_tape["url"],
-                days_in_period=days,
-                class_a_rate_pct=cap["class_a_rate_pct"],
-                class_a_balance=cap["class_a_balance"],
-                class_b_balance=cap["class_b_balance"],
-                class_c_balance=cap["class_c_balance"],
-            )
-        ).output
+        collections_input = CollectionsInput(
+            tape_file_url=cur_tape["url"],
+            reporting_period=cur_tape["date"],
+            prev_tape_file_url=prev_tape["url"],
+            days_in_period=days,
+            class_a_rate_pct=cap["class_a_rate_pct"],
+            class_a_balance=cap["class_a_balance"],
+            class_b_balance=cap["class_b_balance"],
+            class_c_balance=cap["class_c_balance"],
+        )
+        collections_result = aggregator.execute(collections_input)
+        _audit(aggregator, collections_input, collections_result)
+        collections = collections_result.output
         periods.append(
             PeriodInput(
                 reporting_date=cur_tape["date"],

@@ -11,9 +11,16 @@ from loanwhiz.extraction.assembler import (
     DealModel,
     _slug,
 )
+from loanwhiz.primitives.audit_logger import audit_result
 from loanwhiz.primitives.collections_aggregator import CollectionsAggregator, CollectionsInput
 from loanwhiz.primitives.covenant_monitor import CovenantInput, CovenantMonitor
 from loanwhiz.primitives.esma_tape_normaliser import EsmaTapeInput, EsmaTapeNormaliser
+
+# Audit log dir for primitive calls reached through the agent tools — mirrors
+# the REST API's ``API_AUDIT_LOG_DIR`` so the agent path is governed like the
+# endpoint path (#277: audit_logger wraps every primitive call). Best-effort
+# via ``audit_result`` — a failed audit never takes down the tool call.
+AGENT_AUDIT_LOG_DIR = "/tmp/loanwhiz_audit"
 
 # Default deal the chat agent serves. The agent is single-deal today; the
 # grounding tools accept a ``deal_id`` for forward generality but fall back to
@@ -110,7 +117,9 @@ def load_esma_tape(file_url: str, reporting_date: str | None = None) -> dict:
     Use for: understanding pool composition, computing arrears rates, checking EPC mix.
     """
     primitive = EsmaTapeNormaliser()
-    result = primitive.execute(EsmaTapeInput(file_url=file_url, reporting_date=reporting_date))
+    tape_input = EsmaTapeInput(file_url=file_url, reporting_date=reporting_date)
+    result = primitive.execute(tape_input)
+    audit_result(primitive, tape_input, result, log_dir=AGENT_AUDIT_LOG_DIR)
     return result.output.model_dump() | {
         "confidence": result.confidence,
         "citations": [c.model_dump() for c in result.citations],
@@ -217,9 +226,10 @@ def aggregate_collections(deal_id: str = DEFAULT_DEAL_ID, period: str | None = N
             "citations": [],
         }
     tape = next((t for t in tapes if period and period in t["date"]), tapes[-1])
-    result = CollectionsAggregator().execute(
-        CollectionsInput(tape_file_url=tape["url"], reporting_period=tape["date"])
-    )
+    aggregator = CollectionsAggregator()
+    collections_input = CollectionsInput(tape_file_url=tape["url"], reporting_period=tape["date"])
+    result = aggregator.execute(collections_input)
+    audit_result(aggregator, collections_input, result, log_dir=AGENT_AUDIT_LOG_DIR)
     return result.output.model_dump() | {
         "confidence": result.confidence,
         "citations": [c.model_dump() for c in result.citations],

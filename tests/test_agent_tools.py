@@ -112,6 +112,60 @@ def test_load_esma_tape_passes_reporting_date():
 
 
 # ---------------------------------------------------------------------------
+# Audit promotion (#277) — agent-tool primitive calls write an AuditLogEntry
+#
+# The two direct-execute tools (load_esma_tape, aggregate_collections) route
+# their primitive call through audit_result(), so the agent path is governed
+# like the REST path. These tests assert an AuditLogEntry actually lands.
+# ---------------------------------------------------------------------------
+
+
+def _audit_entries_under(log_dir) -> int:
+    from pathlib import Path
+
+    return sum(
+        len([ln for ln in p.read_text().splitlines() if ln.strip()])
+        for p in Path(log_dir).rglob("*.jsonl")
+    )
+
+
+def test_load_esma_tape_writes_audit_entry(tmp_path, monkeypatch):
+    fake_output = _make_esma_output()
+    fake_result = PrimitiveResult[EsmaTapeOutput](
+        output=fake_output,
+        confidence=0.9,
+        citations=[Citation(document="tape.csv", excerpt="test")],
+        audit_entry=_FAKE_AUDIT,
+    )
+    log_dir = tmp_path / "audit"
+    monkeypatch.setattr("loanwhiz.agent.tools.AGENT_AUDIT_LOG_DIR", str(log_dir))
+
+    with patch(
+        "loanwhiz.agent.tools.EsmaTapeNormaliser.execute", return_value=fake_result
+    ):
+        result = load_esma_tape.invoke({"file_url": "https://example.com/tape.csv"})
+
+    # Tool output unchanged by the audit wiring.
+    assert result["confidence"] == 0.9
+    # One AuditLogEntry was written for the call.
+    assert _audit_entries_under(log_dir) == 1
+
+
+def test_aggregate_collections_writes_audit_entry(tmp_path, monkeypatch):
+    log_dir = tmp_path / "audit"
+    monkeypatch.setattr("loanwhiz.agent.tools.AGENT_AUDIT_LOG_DIR", str(log_dir))
+
+    with patch(
+        "loanwhiz.agent.tools.CollectionsAggregator.execute",
+        return_value=_collections_result(),
+    ):
+        result = aggregate_collections.invoke({"deal_id": "green-lion-2026-1"})
+
+    assert result["confidence"] == 0.8
+    assert _audit_entries_under(log_dir) == 1
+
+
+# ---------------------------------------------------------------------------
 # run_waterfall
 # ---------------------------------------------------------------------------
 
