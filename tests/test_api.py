@@ -877,129 +877,103 @@ def test_deal_reconciliation_unknown_returns_404():
 
 
 # ---------------------------------------------------------------------------
-# Project (primitive mocked)
+# Project (forward fold over ScenarioGenerator → run_period, #275)
+#
+# /project now runs the deal forward through the SAME engine the history
+# endpoints use: a ScenarioGenerator emits a synthetic PeriodInputs stream that
+# is folded through period_state_machine.run_period — no faked single-period
+# WaterfallRunner scaling. These tests drive the real (un-mocked) engine.
 # ---------------------------------------------------------------------------
 
 
-def test_deal_project_runs_waterfall():
-    waterfall_dump = {
-        "reporting_period": "projection+12m (base)",
-        "revenue_waterfall": [],
-        "redemption_waterfall": [],
-        "tranche_distributions": [],
-        "total_distributed": 0.0,
-        "shortfall": 0.0,
-    }
-
-    with patch("loanwhiz.api.main.WaterfallRunner") as MockRunner:
-        MockRunner.return_value.execute.return_value = _FakeResult(waterfall_dump)
-        resp = client.post(
-            "/deal/green-lion-2026-1/project",
-            json={"scenarios": ["base", "stress"], "months": 6},
-        )
-
+def test_deal_project_runs_forward_fold():
+    """/project returns a per-scenario, multi-period projected state series."""
+    resp = client.post(
+        "/deal/green-lion-2026-1/project",
+        json={"scenarios": ["base", "stress"], "months": 6},
+    )
     assert resp.status_code == 200
     body = resp.json()
     assert body["deal_id"] == "green-lion-2026-1"
     assert body["months"] == 6
     assert body["scenarios"] == ["base", "stress"]
     assert set(body["projections"]) == {"base", "stress"}
-    # One waterfall run per requested scenario.
-    assert MockRunner.return_value.execute.call_count == 2
+    for scenario in ("base", "stress"):
+        proj = body["projections"][scenario]
+        # The real fold yields one seed state + one closing state per month.
+        assert len(proj["periods"]) == 7  # seed + 6 transitions
+        # Class A amortises across the projected series (non-increasing).
+        class_a = [p["class_a_balance"] for p in proj["periods"]]
+        assert all(earlier >= later for earlier, later in zip(class_a, class_a[1:]))
 
 
 def test_deal_project_defaults():
-    waterfall_dump = {
-        "reporting_period": "projection",
-        "revenue_waterfall": [],
-        "redemption_waterfall": [],
-        "tranche_distributions": [],
-        "total_distributed": 0.0,
-        "shortfall": 0.0,
-    }
-    with patch("loanwhiz.api.main.WaterfallRunner") as MockRunner:
-        MockRunner.return_value.execute.return_value = _FakeResult(waterfall_dump)
-        resp = client.post("/deal/green-lion-2026-1/project", json={})
+    """Default request (no body) projects base + stress over 12 months."""
+    resp = client.post("/deal/green-lion-2026-1/project", json={})
     assert resp.status_code == 200
     body = resp.json()
     assert body["months"] == 12
     assert body["scenarios"] == ["base", "stress"]
+    assert set(body["projections"]) == {"base", "stress"}
 
 
 def test_deal_project_includes_wal_per_scenario():
-    """The project response surfaces Class A WAL for each scenario.
+    """A real Class A WAL is surfaced per scenario, inline and in the top map.
 
-    Mocks the waterfall to return a Class A principal distribution; the handler
-    derives the Class A weighted-average life and exposes it both on each
-    per-scenario projection and in a top-level per-scenario ``wal`` map, without
-    dropping the existing waterfall projection fields.
+    WAL is derived from the engine-computed Class A amortisation across the
+    projected series (not the faked "full horizon if any principal"), so it lands
+    strictly inside ``(0, months]`` when Class A actually amortises.
     """
-    waterfall_dump = {
-        "reporting_period": "projection+6m (base)",
-        "revenue_waterfall": [],
-        "redemption_waterfall": [],
-        "tranche_distributions": [
-            {
-                "tranche": "class_a",
-                "interest_received": 100.0,
-                "principal_received": 1_000.0,
-                "total_received": 1_100.0,
-                "opening_balance": 10_000.0,
-                "closing_balance": 9_000.0,
-            }
-        ],
-        "total_distributed": 1_100.0,
-        "shortfall": 0.0,
-    }
-
-    with patch("loanwhiz.api.main.WaterfallRunner") as MockRunner:
-        MockRunner.return_value.execute.return_value = _FakeResult(waterfall_dump)
-        resp = client.post(
-            "/deal/green-lion-2026-1/project",
-            json={"scenarios": ["base", "stress"], "months": 6},
-        )
-
+    months = 12
+    resp = client.post(
+        "/deal/green-lion-2026-1/project",
+        json={"scenarios": ["base", "stress"], "months": months},
+    )
     assert resp.status_code == 200
     body = resp.json()
 
-    # Existing fields stay intact.
     assert set(body["projections"]) == {"base", "stress"}
-
-    # WAL surfaced per scenario, both inline and in the top-level map.
     assert set(body["wal"]) == {"base", "stress"}
     for scenario in ("base", "stress"):
         proj = body["projections"][scenario]
-        # Existing waterfall fields are not dropped.
-        assert "tranche_distributions" in proj
-        assert "shortfall" in proj
-        # WAL additively present on the projection.
-        assert proj["wal_class_a_months"] == 6.0
-        assert proj["wal_class_a_years"] == pytest.approx(0.5)
-        # And in the top-level per-scenario WAL map.
-        assert body["wal"][scenario]["wal_class_a_months"] == 6.0
-        assert body["wal"][scenario]["wal_class_a_years"] == pytest.approx(0.5)
+        # WAL additively present on the projection and in the top-level map.
+        assert "wal_class_a_months" in proj
+        assert "wal_class_a_years" in proj
+        wal_months = body["wal"][scenario]["wal_class_a_months"]
+        # A real engine-derived WAL: positive and within the horizon.
+        assert 0.0 < wal_months <= months
+        assert body["wal"][scenario]["wal_class_a_years"] == pytest.approx(
+            wal_months / 12.0
+        )
 
 
 def test_deal_project_wal_zero_when_no_class_a_principal():
-    """WAL is 0.0 when no Class A principal is returned (no divide-by-zero)."""
-    waterfall_dump = {
-        "reporting_period": "projection+12m (base)",
-        "revenue_waterfall": [],
-        "redemption_waterfall": [],
-        "tranche_distributions": [],
-        "total_distributed": 0.0,
-        "shortfall": 0.0,
-    }
-    with patch("loanwhiz.api.main.WaterfallRunner") as MockRunner:
-        MockRunner.return_value.execute.return_value = _FakeResult(waterfall_dump)
-        resp = client.post(
-            "/deal/green-lion-2026-1/project",
-            json={"scenarios": ["base"], "months": 12},
-        )
+    """WAL is 0.0 when no Class A principal is returned (no divide-by-zero).
+
+    A zero-month horizon returns the seed state alone — no transitions, so no
+    Class A principal repaid and a WAL of 0.0.
+    """
+    resp = client.post(
+        "/deal/green-lion-2026-1/project",
+        json={"scenarios": ["base"], "months": 0},
+    )
     assert resp.status_code == 200
     body = resp.json()
     assert body["projections"]["base"]["wal_class_a_months"] == 0.0
     assert body["wal"]["base"]["wal_class_a_years"] == 0.0
+
+
+def test_deal_project_stress_worse_than_base():
+    """Stress (higher CDR + rate shift) yields more cumulative losses than base."""
+    resp = client.post(
+        "/deal/green-lion-2026-1/project",
+        json={"scenarios": ["base", "stress"], "months": 12},
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    base_loss = body["projections"]["base"]["cumulative_losses"]
+    stress_loss = body["projections"]["stress"]["cumulative_losses"]
+    assert stress_loss > base_loss
 
 
 def test_deal_project_unknown_returns_404():
@@ -1008,45 +982,39 @@ def test_deal_project_unknown_returns_404():
 
 
 def test_deal_project_default_base_is_green_lion():
-    """With no ``projection_base`` on the deal, the projection uses the Green
-    Lion base (unchanged default branch)."""
+    """With no ``projection_base``/config, the projection seeds from Green Lion.
+
+    The seed (period-0 state) is built from Green Lion's capital structure and
+    current pool balance — the period-0 state in the response carries those
+    opening tranche balances.
+    """
     from loanwhiz.api import main as api_main
 
-    waterfall_dump = {
-        "reporting_period": "projection+12m (base)",
-        "revenue_waterfall": [],
-        "redemption_waterfall": [],
-        "tranche_distributions": [],
-        "total_distributed": 0.0,
-        "shortfall": 0.0,
-    }
-    with patch("loanwhiz.api.main.WaterfallRunner") as MockRunner:
-        MockRunner.return_value.execute.return_value = _FakeResult(waterfall_dump)
-        resp = client.post(
-            "/deal/green-lion-2026-1/project",
-            json={"scenarios": ["base"], "months": 12},
-        )
-
+    resp = client.post(
+        "/deal/green-lion-2026-1/project",
+        json={"scenarios": ["base"], "months": 12},
+    )
     assert resp.status_code == 200
-    # The waterfall ran on the Green Lion projection base (default branch).
-    gl = api_main._GREEN_LION_PROJECTION_BASE
-    wf_input = MockRunner.return_value.execute.call_args.args[0]
-    assert wf_input.class_a_balance == gl["class_a_balance"]
-    assert wf_input.class_b_balance == gl["class_b_balance"]
-    assert wf_input.class_c_balance == gl["class_c_balance"]
-    assert wf_input.class_a_rate_pct == gl["class_a_rate_pct"]
-    assert wf_input.reserve_account_balance == gl["reserve_account_balance"]
-    assert wf_input.reserve_account_target == gl["reserve_account_target"]
+    body = resp.json()
+
+    gl_cap = api_main._GREEN_LION_CAPITAL_STRUCTURE
+    gl_base = api_main._GREEN_LION_PROJECTION_BASE
+    seed = body["projections"]["base"]["periods"][0]
+    assert seed["period"] == 0
+    assert seed["class_a_balance"] == gl_cap["class_a_balance"]
+    assert seed["class_b_balance"] == gl_cap["class_b_balance"]
+    assert seed["class_c_balance"] == gl_cap["class_c_balance"]
+    # Pool opens at the deal's CURRENT balance (the forward starting point).
+    assert seed["pool_balance_eur"] == gl_base["current_pool_balance"]
 
 
 def test_deal_project_uses_resolved_deal_base():
-    """The projection runs against the *selected* deal's projection base.
+    """The projection seeds from the *selected* deal's own structure/pool.
 
-    Regression for #160: ``deal_project`` previously always read the
-    module-level ``_GREEN_LION_PROJECTION_BASE``, so projections ignored the
-    selected deal's own capital structure / pool balance. With a second deal
-    registered carrying an explicit ``projection_base``, the ``WaterfallRunner``
-    must be driven by *that* deal's base — not Green Lion's.
+    Regression for #160: ``deal_project`` must drive the fold off the selected
+    deal's capital structure and projection base — not Green Lion's. A second
+    deal carrying its own ``capital_structure`` / ``projection_base`` /
+    ``reserve_account_target`` / ``original_pool_balance`` must seed from that.
     """
     from loanwhiz.api import main as api_main
 
@@ -1067,44 +1035,33 @@ def test_deal_project_uses_resolved_deal_base():
         ],
         "investor_report_urls": [],
         "projection_base": sponsor_base,
+        "capital_structure": {
+            "class_a_balance": 480_000_000.0,
+            "class_b_balance": 15_000_000.0,
+            "class_c_balance": 5_000_000.0,
+            "class_a_rate_pct": 4.10,
+        },
+        "reserve_account_target": 5_000_000.0,
+        "original_pool_balance": 500_000_000.0,
     }
     augmented = {**api_main.DEALS, "sponsor-2025-1": sponsor}
 
-    waterfall_dump = {
-        "reporting_period": "projection+12m (base)",
-        "revenue_waterfall": [],
-        "redemption_waterfall": [],
-        "tranche_distributions": [],
-        "total_distributed": 0.0,
-        "shortfall": 0.0,
-    }
-    with patch.object(api_main, "DEALS", augmented), patch(
-        "loanwhiz.api.main.WaterfallRunner"
-    ) as MockRunner:
-        MockRunner.return_value.execute.return_value = _FakeResult(waterfall_dump)
+    with patch.object(api_main, "DEALS", augmented):
         resp = client.post(
             "/deal/sponsor-2025-1/project",
             json={"scenarios": ["base"], "months": 12},
         )
 
     assert resp.status_code == 200
-    assert resp.json()["deal_id"] == "sponsor-2025-1"
+    body = resp.json()
+    assert body["deal_id"] == "sponsor-2025-1"
 
-    # The waterfall ran on the sponsor's projection base, not Green Lion's.
-    wf_input = MockRunner.return_value.execute.call_args.args[0]
-    assert wf_input.class_a_balance == 480_000_000.0
-    assert wf_input.class_b_balance == 15_000_000.0
-    assert wf_input.class_c_balance == 5_000_000.0
-    assert wf_input.class_a_rate_pct == 4.10
-    assert wf_input.reserve_account_balance == 5_000_000.0
-    assert wf_input.reserve_account_target == 5_000_000.0
-    # And the collection sizing derives from the sponsor's pool balance.
-    assert wf_input.available_revenue_funds == pytest.approx(
-        500_000_000.0 * 0.04 * (12 / 12.0)
-    )
-    assert wf_input.available_principal_funds == pytest.approx(
-        500_000_000.0 * 0.10 * (12 / 12.0)
-    )
+    # The fold seeded from the sponsor's structure / pool, not Green Lion's.
+    seed = body["projections"]["base"]["periods"][0]
+    assert seed["class_a_balance"] == 480_000_000.0
+    assert seed["class_b_balance"] == 15_000_000.0
+    assert seed["class_c_balance"] == 5_000_000.0
+    assert seed["pool_balance_eur"] == 500_000_000.0
 
 
 # ---------------------------------------------------------------------------
@@ -1479,13 +1436,16 @@ def _read_audit_entries(log_dir: Path) -> list[dict]:
     return entries
 
 
-def test_deal_project_writes_audit_entries(tmp_path):
-    """A real (un-mocked) deterministic REST primitive call emits AuditLogEntry.
+def test_deal_project_no_longer_audits_waterfall_runner(tmp_path):
+    """/project folds the engine forward; it no longer calls ``WaterfallRunner``.
 
-    The audit_logger primitive claims "every primitive call gets an audit entry";
-    this drives the un-mocked `/project` waterfall path (pure math, no network)
-    and asserts a real `AuditLogEntry` lands under the patched audit log dir,
-    carrying the provenance fields the catalogue advertises.
+    Before #275 the faked single-period path ran one ``WaterfallRunner.execute``
+    per scenario through ``_audit``, leaving ``waterfall_runner`` audit entries.
+    /project now runs the ``ScenarioGenerator → run_period`` fold (the same
+    engine history uses), which is not routed through the REST ``_audit`` hook —
+    so no ``waterfall_runner`` audit entry is written by this endpoint. This
+    documents that deliberate change (the per-call audit coverage for the
+    reconstruction loop is asserted separately below).
     """
     with patch("loanwhiz.api.main.API_AUDIT_LOG_DIR", str(tmp_path)):
         resp = client.post(
@@ -1495,16 +1455,7 @@ def test_deal_project_writes_audit_entries(tmp_path):
     assert resp.status_code == 200
 
     entries = _read_audit_entries(tmp_path)
-    # One waterfall run per requested scenario → at least two audit entries.
-    assert len(entries) >= 2
-    for entry in entries:
-        assert entry["primitive_name"] == "waterfall_runner"
-        # Full provenance the audit_logger catalogue claim advertises.
-        assert len(entry["input_hash"]) == 64
-        assert len(entry["output_hash"]) == 64
-        assert 0.0 <= entry["confidence"] <= 1.0
-        assert "executed_at" in entry
-        assert isinstance(entry["human_review_required"], bool)
+    assert not any(e.get("primitive_name") == "waterfall_runner" for e in entries)
 
 
 def test_reconstruct_series_audits_collections_aggregator(tmp_path):
