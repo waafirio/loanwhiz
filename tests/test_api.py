@@ -1571,7 +1571,10 @@ def test_reconstruct_series_audits_collections_aggregator(tmp_path):
     ), patch(
         "loanwhiz.api.main.reconstruct_period_series", return_value=fake_series
     ):
-        api_main._reconstruct_series(deal)
+        # Green Lion 2026-1 id so _resolve_structural_config resolves via the
+        # labelled GL last-resort fallback (the deal stub carries no structural
+        # config); the tape path is the one under test here.
+        api_main._reconstruct_series(api_main._GREEN_LION_DEAL_ID, deal)
 
     api_main._RECONSTRUCTION_MEMO.clear()
 
@@ -2217,3 +2220,219 @@ def test_waterfall_self_configured_non_gl_deal_does_not_consult_green_lion(tmp_p
     assert captured["capital_structure"]["class_a_balance"] != api_main._GREEN_LION_CLASS_A_BALANCE
     assert captured["reserve_target"] != api_main._GREEN_LION_RESERVE_TARGET
     assert captured["original_pool_balance"] != api_main._GREEN_LION_ORIGINAL_POOL_BALANCE
+
+
+# ---------------------------------------------------------------------------
+# Adapter selection + cold-start GL-2024-1 + not-modelable (#269)
+#
+# `_reconstruct_series` selects the ingestion adapter per deal: a deal with loan
+# tapes uses the tape path; a deal with only published reports uses the
+# report-driven path (ReportAdapter -> run_period fold, seeded from the report);
+# a deal with neither is "not modelable" (a labelled 422, not a silent empty
+# cascade). The headline is cold-starting Green Lion 2024-1 (no tape) through the
+# live /waterfall + /compliance endpoints, offline, with no Green-Lion-2026-1
+# fallback consulted. To-the-cent reconciliation is the next child (#270).
+# ---------------------------------------------------------------------------
+
+# The real committed seed dir (the autouse fixture patches the module attribute to
+# an empty tmp dir, so the report path's _load_cached_deal_model would otherwise
+# miss the GL-2024-1 model and report "not modelable").
+import loanwhiz.api.main as api_main  # noqa: E402
+
+_REAL_SEED_DIR = str(
+    Path(api_main.__file__).resolve().parents[1] / "data" / "deals" / "seed"
+)
+
+
+def test_reconstruct_series_selects_tape_path_for_tape_deal():
+    """A deal with non-empty ``tape_urls`` routes to the tape builder."""
+    sentinel = object()
+    api_main._RECONSTRUCTION_MEMO.clear()
+    with patch.object(
+        api_main, "_reconstruct_series_from_tapes", return_value=sentinel
+    ) as tapes, patch.object(
+        api_main, "_reconstruct_series_from_reports"
+    ) as reports:
+        result = api_main._reconstruct_series(
+            "d", {"tape_urls": [{"date": "2024-01-31", "url": "x"}]}
+        )
+    assert result is sentinel
+    tapes.assert_called_once()
+    reports.assert_not_called()
+
+
+def test_reconstruct_series_selects_report_path_for_report_only_deal():
+    """A deal with no tape but a Notes & Cash report set routes to the report builder."""
+    sentinel = object()
+    api_main._RECONSTRUCTION_MEMO.clear()
+    with patch.object(
+        api_main, "_reconstruct_series_from_reports", return_value=sentinel
+    ) as reports, patch.object(
+        api_main, "_reconstruct_series_from_tapes"
+    ) as tapes:
+        result = api_main._reconstruct_series(
+            "d",
+            {
+                "tape_urls": [],
+                "notes_cash_report_urls": [{"period": "Q1", "url": "r"}],
+            },
+        )
+    assert result is sentinel
+    reports.assert_called_once()
+    tapes.assert_not_called()
+
+
+def test_reconstruct_series_not_modelable_for_no_inputs_deal():
+    """A deal with neither tape nor reports raises a labelled 422 (not modelable)."""
+    from fastapi import HTTPException
+
+    api_main._RECONSTRUCTION_MEMO.clear()
+    with pytest.raises(HTTPException) as exc:
+        api_main._reconstruct_series("orphan", {"tape_urls": []})
+    assert exc.value.status_code == 422
+    assert "not modelable" in exc.value.detail
+    assert "orphan" in exc.value.detail
+
+
+def test_no_inputs_deal_waterfall_returns_422_not_modelable():
+    """``/waterfall`` for a deal with no tape and no reports degrades honestly (422)."""
+    augmented = dict(api_main.DEALS)
+    augmented["orphan-2025"] = {
+        "deal_name": "Orphan 2025 B.V.",
+        "prospectus_url": "https://example.test/orphan.pdf",
+        "tape_urls": [],
+        "investor_report_urls": [],
+    }
+    api_main._RECONSTRUCTION_MEMO.clear()
+    with patch.object(api_main, "DEALS", augmented):
+        resp = client.get("/deal/orphan-2025/waterfall")
+    assert resp.status_code == 422
+    assert "not modelable" in resp.json()["detail"]
+
+
+def test_report_deal_without_committed_model_is_not_modelable():
+    """A report-listed deal with no committed model / offline loader is 422 (not 200 empty).
+
+    Leone Arancio has a ``notes_cash_report_urls`` list but no committed extracted
+    model and no offline report loader, so it cannot be cold-started in the request
+    path (we never fetch a PDF live) — surfaced honestly as not-modelable rather
+    than a silent empty cascade.
+    """
+    api_main._RECONSTRUCTION_MEMO.clear()
+    resp = client.get("/deal/leone-arancio-2023-1/waterfall")
+    assert resp.status_code == 422
+    assert "not modelable" in resp.json()["detail"]
+
+
+def test_green_lion_2024_1_cold_start_waterfall():
+    """GL-2024-1 (no tape) cold-starts through /waterfall via the report path, offline.
+
+    Reads the committed seed model + the committed Notes & Cash fixture (no
+    network), folds the report-driven series, and serves a NON-EMPTY cascade with
+    the engine-computed Class A interest line — the headline cold-start.
+    """
+    api_main._RECONSTRUCTION_MEMO.clear()
+    with patch("loanwhiz.api.main.DEAL_MODEL_SEED_DIR", _REAL_SEED_DIR):
+        resp = client.get("/deal/green-lion-2024-1/waterfall")
+    assert resp.status_code == 200, resp.json()
+    body = resp.json()
+    assert body["deal_id"] == "green-lion-2024-1"
+    # A real report-driven cascade: revenue steps executed and a non-empty
+    # available-funds figure (the report's published available revenue).
+    assert body["revenue_waterfall"], "report-driven waterfall is empty"
+    assert body["available_revenue_funds"] > 0.0
+    # The engine COMPUTED the Class A interest line (not a report-supplied
+    # placeholder) — the proof the report path runs the real engine.
+    class_a = next(
+        td for td in body["tranche_distributions"] if td["tranche"] == "class_a"
+    )
+    assert class_a["interest_received"] > 0.0
+    assert class_a["opening_balance"] > 0.0
+
+
+def test_green_lion_2024_1_cold_start_compliance():
+    """GL-2024-1 cold-starts through /compliance via the report-driven series, offline."""
+    api_main._RECONSTRUCTION_MEMO.clear()
+    with patch("loanwhiz.api.main.DEAL_MODEL_SEED_DIR", _REAL_SEED_DIR):
+        resp = client.get("/deal/green-lion-2024-1/compliance")
+    assert resp.status_code == 200, resp.json()
+    body = resp.json()
+    # The monitor ran over the report-driven series (its standard output shape).
+    assert "summary" in body
+    assert "trigger_statuses" in body
+
+
+def test_green_lion_2024_1_cold_start_consults_no_green_lion_fallback():
+    """The GL-2024-1 cold-start uses its own model, never the _GREEN_LION_* fallback.
+
+    ``_resolve_structural_config`` / ``_resolve_projection_base`` are the ONLY
+    paths that read the Green-Lion-2026-1 last-resort constants. The report path
+    seeds from the report and folds the extracted steps, so it must never call
+    them — that is the design spec's honesty success criterion (zero GL-2026-1
+    constants consulted for a cold-started deal).
+    """
+    api_main._RECONSTRUCTION_MEMO.clear()
+    with patch("loanwhiz.api.main.DEAL_MODEL_SEED_DIR", _REAL_SEED_DIR), patch.object(
+        api_main, "_resolve_structural_config"
+    ) as resolve_struct, patch.object(
+        api_main, "_resolve_projection_base"
+    ) as resolve_proj:
+        resp = client.get("/deal/green-lion-2024-1/waterfall")
+    assert resp.status_code == 200, resp.json()
+    resolve_struct.assert_not_called()
+    resolve_proj.assert_not_called()
+
+
+def test_report_path_seed_bridge_maps_every_field():
+    """The domain->primitives seed bridge maps every field, no value invented."""
+    from loanwhiz.domain.state import DealState as DomainDealState, TrancheState
+
+    domain_seed = DomainDealState(
+        reporting_date="2025-09-30",
+        tranches=[
+            TrancheState(name="class_a", balance=900.0, pdl_balance=1.0),
+            TrancheState(name="class_b", balance=80.0, pdl_balance=2.0),
+            TrancheState(name="class_c", balance=20.0, pdl_balance=3.0),
+        ],
+        reserve_balance=10.0,
+        reserve_target=12.0,
+        pool_balance=1000.0,
+        original_pool_balance=1100.0,
+        cumulative_losses=5.0,
+        sequential_pay_active=False,
+    )
+    seed = api_main._primitives_seed_from_report_seed(domain_seed)
+    assert seed.reporting_date == "2025-09-30"
+    assert (seed.class_a_balance, seed.class_b_balance, seed.class_c_balance) == (
+        900.0,
+        80.0,
+        20.0,
+    )
+    assert (seed.class_a_pdl, seed.class_b_pdl, seed.class_c_pdl) == (1.0, 2.0, 3.0)
+    assert seed.reserve_balance == 10.0
+    assert seed.reserve_target == 12.0
+    assert seed.pool_balance == 1000.0
+    assert seed.original_pool_balance == 1100.0
+    assert seed.cumulative_losses == 5.0
+
+
+def test_green_lion_2026_1_still_uses_tape_path():
+    """The in-code Green Lion 2026-1 (has tapes) still selects the tape builder.
+
+    Regression guard for the adapter-selection refactor: the tape deal must route
+    to ``_reconstruct_series_from_tapes`` (its output is unchanged), never the new
+    report path.
+    """
+    sentinel = object()
+    api_main._RECONSTRUCTION_MEMO.clear()
+    with patch.object(
+        api_main, "_reconstruct_series_from_tapes", return_value=sentinel
+    ) as tapes, patch.object(
+        api_main, "_reconstruct_series_from_reports"
+    ) as reports:
+        result = api_main._reconstruct_series(
+            "green-lion-2026-1", api_main.DEALS["green-lion-2026-1"]
+        )
+    assert result is sentinel
+    tapes.assert_called_once()
+    reports.assert_not_called()
