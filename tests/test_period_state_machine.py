@@ -437,3 +437,216 @@ def test_full_tape_history_chain_preserves_identity() -> None:
     for state, (date, pool) in zip(series.states, tapes):
         assert state.reporting_date == date
         assert math.isclose(state.pool_balance, pool, abs_tol=0.01)
+
+
+# ===========================================================================
+# 4. Canonical PeriodInputs generalisation (#265)
+# ===========================================================================
+#
+# run_period is generalised to consume the canonical, adapter-agnostic
+# domain.PeriodInputs (step_overrides / step_sources) in addition to the legacy
+# tape-only PeriodInput. The headline guard: a tape-source PeriodInputs with
+# legs present and empty overrides produces a DealStateSeries byte-for-byte
+# identical to the legacy PeriodInput path (GL-2026-1 regression lock).
+
+from loanwhiz.domain import PeriodInputs  # noqa: E402
+from loanwhiz.domain.inputs import CollectionLegs  # noqa: E402
+from loanwhiz.primitives.waterfall_interpreter import StepSpec  # noqa: E402
+
+
+def _legacy_to_canonical_tape(period: PeriodInput) -> PeriodInputs:
+    """Map a legacy tape PeriodInput → an equivalent tape-source PeriodInputs.
+
+    Legs carry the full per-leg breakdown (tape path); the aggregate available
+    funds are derived from the legs exactly as the kernel does today. Empty
+    step_overrides → the engine must behave identically to the legacy path.
+    """
+    c = period.collections
+    return PeriodInputs(
+        reporting_date=period.reporting_date,
+        days_in_period=period.days_in_period,
+        available_revenue=c.interest,
+        available_principal=c.scheduled_principal + c.prepayment + c.recovery,
+        realized_loss=c.realized_loss,
+        legs=CollectionLegs(
+            interest=c.interest,
+            scheduled_principal=c.scheduled_principal,
+            prepayment=c.prepayment,
+            recovery=c.recovery,
+            realized_loss=c.realized_loss,
+        ),
+        source="tape",
+    )
+
+
+def test_gl2026_tape_path_byte_for_byte_unchanged() -> None:
+    """REGRESSION LOCK: empty-overrides tape PeriodInputs == legacy PeriodInput.
+
+    The spec's headline guard for migration step 1 — generalising run_period must
+    not perturb the GL-2026-1 tape path. We thread the same synthetic GL-2026-1
+    chain through (a) the legacy PeriodInput path and (b) a canonical, tape-source
+    PeriodInputs (legs present, empty step_overrides), and assert the resulting
+    DealStateSeries is byte-for-byte identical (states + per-period executions +
+    trigger evaluations).
+    """
+    legacy_periods = _synthetic_periods()
+    canonical_periods = [_legacy_to_canonical_tape(p) for p in legacy_periods]
+
+    common = dict(
+        capital_structure=_CAP_STRUCTURE,
+        reserve_target=_RESERVE_TARGET,
+        original_pool_balance=_ORIGINAL_POOL,
+        opening_pool_balance=_ORIGINAL_POOL,
+        seed_reporting_date="2026-01-31",
+    )
+    legacy_series = reconstruct_period_series(periods=legacy_periods, **common)
+    canonical_series = reconstruct_period_series(periods=canonical_periods, **common)
+
+    # Byte-for-byte: serialise both series and compare. This covers the full
+    # state chain, every waterfall execution trace, and every trigger evaluation.
+    assert legacy_series.model_dump_json() == canonical_series.model_dump_json()
+
+
+def test_run_period_canonical_tape_equals_legacy_single_period() -> None:
+    """A single run_period over a tape PeriodInputs == over the legacy PeriodInput."""
+    opening = _clean_state(reporting_date="2026-01-31")
+    legacy = _synthetic_periods()[1]  # carries a 500k loss
+    canonical = _legacy_to_canonical_tape(legacy)
+    rates = {k: v for k, v in _CAP_STRUCTURE.items() if k.endswith("rate_pct")}
+
+    legacy_result = run_period(opening, legacy, rates=rates)
+    canonical_result = run_period(opening, canonical, rates=rates)
+    assert legacy_result.model_dump_json() == canonical_result.model_dump_json()
+
+
+def test_run_period_report_step_override_is_distributed() -> None:
+    """A report-supplied step_override amount is distributed for its step.
+
+    On the report path the engine has no formula for some lines (fees, swaps), so
+    PeriodInputs.step_overrides carries the reported amount keyed by priority
+    label. run_period must translate that (priority -> recipient) and feed it to
+    the interpreter so the step distributes the reported figure.
+    """
+    opening = _clean_state(reporting_date="2026-01-31")
+    rates = {k: v for k, v in _CAP_STRUCTURE.items() if k.endswith("rate_pct")}
+
+    # A minimal revenue waterfall: a report-supplied senior-fees step (no engine
+    # formula need to match) followed by an engine-computed Class A interest step.
+    revenue_steps = [
+        StepSpec(priority="(a)", recipient="senior_fees"),
+        StepSpec(priority="(b)", recipient="class_a_interest"),
+    ]
+    reported_fee = 123_456.0
+    period = PeriodInputs(
+        reporting_date="2026-02-28",
+        days_in_period=28,
+        available_revenue=5_000_000.0,
+        available_principal=0.0,
+        realized_loss=0.0,
+        step_overrides={"(a)": reported_fee},
+        step_sources={"(a)": "reported", "(b)": "engine"},
+        source="report",
+    )
+    result = run_period(
+        opening,
+        period,
+        rates=rates,
+        revenue_steps=revenue_steps,
+        redemption_steps=[],
+    )
+    # The report-supplied fee was distributed exactly as reported (not 0, not the
+    # engine's senior_fees=0 default).
+    assert math.isclose(
+        result.revenue_execution.distributed_to("senior_fees"), reported_fee, abs_tol=0.01
+    )
+    # The engine-computed Class A interest step still ran (non-zero need).
+    assert result.revenue_execution.distributed_to("class_a_interest") > 0.0
+
+
+def test_run_period_report_clears_extracted_condition() -> None:
+    """A report-sourced step's extracted condition is NOT re-applied.
+
+    The report is the post-resolution actual: re-gating a step the report already
+    paid would double-count. So a step carrying a condition that would normally
+    suppress it (sequential-pay inactive on a clean state) must still pay on the
+    report path, because run_period clears the condition for report-sourced steps.
+    """
+    opening = _clean_state(reporting_date="2026-01-31")  # clean → seq-pay inactive
+    rates = {k: v for k, v in _CAP_STRUCTURE.items() if k.endswith("rate_pct")}
+
+    # This step would be GATED on the tape path: "if Sequential Pay Trigger is in
+    # effect" is False on a clean state, so the interpreter would suppress it.
+    gated_step = StepSpec(
+        priority="(a)",
+        recipient="class_b_principal",
+        condition="if the Sequential Pay Trigger is in effect",
+    )
+    reported_amt = 250_000.0
+    period = PeriodInputs(
+        reporting_date="2026-02-28",
+        days_in_period=28,
+        available_revenue=0.0,
+        available_principal=1_000_000.0,
+        realized_loss=0.0,
+        step_overrides={"(a)": reported_amt},
+        step_sources={"(a)": "reported"},
+        source="report",
+    )
+    result = run_period(
+        opening,
+        period,
+        rates=rates,
+        revenue_steps=[],
+        redemption_steps=[gated_step],
+        principal_classes=(),  # no computed sequential/pro-rata alloc — use override
+    )
+    step = result.redemption_execution.steps[0]
+    # The condition was cleared → the step is NOT gated, and pays the reported
+    # amount.
+    assert step.gated is False
+    assert math.isclose(step.amount_distributed, reported_amt, abs_tol=0.01)
+
+
+def test_run_period_tape_path_keeps_condition_gating() -> None:
+    """A tape-path PeriodInputs (source='tape') KEEPS live condition gating.
+
+    The condition-clearing is report-only. On the tape path a sequential-pay
+    condition must still gate against the live trigger state — proving the
+    clearing doesn't leak into the tape path.
+    """
+    opening = _clean_state(reporting_date="2026-01-31")  # clean → seq-pay inactive
+    rates = {k: v for k, v in _CAP_STRUCTURE.items() if k.endswith("rate_pct")}
+
+    gated_step = StepSpec(
+        priority="(a)",
+        recipient="class_b_principal",
+        condition="if the Sequential Pay Trigger is in effect",
+    )
+    period = PeriodInputs(
+        reporting_date="2026-02-28",
+        days_in_period=28,
+        available_revenue=0.0,
+        available_principal=1_000_000.0,
+        realized_loss=0.0,
+        legs=CollectionLegs(
+            interest=0.0,
+            scheduled_principal=1_000_000.0,
+            prepayment=0.0,
+            recovery=0.0,
+            realized_loss=0.0,
+        ),
+        source="tape",  # tape path → conditions preserved
+    )
+    result = run_period(
+        opening,
+        period,
+        rates=rates,
+        revenue_steps=[],
+        redemption_steps=[gated_step],
+        principal_classes=("class_b",),
+    )
+    step = result.redemption_execution.steps[0]
+    # Clean state → sequential-pay inactive → the "in effect" condition is False →
+    # the step IS gated (suppressed) on the tape path.
+    assert step.gated is True
+    assert step.amount_distributed == 0.0
