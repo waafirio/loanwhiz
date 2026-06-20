@@ -18,6 +18,7 @@ from loanwhiz.agent.tools import (
     get_deal_model,
     list_deal_tapes,
     load_esma_tape,
+    project_cashflows,
     run_waterfall,
 )
 from loanwhiz.config import DEAL_REGISTRY
@@ -218,6 +219,97 @@ def test_run_waterfall_defaults_to_demo_deal():
         run_waterfall.invoke({})
 
     mock_recipe.assert_called_once_with(DEFAULT_DEAL_ID)
+
+
+# ---------------------------------------------------------------------------
+# project_cashflows (#319)
+#
+# These exercise the REAL engine fold end to end (the tool wraps the live
+# /project recipe over the Green Lion deal — no mock of the unit under test),
+# matching the planner's `integration` test-level contract for the projection
+# path.
+# ---------------------------------------------------------------------------
+
+
+def test_project_cashflows_returns_per_tranche_cashflows_and_wal():
+    """The tool returns per-scenario per-period tranche balances + principal
+    cashflows + per-tranche WAL, with full confidence on the deterministic fold."""
+    result = project_cashflows.invoke(
+        {"deal_id": "green-lion-2026-1", "scenarios": ["base"], "months": 6}
+    )
+    assert result["confidence"] == 1.0
+    assert "error" not in result
+    proj = result["projections"]["base"]
+    # Per-tranche principal cashflows present on each period (#319).
+    first_transition = proj["periods"][1]
+    for key in ("class_a_principal_eur", "class_b_principal_eur", "class_c_principal_eur"):
+        assert key in first_transition
+    # Per-tranche WAL present (#319) — A from #275, B/C added here.
+    wal = result["wal"]["base"]
+    for key in (
+        "wal_class_a_months",
+        "wal_class_b_months",
+        "wal_class_c_months",
+    ):
+        assert key in wal
+
+
+def test_project_cashflows_applies_custom_assumptions():
+    """Explicit CPR/CDR/recovery override the presets for every scenario — a
+    higher CDR / lower recovery yields strictly larger cumulative losses."""
+    base = project_cashflows.invoke(
+        {"deal_id": "green-lion-2026-1", "scenarios": ["base"], "months": 6}
+    )
+    stressed = project_cashflows.invoke(
+        {
+            "deal_id": "green-lion-2026-1",
+            "scenarios": ["base"],
+            "months": 6,
+            "cdr_pct": 8.0,
+            "recovery_pct": 20.0,
+        }
+    )
+    base_losses = base["projections"]["base"]["cumulative_losses"]
+    stressed_losses = stressed["projections"]["base"]["cumulative_losses"]
+    assert stressed_losses > base_losses
+
+
+def test_project_cashflows_bounds_long_horizon():
+    """A horizon beyond MAX_VERBATIM_PERIODS collapses per-period rows to
+    first/last while keeping the final-state + WAL summary."""
+    result = project_cashflows.invoke(
+        {"deal_id": "green-lion-2026-1", "scenarios": ["base"], "months": 24}
+    )
+    proj = result["projections"]["base"]
+    assert len(proj["periods"]) == 2  # first + last only
+    assert "periods_summarised" in proj
+    # Final-state + WAL still cover the full horizon.
+    assert "final_class_a_balance" in proj
+    assert "wal_class_a_months" in proj
+
+
+def test_project_cashflows_short_horizon_verbatim():
+    """At/under the bound the per-period rows are returned verbatim."""
+    result = project_cashflows.invoke(
+        {"deal_id": "green-lion-2026-1", "scenarios": ["base"], "months": 4}
+    )
+    proj = result["projections"]["base"]
+    assert len(proj["periods"]) == 5  # seed + 4 transitions, not summarised
+    assert "periods_summarised" not in proj
+
+
+def test_project_cashflows_unknown_deal_errors():
+    """A bad deal id returns a graceful tool error, not a crash."""
+    result = project_cashflows.invoke({"deal_id": "no-such-deal"})
+    assert result["confidence"] == 0.0
+    assert "error" in result
+
+
+def test_project_cashflows_defaults_to_demo_deal():
+    """With no deal_id the tool serves the default demo deal and both presets."""
+    result = project_cashflows.invoke({})
+    assert "error" not in result
+    assert set(result["projections"]) == {"base", "stress"}
 
 
 # ---------------------------------------------------------------------------
@@ -667,6 +759,7 @@ def test_sf_tools_has_expected_tools():
     assert tool_names == [
         "load_esma_tape",
         "run_waterfall",
+        "project_cashflows",
         "check_covenants",
         "aggregate_collections",
         "get_deal_model",
@@ -674,8 +767,8 @@ def test_sf_tools_has_expected_tools():
     ]
 
 
-def test_sf_tools_has_exactly_six_tools():
-    assert len(SF_TOOLS) == 6
+def test_sf_tools_has_exactly_seven_tools():
+    assert len(SF_TOOLS) == 7
 
 
 def test_sf_tool_node_is_tool_node_instance():
@@ -703,7 +796,7 @@ def test_sf_tools_all_have_invoke_method():
 def test_list_available_tools_returns_list_of_dicts():
     result = list_available_tools()
     assert isinstance(result, list)
-    assert len(result) == 6
+    assert len(result) == 7
 
 
 def test_list_available_tools_has_name_and_description():
