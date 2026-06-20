@@ -20,6 +20,7 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
+from loanwhiz.domain.esma_annex2 import locator_for
 from loanwhiz.primitives.base import (
     AuditEntry,
     BaseInput,
@@ -93,6 +94,27 @@ _METRIC_ALIASES: dict[str, str] = {
     "pool_balance_fraction": "pool_balance_pct",
     "pool_factor": "pool_balance_pct",
     "pool_balance_ratio": "pool_balance_pct",
+    # ---- Tape-native (B7) signals — arrears / LTV ----
+    # These resolve onto the metric keys the ESMA tape normaliser already
+    # emits (``pool_stats.wtd_ltv``, ``arrears_breakdown.arrears_180d_plus_pct``
+    # / ``default_pct``), so the tape-native triggers below key on the tape's
+    # own pool analytics with no plumbing change to ``_extract_metric`` (which
+    # already searches the nested ``pool_stats`` / ``arrears_breakdown`` dicts).
+    # Weighted-average LTV synonyms → the normaliser's ``wtd_ltv`` pool stat.
+    "wa_ltv": "wtd_ltv",
+    "weighted_average_ltv": "wtd_ltv",
+    "weighted_avg_ltv": "wtd_ltv",
+    "pool_wa_ltv": "wtd_ltv",
+    "current_ltv_pct": "wtd_ltv",
+    # Severe-arrears synonyms → the normaliser's 180+d arrears bucket pct.
+    "arrears_severe_pct": "arrears_180d_plus_pct",
+    "arrears_180d_pct": "arrears_180d_plus_pct",
+    "severe_arrears_pct": "arrears_180d_plus_pct",
+    # Default-rate synonyms → the tape's defaulted-balance arrears bucket pct.
+    # (Distinct from ``cumulative_loss_rate_pct``: this is the tape's current
+    # default *flag* proportion, not realised structural loss.)
+    "tape_default_pct": "default_pct",
+    "default_rate_pct": "default_pct",
 }
 
 
@@ -626,6 +648,102 @@ class CovenantMonitor(Primitive[CovenantInput, CovenantOutput]):
                     "all Notes once the Outstanding Principal Balance of the "
                     "Mortgage Receivables is less than 10% of the Original "
                     "Principal Balance."
+                ),
+            ),
+        ),
+    ]
+
+    # ---- Tape-native (B7) covenant triggers ----------------------------------
+    #
+    # Pool-risk early-warning triggers sourced directly from the ESMA loan tape
+    # (arrears severity, default rate, weighted-average LTV) rather than from the
+    # deal's contractual structural state. They are a SEPARATE composable list,
+    # NOT folded into ``DEFAULT_TRIGGERS`` — adding them to the GL-2026-1 defaults
+    # would change that deal's covenant output and break its regression locks.
+    # A caller monitors tape-native risk by passing
+    # ``CovenantMonitor.DEFAULT_TRIGGERS + CovenantMonitor.TAPE_NATIVE_TRIGGERS``
+    # (or just the tape-native list) as ``CovenantInput.triggers``.
+    #
+    # Each keys on a metric the ESMA tape normaliser already emits — the
+    # ``_METRIC_ALIASES`` rows above resolve common synonyms onto these tape
+    # keys, and ``_extract_metric`` already searches the nested ``pool_stats`` /
+    # ``arrears_breakdown`` dicts — so no metric-resolution plumbing changes.
+    # Citations are anchored to the ESMA RTS Annex 2 RREL field the signal comes
+    # from (``esma_annex2.locator_for``), not to a prospectus section.
+    TAPE_NATIVE_TRIGGERS: list[TriggerDefinition] = [
+        TriggerDefinition(
+            name="severe_arrears_trigger",
+            description=(
+                "Tape-native arrears trigger: share of the pool 180+ days in "
+                "arrears exceeds a threshold (early-warning of credit "
+                "deterioration). Keys on the tape's "
+                "``arrears_breakdown.arrears_180d_plus_pct``."
+            ),
+            metric="arrears_severe_pct",
+            threshold=5.0,
+            direction="above",
+            consequence=(
+                "Rising severe arrears signal deteriorating pool credit quality "
+                "ahead of realised losses; a leading indicator for the structural "
+                "loss / sequential-pay triggers."
+            ),
+            citation=Citation(
+                document="ESMA RTS Annex 2 (RMBS)",
+                page_or_row=locator_for("arrears_bucket") or "RREL64 · arrears bucket",
+                excerpt=(
+                    "Share of the underlying-exposure pool in the 180+ days "
+                    "arrears bucket, derived from the ESMA Annex 2 arrears fields."
+                ),
+            ),
+        ),
+        TriggerDefinition(
+            name="tape_default_rate_trigger",
+            description=(
+                "Tape-native default-rate trigger: share of the pool flagged in "
+                "default on the tape exceeds a threshold. Distinct from the "
+                "structural cumulative-loss trigger — this is the tape's current "
+                "default *flag* proportion, not realised loss. Keys on "
+                "``arrears_breakdown.default_pct``."
+            ),
+            metric="tape_default_pct",
+            threshold=3.0,
+            direction="above",
+            consequence=(
+                "Elevated current-default share warns of pool stress before those "
+                "defaults crystallise into realised losses in the cashflow."
+            ),
+            citation=Citation(
+                document="ESMA RTS Annex 2 (RMBS)",
+                page_or_row=locator_for("default_status") or "RREL66 · default status",
+                excerpt=(
+                    "Share of underlying exposures flagged as defaulted / "
+                    "credit-impaired per the ESMA Annex 2 default-status field."
+                ),
+            ),
+        ),
+        TriggerDefinition(
+            name="weighted_average_ltv_trigger",
+            description=(
+                "Tape-native LTV trigger: balance-weighted average current "
+                "loan-to-value of the pool exceeds a threshold (collateral-cover "
+                "deterioration). Keys on the tape's ``pool_stats.wtd_ltv``."
+            ),
+            metric="wa_ltv",
+            threshold=80.0,
+            direction="above",
+            consequence=(
+                "A high weighted-average LTV means thinner collateral cover, "
+                "raising loss-given-default if the pool deteriorates."
+            ),
+            citation=Citation(
+                document="ESMA RTS Annex 2 (RMBS)",
+                page_or_row=(
+                    locator_for("current_loan_to_value")
+                    or "RREL40 · current loan-to-value"
+                ),
+                excerpt=(
+                    "Balance-weighted average current loan-to-value of the pool, "
+                    "derived from the ESMA Annex 2 current-LTV field."
                 ),
             ),
         ),
