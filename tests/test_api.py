@@ -1362,7 +1362,7 @@ def test_primitives_registry_fully_populated():
 
     The deal endpoints only import four primitives; the catalogue must still
     include the ones registered solely via the /primitives import side effects
-    (e.g. report_verifier, cashflow_projector, audit_logger).
+    (e.g. report_verifier, audit_logger).
     """
     resp = client.get("/primitives")
     assert resp.status_code == 200
@@ -1373,7 +1373,6 @@ def test_primitives_registry_fully_populated():
         "covenant_monitor",
         "collections_aggregator",
         "report_verifier",
-        "cashflow_projector",
         "audit_logger",
     } <= names
 
@@ -1394,10 +1393,11 @@ def test_primitives_reachability_marks_live_vs_library_only():
 
     The four data primitives — each called by a REST endpoint AND exposed as a
     LangGraph agent tool — plus `audit_logger` (now wired into the REST primitive
-    path) are marked `live`. `cashflow_projector` / `report_verifier` /
-    `multi_period_waterfall_runner` are registered (so they appear in the
-    catalogue) but reached by no endpoint or agent tool, so they are
-    `library-only` — nothing is advertised as live that a client can't reach.
+    path) are marked `live`. `report_verifier` is registered (so it appears in the
+    catalogue) but reached by no endpoint or agent tool, so it is `library-only` —
+    nothing is advertised as live that a client can't reach. (The duplicate
+    engines `cashflow_projector` / `multi_period_waterfall_runner` were deleted in
+    #276, so they no longer appear in the catalogue at all.)
     """
     resp = client.get("/primitives")
     assert resp.status_code == 200
@@ -1412,12 +1412,12 @@ def test_primitives_reachability_marks_live_vs_library_only():
     ):
         assert by_name[name] == "live", f"{name} should be live"
 
-    for name in (
-        "cashflow_projector",
-        "report_verifier",
-        "multi_period_waterfall_runner",
-    ):
+    for name in ("report_verifier",):
         assert by_name[name] == "library-only", f"{name} should be library-only"
+
+    # The deleted duplicate engines must not reappear in the catalogue.
+    assert "cashflow_projector" not in by_name
+    assert "multi_period_waterfall_runner" not in by_name
 
 
 # ---------------------------------------------------------------------------

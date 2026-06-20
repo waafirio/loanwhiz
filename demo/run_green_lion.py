@@ -662,24 +662,32 @@ def section_covenant_monitor(metrics: dict[str, dict]) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Section 7 — Cashflow projection (live: CashflowProjector)
+# Section 7 — Cashflow projection (live: ScenarioGenerator → run_period fold)
 # ---------------------------------------------------------------------------
 
 def section_cashflow_projection(metrics: dict[str, dict]) -> None:
     section("7. CASHFLOW PROJECTION")
 
-    from loanwhiz.primitives.cashflow_projector import (
-        CashflowProjector,
-        CashflowProjectorInput,
+    # The old standalone CashflowProjector duplicate engine was deleted (#276);
+    # projection is now the SAME fold as history — a ScenarioGenerator stream
+    # rolled forward through period_state_machine.run_period (#275), with a real
+    # Class A WAL falling out of the engine-computed amortisation (no faked
+    # horizon scaling).
+    from loanwhiz.primitives.deal_state import DealState
+    from loanwhiz.primitives.period_state_machine import run_period
+    from loanwhiz.primitives.scenario_generator import (
+        ScenarioAssumptions,
+        ScenarioGenerator,
     )
 
     dates = list(metrics.keys())
     current_pool = float(metrics[dates[-1]]["total_balance"])
+    months = 12
 
     print(
-        "\n  12-month forward projection (CashflowProjector) under base and stress\n"
-        "  scenarios, iterating the waterfall runner monthly over the current\n"
-        "  Green Lion capital structure."
+        "\n  12-month forward projection under base and stress scenarios, folding a\n"
+        "  ScenarioGenerator stream through the one engine (run_period) over the\n"
+        "  current Green Lion capital structure."
     )
     print(f"\n  Current pool balance:  {_fmt_eur(current_pool)}")
     print(
@@ -688,36 +696,57 @@ def section_cashflow_projection(metrics: dict[str, dict]) -> None:
         f"  C {_fmt_eur(CAPITAL_STRUCTURE['class_c_balance'])}"
     )
 
-    projector = CashflowProjector()
-    result = projector.execute(
-        CashflowProjectorInput(
-            current_pool_balance=current_pool,
-            current_class_a_balance=CAPITAL_STRUCTURE["class_a_balance"],
-            current_class_b_balance=CAPITAL_STRUCTURE["class_b_balance"],
-            current_class_c_balance=CAPITAL_STRUCTURE["class_c_balance"],
-            class_a_rate_pct=CAPITAL_STRUCTURE["class_a_rate_pct"],
-            reserve_fund_balance=CAPITAL_STRUCTURE["reserve_account_balance"],
-            # default scenarios = base + 2x-default/+100bps stress (12 months)
-        )
+    seed = DealState(
+        reporting_date=dates[-1],
+        class_a_balance=CAPITAL_STRUCTURE["class_a_balance"],
+        class_b_balance=CAPITAL_STRUCTURE["class_b_balance"],
+        class_c_balance=CAPITAL_STRUCTURE["class_c_balance"],
+        reserve_balance=CAPITAL_STRUCTURE["reserve_account_balance"],
+        reserve_target=CAPITAL_STRUCTURE["reserve_account_balance"],
+        pool_balance=current_pool,
+        original_pool_balance=current_pool if current_pool > 0 else 1.0,
     )
-    out = result.output
 
-    print(f"\n  Scenario projections ({result.confidence:.0%} confidence):")
+    # base + a 2x-default / +100bps stress scenario.
+    scenarios = [
+        ScenarioAssumptions(name="base"),
+        ScenarioAssumptions(name="stress", cdr_pct=0.06, rate_shift_bps=100.0),
+    ]
+    generator = ScenarioGenerator()
+    rate_pct = CAPITAL_STRUCTURE["class_a_rate_pct"]
+
+    print("\n  Scenario projections (100% confidence — deterministic fold):")
     print("  " + "-" * 74)
     print(
-        f"    {'Scenario':<10}  {'WAL (Class A)':>14}  {'Class A 12m':>16}  "
+        f"    {'Scenario':<10}  {'WAL (Class A)':>14}  {'Class A redeemed':>18}  "
         f"{'Pool @ M12':>16}"
     )
     print("  " + "-" * 74)
-    for sp in out.scenario_projections:
-        wal_yr = sp.wal_class_a_months / 12.0
-        pool_m12 = sp.periods[-1].pool_balance_eur if sp.periods else 0.0
+    for assumptions in scenarios:
+        inputs = generator.generate(
+            seed, assumptions=assumptions, rate_pct=rate_pct, months=months
+        )
+        state = seed
+        wal_numerator = 0.0
+        class_a_redeemed = 0.0
+        for month_index, period in enumerate(inputs, start=1):
+            result = run_period(
+                state, period, rates={"class_a_rate_pct": rate_pct}
+            )
+            redeemed = result.redemption_execution.distributed_to("class_a_principal")
+            class_a_redeemed += redeemed
+            wal_numerator += month_index * redeemed
+            state = result.closing_state
+        wal_months = (wal_numerator / class_a_redeemed) if class_a_redeemed else 0.0
         print(
-            f"    {sp.scenario.name:<10}  {wal_yr:>10.1f} yr  "
-            f"{_m(sp.total_class_a):>16}  {_fmt_eur(pool_m12):>16}"
+            f"    {assumptions.name:<10}  {wal_months / 12.0:>10.1f} yr  "
+            f"{_m(class_a_redeemed):>18}  {_fmt_eur(state.pool_balance):>16}"
         )
     print("  " + "-" * 74)
-    print(f"\n  {out.summary}")
+    print(
+        "\n  Projection and history share one engine — there is no second waterfall,"
+        "\n  so the projected series cannot structurally diverge from the historical one."
+    )
 
 
 # ---------------------------------------------------------------------------

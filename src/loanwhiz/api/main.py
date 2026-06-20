@@ -19,8 +19,10 @@ with one consistent CDR↔SMM decomposition — #275) and that stream is folded
 through ``period_state_machine.run_period``. This replaces the prior faked
 single-period collection-haircut sensitivity; projection is now the same fold as
 history, with a real Class A WAL falling out of the engine-computed amortisation.
-The legacy ``CashflowProjector`` / single-period ``WaterfallRunner`` projection
-path is no longer reached here (the module's physical removal is sibling #276).
+The legacy ``CashflowProjector`` and the standalone ``MultiPeriodWaterfallRunner``
+duplicate engines were deleted in #276; the registered ``waterfall_runner``
+primitive survives only as a thin single-period MCP-tool wrapper over
+``run_period``. There is now one engine.
 """
 
 from __future__ import annotations
@@ -85,9 +87,11 @@ from loanwhiz.primitives.waterfall_interpreter import StepSpec
 from loanwhiz.primitives.registry import PRIMITIVE_REGISTRY
 
 # ``waterfall_runner`` is imported for its ``@register_primitive`` side effect
-# (it populates PRIMITIVE_REGISTRY for ``GET /primitives``). ``/project`` no
-# longer calls it — it folds a ``ScenarioGenerator`` stream through
-# ``run_period`` (#275) — so the symbols themselves are unused here; the noqa
+# (it populates PRIMITIVE_REGISTRY for ``GET /primitives``). The registered
+# ``waterfall_runner`` primitive is now a thin wrapper over ``run_period`` (#276);
+# ``/project`` folds a ``ScenarioGenerator`` stream through ``run_period`` (#275)
+# and does not call it. The ``WaterfallRunner`` symbol is kept in this namespace
+# because it is the MCP tool's class and existing tests patch it here; the noqa
 # keeps the registration import without a lint failure.
 from loanwhiz.primitives.waterfall_runner import (  # noqa: F401  (registration side effect)
     WaterfallInput,
@@ -98,13 +102,12 @@ from loanwhiz.primitives.waterfall_runner import (  # noqa: F401  (registration 
 # PRIMITIVE_REGISTRY is fully populated for GET /primitives. Primitives register
 # on import; the four imported above (collections_aggregator, covenant_monitor,
 # esma_tape_normaliser, waterfall_runner) are already covered, so this pulls in
-# the rest (audit_logger, cashflow_projector, report_verifier, waterfall_state).
+# the rest (audit_logger, report_verifier). The duplicate-engine modules
+# (cashflow_projector, waterfall_state) were deleted in #276.
 # Imported for the registration side effect only — hence the noqa.
 from loanwhiz.primitives import (  # noqa: F401  (registration side effects)
     audit_logger,
-    cashflow_projector,
     report_verifier,
-    waterfall_state,
 )
 from loanwhiz.primitives.audit_logger import audit_result
 from loanwhiz.primitives.base import Primitive, PrimitiveResult
@@ -206,13 +209,13 @@ def _audit(primitive: Primitive, primitive_input: object, result: PrimitiveResul
 # primitives are "live": each is called by a REST endpoint AND exposed as a
 # LangGraph agent tool (loanwhiz.agent.tools). `audit_logger` is "live" because
 # the deal endpoints now record audit entries through it (see _audit above).
-# The remaining primitives are "library-only": registered (so they appear in
+# The remaining primitive is "library-only": registered (so it appears in
 # the catalogue) and importable as library code, but reached by no endpoint or
-# agent tool — fully wiring cashflow_projector / report_verifier (and the
-# multi-period waterfall runner) is a spine / seasoned-deal concern out of this
-# issue's scope. `GET /primitives` surfaces this so nothing is advertised as
-# live that a judge can't reach. Unknown / future primitives default to
-# "library-only" (the conservative, honest default).
+# agent tool — fully wiring report_verifier is a spine / seasoned-deal concern
+# out of this issue's scope. `GET /primitives` surfaces this so nothing is
+# advertised as live that a judge can't reach. Unknown / future primitives
+# default to "library-only" (the conservative, honest default). The duplicate
+# engines cashflow_projector / multi_period_waterfall_runner were deleted in #276.
 _REACHABILITY_LIVE = "live"
 _REACHABILITY_LIBRARY_ONLY = "library-only"
 _PRIMITIVE_REACHABILITY: dict[str, str] = {
@@ -221,9 +224,7 @@ _PRIMITIVE_REACHABILITY: dict[str, str] = {
     "covenant_monitor": _REACHABILITY_LIVE,
     "waterfall_runner": _REACHABILITY_LIVE,
     "audit_logger": _REACHABILITY_LIVE,
-    "cashflow_projector": _REACHABILITY_LIBRARY_ONLY,
     "report_verifier": _REACHABILITY_LIBRARY_ONLY,
-    "multi_period_waterfall_runner": _REACHABILITY_LIBRARY_ONLY,
 }
 
 
@@ -817,8 +818,9 @@ def _misconfigured_deal(deal_id: str, missing_key: str) -> HTTPException:
 # instead of the three divergent hardcoded snapshots they used before
 # (static tranche constants, reserve=0/0, pdl=0/0, a single seeded period-0
 # state). The old MultiPeriodWaterfallRunner / single-period WaterfallRunner
-# snapshot path is retired for these endpoints — WaterfallRunner survives only
-# for the forward /project scenario projector.
+# snapshot path is retired for these endpoints; those duplicate engines were
+# deleted in #276. The registered ``waterfall_runner`` survives only as the thin
+# MCP-tool wrapper over run_period.
 # ---------------------------------------------------------------------------
 
 # In-process memo: tape-URL tuple -> reconstructed DealStateSeries. Keyed by the
