@@ -1064,6 +1064,125 @@ def test_deal_project_uses_resolved_deal_base():
     assert seed["pool_balance_eur"] == 500_000_000.0
 
 
+def test_deal_project_uses_loan_level_tape_schedule(monkeypatch):
+    """/project drives scheduled amortisation off the deal's tape, not the proxy (#281).
+
+    A deal whose tape amortises (here a synthetic single-loan tape) projects a
+    different scheduled-principal path than the flat 1%/month proxy would. We
+    patch the tape loader so the test is deterministic and offline, then assert
+    the engine folded the tape-derived schedule (the per-period available
+    principal tracks the loan-level curve, not a flat pool fraction).
+    """
+    import pandas as pd
+
+    from loanwhiz.api import main as api_main
+
+    # A clean single-loan tape: 500m balance, 0% rate, 5-month term → exactly
+    # 100m straight-line scheduled principal per period for 5 periods.
+    fake_tape = pd.DataFrame(
+        [{"current_balance": 500_000_000.0, "current_interest_rate_pct": 0.0, "remaining_term_months": 5}]
+    )
+    monkeypatch.setattr(api_main, "_load_tape", lambda url, period: (fake_tape, "direct"))
+
+    tape_deal = {
+        "deal_name": "Tape Deal 2025-1 B.V.",
+        "prospectus_url": "https://example.test/tape-2025-1.pdf",
+        "tape_urls": [{"date": "2025-12-31", "url": "deeploans://RMBS/tape"}],
+        "investor_report_urls": [],
+        "projection_base": {
+            "current_pool_balance": 500_000_000.0,
+            "class_a_balance": 480_000_000.0,
+            "class_b_balance": 15_000_000.0,
+            "class_c_balance": 5_000_000.0,
+            "class_a_rate_pct": 4.10,
+            "reserve_account_balance": 5_000_000.0,
+            "reserve_account_target": 5_000_000.0,
+        },
+        "capital_structure": {
+            "class_a_balance": 480_000_000.0,
+            "class_b_balance": 15_000_000.0,
+            "class_c_balance": 5_000_000.0,
+            "class_a_rate_pct": 4.10,
+        },
+        "reserve_account_target": 5_000_000.0,
+        "original_pool_balance": 500_000_000.0,
+    }
+    augmented = {**api_main.DEALS, "tape-deal-2025-1": tape_deal}
+
+    with patch.object(api_main, "DEALS", augmented):
+        resp = client.post(
+            "/deal/tape-deal-2025-1/project",
+            # cpr/cdr defaults still apply; the scheduled-principal LEG is what
+            # the tape drives, isolated by reading the leg directly below.
+            json={"scenarios": ["base"], "months": 5},
+        )
+
+    assert resp.status_code == 200
+    periods = resp.json()["projections"]["base"]["periods"]
+    final_pool = periods[-1]["pool_balance_eur"]
+    # The tape schedule repays ~100m/period of scheduled principal (plus
+    # scenario prepay/default), draining the 500m pool to near zero over 5
+    # periods. The flat 1%/month proxy would peel only ~5m/period of scheduled
+    # principal, leaving the pool an order of magnitude higher — so the
+    # tape-driven path is unmistakably faster.
+    assert final_pool < 1_000_000.0  # < 0.2% of the opening 500m pool
+    # Sanity: what the proxy alone would have left after 5 periods of ~1%
+    # scheduled amortisation is far larger — guards against the schedule being
+    # silently ignored.
+    proxy_residual_estimate = 500_000_000.0 * (0.99 ** 5)
+    assert final_pool < proxy_residual_estimate / 10.0
+
+
+def test_deal_project_no_tape_falls_back_to_proxy(monkeypatch):
+    """A no-tape deal still projects via the constant-rate proxy (no regression).
+
+    The loader must NOT be invoked for a deal with no ``tape_urls`` — the
+    fold uses the proxy and the endpoint returns a healthy amortising series.
+    """
+    from loanwhiz.api import main as api_main
+
+    def _boom(url, period):  # pragma: no cover - asserts it isn't called
+        raise AssertionError("tape loader must not run for a no-tape deal")
+
+    monkeypatch.setattr(api_main, "_load_tape", _boom)
+
+    no_tape_deal = {
+        "deal_name": "Report Deal 2024-1 B.V.",
+        "prospectus_url": "https://example.test/report-2024-1.pdf",
+        "tape_urls": [],
+        "investor_report_urls": ["https://example.test/report.pdf"],
+        "projection_base": {
+            "current_pool_balance": 200_000_000.0,
+            "class_a_balance": 190_000_000.0,
+            "class_b_balance": 7_000_000.0,
+            "class_c_balance": 3_000_000.0,
+            "class_a_rate_pct": 3.5,
+            "reserve_account_balance": 3_000_000.0,
+            "reserve_account_target": 3_000_000.0,
+        },
+        "capital_structure": {
+            "class_a_balance": 190_000_000.0,
+            "class_b_balance": 7_000_000.0,
+            "class_c_balance": 3_000_000.0,
+            "class_a_rate_pct": 3.5,
+        },
+        "reserve_account_target": 3_000_000.0,
+        "original_pool_balance": 200_000_000.0,
+    }
+    augmented = {**api_main.DEALS, "report-deal-2024-1": no_tape_deal}
+
+    with patch.object(api_main, "DEALS", augmented):
+        resp = client.post(
+            "/deal/report-deal-2024-1/project",
+            json={"scenarios": ["base"], "months": 6},
+        )
+
+    assert resp.status_code == 200
+    periods = resp.json()["projections"]["base"]["periods"]
+    class_a = [p["class_a_balance"] for p in periods]
+    assert all(earlier >= later for earlier, later in zip(class_a, class_a[1:]))
+
+
 # ---------------------------------------------------------------------------
 # Waterfall — sourced from the one reconstructed ledger (S9, #189)
 # ---------------------------------------------------------------------------

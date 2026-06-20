@@ -70,6 +70,10 @@ from loanwhiz.primitives.reconciler import (
 from loanwhiz.primitives.esma_tape_normaliser import (
     EsmaTapeInput,
     EsmaTapeNormaliser,
+    _load_tape,
+)
+from loanwhiz.primitives.loan_level_amortisation import (
+    pool_scheduled_principal_schedule,
 )
 from loanwhiz.primitives.notes_cash_parser import NotesCashPeriod, NotesCashReport
 from loanwhiz.primitives.period_state_machine import (
@@ -784,6 +788,36 @@ def _resolve_projection_base(deal_id: str, deal: dict) -> dict:
     if deal_id != _GREEN_LION_DEAL_ID:
         raise _misconfigured_deal(deal_id, "projection_base")
     return _GREEN_LION_PROJECTION_BASE
+
+
+def _latest_tape_amort_schedule(deal: dict, months: int) -> list[float] | None:
+    """Loan-level scheduled-principal schedule from the deal's latest tape (#281).
+
+    Returns the per-period pool scheduled-principal series derived by amortising
+    the deal's most recent loan tape loan-by-loan (replacing the flat pool-level
+    proxy in ``ScenarioGenerator``), or ``None`` when the deal has no loan tapes
+    — in which case the generator falls back to the constant-rate proxy and
+    behaviour is unchanged (e.g. the report-driven cold-start deals).
+
+    The "latest" tape is the chronologically newest entry in ``tape_urls``,
+    which matches the projection base's "current balance" forward starting
+    point.
+
+    Resilience: if the tape cannot be loaded (unreachable URL, parse error),
+    this returns ``None`` so projection **degrades to the constant-rate proxy**
+    rather than 500-ing. A forward projection should not hard-fail on a flaky
+    tape fetch — the loan-level schedule is a refinement of the proxy, not a
+    hard dependency of the endpoint.
+    """
+    tapes = deal.get("tape_urls")
+    if not tapes:
+        return None
+    latest = max(tapes, key=lambda t: t.get("date", ""))
+    try:
+        df, _data_source = _load_tape(latest["url"], None)
+    except Exception:  # noqa: BLE001 — any load failure → proxy fallback
+        return None
+    return pool_scheduled_principal_schedule(df, months)
 
 
 def _misconfigured_deal(deal_id: str, missing_key: str) -> HTTPException:
@@ -1978,6 +2012,12 @@ def deal_project(deal_id: str, req: ProjectRequest) -> dict:
     seed_date = "projection-start"
     generator = ScenarioGenerator()
 
+    # Loan-level scheduled-amortisation schedule from the deal's latest tape
+    # (#281), shared across scenarios (it depends only on the tape + horizon,
+    # not the scenario). ``None`` for no-tape deals → the generator's
+    # constant-rate proxy, unchanged.
+    amort_schedule = _latest_tape_amort_schedule(deal, req.months)
+
     projections: dict[str, dict] = {}
     wal: dict[str, dict] = {}
     for scenario in req.scenarios:
@@ -1994,6 +2034,7 @@ def deal_project(deal_id: str, req: ProjectRequest) -> dict:
             assumptions=assumptions,
             rate_pct=base["class_a_rate_pct"],
             months=req.months,
+            scheduled_principal_schedule=amort_schedule,
         )
 
         # Fold the synthetic stream through the same kernel history uses.

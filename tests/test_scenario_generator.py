@@ -221,3 +221,92 @@ def test_stress_is_worse_than_base_for_class_a():
         ScenarioAssumptions(name="stress", cpr_pct=15.0, cdr_pct=8.0, rate_shift_bps=100.0)
     )
     assert stress.cumulative_losses > base.cumulative_losses
+
+
+# ---------------------------------------------------------------------------
+# Loan-level scheduled-amortisation schedule (#281)
+# ---------------------------------------------------------------------------
+
+
+def test_none_schedule_is_byte_identical_to_the_proxy():
+    """Omitting the schedule (or passing None) reproduces the flat-proxy output."""
+    gen = ScenarioGenerator()
+    seed = _seed()
+    assumptions = ScenarioAssumptions(name="base")
+    default = gen.generate(seed, assumptions=assumptions, rate_pct=3.62, months=6)
+    explicit_none = gen.generate(
+        seed, assumptions=assumptions, rate_pct=3.62, months=6, scheduled_principal_schedule=None
+    )
+    assert [p.model_dump() for p in default] == [p.model_dump() for p in explicit_none]
+
+
+def test_supplied_schedule_drives_scheduled_principal():
+    """Period k's scheduled-principal leg equals schedule[k] (capped at the balance)."""
+    gen = ScenarioGenerator()
+    seed = _seed(1_000_000_000.0)
+    # A zero-prepay, zero-default scenario isolates the scheduled-principal leg.
+    assumptions = ScenarioAssumptions(name="flat", cpr_pct=0.0, cdr_pct=0.0)
+    schedule = [5_000_000.0, 6_000_000.0, 7_000_000.0]
+    periods = gen.generate(
+        seed,
+        assumptions=assumptions,
+        rate_pct=3.62,
+        months=3,
+        scheduled_principal_schedule=schedule,
+    )
+    got = [p.legs.scheduled_principal for p in periods]
+    assert got == pytest.approx(schedule)
+
+
+def test_schedule_shorter_than_months_zero_pads():
+    """A schedule shorter than the horizon contributes zero scheduled principal late."""
+    gen = ScenarioGenerator()
+    seed = _seed(1_000_000_000.0)
+    assumptions = ScenarioAssumptions(name="flat", cpr_pct=0.0, cdr_pct=0.0)
+    periods = gen.generate(
+        seed,
+        assumptions=assumptions,
+        rate_pct=3.62,
+        months=3,
+        scheduled_principal_schedule=[10_000_000.0],
+    )
+    sched = [p.legs.scheduled_principal for p in periods]
+    assert sched[0] == pytest.approx(10_000_000.0)
+    assert sched[1:] == pytest.approx([0.0, 0.0])
+
+
+def test_schedule_capped_at_opening_balance():
+    """A schedule entry above the opening pool balance is capped, never negative."""
+    gen = ScenarioGenerator()
+    seed = _seed(1_000_000.0)
+    assumptions = ScenarioAssumptions(name="flat", cpr_pct=0.0, cdr_pct=0.0)
+    periods = gen.generate(
+        seed,
+        assumptions=assumptions,
+        rate_pct=3.62,
+        months=1,
+        scheduled_principal_schedule=[10_000_000.0],  # > pool balance
+    )
+    assert periods[0].legs.scheduled_principal == pytest.approx(1_000_000.0)
+
+
+def test_schedule_folds_through_run_period_and_amortises():
+    """A loan-level schedule still folds through the unchanged kernel; Class A amortises."""
+    gen = ScenarioGenerator()
+    seed = _seed(1_000_000_000.0)
+    rates = {"class_a_rate_pct": 3.62}
+    schedule = [20_000_000.0] * 12
+    state = seed
+    states = [seed]
+    for period in gen.generate(
+        seed,
+        assumptions=ScenarioAssumptions(name="base"),
+        rate_pct=3.62,
+        months=12,
+        scheduled_principal_schedule=schedule,
+    ):
+        state = run_period(state, period, rates=rates).closing_state
+        states.append(state)
+    assert len(states) == 13
+    class_a = [s.class_a_balance for s in states]
+    assert all(earlier >= later for earlier, later in zip(class_a, class_a[1:]))
