@@ -60,7 +60,6 @@ from loanwhiz.domain.state import DealState as DomainDealState
 from loanwhiz.primitives.deal_state import DealState as PrimitivesDealState
 from loanwhiz.primitives.reconciler import (
     ReconciliationReport,
-    load_green_lion_2024_1_model,
     load_green_lion_2024_1_report,
     validate_green_lion_2024_1,
 )
