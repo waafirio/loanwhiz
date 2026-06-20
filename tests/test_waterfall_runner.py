@@ -111,10 +111,15 @@ class TestHappyPath:
         )
 
     def test_no_shortfall(self, runner: WaterfallRunner):
-        """Overall shortfall must be zero when revenue covers all steps."""
+        """Overall shortfall must be zero when revenue covers all steps.
+
+        The tool now folds the period through ``run_period`` (#276), whose
+        PDL/reserve arithmetic can leave a sub-cent floating-point residue, so
+        assert ``≈ 0`` (well within EUR 0.01) rather than exact equality.
+        """
         result = runner.execute(_base_input())
-        assert result.output.shortfall == 0.0, (
-            f"Expected shortfall=0.0, got {result.output.shortfall}"
+        assert result.output.shortfall == pytest.approx(0.0, abs=1e-6), (
+            f"Expected shortfall≈0.0, got {result.output.shortfall}"
         )
 
     def test_confidence_is_1(self, runner: WaterfallRunner):

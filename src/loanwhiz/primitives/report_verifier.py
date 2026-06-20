@@ -634,7 +634,7 @@ class ReportVerifier(Primitive[ReportVerifierInput, ReportVerifierOutput]):
                 ),
             ),
             Citation(
-                document="WaterfallRunner output",
+                document="waterfall_runner output",
                 page_or_row="tranche_distributions",
                 excerpt=(
                     "Computed Class A distributions from deterministic waterfall execution."

@@ -520,10 +520,8 @@ _UNIVERSAL_PRIMITIVE_CONTROLS: tuple[str, ...] = (
 _PRIMITIVE_SPECIFIC_CONTROLS: dict[str, tuple[str, ...]] = {
     "esma_tape_normaliser": ("AIR-PREV-002", "AIR-PREV-006", "AIR-DET-016"),
     "waterfall_runner": ("AIR-PREV-005",),
-    "multi_period_waterfall_runner": ("AIR-PREV-005",),
     "covenant_monitor": ("AIR-DET-011", "AIR-PREV-005"),
     "collections_aggregator": ("AIR-PREV-005",),
-    "cashflow_projector": ("AIR-PREV-005",),
     "report_verifier": ("AIR-DET-015", "AIR-PREV-005"),
     "audit_logger": ("AIR-DET-001", "AIR-PREV-012"),
 }
