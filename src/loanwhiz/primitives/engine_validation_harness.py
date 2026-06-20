@@ -62,6 +62,7 @@ from loanwhiz.primitives.notes_cash_parser import (
     PoPStep,
     parse_report_text,
 )
+from loanwhiz.primitives.step_source_classifier import build_step_specs
 from loanwhiz.primitives.waterfall_interpreter import (
     StepSpec,
     WaterfallExecution,
@@ -99,21 +100,10 @@ SOURCE_NOTE = (
 # Report-label ↔ model-recipient mapping
 # ===========================================================================
 
-# The interpreter recipients whose need the registry COMPUTES from the deal
-# model alone (no report input). Reconciling these to the cent is the headline
-# independent check. Everything else in the revenue waterfall is report-supplied.
-_ENGINE_COMPUTED_RECIPIENTS: frozenset[str] = frozenset(
-    {
-        "class_a_interest",
-        "class_b_interest",
-        "class_c_interest",
-        "class_a_pdl_replenishment",
-        "class_b_pdl_replenishment",
-        "class_c_pdl_replenishment",
-        "reserve_account_replenishment",
-        "reserve_replenishment",
-    }
-)
+# The recipients the engine computes with no report input (Class A interest, PDL
+# replenishment, reserve top-up) now live in the shared step-source classifier
+# (:data:`loanwhiz.primitives.step_source_classifier.ENGINE_COMPUTED_RECIPIENTS`),
+# so the live path and this harness classify steps identically.
 
 # Revenue model recipients whose amount the prospectus does NOT formulate — their
 # need is taken from the report (`need_overrides`) and the engine is proven only
@@ -382,38 +372,19 @@ def _build_specs(
     report_supplied_labels: frozenset[str],
     report_amounts: dict[str, float],
 ) -> tuple[list[StepSpec], dict[str, float], dict[str, str]]:
-    """Build interpreter specs from extracted steps + classify each step.
+    """Thin alias over the shared step-source classifier.
 
-    Returns ``(specs, need_overrides, source_by_recipient)``:
-
-    - ``specs`` — one :class:`StepSpec` per extracted step, with the terminal
-      ``residual_label`` step flagged ``residual=True`` and any extracted
-      conditions cleared (the report's published distribution already reflects
-      the conditions' resolution, so re-gating here would double-count).
-    - ``need_overrides`` — ``recipient → report amount`` for the report-supplied
-      steps (the interpreter has no formula for them).
-    - ``source_by_recipient`` — ``recipient → 'engine'|'report-supplied'|'residual'``.
+    Delegates to :func:`loanwhiz.primitives.step_source_classifier.build_step_specs`
+    so the harness and the live path share ONE classifier (engine /
+    report-supplied / residual) and cannot drift. Kept as the harness's internal
+    call site; see the shared module for the full behaviour.
     """
-    specs: list[StepSpec] = []
-    overrides: dict[str, float] = {}
-    source: dict[str, str] = {}
-    for step in steps:
-        label = str(step.get("priority", ""))
-        recipient = str(step.get("recipient", ""))
-        residual = label == residual_label
-        # Clear conditions: the report is the post-resolution actual; the
-        # interpreter's prose-condition evaluator must not re-suppress a step the
-        # report already paid (or zeroed).
-        spec = StepSpec(priority=label, recipient=recipient, residual=residual)
-        specs.append(spec)
-        if residual:
-            source[recipient] = "residual"
-        elif recipient in _ENGINE_COMPUTED_RECIPIENTS and label not in report_supplied_labels:
-            source[recipient] = "engine"
-        else:
-            source[recipient] = "report-supplied"
-            overrides[recipient] = report_amounts.get(label, 0.0)
-    return specs, overrides, source
+    return build_step_specs(
+        steps,
+        residual_label=residual_label,
+        report_supplied_labels=report_supplied_labels,
+        report_amounts=report_amounts,
+    )
 
 
 def _reconcile_one(
