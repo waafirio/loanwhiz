@@ -46,12 +46,32 @@ from __future__ import annotations
 
 import logging
 import re
+import time
 from pathlib import Path
 from typing import Any
 
 from pydantic import BaseModel, Field, field_validator
 
+from loanwhiz.primitives.base import (
+    AuditEntry,
+    BaseInput,
+    Citation,
+    PrimitiveResult,
+)
+
 logger = logging.getLogger(__name__)
+
+# The governance envelope identity for the (otherwise function-based) Notes &
+# Cash reader. ``notes_cash_parser`` is not a registered ``Primitive`` subclass
+# — it is a module of pure parse functions — but the governance cross-cut (#277)
+# requires every adapter/extractor/reader to be able to return the
+# ``PrimitiveResult`` envelope. The ``*_result`` wrappers below produce that
+# envelope while the plain functions stay untouched for the internal harness
+# callers. The parse is deterministic (``pypdf``/regex, no LLM), so the envelope
+# confidence is 1.0 — the framework's rule-based convention (see ``base.py``).
+_PRIMITIVE_NAME = "notes_cash_parser"
+_PRIMITIVE_VERSION = "0.1.0"
+_DETERMINISTIC_CONFIDENCE = 1.0
 
 # ---------------------------------------------------------------------------
 # Cache location — same durable convention as collateral_ledger (PR #152).
@@ -107,6 +127,31 @@ def _parse_money(token: str) -> float | None:
 def _is_money_line(line: str) -> bool:
     """Whether a stripped line is a standalone printed number (a column value)."""
     return _parse_money(line) is not None and bool(_NUMBER_RE.fullmatch(line.strip().rstrip("%").strip()))
+
+
+# ===========================================================================
+# Governance-envelope input schema
+# ===========================================================================
+
+
+class NotesCashParseInput(BaseInput):
+    """Input schema for the governed (envelope-returning) parse surface.
+
+    Subclasses :class:`~loanwhiz.primitives.base.BaseInput` purely so the
+    ``*_result`` wrappers can derive a stable ``AuditEntry.input_hash`` (the
+    64-hex SHA-256 the audit entry validator requires) from the parse inputs.
+    ``deal_name`` keys the report-set wrapper; ``text`` keys the single-period
+    wrapper.
+    """
+
+    period_label: str = Field(..., description="Human-readable period label, e.g. 'March 2026'.")
+    reporting_date: str | None = Field(
+        default=None, description="ISO reporting date override, if any."
+    )
+    deal_name: str | None = Field(default=None, description="Deal name, when keying a report set.")
+    text: str | None = Field(
+        default=None, description="Raw extracted report text, when parsing one period."
+    )
 
 
 # ===========================================================================
@@ -861,3 +906,113 @@ def parse_notes_cash_report(
     report = NotesCashReport(deal_name=deal_name, periods=periods)
     _write_durable_cache(report, path)
     return report
+
+
+# ===========================================================================
+# Governed (PrimitiveResult-returning) surface — the #277 envelope wrappers
+# ===========================================================================
+
+
+def parse_report_text_result(
+    text: str,
+    *,
+    period_label: str,
+    reporting_date: str | None = None,
+) -> PrimitiveResult[NotesCashPeriod]:
+    """Envelope-returning wrapper over :func:`parse_report_text`.
+
+    Returns the parsed :class:`NotesCashPeriod` wrapped in the governance
+    ``PrimitiveResult`` envelope (confidence + citation + audit entry), so the
+    Notes & Cash reader participates in the same governance contract as the
+    registered primitives (#277). The deterministic parse path is unchanged —
+    this only adds the envelope; the plain :func:`parse_report_text` stays
+    available for the internal harness callers.
+
+    The confidence is ``1.0`` (deterministic ``pypdf``/regex parse), one
+    :class:`~loanwhiz.primitives.base.Citation` grounds the period in its source
+    report, and the :class:`~loanwhiz.primitives.base.AuditEntry` records the
+    input hash + wall-clock duration.
+    """
+    t0 = time.perf_counter()
+    parse_input = NotesCashParseInput(
+        period_label=period_label,
+        reporting_date=reporting_date,
+        text=text,
+    )
+    period = parse_report_text(text, period_label=period_label, reporting_date=reporting_date)
+    duration_ms = (time.perf_counter() - t0) * 1000.0
+
+    citations = [
+        Citation(
+            document=(
+                f"{period.deal_name} — Notes & Cash Report ({period.period_label})"
+                if period.deal_name
+                else f"Notes & Cash Report ({period.period_label})"
+            ),
+            page_or_row=period.reporting_date,
+            excerpt=(
+                "Liability actuals parsed deterministically from the extracted "
+                "Notes & Cash report text (Bond Report, Priority of Payments, "
+                "Issuer Accounts, Triggers)."
+            ),
+        )
+    ]
+    audit = AuditEntry.now(
+        primitive_name=_PRIMITIVE_NAME,
+        version=_PRIMITIVE_VERSION,
+        input_hash=parse_input.input_hash(),
+        duration_ms=duration_ms,
+    )
+    return PrimitiveResult[NotesCashPeriod](
+        output=period,
+        confidence=_DETERMINISTIC_CONFIDENCE,
+        citations=citations,
+        audit_entry=audit,
+    )
+
+
+def parse_notes_cash_report_result(
+    deal_context: dict[str, Any],
+    *,
+    force_refresh: bool = False,
+    cache_dir: str | Path = DEFAULT_EXTRACTION_CACHE_DIR,
+) -> PrimitiveResult[NotesCashReport]:
+    """Envelope-returning wrapper over :func:`parse_notes_cash_report`.
+
+    Returns the per-deal :class:`NotesCashReport` wrapped in the governance
+    ``PrimitiveResult`` envelope (#277). One
+    :class:`~loanwhiz.primitives.base.Citation` is attached per parsed period so
+    the report set is grounded in each source document; the plain
+    :func:`parse_notes_cash_report` is unchanged for callers that don't need the
+    envelope.
+    """
+    t0 = time.perf_counter()
+    parse_input = NotesCashParseInput(
+        period_label=deal_context.get("deal_name", "report-set"),
+        deal_name=deal_context.get("deal_name"),
+    )
+    report = parse_notes_cash_report(
+        deal_context, force_refresh=force_refresh, cache_dir=cache_dir
+    )
+    duration_ms = (time.perf_counter() - t0) * 1000.0
+
+    citations = [
+        Citation(
+            document=f"{report.deal_name} — Notes & Cash Report ({p.period_label})",
+            page_or_row=p.reporting_date,
+            excerpt="Liability actuals for the reporting period (deterministic parse).",
+        )
+        for p in report.periods
+    ]
+    audit = AuditEntry.now(
+        primitive_name=_PRIMITIVE_NAME,
+        version=_PRIMITIVE_VERSION,
+        input_hash=parse_input.input_hash(),
+        duration_ms=duration_ms,
+    )
+    return PrimitiveResult[NotesCashReport](
+        output=report,
+        confidence=_DETERMINISTIC_CONFIDENCE,
+        citations=citations,
+        audit_entry=audit,
+    )

@@ -1,14 +1,17 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Scale, Send, ShieldCheck } from "lucide-react";
 
 import {
   ApiError,
+  getFinosConformance,
   getGovernance,
   postQuery,
+  type FinosConformanceSummary,
   type GovernanceEvidencePack,
 } from "@/lib/api";
+import { FinosConformancePanel } from "@/components/finos-conformance-panel";
 import { PackBody, PackSkeleton } from "@/components/evidence-pack-sheet";
 import { PageHeader } from "@/components/page-states";
 import { Button } from "@/components/ui/button";
@@ -37,6 +40,28 @@ export default function GovernancePage() {
   const [loading, setLoading] = useState(false);
   const [pack, setPack] = useState<GovernanceEvidencePack | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [conformance, setConformance] =
+    useState<FinosConformanceSummary | null>(null);
+  const [conformanceError, setConformanceError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    getFinosConformance()
+      .then((c) => {
+        if (!cancelled) setConformance(c);
+      })
+      .catch((e) => {
+        if (cancelled) return;
+        setConformanceError(
+          e instanceof ApiError
+            ? e.message
+            : "Failed to load FINOS conformance. Is the API reachable?",
+        );
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   async function run() {
     const question = input.trim();
@@ -88,13 +113,19 @@ export default function GovernancePage() {
         </CardHeader>
         <CardContent className="space-y-2 text-sm text-muted-foreground">
           <p>
-            Every governed query emits a single evidence pack implementing the
-            FINOS AI Governance Framework: an append-only audit trail of which
-            tools were called, a conservative aggregate confidence
-            (<code>min</code> of the per-tool scores), the deduplicated citation
-            trail, a human-review flag below the 0.70 threshold, and a real
-            <code> finos_compliant</code> consistency check (not a hardcoded
-            value).
+            FINOS is a real compliance target here, not a label. The full FINOS
+            AI Governance Framework control catalogue is mapped to LoanWhiz (see
+            the conformance panel below), conformance is asserted per-primitive,
+            and <code>finos_compliant</code> on every evidence pack MEANS
+            framework conformance — the conjunction of the pack&apos;s own
+            consistency check and LoanWhiz conforming to the control catalogue.
+          </p>
+          <p>
+            Every governed query still emits a single evidence pack: an
+            append-only audit trail of which tools were called, a conservative
+            aggregate confidence (<code>min</code> of the per-tool scores), the
+            deduplicated citation trail, and a human-review flag below the 0.70
+            threshold.
           </p>
           <p>
             Each tape citation also records its{" "}
@@ -107,6 +138,12 @@ export default function GovernancePage() {
           </p>
         </CardContent>
       </Card>
+
+      {/* FINOS framework conformance — the mapped control catalogue. */}
+      <FinosConformancePanel
+        conformance={conformance}
+        error={conformanceError}
+      />
 
       {/* Query composer — runs the live governed query. */}
       <Card>
