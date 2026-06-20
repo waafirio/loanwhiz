@@ -1602,6 +1602,9 @@ def test_governance_pack_returns_stored_pack(tmp_path):
     assert body["finos_compliant"] is True
     assert body["framework_version"] == pack.framework_version
     assert body["model_used"] == pack.model_used
+    # The framework-conformance summary rides along, explaining the boolean.
+    assert body["finos_conformance"]["is_conformant"] is True
+    assert body["finos_conformance"]["total_controls"] == 23
 
 
 def test_governance_pack_flags_human_review_when_low_confidence(tmp_path):
@@ -1645,6 +1648,20 @@ def test_governance_pack_unknown_returns_404(tmp_path):
         resp = client.get("/governance/does-not-exist")
     assert resp.status_code == 404
     assert resp.json()["detail"] == "Evidence pack does-not-exist not found"
+
+
+def test_finos_conformance_endpoint_returns_full_catalogue():
+    """GET /governance/finos-conformance returns the mapped control catalogue."""
+    resp = client.get("/governance/finos-conformance")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["is_conformant"] is True
+    assert body["total_controls"] == 23
+    assert len(body["controls"]) == 23
+    # Per-primitive conformance is asserted, not just the aggregate.
+    assert body["primitive_conformance"]
+    # The static path is not captured by the /governance/{pack_id} route.
+    assert body["framework"] == "FINOS AI Governance Framework"
 
 
 # ---------------------------------------------------------------------------
