@@ -21,6 +21,7 @@ from loanwhiz.agent.tools import (
     load_esma_tape,
     project_cashflows,
     run_waterfall,
+    stress_matrix,
     verify_report,
 )
 from loanwhiz.config import DEAL_REGISTRY
@@ -312,6 +313,64 @@ def test_project_cashflows_defaults_to_demo_deal():
     result = project_cashflows.invoke({})
     assert "error" not in result
     assert set(result["projections"]) == {"base", "stress"}
+
+
+# ---------------------------------------------------------------------------
+# stress_matrix (#323)
+#
+# These exercise the REAL grid fold end to end (the tool wraps the live
+# /stress-matrix recipe over the Green Lion deal — no mock of the unit under
+# test), matching the planner's `integration` test-level contract.
+# ---------------------------------------------------------------------------
+
+
+def test_stress_matrix_returns_outcome_surface():
+    """The tool returns a tranche-level outcome surface (loss/wal/shortfall/
+    first-breach) per cell, with full confidence on the deterministic fold."""
+    result = stress_matrix.invoke(
+        {
+            "deal_id": "green-lion-2026-1",
+            "cpr_pct": [10, 20],
+            "cdr_pct": [1, 5],
+            "months": 6,
+        }
+    )
+    assert result["confidence"] == 1.0
+    assert "error" not in result
+    assert result["dimensions"]["cells"] == 4
+    assert len(result["cells"]) == 4
+    for cell in result["cells"]:
+        assert {"loss", "wal", "shortfall", "first_breach_period"} <= set(cell)
+        assert {"wal_class_a_months", "wal_class_b_months", "wal_class_c_months"} <= set(
+            cell["wal"]
+        )
+
+
+def test_stress_matrix_defaults_to_demo_grid():
+    """With no axes the tool serves the default demo grid over the default deal."""
+    result = stress_matrix.invoke({})
+    assert "error" not in result
+    # Default grid is 2 CPR × 2 CDR × 1 rate-shift = 4 cells.
+    assert result["dimensions"]["cells"] == 4
+
+
+def test_stress_matrix_unknown_deal_errors():
+    """A bad deal id returns a graceful tool error, not a crash."""
+    result = stress_matrix.invoke(
+        {"deal_id": "no-such-deal", "cpr_pct": [10], "cdr_pct": [1]}
+    )
+    assert result["confidence"] == 0.0
+    assert "error" in result
+
+
+def test_stress_matrix_oversized_grid_errors_gracefully():
+    """An oversized grid (> cell cap) surfaces a graceful error, not a hang."""
+    big = [float(x) for x in range(9)]  # 9 × 9 = 81 > 64
+    result = stress_matrix.invoke(
+        {"deal_id": "green-lion-2026-1", "cpr_pct": big, "cdr_pct": big, "months": 3}
+    )
+    assert result["confidence"] == 0.0
+    assert "error" in result
 
 
 # ---------------------------------------------------------------------------
@@ -938,11 +997,12 @@ def test_sf_tools_has_expected_tools():
         "verify_report",
         "get_deal_model",
         "list_deal_tapes",
+        "stress_matrix",
     ]
 
 
-def test_sf_tools_has_exactly_nine_tools():
-    assert len(SF_TOOLS) == 9
+def test_sf_tools_has_exactly_ten_tools():
+    assert len(SF_TOOLS) == 10
 
 
 def test_sf_tool_node_is_tool_node_instance():
@@ -970,7 +1030,7 @@ def test_sf_tools_all_have_invoke_method():
 def test_list_available_tools_returns_list_of_dicts():
     result = list_available_tools()
     assert isinstance(result, list)
-    assert len(result) == 9
+    assert len(result) == 10
 
 
 def test_list_available_tools_has_name_and_description():

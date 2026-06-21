@@ -272,6 +272,82 @@ def project_cashflows(
 
 
 @tool
+def stress_matrix(
+    deal_id: str = DEFAULT_DEAL_ID,
+    cpr_pct: list[float] | None = None,
+    cdr_pct: list[float] | None = None,
+    rate_shift_bps: list[float] | None = None,
+    recovery_pct: float | None = None,
+    months: int = 12,
+) -> dict:
+    """Scenario / stress matrix: a CPR × CDR (× rate-shift) grid of forward projections.
+
+    Use for ANY "stress matrix", "scenario grid", "sensitivity table", or
+    "how do loss / WAL / shortfall / breach move across CPR and CDR" question —
+    when the analyst wants a *surface* of outcomes rather than one projection.
+    Each grid cell is one forward projection through the SAME engine the
+    ``project_cashflows`` tool uses; the result is a tranche-level outcome surface
+    per ``(cpr, cdr, rate_shift)`` cell: cumulative ``loss``, per-tranche ``wal``
+    (A/B/C), total waterfall ``shortfall``, and ``first_breach_period`` /
+    ``first_breach_trigger`` (the earliest projected period any covenant trigger
+    fires, or ``None`` if none does over the horizon). Pass only the ``deal_id``
+    plus the axes; do NOT pass pool balances or schedules.
+
+    Parameters
+    ----------
+    deal_id:
+        Registry deal id (defaults to the Green Lion demo deal).
+    cpr_pct / cdr_pct:
+        The grid axes — lists of CPR (%) and CDR (%) values. Default to a small
+        illustrative grid (``[10, 20]`` × ``[1, 5]``) when omitted.
+    rate_shift_bps:
+        Optional third axis (bps). Defaults to ``[0.0]`` → a 2-D CPR×CDR grid;
+        supply multiple values for a 3-D matrix.
+    recovery_pct:
+        Recovery on defaults (%), held constant across the grid (the base preset
+        when omitted).
+    months:
+        Projection horizon in months (default 12).
+
+    Returns the echoed ``axes``, grid ``dimensions``, and a flat ``cells`` list a
+    client can pivot into a surface. A grid exceeding the cell cap returns a
+    graceful error rather than running. Bad ``deal_id`` returns a graceful error.
+    """
+    # Call-time import to reuse the REST /stress-matrix recipe (the #319
+    # projection fold + the covenant engine) without an import-time cycle,
+    # mirroring project_cashflows / run_waterfall.
+    from loanwhiz.api.main import StressMatrixRequest, deal_stress_matrix
+
+    if cpr_pct is None:
+        cpr_pct = [10.0, 20.0]
+    if cdr_pct is None:
+        cdr_pct = [1.0, 5.0]
+
+    try:
+        req = StressMatrixRequest(
+            cpr_pct=cpr_pct,
+            cdr_pct=cdr_pct,
+            rate_shift_bps=rate_shift_bps if rate_shift_bps is not None else [0.0],
+            recovery_pct=recovery_pct,
+            months=months,
+        )
+        payload = deal_stress_matrix(deal_id, req)
+    except Exception as exc:  # noqa: BLE001 — surface a graceful tool error
+        # A bad deal_id raises an HTTPException (404); an oversized / malformed
+        # grid raises a 422 — both become an honest tool error rather than a
+        # crash the agent can't recover from.
+        return {
+            "error": f"stress matrix failed for deal {deal_id!r}: {exc}",
+            "confidence": 0.0,
+            "citations": [],
+        }
+
+    # Deterministic engine fold per cell → full confidence (same posture as
+    # project_cashflows); the underlying tape reads are cited in the analytics.
+    return payload | {"confidence": 1.0, "citations": [], "duration_ms": 0}
+
+
+@tool
 def check_covenants(deal_id: str = DEFAULT_DEAL_ID) -> dict:
     """Check covenant compliance for a deal: trigger status, proximity to breach, and any active breaches.
 
@@ -623,6 +699,7 @@ SF_TOOLS = [
     verify_report,
     get_deal_model,
     list_deal_tapes,
+    stress_matrix,  # #323 — appended (additive; keeps existing ordering stable)
 ]
 SF_TOOL_NODE = ToolNode(SF_TOOLS)
 
