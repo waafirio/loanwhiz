@@ -36,7 +36,7 @@ from typing import Any
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from loanwhiz.agent.executor import execute_query
 from loanwhiz.config import DEAL_REGISTRY
@@ -2130,6 +2130,261 @@ def deal_project(deal_id: str, req: ProjectRequest) -> dict:
         "projections": projections,
         "wal": wal,
     }
+
+
+# ---------------------------------------------------------------------------
+# Scenario / stress matrix (#323)
+#
+# A grid of forward projections across a CPR × CDR (× rate-shift) scenario
+# matrix, returning a tranche-level outcome surface per cell: cumulative loss,
+# per-tranche WAL, total waterfall shortfall, and the first projected period at
+# which any covenant trigger breaches. The grid is driven THROUGH the same #319
+# projection fold ``deal_project`` uses (one ``ScenarioGenerator`` stream folded
+# through ``run_period`` per cell) — there is no second engine. Kept contiguous
+# with the ``/project`` block above to minimise additive merge conflicts with
+# siblings editing this module. ``deal_project`` is intentionally left untouched
+# so existing ``/project`` callers are byte-for-byte unchanged.
+# ---------------------------------------------------------------------------
+
+# Hard cap on the number of grid cells a single request may enumerate. Each cell
+# is a full multi-period fold + a covenant pass, so an unbounded grid (e.g. a
+# 20 × 20 × 5 request) would fold 2000 deals synchronously and hang the worker.
+# A request whose Cartesian product exceeds this returns a labelled 422 rather
+# than a 500 / hang — the bound is generous for the analyst use case (an 8 × 8
+# CPR × CDR surface is 64 cells) while refusing a runaway grid.
+_MAX_MATRIX_CELLS = 64
+
+
+class StressMatrixRequest(BaseModel):
+    """Request body for ``POST /deal/{deal_id}/stress-matrix`` (#323).
+
+    The matrix axes are explicit lists of assumption values; the cells are their
+    Cartesian product. ``recovery_pct`` is a single scalar held constant across
+    the grid (the base preset's recovery when omitted) — the matrix varies CPR ×
+    CDR × rate-shift, not recovery, so an analyst reads a clean 2-D / 3-D surface.
+    ``rate_shift_bps`` defaults to ``[0.0]`` so an omitted axis yields a 2-D
+    CPR × CDR grid; supply multiple values for a 3-D matrix. Bounds mirror
+    :class:`ScenarioAssumptionsOverride` so a malformed value is a 422, not a 500.
+    """
+
+    cpr_pct: list[float] = Field(
+        ..., min_length=1, description="CPR (%) axis — one projection column per value."
+    )
+    cdr_pct: list[float] = Field(
+        ..., min_length=1, description="CDR (%) axis — one projection row per value."
+    )
+    rate_shift_bps: list[float] = Field(
+        default_factory=lambda: [0.0],
+        min_length=1,
+        description="Rate-shift (bps) axis. Defaults to [0.0] → a 2-D CPR×CDR grid.",
+    )
+    recovery_pct: float | None = Field(
+        default=None,
+        ge=0.0,
+        le=100.0,
+        description="Recovery on defaults (%), held constant across the grid. "
+        "Defaults to the base preset's recovery when omitted.",
+    )
+    months: int = Field(default=12, ge=1, description="Projection horizon in months.")
+
+    @field_validator("cpr_pct", "cdr_pct")
+    @classmethod
+    def _pct_bounds(cls, values: list[float]) -> list[float]:
+        for v in values:
+            if not (0.0 <= v <= 100.0):
+                raise ValueError(f"axis value {v} out of bounds [0, 100]")
+        return values
+
+
+def _first_breach(series: DealStateSeries, deal: dict) -> dict:
+    """First projected period at which any covenant trigger breaches (#323).
+
+    Runs the SAME covenant recipe the ``/compliance`` endpoint and the
+    ``check_covenants`` tool use — the deal's extracted triggers (falling back to
+    :data:`CovenantMonitor.DEFAULT_TRIGGERS`) evaluated over the projected state
+    chain — and returns the earliest period where a trigger fires. Because every
+    projected state shares the ``"projection-start"`` reporting date (the forward
+    fold has no real calendar), the states are relabelled ``projection+{idx}m``
+    for the covenant pass so the breach maps unambiguously back to a period index.
+
+    Returns ``{period, label, trigger}`` for the first breach, or
+    ``{period: None, label: None, trigger: None}`` when no trigger fires over the
+    horizon. ``period`` is the 0-based index into the projected series (period 0
+    is the seed; a breach there means the deal opens already in breach).
+    """
+    triggers = _extracted_triggers_to_definitions(deal) or CovenantMonitor.DEFAULT_TRIGGERS
+    relabelled = [
+        st.model_copy(update={"reporting_date": f"projection+{idx}m"})
+        for idx, st in enumerate(series.states)
+    ]
+    covenant_input = CovenantInput.from_deal_states(relabelled, triggers=triggers)
+    output = CovenantMonitor().execute(covenant_input).output
+    label_to_idx = {f"projection+{idx}m": idx for idx in range(len(relabelled))}
+    breaches = [
+        (label_to_idx.get(s.period, len(relabelled)), s)
+        for s in output.trigger_statuses
+        if s.is_triggered
+    ]
+    if not breaches:
+        return {"period": None, "label": None, "trigger": None}
+    idx, status = min(breaches, key=lambda pair: pair[0])
+    return {"period": idx, "label": status.period, "trigger": status.trigger_name}
+
+
+def _stress_cell_outcomes(
+    series: DealStateSeries, period_results: list, deal: dict
+) -> dict:
+    """Per-cell tranche-level outcome surface from a projected series (#323).
+
+    Reads four outcomes off the engine-computed series — no separate
+    bookkeeping, one source of truth:
+
+    - ``loss``: the deal's cumulative pool losses at the projection horizon
+      (``series.final_state.cumulative_losses``).
+    - ``wal``: per-tranche (A/B/C) weighted-average life, via the existing
+      :func:`_wal_from_series`.
+    - ``shortfall``: total unfunded amount across the horizon — the sum of every
+      period's revenue + redemption waterfall ``total_shortfall``. ``0.0`` when
+      every period fully funds its waterfall.
+    - ``first_breach``: the earliest period any covenant trigger fires
+      (:func:`_first_breach`).
+    """
+    final = series.final_state
+    shortfall = sum(
+        r.revenue_execution.total_shortfall + r.redemption_execution.total_shortfall
+        for r in period_results
+    )
+    breach = _first_breach(series, deal)
+    return {
+        "loss": final.cumulative_losses,
+        "wal": _wal_from_series(series).model_dump(),
+        "shortfall": shortfall,
+        "first_breach_period": breach["period"],
+        "first_breach_label": breach["label"],
+        "first_breach_trigger": breach["trigger"],
+    }
+
+
+def _run_stress_matrix(deal_id: str, deal: dict, req: StressMatrixRequest) -> dict:
+    """Drive the #319 projection fold across the CPR × CDR × rate-shift grid (#323).
+
+    Resolves the projection base + structural config once (the same resolvers
+    ``deal_project`` uses, so the Green-Lion fallback / 422-for-misconfigured
+    posture is inherited), then for each ``(cpr, cdr, rate_shift)`` cell seeds
+    period-0, folds a :class:`ScenarioGenerator` stream through ``run_period``
+    (capturing each :class:`PeriodResult` so shortfall is recoverable), and
+    extracts the cell's outcome surface via :func:`_stress_cell_outcomes`.
+
+    Returns the echoed axes + grid dimensions + a flat ``cells`` list (row-major
+    over cdr × cpr × rate_shift), so a client can pivot it into a surface.
+    """
+    n_cells = len(req.cpr_pct) * len(req.cdr_pct) * len(req.rate_shift_bps)
+    if n_cells > _MAX_MATRIX_CELLS:
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                f"Requested stress matrix has {n_cells} cells "
+                f"({len(req.cpr_pct)} CPR × {len(req.cdr_pct)} CDR × "
+                f"{len(req.rate_shift_bps)} rate-shift), exceeding the "
+                f"{_MAX_MATRIX_CELLS}-cell cap. Narrow an axis and retry."
+            ),
+        )
+
+    base = _resolve_projection_base(deal_id, deal)
+    capital_structure, reserve_target, original_pool_balance = _resolve_structural_config(
+        deal_id, deal
+    )
+    # Constant recovery across the grid: the request's value, else the base preset.
+    recovery_pct = (
+        req.recovery_pct
+        if req.recovery_pct is not None
+        else _SCENARIO_PRESETS["base"]["recovery_pct"]
+    )
+
+    generator = ScenarioGenerator()
+    rates = {
+        k: float(capital_structure[k])
+        for k in ("class_a_rate_pct", "class_b_rate_pct", "class_c_rate_pct")
+        if k in capital_structure
+    }
+    rates.setdefault("class_a_rate_pct", base["class_a_rate_pct"])
+
+    cells: list[dict] = []
+    for cdr in req.cdr_pct:
+        for cpr in req.cpr_pct:
+            for rate_shift in req.rate_shift_bps:
+                assumptions = ScenarioAssumptions(
+                    name=f"cpr{cpr}-cdr{cdr}-rs{rate_shift}",
+                    cpr_pct=cpr,
+                    cdr_pct=cdr,
+                    recovery_pct=recovery_pct,
+                    rate_shift_bps=rate_shift,
+                )
+                seed = PrimitivesDealState.seed_from_prospectus(
+                    capital_structure,
+                    reserve_target=reserve_target,
+                    original_pool_balance=original_pool_balance,
+                    opening_pool_balance=base["current_pool_balance"],
+                    reporting_date="projection-start",
+                )
+                period_inputs = generator.generate(
+                    seed,
+                    assumptions=assumptions,
+                    rate_pct=base["class_a_rate_pct"],
+                    months=req.months,
+                )
+                states = [seed]
+                period_results = []
+                current = seed
+                for period in period_inputs:
+                    result = run_period(current, period, rates=rates)
+                    current = result.closing_state
+                    states.append(current)
+                    period_results.append(result)
+                series = DealStateSeries(states=states, period_results=period_results)
+                cells.append(
+                    {
+                        "cpr_pct": cpr,
+                        "cdr_pct": cdr,
+                        "rate_shift_bps": rate_shift,
+                        **_stress_cell_outcomes(series, period_results, deal),
+                    }
+                )
+
+    return {
+        "deal_id": deal_id,
+        "months": req.months,
+        "recovery_pct": recovery_pct,
+        "axes": {
+            "cpr_pct": list(req.cpr_pct),
+            "cdr_pct": list(req.cdr_pct),
+            "rate_shift_bps": list(req.rate_shift_bps),
+        },
+        "dimensions": {
+            "cpr": len(req.cpr_pct),
+            "cdr": len(req.cdr_pct),
+            "rate_shift": len(req.rate_shift_bps),
+            "cells": len(cells),
+        },
+        "cells": cells,
+    }
+
+
+@app.post("/deal/{deal_id}/stress-matrix")
+def deal_stress_matrix(deal_id: str, req: StressMatrixRequest) -> dict:
+    """Forward-project the deal across a CPR × CDR (× rate-shift) scenario matrix (#323).
+
+    Each grid cell is one forward projection through the SAME ``run_period``
+    engine the ``/project`` endpoint (#319) uses; the response is a tranche-level
+    outcome surface — cumulative loss, per-tranche WAL (A/B/C), total waterfall
+    shortfall, and the first projected period any covenant trigger breaches — per
+    ``(cpr, cdr, rate_shift)`` cell. The projection base / structural config is
+    resolved from the deal context exactly as ``/project`` does, so a
+    misconfigured non-Green-Lion deal fails loudly (422) rather than projecting on
+    Green Lion's structure (#268). An oversized grid (> the cell cap) returns 422.
+    """
+    deal = _require_deal(deal_id)
+    return _run_stress_matrix(deal_id, deal, req)
 
 
 # ---------------------------------------------------------------------------

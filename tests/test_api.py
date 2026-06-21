@@ -2525,3 +2525,157 @@ def test_green_lion_2026_1_still_uses_tape_path():
     assert result is sentinel
     tapes.assert_called_once()
     reports.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# Scenario / stress matrix (#323) — a grid of forward projections across a
+# CPR × CDR (× rate-shift) matrix, returning a tranche-level outcome surface
+# (loss / WAL / shortfall / first-breach) per cell. Driven THROUGH the #319
+# projection fold; all tests run offline over the deterministic engine.
+# ---------------------------------------------------------------------------
+
+
+def test_stress_matrix_grid_shape_and_cells():
+    """A 2×2 CPR×CDR grid returns 4 well-formed cells + echoed axes/dimensions."""
+    resp = client.post(
+        "/deal/green-lion-2026-1/stress-matrix",
+        json={"cpr_pct": [10, 20], "cdr_pct": [1, 5], "months": 6},
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["deal_id"] == "green-lion-2026-1"
+    assert body["months"] == 6
+    assert body["axes"] == {
+        "cpr_pct": [10.0, 20.0],
+        "cdr_pct": [1.0, 5.0],
+        "rate_shift_bps": [0.0],
+    }
+    assert body["dimensions"] == {"cpr": 2, "cdr": 2, "rate_shift": 1, "cells": 4}
+    assert len(body["cells"]) == 4
+    # Every cell carries the full tranche-level outcome surface.
+    for cell in body["cells"]:
+        assert set(cell) == {
+            "cpr_pct",
+            "cdr_pct",
+            "rate_shift_bps",
+            "loss",
+            "wal",
+            "shortfall",
+            "first_breach_period",
+            "first_breach_label",
+            "first_breach_trigger",
+        }
+        assert {"wal_class_a_months", "wal_class_b_months", "wal_class_c_months"} <= set(
+            cell["wal"]
+        )
+    # The 4 cells are exactly the Cartesian product of the two axes.
+    coords = {(c["cpr_pct"], c["cdr_pct"]) for c in body["cells"]}
+    assert coords == {(10.0, 1.0), (10.0, 5.0), (20.0, 1.0), (20.0, 5.0)}
+
+
+def test_stress_matrix_default_grid_is_2d():
+    """Omitting rate_shift_bps yields a 2-D CPR×CDR grid (rate-shift axis = [0.0])."""
+    resp = client.post(
+        "/deal/green-lion-2026-1/stress-matrix",
+        json={"cpr_pct": [15], "cdr_pct": [2, 4, 6], "months": 4},
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["axes"]["rate_shift_bps"] == [0.0]
+    assert body["dimensions"]["cells"] == 3
+    assert all(c["rate_shift_bps"] == 0.0 for c in body["cells"])
+
+
+def test_stress_matrix_3d_includes_rate_shift_axis():
+    """Supplying rate_shift_bps makes the grid 3-D (cells = cpr×cdr×rate_shift)."""
+    resp = client.post(
+        "/deal/green-lion-2026-1/stress-matrix",
+        json={
+            "cpr_pct": [10, 20],
+            "cdr_pct": [1, 5],
+            "rate_shift_bps": [0, 100],
+            "months": 4,
+        },
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["dimensions"] == {"cpr": 2, "cdr": 2, "rate_shift": 2, "cells": 8}
+    assert len(body["cells"]) == 8
+
+
+def test_stress_matrix_higher_cdr_means_more_loss():
+    """The outcome surface is monotone in CDR: higher CDR → strictly higher loss
+    at fixed CPR / recovery (the stress signal an analyst reads off the grid)."""
+    resp = client.post(
+        "/deal/green-lion-2026-1/stress-matrix",
+        json={"cpr_pct": [15], "cdr_pct": [1, 5], "months": 12},
+    )
+    assert resp.status_code == 200
+    cells = {c["cdr_pct"]: c for c in resp.json()["cells"]}
+    assert cells[5.0]["loss"] > cells[1.0]["loss"]
+
+
+def test_stress_matrix_oversized_grid_returns_422():
+    """A grid whose cell count exceeds the cap returns a labelled 422, not a hang."""
+    # 9 × 9 × 1 = 81 > 64-cell cap.
+    big_axis = [float(x) for x in range(9)]
+    resp = client.post(
+        "/deal/green-lion-2026-1/stress-matrix",
+        json={"cpr_pct": big_axis, "cdr_pct": big_axis, "months": 3},
+    )
+    assert resp.status_code == 422
+    assert "cell" in resp.json()["detail"].lower()
+
+
+def test_stress_matrix_unknown_deal_returns_404():
+    resp = client.post(
+        "/deal/unknown/stress-matrix",
+        json={"cpr_pct": [10], "cdr_pct": [1]},
+    )
+    assert resp.status_code == 404
+
+
+def test_stress_matrix_invalid_axis_value_returns_422():
+    """An out-of-bounds CPR axis value is a 422 (validation), not a 500."""
+    resp = client.post(
+        "/deal/green-lion-2026-1/stress-matrix",
+        json={"cpr_pct": [150], "cdr_pct": [1]},
+    )
+    assert resp.status_code == 422
+
+
+def test_stress_matrix_first_breach_discriminates_stress():
+    """first_breach is the earliest covenant trigger fire over the projected
+    series, via the SAME covenant engine /compliance uses. A heavy-stress cell
+    breaches at a real period index naming the firing trigger; a benign cell does
+    not breach over the horizon (None) — so the surface separates the two."""
+    resp = client.post(
+        "/deal/green-lion-2026-1/stress-matrix",
+        json={
+            "cpr_pct": [5],
+            "cdr_pct": [0.1, 20],
+            "months": 36,
+        },
+    )
+    assert resp.status_code == 200
+    cells = {c["cdr_pct"]: c for c in resp.json()["cells"]}
+    heavy = cells[20.0]
+    benign = cells[0.1]
+    # Heavy stress breaches at a real (int) period naming the firing trigger.
+    assert isinstance(heavy["first_breach_period"], int)
+    assert heavy["first_breach_period"] >= 0
+    assert heavy["first_breach_trigger"] is not None
+    assert heavy["first_breach_label"] is not None
+    # Benign stress does not breach over the horizon.
+    assert benign["first_breach_period"] is None
+    assert benign["first_breach_trigger"] is None
+
+
+def test_stress_matrix_does_not_change_project_endpoint():
+    """The matrix is additive: /project still returns its #319 shape unchanged."""
+    resp = client.post(
+        "/deal/green-lion-2026-1/project",
+        json={"scenarios": ["base"], "months": 6},
+    )
+    assert resp.status_code == 200
+    assert "periods" in resp.json()["projections"]["base"]
