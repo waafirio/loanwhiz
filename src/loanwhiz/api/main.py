@@ -2176,10 +2176,13 @@ def _tape_analytics_period(tape: dict) -> TapeAnalyticsPeriod | None:
             **_normalised_tape_output(tape["url"]),
         )
     except Exception:  # noqa: BLE001 — degrade gracefully on any per-tape failure
-        _log.warning(
-            "tape-analytics: skipping unresolvable tape %s (no cache/seed and "
-            "source unreachable)",
-            tape.get("url"),
+        # Broad on purpose: the primary case is an offline tape (no cache/seed,
+        # source unreachable), but a malformed seed or any other per-tape error
+        # should also skip that one period rather than blank the whole Pool
+        # page. Log with the traceback (``exception``) so a genuine bug behind
+        # the skip is still diagnosable instead of silently masked.
+        _log.exception(
+            "tape-analytics: skipping unresolvable tape %s", tape.get("url")
         )
         return None
 
