@@ -237,6 +237,73 @@ def aggregate_collections(deal_id: str = DEFAULT_DEAL_ID, period: str | None = N
     }
 
 
+@tool
+def verify_report(
+    deal_id: str = DEFAULT_DEAL_ID,
+    period: str | None = None,
+    tolerance_pct: float = 1.0,
+) -> dict:
+    """Verify a deal's investor report against the engine-computed distributions.
+
+    Use this for ANY question about whether the servicer applied the waterfall
+    correctly, whether the published investor-report figures tie out to the
+    deal's computation, or to find line-item "breaks" between the reported and
+    computed numbers. Pass only the ``deal_id`` and an optional ``period``
+    substring (e.g. "april 2026" or "2026") selecting which monthly investor
+    report to check — the tool reconstructs the deal's folded ledger itself and
+    diffs the report's Class A interest/principal, pool balance, reserve balance,
+    and total collections against the engine output. Do NOT pass a report URL or
+    waterfall data.
+
+    Returns per-line-item comparisons (reported vs computed, delta, delta_pct,
+    and a match flag at the given ``tolerance_pct``), an ``overall_match`` flag,
+    a human-readable ``summary``, and the governance evidence (confidence +
+    citations). An unknown ``deal_id`` returns an ``error`` dict listing the
+    available deals; a deal with no published investor reports returns an
+    ``error`` explaining the gap.
+    """
+    # Call-time import to reuse the REST /report-verification recipe (the live
+    # fold + investor-report selection) without an import-time cycle
+    # (api.main -> agent.executor -> agent.tools -> api.main).
+    from fastapi import HTTPException
+
+    from loanwhiz.api.main import deal_report_verification
+
+    deal = DEAL_REGISTRY.get(deal_id)
+    if deal is None:
+        # Do NOT silently fall back to the default deal — answering a
+        # verification question about the wrong deal is worse than an explicit
+        # miss (mirrors check_covenants / aggregate_collections).
+        return {
+            "error": f"deal {deal_id!r} not found",
+            "available_deals": list(DEAL_REGISTRY),
+            "confidence": 0.0,
+            "citations": [],
+        }
+
+    try:
+        resp = deal_report_verification(
+            deal_id, period=period, tolerance_pct=tolerance_pct
+        )
+    except HTTPException as exc:
+        # e.g. the deal publishes no investor reports (422) — surface the
+        # endpoint's own detail rather than crashing the tool call.
+        return {
+            "error": str(exc.detail),
+            "confidence": 0.0,
+            "citations": [],
+        }
+
+    data = resp.model_dump() if hasattr(resp, "model_dump") else dict(resp)
+    confidence = data.pop("confidence", None)
+    citations = data.pop("citations", [])
+    return data | {
+        "confidence": confidence,
+        "citations": citations,
+        "duration_ms": 0,
+    }
+
+
 # ---------------------------------------------------------------------------
 # Deal grounding — the extracted deal model + the tape registry
 # ---------------------------------------------------------------------------
@@ -378,6 +445,7 @@ SF_TOOLS = [
     run_waterfall,
     check_covenants,
     aggregate_collections,
+    verify_report,
     get_deal_model,
     list_deal_tapes,
 ]
