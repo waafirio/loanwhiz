@@ -39,7 +39,11 @@ export default function RootLayout({
             <AppSidebar />
             <SidebarInset>
               <TopBar />
-              <main className="flex-1 p-6">{children}</main>
+              <main className="flex-1 p-6">
+                <div className="mx-auto w-full max-w-screen-2xl">
+                  {children}
+                </div>
+              </main>
             </SidebarInset>
             <ChatPanel />
           </SidebarProvider>
