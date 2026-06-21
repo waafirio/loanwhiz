@@ -2231,9 +2231,7 @@ def _first_breach(series: DealStateSeries, deal: dict) -> dict:
     return {"period": idx, "label": status.period, "trigger": status.trigger_name}
 
 
-def _stress_cell_outcomes(
-    series: DealStateSeries, period_results: list, deal: dict
-) -> dict:
+def _stress_cell_outcomes(series: DealStateSeries, deal: dict) -> dict:
     """Per-cell tranche-level outcome surface from a projected series (#323).
 
     Reads four outcomes off the engine-computed series — no separate
@@ -2252,7 +2250,7 @@ def _stress_cell_outcomes(
     final = series.final_state
     shortfall = sum(
         r.revenue_execution.total_shortfall + r.redemption_execution.total_shortfall
-        for r in period_results
+        for r in series.period_results
     )
     breach = _first_breach(series, deal)
     return {
@@ -2347,7 +2345,7 @@ def _run_stress_matrix(deal_id: str, deal: dict, req: StressMatrixRequest) -> di
                         "cpr_pct": cpr,
                         "cdr_pct": cdr,
                         "rate_shift_bps": rate_shift,
-                        **_stress_cell_outcomes(series, period_results, deal),
+                        **_stress_cell_outcomes(series, deal),
                     }
                 )
 
