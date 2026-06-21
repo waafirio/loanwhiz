@@ -12,6 +12,7 @@ from loanwhiz.extraction.assembler import (
     _slug,
 )
 from loanwhiz.primitives.audit_logger import audit_result
+from loanwhiz.primitives.base import PrimitiveResult
 from loanwhiz.primitives.collections_aggregator import CollectionsAggregator, CollectionsInput
 from loanwhiz.primitives.covenant_monitor import CovenantInput, CovenantMonitor
 from loanwhiz.primitives.esma_tape_normaliser import EsmaTapeInput, EsmaTapeNormaliser
@@ -403,17 +404,20 @@ def check_covenants(deal_id: str = DEFAULT_DEAL_ID) -> dict:
     }
 
 
-def _deal_proximity_trend(deal: dict) -> ProximityTrendOutput | None:
-    """Per-deal covenant early-warning projection (the forecast chain), or ``None``.
+def _deal_proximity_trend_result(
+    deal: dict,
+) -> PrimitiveResult[ProximityTrendOutput] | None:
+    """Per-deal covenant early-warning result (the forecast chain), or ``None``.
 
     Loads the deal's tapes, reconstructs each period's structural state, runs the
     covenant monitor over the full reporting series, then fits each trigger's
-    proximity-to-breach trend — returning the resulting
-    :class:`ProximityTrendOutput`. Returns ``None`` when the deal cannot be
-    evaluated offline (no tapes / reconstruction unavailable in this
-    environment) so callers can report an honest gap rather than fabricate a
-    forecast. Shared by ``forecast_trigger_breaches`` (single deal) and
-    ``monitor_portfolio`` (across the registry).
+    proximity-to-breach trend — returning the full
+    :class:`PrimitiveResult` (so callers keep the trend monitor's confidence,
+    citations, and duration). Returns ``None`` when the deal cannot be evaluated
+    offline (no tapes / reconstruction unavailable in this environment) so
+    callers can report an honest gap rather than fabricate a forecast. Shared by
+    ``forecast_trigger_breaches`` (single deal) and ``monitor_portfolio`` (across
+    the registry).
     """
     from loanwhiz.api.main import (
         _extracted_triggers_to_definitions,
@@ -439,10 +443,20 @@ def _deal_proximity_trend(deal: dict) -> ProximityTrendOutput | None:
     )
     covenant_result = CovenantMonitor().execute(covenant_input)
     # The trend monitor analyses the already-evaluated covenant series.
-    trend_result = ProximityTrendMonitor().execute(
+    return ProximityTrendMonitor().execute(
         ProximityTrendInput.from_covenant_output(covenant_result.output)
     )
-    return trend_result.output
+
+
+def _deal_proximity_trend(deal: dict) -> ProximityTrendOutput | None:
+    """Per-deal proximity-trend output (the portfolio loader's view), or ``None``.
+
+    Thin wrapper over :func:`_deal_proximity_trend_result` that hands the
+    portfolio monitor exactly the :class:`ProximityTrendOutput` it rolls up (the
+    monitor attaches its own audit/citations at the portfolio level).
+    """
+    result = _deal_proximity_trend_result(deal)
+    return result.output if result is not None else None
 
 
 @tool
@@ -470,8 +484,8 @@ def forecast_trigger_breaches(deal_id: str = DEFAULT_DEAL_ID) -> dict:
             "confidence": 0.0,
             "citations": [],
         }
-    trend_output = _deal_proximity_trend(deal)
-    if trend_output is None:
+    trend_result = _deal_proximity_trend_result(deal)
+    if trend_result is None:
         return {
             "deal_id": deal_id,
             "deal_name": deal["deal_name"],
@@ -484,10 +498,10 @@ def forecast_trigger_breaches(deal_id: str = DEFAULT_DEAL_ID) -> dict:
             "confidence": 0.0,
             "citations": [],
         }
-    return trend_output.model_dump() | {
-        "confidence": 1.0,
-        "citations": [],
-        "duration_ms": 0,
+    return trend_result.output.model_dump() | {
+        "confidence": trend_result.confidence,
+        "citations": [c.model_dump() for c in trend_result.citations],
+        "duration_ms": trend_result.audit_entry.duration_ms,
     }
 
 
