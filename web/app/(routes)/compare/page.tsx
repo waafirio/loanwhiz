@@ -57,10 +57,18 @@ export default function ComparePage() {
     [chosen, registry],
   );
 
+  // Selection ceiling for the comparison (#344): pick 2..MAX_SELECTED deals.
+  // The picker enforces this in its UI; mirror it here so the cap holds even
+  // if the picker is bypassed, and so stale state can't push >5 deals into a
+  // /compare request.
+  const MAX_SELECTED = 5;
+
   function toggleDeal(id: string) {
     setChosen((prev) => {
       const base = prev ?? selected;
-      return base.includes(id) ? base.filter((d) => d !== id) : [...base, id];
+      if (base.includes(id)) return base.filter((d) => d !== id);
+      if (base.length >= MAX_SELECTED) return base; // at cap — no-op
+      return [...base, id];
     });
   }
 

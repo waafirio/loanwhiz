@@ -476,23 +476,39 @@ def _require_deal(deal_id: str) -> dict:
 
 
 class DealSummary(BaseModel):
-    """One available deal — id + display name — for ``GET /deals``."""
+    """One available deal — id + display name (+ filtering facets) for ``GET /deals``.
+
+    ``jurisdiction`` and ``vintage`` are surfaced so a client can filter a
+    large (EDW-scale) deal universe without a round-trip per deal (#344). They
+    reuse the exact derivation ``GET /compare`` already applies: jurisdiction
+    falls back to ``"Unknown"`` when the registry carries none, and vintage is
+    recovered from the deal name (``None`` when the name embeds no year).
+    """
 
     id: str
     name: str
+    jurisdiction: str
+    vintage: int | None
 
 
 @app.get("/deals", response_model=list[DealSummary])
 def list_deals() -> list[DealSummary]:
-    """List the available deals (id + name) from the config-driven registry.
+    """List the available deals (id + name + jurisdiction/vintage facets).
 
     Sourced from :data:`DEALS` (``loanwhiz.config.DEAL_REGISTRY``), so a deal
     added as data — not code — surfaces here automatically. The frontend deal
     selector uses this to populate; ``id`` is the value to pass to the
-    ``/deal/{deal_id}/...`` routes.
+    ``/deal/{deal_id}/...`` routes. ``jurisdiction``/``vintage`` let the
+    comparison picker filter a 200+ deal universe (#344) — same derivation as
+    ``GET /compare``.
     """
     return [
-        DealSummary(id=deal_id, name=deal["deal_name"])
+        DealSummary(
+            id=deal_id,
+            name=deal["deal_name"],
+            jurisdiction=deal.get("jurisdiction") or "Unknown",
+            vintage=_compare.parse_vintage(deal["deal_name"]),
+        )
         for deal_id, deal in DEALS.items()
     ]
 
