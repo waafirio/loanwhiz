@@ -24,6 +24,8 @@ import pytest
 from loanwhiz.extraction import section_router
 from loanwhiz.extraction.section_router import (
     _LOAD_BEARING_ROLES,
+    _has_payment_list,
+    classify_segments_llm,
     extract_key_sf_sections,
     resolve_sections,
     route_sections,
@@ -507,6 +509,158 @@ def test_resolve_sections_keyword_hit_not_overridden_by_llm() -> None:
     # Keyword hits win — the LLM is consulted only for *missing* roles (here none).
     for role in _LOAD_BEARING_ROLES:
         assert resolved[role] is keyword[role]
+
+
+# ---------------------------------------------------------------------------
+# Descendant-span + payment-list-signal routing (#316 — Sol-Lion ES fix)
+# ---------------------------------------------------------------------------
+
+# A prospectus skeleton mirroring the Sol-Lion (ES) failure mode: the waterfall
+# *parent* is a generically-titled stub (its body is just a heading line); the
+# real enumerated step list lives in a DEEPER child sub-section. The English
+# keyword router never matches these titles, and the old next-header span would
+# give the parent only its heading line — so the steps were lost (#316).
+_CHILD_STEP_LIST_MD = textwrap.dedent("""\
+    # Prospectus
+
+    ## 3.4.7.4 Application of Available Funds
+
+    This section governs the application of funds.
+
+    ### 3.4.7.4.2 Application
+
+    On each Payment Date the Available Funds will be applied in the following
+    order of priority:
+
+    - (a) first, fees of the Management Company;
+    - (b) second, fees of the Paying Agent;
+    - (c) third, interest on the Class A Notes;
+    - (d) fourth, principal of the Class A Notes;
+    - (e) fifth, interest on the Class B Notes;
+    - (f) sixth, principal of the Class B Notes.
+
+    ## 4.6.2 Summary Table
+
+    Rank 1, Rank 2, Rank 3 — see body for detail.
+""")
+
+
+def test_descendant_text_spans_into_child_sections() -> None:
+    """SectionMap.descendant_text spans a parent down to the next same-or-shallower
+    header, capturing child-section steps the narrow `.text` slice omits (#316)."""
+    sm = route_sections(_CHILD_STEP_LIST_MD)
+    parent = next(s for s in sm.sections if s.title == "3.4.7.4 Application of Available Funds")
+
+    # The narrow .text stops at the next header (the ### child) — heading-only-ish.
+    assert "(a) first" not in parent.text, (
+        "precondition: narrow .text must NOT already contain the child steps"
+    )
+
+    # The descendant span reaches into the ### 3.4.7.4.2 child and carries all steps.
+    span = sm.descendant_text(parent)
+    step_letters = re.findall(r"^- \(([a-z])\)", span, re.MULTILINE)
+    assert step_letters == list("abcdef"), f"expected (a)-(f), got {step_letters}"
+    # But it must STOP at the next sibling-or-shallower header (## 4.6.2).
+    assert "Summary Table" not in span, "descendant span leaked into the next ## section"
+
+
+def test_with_descendant_text_does_not_mutate_map() -> None:
+    """with_descendant_text returns a widened copy; the original Section and map
+    are untouched (the keyword/English path must stay byte-identical)."""
+    sm = route_sections(_CHILD_STEP_LIST_MD)
+    parent = next(s for s in sm.sections if s.title.startswith("3.4.7.4 Application"))
+    original_text = parent.text
+
+    widened = sm.with_descendant_text(parent)
+    assert "(a) first" in widened.text
+    assert widened.title == parent.title and widened.level == parent.level
+    # Original object and map slice unchanged.
+    assert parent.text == original_text
+    assert sm.sections[1].text == original_text  # same object in the list
+
+
+def test_has_payment_list_signal() -> None:
+    """_has_payment_list fires on an enumerated cascade, not on a rank summary."""
+    cascade = "- (a) first, fees;\n- (b) second, interest;\n- (c) third, principal;"
+    assert _has_payment_list(cascade) is True
+
+    roman = "(i) first item\n(ii) second item\n(iii) third item\n"
+    assert _has_payment_list(roman) is True
+
+    numbered = "1. first\n2. second\n3. third\n"
+    assert _has_payment_list(numbered) is True
+
+    summary = "Rank 1, Rank 2, Rank 3 — see body for detail."
+    assert _has_payment_list(summary) is False
+
+    # A single stray marker in prose must not flip the signal.
+    prose = "The order is set out in clause (a) of the agreement."
+    assert _has_payment_list(prose) is False
+
+
+def test_classify_prefers_payment_list_over_summary_title() -> None:
+    """classify_segments_llm feeds the LLM the has_payment_list signal + body
+    snippet, and returns the routed section widened to its descendant span (#316).
+
+    The genai boundary is stubbed: the fake client inspects the prompt and routes
+    revenue to whichever indexed segment advertises has_payment_list=true (exactly
+    the discrimination the real signal enables).
+    """
+    sm = route_sections(_CHILD_STEP_LIST_MD)
+
+    captured = {}
+
+    class _FakeResp:
+        text = ""  # set per-call below
+
+    class _FakeModels:
+        def generate_content(self, *, model, contents, config):  # noqa: ARG002
+            captured["prompt"] = contents
+            # Parse the segment lines; pick the index whose line has
+            # has_payment_list=true for the waterfall roles, -1 otherwise.
+            idx_with_list = None
+            for line in contents.splitlines():
+                m = re.match(r"^(\d+): .*has_payment_list=true", line)
+                if m:
+                    idx_with_list = int(m.group(1))
+                    break
+            r = _FakeResp()
+            picked = idx_with_list if idx_with_list is not None else -1
+            r.text = (
+                '{"definitions": -1, '
+                f'"revenue_priority_of_payments": {picked}, '
+                f'"redemption_priority_of_payments": {picked}, '
+                '"post_enforcement_priority": -1}'
+            )
+            return r
+
+    class _FakeClient:
+        def __init__(self, *a, **k):
+            self.models = _FakeModels()
+
+    # classify_segments_llm does `from google import genai` (the installed
+    # package) and `genai.Client(...)`. Patch the real package's Client so the
+    # function runs its full prompt-building / response-parsing path against the
+    # fake transport — only the network boundary is stubbed.
+    from google import genai as _real_genai
+
+    with patch.object(_real_genai, "Client", _FakeClient):
+        result = classify_segments_llm(sm)
+
+    # Prompt carried the signal for the child step-list segment.
+    assert "has_payment_list=true" in captured["prompt"]
+
+    rev = result["revenue_priority_of_payments"]
+    assert rev is not None, "revenue role was not routed"
+    # The routed section is widened to its descendant span → carries the steps.
+    step_letters = re.findall(r"^- \(([a-z])\)", rev.text, re.MULTILINE)
+    assert step_letters == list("abcdef"), (
+        f"routed section did not carry the descendant step list: {step_letters}"
+    )
+
+    # Combined-cascade tolerance: revenue and redemption may resolve to one span.
+    red = result["redemption_priority_of_payments"]
+    assert red is not None and red.start_char == rev.start_char
 
 
 # ---------------------------------------------------------------------------
