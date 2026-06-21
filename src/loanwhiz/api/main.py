@@ -55,6 +55,10 @@ from loanwhiz.primitives.capability_matrix import (
     CapabilityMatrix,
     build_capability_matrix,
 )
+from loanwhiz.primitives.relative_value_screener import (
+    RelativeValueScorecard,
+    build_relative_value_scorecard,
+)
 from loanwhiz.primitives.covenant_monitor import (
     CovenantInput,
     CovenantMonitor,
@@ -1751,6 +1755,47 @@ def capability_matrix() -> CapabilityMatrix:
 
 
 # --- end cross-deal capability matrix (#241) ---------------------------------
+
+
+# --- cross-deal relative-value / spread screener (#324) ----------------------
+# Self-contained block (handler) for GET /relative-value-screener — the
+# quantitative analyst tool that ranks tranches ACROSS deals by structural
+# relative value (subordination/CE, WAL, trigger headroom, pool quality) into
+# one comparable scorecard. It is the quantitative sibling of the qualitative
+# deal-comparison tool (#283).
+#
+# Like /capability-matrix it is offline & deterministic: it screens the live
+# DEAL_REGISTRY, loading each deal's committed extracted seed model via
+# `_load_cached_deal_model` (which never triggers a cold extraction). No loan
+# tape is fetched and no engine is run in the request path.
+#
+# Honesty (#193 discipline): the committed seed carries structural data only
+# (tranche sizes/ratings, triggers — often with qualitative thresholds), not
+# live pool analytics. So dimensions whose true numeric form needs live period
+# data (true WAL, live trigger headroom, tape-derived pool quality) are returned
+# with `available=false` and a real reason rather than fabricated; the composite
+# blends only the available dimensions. See the screener module for the contract.
+
+
+@app.get("/relative-value-screener", response_model=RelativeValueScorecard)
+def relative_value_screener() -> RelativeValueScorecard:
+    """Return the cross-deal relative-value scorecard ranking tranches by structural RV.
+
+    For every (deal, tranche) it scores the four relative-value dimensions
+    (subordination/CE, WAL, trigger headroom, pool quality) from the deal's
+    committed extracted seed model, normalises each across the screened cohort,
+    blends the available dimensions into a composite, and ranks tranches
+    cross-deal. Runs offline and deterministically — no loan-tape fetch, no live
+    waterfall, in the request path. Live-only dimensions are reported honestly
+    as unavailable rather than fabricated.
+    """
+    return build_relative_value_scorecard(
+        DEALS,
+        seed_loader=_load_cached_deal_model,
+    )
+
+
+# --- end cross-deal relative-value screener (#324) ---------------------------
 
 
 # --- engine validation (#212, V6 / epic #206; #270 Reconciler) ---------------
