@@ -118,29 +118,42 @@ function ProjectionContent({ result }: { result: ProjectionResult }) {
     [result],
   );
 
+  // Final remaining pool vs cumulative losses per scenario — the engine-derived
+  // outcome surface the #319 `/project` response actually carries (the old
+  // `total_distributed` / `shortfall` waterfall fields were dropped). Guard
+  // every read with `?? 0` so a partial response renders zero, never NaN/throw.
   const chartData = useMemo(
     () =>
-      scenarios.map((s) => ({
-        scenario: humanize(s),
-        distributed: result.projections[s].total_distributed,
-        shortfall: result.projections[s].shortfall,
-      })),
+      scenarios.map((s) => {
+        const p = result.projections[s];
+        return {
+          scenario: humanize(s),
+          poolRemaining: p.final_pool_balance_eur ?? 0,
+          losses: p.cumulative_losses ?? 0,
+        };
+      }),
     [scenarios, result],
   );
 
-  // Per-tranche rows are scenarios × tranches; paginate so a many-scenario /
-  // many-tranche response stays bounded in the DOM.
-  const trancheRows = useMemo(
+  // Per-period tranche-principal rows are scenarios × periods; paginate so a
+  // many-scenario / long-horizon response stays bounded in the DOM. `periods`
+  // is guarded with `?? []` so a no-periods scenario contributes no rows
+  // instead of throwing on `.map`.
+  const periodRows = useMemo(
     () =>
       scenarios.flatMap((s) =>
-        result.projections[s].tranche_distributions.map((t) => ({
+        (result.projections[s].periods ?? []).map((p) => ({
           scenario: s,
-          ...t,
+          period: p.period,
+          reporting_date: p.reporting_date,
+          class_a_principal_eur: p.class_a_principal_eur ?? 0,
+          class_b_principal_eur: p.class_b_principal_eur ?? 0,
+          class_c_principal_eur: p.class_c_principal_eur ?? 0,
         })),
       ),
     [scenarios, result],
   );
-  const tranchePagination = usePagination(trancheRows, 12);
+  const periodPagination = usePagination(periodRows, 12);
 
   if (scenarios.length === 0) {
     return <EmptyState message="No projection scenarios returned." />;
@@ -151,7 +164,7 @@ function ProjectionContent({ result }: { result: ProjectionResult }) {
       <Card>
         <CardHeader>
           <CardTitle className="text-base">
-            Distributed vs shortfall ({result.months}-month horizon)
+            Final pool vs cumulative losses ({result.months}-month horizon)
           </CardTitle>
         </CardHeader>
         <CardContent>
@@ -162,8 +175,8 @@ function ProjectionContent({ result }: { result: ProjectionResult }) {
               <YAxis fontSize={12} width={80} />
               <Tooltip formatter={(v) => formatCurrency(Number(v))} />
               <Legend />
-              <Bar dataKey="distributed" name="Distributed" fill="#2563eb" />
-              <Bar dataKey="shortfall" name="Shortfall" fill="#dc2626" />
+              <Bar dataKey="poolRemaining" name="Final pool balance" fill="#2563eb" />
+              <Bar dataKey="losses" name="Cumulative losses" fill="#dc2626" />
             </BarChart>
           </ResponsiveContainer>
         </CardContent>
@@ -178,9 +191,9 @@ function ProjectionContent({ result }: { result: ProjectionResult }) {
             <TableHeader>
               <TableRow>
                 <TableHead>Scenario</TableHead>
-                <TableHead>Period</TableHead>
-                <TableHead className="text-right">Total distributed</TableHead>
-                <TableHead className="text-right">Shortfall</TableHead>
+                <TableHead className="text-right">Final pool balance</TableHead>
+                <TableHead className="text-right">Final Class A balance</TableHead>
+                <TableHead className="text-right">Cumulative losses</TableHead>
                 <TableHead className="text-right">Class A WAL</TableHead>
               </TableRow>
             </TableHeader>
@@ -196,14 +209,14 @@ function ProjectionContent({ result }: { result: ProjectionResult }) {
                 return (
                   <TableRow key={s}>
                     <TableCell className="font-medium">{humanize(s)}</TableCell>
-                    <TableCell className="text-muted-foreground">
-                      {p.reporting_period}
+                    <TableCell className="text-right tabular-nums">
+                      {formatCurrency(p.final_pool_balance_eur ?? 0)}
                     </TableCell>
                     <TableCell className="text-right tabular-nums">
-                      {formatCurrency(p.total_distributed)}
+                      {formatCurrency(p.final_class_a_balance ?? 0)}
                     </TableCell>
                     <TableCell className="text-right tabular-nums">
-                      {formatCurrency(p.shortfall)}
+                      {formatCurrency(p.cumulative_losses ?? 0)}
                     </TableCell>
                     <TableCell className="text-right tabular-nums">
                       {walYears != null && walMonths != null
@@ -221,41 +234,49 @@ function ProjectionContent({ result }: { result: ProjectionResult }) {
       <Card>
         <CardHeader>
           <CardTitle className="text-base">
-            Per-tranche received by scenario
+            Per-period tranche principal by scenario
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Scenario</TableHead>
-                <TableHead>Tranche</TableHead>
-                <TableHead className="text-right">Interest</TableHead>
-                <TableHead className="text-right">Principal</TableHead>
-                <TableHead className="text-right">Total</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {tranchePagination.pageItems.map((t) => (
-                <TableRow key={`${t.scenario}-${t.tranche}`}>
-                  <TableCell className="font-medium">
-                    {humanize(t.scenario)}
-                  </TableCell>
-                  <TableCell>{humanize(t.tranche)}</TableCell>
-                  <TableCell className="text-right tabular-nums">
-                    {formatCurrency(t.interest_received)}
-                  </TableCell>
-                  <TableCell className="text-right tabular-nums">
-                    {formatCurrency(t.principal_received)}
-                  </TableCell>
-                  <TableCell className="text-right tabular-nums">
-                    {formatCurrency(t.total_received)}
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-          <TablePagination pagination={tranchePagination} noun="rows" />
+          {periodRows.length === 0 ? (
+            <EmptyState message="No per-period projection data returned." />
+          ) : (
+            <>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Scenario</TableHead>
+                    <TableHead className="text-right">Period</TableHead>
+                    <TableHead className="text-right">Class A principal</TableHead>
+                    <TableHead className="text-right">Class B principal</TableHead>
+                    <TableHead className="text-right">Class C principal</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {periodPagination.pageItems.map((r) => (
+                    <TableRow key={`${r.scenario}-${r.period}`}>
+                      <TableCell className="font-medium">
+                        {humanize(r.scenario)}
+                      </TableCell>
+                      <TableCell className="text-right tabular-nums">
+                        {r.period}
+                      </TableCell>
+                      <TableCell className="text-right tabular-nums">
+                        {formatCurrency(r.class_a_principal_eur)}
+                      </TableCell>
+                      <TableCell className="text-right tabular-nums">
+                        {formatCurrency(r.class_b_principal_eur)}
+                      </TableCell>
+                      <TableCell className="text-right tabular-nums">
+                        {formatCurrency(r.class_c_principal_eur)}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+              <TablePagination pagination={periodPagination} noun="rows" />
+            </>
+          )}
         </CardContent>
       </Card>
     </div>
