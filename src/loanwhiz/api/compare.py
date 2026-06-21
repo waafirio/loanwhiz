@@ -36,7 +36,7 @@ from __future__ import annotations
 
 import re
 import statistics
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
@@ -80,6 +80,15 @@ class DealRef(BaseModel):
     )
     has_performance: bool = Field(
         default=False, description="A DealStateSeries reconstructed for this deal."
+    )
+    performance_provenance: Literal["reported", "projected"] | None = Field(
+        default=None,
+        description=(
+            "Provenance of this deal's Panel-2 series: 'reported' when "
+            "reconstructed from the deal's own tape/report history, 'projected' "
+            "when derived from the canonical model's forward projection "
+            "(projected-not-reported), or None when no series is available."
+        ),
     )
     note: str | None = Field(
         default=None, description="One-line honesty note when a panel is unavailable."
