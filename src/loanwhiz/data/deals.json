@@ -36,6 +36,18 @@
     "jurisdiction": "Italy",
     "prospectus_url": "https://ing.com/binaries/content/assets/documents/files/leone-arancio-rmbs-2023-1-prospectus-dated-12-september-2023.pdf",
     "tape_urls": [],
+    "capital_structure": {
+      "class_a_balance": 7080000000.0,
+      "class_a_rate_pct": 3.97,
+      "class_b_balance": 920000000.0,
+      "class_c_balance": 0.0
+    },
+    "reserve_account_target": 0.0,
+    "original_pool_balance": 6488075506.45,
+    "projection_base": {
+      "current_pool_balance": 6488075506.45,
+      "class_a_rate_pct": 3.97
+    },
     "investor_report_urls": [
       {"period": "September 2023", "url": "https://ing.com/binaries/content/assets/documents/files/monthly-investor-report-leone-arancio-rmbs-s.r.l-september-2023.pdf"},
       {"period": "October 2023", "url": "https://ing.com/binaries/content/assets/documents/files/monthly-investor-report-leone-arancio-rmbs-s.r.l-october-2023.pdf"},
@@ -77,6 +89,18 @@
     "jurisdiction": "Spain",
     "prospectus_url": "https://ing.com/binaries/content/assets/documents/files/sol-lion-ii-rmbs-fondo-de-titulizacion-prospectus-dated-25-november-2020.pdf",
     "tape_urls": [],
+    "capital_structure": {
+      "class_a_balance": 12036900000.0,
+      "class_a_rate_pct": 1.07,
+      "class_b_balance": 1643800000.0,
+      "class_c_balance": 375800000.0
+    },
+    "reserve_account_target": 120000000.0,
+    "original_pool_balance": 14056500000.0,
+    "projection_base": {
+      "current_pool_balance": 14056500000.0,
+      "class_a_rate_pct": 1.07
+    },
     "investor_report_urls": [
       {"period": "September 2024", "url": "https://ing.com/binaries/content/assets/documents/files/sol-lion-ii-investor-report-september-2024.pdf"},
       {"period": "October 2024", "url": "https://ing.com/binaries/content/assets/documents/files/sol-lion-ii-investor-report-october-2024.pdf"},

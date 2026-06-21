@@ -227,6 +227,29 @@ def test_projected_series_from_canonical_builds_series_when_projectable():
     assert dates == sorted(dates)
 
 
+@pytest.mark.parametrize("deal_id", ["leone-arancio-2023-1", "sol-lion-ii"])
+def test_projected_series_from_canonical_renders_for_registry_it_es_deals(deal_id):
+    """Registry-data guard (#358): the IT/ES flagship deals carry
+    prospectus-sourced projection config in ``deals.json``, so the #345
+    fallback resolves a non-empty amortizing series from the LIVE registry
+    (not a synthetic context). A future registry edit that drops or breaks
+    one of the four config keys (``capital_structure`` /
+    ``reserve_account_target`` / ``original_pool_balance`` /
+    ``projection_base``) regresses the projected ``/compare`` panel back to
+    "unavailable" and trips this test."""
+    import loanwhiz.api.main as main
+
+    series = main._projected_series_from_canonical(deal_id, main.DEALS[deal_id])
+    assert series is not None, f"{deal_id} should project from the live registry"
+    assert len(series.states) > 1
+    # Pool amortizes forward: last pool factor below the seed's.
+    assert series.states[-1].pool_factor < series.states[0].pool_factor
+    # Distinct, ordered reporting_dates so the /compare overlay renders a curve.
+    dates = [st.reporting_date for st in series.states]
+    assert len(set(dates)) == len(dates)
+    assert dates == sorted(dates)
+
+
 def test_compare_benchmark_lens_sets_median_and_deviation():
     """With a target, structural cells carry comp-set median + signed deviation."""
     resp = client.get(
