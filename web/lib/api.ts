@@ -89,13 +89,19 @@ export function getHealth(): Promise<HealthStatus> {
 // ---------------------------------------------------------------------------
 
 /**
- * One available deal — id + display name — from `GET /deals`. The `id` is the
- * value to thread into the `/deal/{id}/...` routes; the deal selector in the
- * top bar populates from this list (see web/components/deal-selector.tsx).
+ * One available deal — id + display name + filtering facets — from `GET /deals`.
+ * The `id` is the value to thread into the `/deal/{id}/...` routes; the deal
+ * selector in the top bar populates from this list (see
+ * web/components/deal-selector.tsx). `jurisdiction` and `vintage` let the
+ * comparison picker filter a large (EDW-scale) deal universe (#344);
+ * `jurisdiction` is `"Unknown"` when the registry carries none and `vintage`
+ * is `null` when the deal name embeds no year.
  */
 export interface DealSummary {
   id: string;
   name: string;
+  jurisdiction: string;
+  vintage: number | null;
 }
 
 export function getDeals(): Promise<DealSummary[]> {
@@ -795,6 +801,13 @@ export interface CompareDealRef {
   has_structural: boolean;
   /** A DealStateSeries reconstructed (Panel 2 available for this deal). */
   has_performance: boolean;
+  /**
+   * Provenance of this deal's Panel-2 series: "reported" when reconstructed
+   * from the deal's own tape/report history, "projected" when derived from the
+   * canonical model's forward projection (projected-not-reported), or null when
+   * no series is available.
+   */
+  performance_provenance: "reported" | "projected" | null;
   /** One-line honesty note when a panel is unavailable for this deal. */
   note: string | null;
 }

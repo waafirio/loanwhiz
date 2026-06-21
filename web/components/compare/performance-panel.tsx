@@ -52,9 +52,28 @@ export function PerformancePanel({
   commonPeriods: string[];
 }) {
   const dealName = useMemo(
-    () => new Map(deals.map((d) => [d.deal_id, d.deal_name])),
+    () =>
+      new Map(
+        deals.map((d) => [
+          d.deal_id,
+          d.performance_provenance === "projected"
+            ? `${d.deal_name} (projected)`
+            : d.deal_name,
+        ]),
+      ),
     [deals],
   );
+
+  // Deals whose Panel-2 series is a canonical-model projection (not reported),
+  // so the overlay can label them projected-not-reported (#345).
+  const projectedNames = useMemo(
+    () =>
+      deals
+        .filter((d) => d.performance_provenance === "projected")
+        .map((d) => d.deal_name),
+    [deals],
+  );
+  const hasProjected = projectedNames.length > 0;
 
   // Build per-metric chart data: one row per reporting date, one column per deal.
   const chartsByMetric = useMemo(() => {
@@ -81,7 +100,7 @@ export function PerformancePanel({
           <CardTitle className="text-base">Performance / risk</CardTitle>
         </CardHeader>
         <CardContent>
-          <EmptyState message="No reconstructable performance series for the selected deals." />
+          <EmptyState message="No reported or projected performance series for the selected deals." />
         </CardContent>
       </Card>
     );
@@ -93,6 +112,16 @@ export function PerformancePanel({
         <CardTitle className="text-base">Performance / risk (overlaid)</CardTitle>
       </CardHeader>
       <CardContent className="space-y-8">
+        {hasProjected && (
+          <div className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+            <span className="font-medium">Projected — not reported.</span>{" "}
+            {projectedNames.join(", ")}{" "}
+            {projectedNames.length === 1 ? "has" : "have"} no tape/report history;
+            the series shown {projectedNames.length === 1 ? "is" : "are"} a
+            forward projection from the canonical model (base case), not reported
+            performance.
+          </div>
+        )}
         {commonPeriods.length > 0 && (
           <p className="text-xs text-muted-foreground">
             Shared period axis where every series has data:{" "}

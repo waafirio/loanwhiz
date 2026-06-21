@@ -72,15 +72,26 @@ def test_health_returns_ok():
 
 
 def test_deals_lists_green_lion():
-    """GET /deals returns the available deals (id + name); Green Lion present."""
+    """GET /deals returns the available deals (id + name + facets); Green Lion present."""
     resp = client.get("/deals")
     assert resp.status_code == 200
     body = resp.json()
     assert isinstance(body, list)
-    assert {"id": "green-lion-2026-1", "name": "Green Lion 2026-1 B.V."} in body
-    # Each entry carries exactly id + name (the selector contract).
+    green_lion = next(
+        (e for e in body if e["id"] == "green-lion-2026-1"), None
+    )
+    assert green_lion is not None
+    assert green_lion["name"] == "Green Lion 2026-1 B.V."
+    # Vintage is recovered from the deal name (#344); jurisdiction falls back
+    # to "Unknown" when the registry carries none.
+    assert green_lion["vintage"] == 2026
+    assert isinstance(green_lion["jurisdiction"], str)
+    # Each entry carries id + name + the jurisdiction/vintage filtering facets
+    # (the picker contract — #344).
     for entry in body:
-        assert set(entry) == {"id", "name"}
+        assert set(entry) == {"id", "name", "jurisdiction", "vintage"}
+        assert isinstance(entry["jurisdiction"], str)
+        assert entry["vintage"] is None or isinstance(entry["vintage"], int)
 
 
 def test_deals_surfaces_second_registered_deal():
@@ -104,9 +115,13 @@ def test_deals_surfaces_second_registered_deal():
 
     assert resp.status_code == 200
     body = resp.json()
-    ids = {entry["id"] for entry in body}
-    assert {"green-lion-2026-1", "sponsor-2025-1"} <= ids
-    assert {"id": "sponsor-2025-1", "name": "Sponsor Deal 2025-1 B.V."} in body
+    by_id = {entry["id"]: entry for entry in body}
+    assert {"green-lion-2026-1", "sponsor-2025-1"} <= set(by_id)
+    sponsor = by_id["sponsor-2025-1"]
+    assert sponsor["name"] == "Sponsor Deal 2025-1 B.V."
+    # Facets are derived even for a data-only deal (no explicit jurisdiction).
+    assert sponsor["jurisdiction"] == "Unknown"
+    assert sponsor["vintage"] == 2025
 
 
 # ---------------------------------------------------------------------------

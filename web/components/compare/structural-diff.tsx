@@ -69,12 +69,15 @@ export function StructuralDiff({
         <CardTitle className="text-base">Structural diff</CardTitle>
       </CardHeader>
       <CardContent>
+        <div className="overflow-x-auto">
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead className="w-56">Row</TableHead>
+              <TableHead className="sticky left-0 z-20 w-48 min-w-48 bg-card">
+                Row
+              </TableHead>
               {deals.map((d) => (
-                <TableHead key={d.deal_id}>
+                <TableHead key={d.deal_id} className="max-w-44">
                   <span className="flex items-center gap-1">
                     <span className="truncate" title={d.deal_name}>
                       {d.deal_name}
@@ -93,7 +96,7 @@ export function StructuralDiff({
                 <TableRow className="bg-muted/40 hover:bg-muted/40">
                   <TableCell
                     colSpan={deals.length + 1}
-                    className="text-xs font-semibold uppercase tracking-wide text-muted-foreground"
+                    className="sticky left-0 z-10 bg-muted text-xs font-semibold uppercase tracking-wide text-muted-foreground"
                   >
                     {SECTION_LABELS[section] ?? section}
                   </TableCell>
@@ -103,7 +106,12 @@ export function StructuralDiff({
                     key={row.key}
                     className={cn(row.differs && "bg-amber-50/50 dark:bg-amber-950/20")}
                   >
-                    <TableCell className="font-medium">
+                    <TableCell
+                      className={cn(
+                        "sticky left-0 z-10 w-48 min-w-48 max-w-48 bg-card font-medium",
+                        row.differs && "bg-amber-50 dark:bg-amber-950",
+                      )}
+                    >
                       {row.label}
                       {row.differs && (
                         <span
@@ -115,7 +123,10 @@ export function StructuralDiff({
                       )}
                     </TableCell>
                     {row.cells.map((cell) => (
-                      <TableCell key={cell.deal_id}>
+                      <TableCell
+                        key={cell.deal_id}
+                        className="max-w-56 whitespace-normal break-words align-top"
+                      >
                         <Cell cell={cell} benchmark={benchmark} />
                       </TableCell>
                     ))}
@@ -125,6 +136,7 @@ export function StructuralDiff({
             ))}
           </TableBody>
         </Table>
+        </div>
       </CardContent>
     </Card>
   );

@@ -128,13 +128,103 @@ def test_compare_risk_summary_emits_proximity():
 
 
 def test_compare_degrades_honestly_for_unmodelable_deal():
-    """A deal with no reconstructable series is kept, flagged, and noted."""
+    """A deal with no reconstructable / projectable series stays unavailable."""
     body = client.get("/compare", params={"deals": SEEDED_THREE}).json()
     thin = next(d for d in body["deals"] if d["deal_id"] == "green-lion-2023-1")
     assert thin["has_structural"] is True  # cached model exists
-    assert thin["has_performance"] is False  # no series offline
+    assert thin["has_performance"] is False  # no series offline (#345: no proj config)
+    assert thin["performance_provenance"] is None
     assert thin["note"] is not None
     assert any("green-lion-2023-1" in n for n in body["notes"])
+
+
+def test_compare_reported_series_carries_reported_provenance():
+    """A reconstructed (tape/report) series is flagged provenance 'reported' (#345)."""
+    body = client.get("/compare", params={"deals": SEEDED_THREE}).json()
+    gl = next(d for d in body["deals"] if d["deal_id"] == MODELABLE)
+    assert gl["has_performance"] is True
+    assert gl["performance_provenance"] == "reported"
+
+
+# A config-bearing, tape/report-absent deal context: it carries the forward-
+# projection config (capital structure + reserve target + original pool balance +
+# projection base) but no tape and no foldable report. The canonical-model
+# projection fallback (#345) should light it up as a *projected* series.
+_PROJECTABLE_CTX = {
+    "deal_name": "Projectable Test 2024-1",
+    "jurisdiction": "Netherlands",
+    "tape_urls": [],
+    "capital_structure": {
+        "class_a_balance": 1_000_000_000.0,
+        "class_a_rate_pct": 3.62,
+        "class_b_balance": 53_100_000.0,
+        "class_c_balance": 10_500_000.0,
+    },
+    "reserve_account_target": 10_636_000.0,
+    "original_pool_balance": 1_033_412_063.0,
+    "projection_base": {
+        "current_pool_balance": 1_033_412_063.0,
+        "class_a_rate_pct": 3.62,
+    },
+}
+
+
+def test_compare_projects_tape_report_absent_deal(monkeypatch):
+    """A deal with no tape/report but resolvable canonical config gets a
+    projected-not-reported Panel-2 series, clearly labelled (#345)."""
+    import loanwhiz.api.main as main
+
+    patched = dict(main.DEALS)
+    patched["projectable-test"] = _PROJECTABLE_CTX
+    monkeypatch.setattr(main, "DEALS", patched)
+
+    body = client.get(
+        "/compare", params={"deals": f"{MODELABLE},projectable-test"}
+    ).json()
+    proj = next(d for d in body["deals"] if d["deal_id"] == "projectable-test")
+    assert proj["has_performance"] is True
+    assert proj["performance_provenance"] == "projected"
+    assert proj["note"] is not None and "projected" in proj["note"].lower()
+    # A non-empty projected series is emitted in the overlay.
+    series = next(
+        s for s in body["performance_series"] if s["deal_id"] == "projectable-test"
+    )
+    assert series["points"], "expected a non-empty projected series"
+    # The overlay renders a curve, not a single collapsed point: distinct dates.
+    dates = [p["reporting_date"] for p in series["points"]]
+    assert len(set(dates)) > 1
+    # The reported deal in the same set keeps its 'reported' provenance.
+    rep = next(d for d in body["deals"] if d["deal_id"] == MODELABLE)
+    assert rep["performance_provenance"] == "reported"
+
+
+def test_projected_series_from_canonical_returns_none_when_unprojectable():
+    """The projection fallback is non-raising: a deal with no resolvable
+    forward-projection config yields None (degrade, never 500) (#345)."""
+    import loanwhiz.api.main as main
+
+    # green-lion-2023-1 has a cached model but no projection_base / numeric
+    # capital structure / reserve / pool config → _resolve_* raises → None.
+    ctx = main.DEALS["green-lion-2023-1"]
+    assert main._projected_series_from_canonical("green-lion-2023-1", ctx) is None
+
+
+def test_projected_series_from_canonical_builds_series_when_projectable():
+    """The projection fallback builds a non-empty amortizing series from a
+    config-bearing deal context (#345)."""
+    import loanwhiz.api.main as main
+
+    series = main._projected_series_from_canonical("projectable-test", _PROJECTABLE_CTX)
+    assert series is not None
+    assert len(series.states) > 1
+    # Pool amortizes forward: the last pool factor is below the seed's.
+    assert series.states[-1].pool_factor < series.states[0].pool_factor
+    # Each state carries a DISTINCT, ordered reporting_date, so the /compare
+    # overlay (keyed by reporting_date) renders a curve rather than collapsing
+    # every point onto a single X value (#345 regression guard).
+    dates = [st.reporting_date for st in series.states]
+    assert len(set(dates)) == len(dates)
+    assert dates == sorted(dates)
 
 
 def test_compare_benchmark_lens_sets_median_and_deviation():

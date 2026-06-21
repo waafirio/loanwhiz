@@ -213,6 +213,12 @@ _SCENARIO_PRESETS: dict[str, dict] = {
     "stress": {"cpr_pct": 15.0, "cdr_pct": 2.0, "recovery_pct": 50.0, "rate_shift_bps": 100.0},
 }
 
+# Forward horizon (months) for the /compare projected-not-reported fallback
+# series (#345). Fixed so the projected compare panel is deterministic — the
+# compare panel is a coverage tool, not a scenario explorer (/project owns
+# scenarios), so it always projects a single base-case horizon.
+_COMPARE_PROJECTION_MONTHS = 12
+
 
 def _scenario_assumptions(
     name: str, override: "ScenarioAssumptionsOverride | None" = None
@@ -517,23 +523,39 @@ def _require_deal(deal_id: str) -> dict:
 
 
 class DealSummary(BaseModel):
-    """One available deal — id + display name — for ``GET /deals``."""
+    """One available deal — id + display name (+ filtering facets) for ``GET /deals``.
+
+    ``jurisdiction`` and ``vintage`` are surfaced so a client can filter a
+    large (EDW-scale) deal universe without a round-trip per deal (#344). They
+    reuse the exact derivation ``GET /compare`` already applies: jurisdiction
+    falls back to ``"Unknown"`` when the registry carries none, and vintage is
+    recovered from the deal name (``None`` when the name embeds no year).
+    """
 
     id: str
     name: str
+    jurisdiction: str
+    vintage: int | None
 
 
 @app.get("/deals", response_model=list[DealSummary])
 def list_deals() -> list[DealSummary]:
-    """List the available deals (id + name) from the config-driven registry.
+    """List the available deals (id + name + jurisdiction/vintage facets).
 
     Sourced from :data:`DEALS` (``loanwhiz.config.DEAL_REGISTRY``), so a deal
     added as data — not code — surfaces here automatically. The frontend deal
     selector uses this to populate; ``id`` is the value to pass to the
-    ``/deal/{deal_id}/...`` routes.
+    ``/deal/{deal_id}/...`` routes. ``jurisdiction``/``vintage`` let the
+    comparison picker filter a 200+ deal universe (#344) — same derivation as
+    ``GET /compare``.
     """
     return [
-        DealSummary(id=deal_id, name=deal["deal_name"])
+        DealSummary(
+            id=deal_id,
+            name=deal["deal_name"],
+            jurisdiction=deal.get("jurisdiction") or "Unknown",
+            vintage=_compare.parse_vintage(deal["deal_name"]),
+        )
         for deal_id, deal in DEALS.items()
     ]
 
@@ -842,13 +864,25 @@ def compare_deals(
             rules_by_deal[deal_id] = rules
 
         states: list[PrimitivesDealState] = []
+        provenance: str | None = None
         try:
             series = _reconstruct_series(deal_id, ctx)
             states = list(series.states)
         except HTTPException:
-            # _not_modelable_deal / _misconfigured_deal — degrade honestly: this
-            # deal contributes to the structural diff but not the performance panel.
+            # _not_modelable_deal / _misconfigured_deal — no reported series.
             states = []
+        if states:
+            provenance = "reported"
+        else:
+            # No tape/report history: fall back to a projected-not-reported series
+            # from the canonical model so the panel is useful for tape/report-
+            # absent deals (#345). Non-raising — None when no projection config
+            # resolves, leaving the deal honestly "unavailable".
+            projected = _projected_series_from_canonical(deal_id, ctx)
+            if projected is not None and projected.states:
+                states = list(projected.states)
+                provenance = "projected"
+
         has_performance = bool(states)
         if states:
             states_by_deal[deal_id] = states
@@ -858,7 +892,16 @@ def compare_deals(
             rules.jurisdiction if rules and rules.jurisdiction else ctx.get("jurisdiction") or "Unknown"
         )
         ref_note: str | None = None
-        if not has_structural:
+        if provenance == "projected":
+            # A projected series is the load-bearing honesty flag — surface it
+            # even when structural is also missing (#345), so the panel labels
+            # the series projected-not-reported rather than just "unavailable".
+            ref_note = (
+                "Projected from the canonical model — not reported. No tape/report "
+                "series available for this deal."
+            )
+            notes.append(f"{deal_id}: {ref_note}")
+        elif not has_structural:
             ref_note = "No cached model — structural diff unavailable for this deal."
             notes.append(f"{deal_id}: {ref_note}")
         elif not has_performance:
@@ -873,6 +916,7 @@ def compare_deals(
                 is_target=(deal_id == target),
                 has_structural=has_structural,
                 has_performance=has_performance,
+                performance_provenance=provenance,
                 note=ref_note,
             )
         )
@@ -1576,6 +1620,88 @@ def _not_modelable_deal(deal_id: str) -> HTTPException:
             f"deal before requesting its waterfall / compliance."
         ),
     )
+
+
+def _projected_series_from_canonical(
+    deal_id: str, deal: dict
+) -> DealStateSeries | None:
+    """A projected-not-reported ``DealStateSeries`` for the /compare panel (#345).
+
+    The /compare performance panel is empty for deals that have neither a loan
+    tape nor a foldable investor report (``_reconstruct_series`` → 422): the
+    panel shows "no performance series — risk unavailable". This builds a
+    **projected** series for such a deal from the *canonical model* — the same
+    forward-projection fold ``/project`` uses (``ScenarioGenerator`` base case →
+    ``run_period`` → ``DealStateSeries``) — so the panel becomes useful, clearly
+    labelled projected (not reported, see ``DealRef.performance_provenance``).
+
+    This is the fallback path, NOT a replacement: it runs only when no reported
+    series exists. It is **non-raising** — a deal whose forward-projection config
+    cannot be resolved (no explicit ``projection_base`` / structural config and
+    no fully-numeric extractable structure, the loud-fail ``_resolve_*`` raises)
+    yields ``None`` rather than a 422, so the deal degrades to "unavailable"
+    exactly as today. Returns ``None`` (never propagates an exception) so the
+    fallback can never break a deal that already had a reported series or 500 the
+    whole comparison.
+
+    When the deal has a loan tape, the projection uses #281's loan-level
+    amortisation schedule (``_latest_tape_amort_schedule``); otherwise the
+    generator's constant-rate proxy, unchanged.
+    """
+    try:
+        base = _resolve_projection_base(deal_id, deal)
+        capital_structure, reserve_target, original_pool_balance = (
+            _resolve_structural_config(deal_id, deal)
+        )
+    except HTTPException:
+        # No resolvable forward-projection config — genuinely unavailable.
+        return None
+
+    try:
+        seed = PrimitivesDealState.seed_from_prospectus(
+            capital_structure,
+            reserve_target=reserve_target,
+            original_pool_balance=original_pool_balance,
+            opening_pool_balance=base["current_pool_balance"],
+            reporting_date="projection-start",
+        )
+        generator = ScenarioGenerator()
+        amort_schedule = _latest_tape_amort_schedule(
+            deal, _COMPARE_PROJECTION_MONTHS
+        )
+        period_inputs = generator.generate(
+            seed,
+            assumptions=_scenario_assumptions("base"),
+            rate_pct=base["class_a_rate_pct"],
+            months=_COMPARE_PROJECTION_MONTHS,
+            scheduled_principal_schedule=amort_schedule,
+        )
+        rates = {
+            k: float(capital_structure[k])
+            for k in ("class_a_rate_pct", "class_b_rate_pct", "class_c_rate_pct")
+            if k in capital_structure
+        }
+        rates.setdefault("class_a_rate_pct", base["class_a_rate_pct"])
+        states = [seed]
+        current = seed
+        for period in period_inputs:
+            result = run_period(current, period, rates=rates)
+            current = result.closing_state
+            states.append(current)
+        # The projection seed + generated states all carry the same
+        # "projection-start" reporting_date (the generator advances period
+        # ordinals, not calendar dates — /project re-indexes by ordinal in its
+        # payload). For the /compare overlay the series is keyed by
+        # ``reporting_date``, so re-label each state with an ordered,
+        # lexicographically-sortable synthetic period label, else every point
+        # collapses onto one X value and the line renders as a single dot (#345).
+        ordered = [
+            state.model_copy(update={"reporting_date": f"projected-period-{idx:02d}"})
+            for idx, state in enumerate(states)
+        ]
+        return DealStateSeries(states=ordered, period_results=[])
+    except Exception:  # noqa: BLE001 — projection is best-effort; degrade, never 500
+        return None
 
 
 class WaterfallStepModel(BaseModel):
