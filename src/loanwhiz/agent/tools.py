@@ -153,6 +153,124 @@ def run_waterfall(deal_id: str = DEFAULT_DEAL_ID, period: str | None = None) -> 
     return data | {"confidence": 1.0, "citations": [], "duration_ms": 0}
 
 
+def _bound_projection(payload: dict) -> dict:
+    """Bound a ``/project`` payload so multi-period output stays context-cheap (#319).
+
+    The endpoint returns one per-period row per scenario (seed + ``months``
+    transitions). For a long horizon (> :data:`MAX_VERBATIM_PERIODS`) that is a
+    lot of rows × scenarios for the agent to hold; this collapses each scenario's
+    ``periods`` to just the first and last rows and keeps the final-state summary
+    + per-tranche WAL the agent actually reasons over, adding a
+    ``periods_summarised`` note. Below the threshold the payload is returned
+    unchanged (the small Green Lion demo horizons).
+    """
+    projections = payload.get("projections")
+    if not isinstance(projections, dict):
+        return payload
+
+    bounded_projections: dict[str, dict] = {}
+    summarised = False
+    for scenario, proj in projections.items():
+        periods = proj.get("periods", [])
+        if len(periods) <= MAX_VERBATIM_PERIODS:
+            bounded_projections[scenario] = proj
+            continue
+        summarised = True
+        bounded = dict(proj)
+        bounded["periods"] = [periods[0], periods[-1]]
+        bounded["periods_summarised"] = (
+            f"{len(periods)} periods projected; periods shows only the first and "
+            f"last. Final-state balances and per-tranche WAL summarise the full "
+            f"horizon."
+        )
+        bounded_projections[scenario] = bounded
+
+    if not summarised:
+        return payload
+    out = dict(payload)
+    out["projections"] = bounded_projections
+    return out
+
+
+@tool
+def project_cashflows(
+    deal_id: str = DEFAULT_DEAL_ID,
+    scenarios: list[str] | None = None,
+    months: int = 12,
+    cpr_pct: float | None = None,
+    cdr_pct: float | None = None,
+    recovery_pct: float | None = None,
+    rate_shift_bps: float | None = None,
+) -> dict:
+    """Forward cashflow projection: per-tranche balances, cashflows, and WAL under CPR/CDR/recovery.
+
+    Use for ANY forward-looking / "what if" / projection / WAL / amortisation
+    question — "how does Class A amortise", "what's the WAL under a CDR of 5%",
+    "project the tranches forward 24 months". Pass only the ``deal_id`` (plus
+    optional knobs); the tool seeds the deal's current state and folds a
+    CPR/CDR/recovery scenario stream through the SAME engine the live history
+    path uses. Do NOT pass pool balances or schedules.
+
+    Parameters
+    ----------
+    deal_id:
+        Registry deal id (defaults to the Green Lion demo deal).
+    scenarios:
+        Named scenario presets to project (default ``["base", "stress"]``).
+    months:
+        Projection horizon in months (default 12).
+    cpr_pct / cdr_pct / recovery_pct / rate_shift_bps:
+        Optional explicit assumptions. When ANY is supplied, they override the
+        named presets for EVERY requested scenario (an ad-hoc projection at the
+        caller's CPR/CDR/recovery). Omit them to use the presets unchanged.
+
+    Returns per-scenario per-period tranche balances and principal cashflows
+    (``class_{a,b,c}_principal_eur``), a final-state summary, and per-tranche WAL
+    (A/B/C) in months and years. Over a long horizon (> 6 periods) the per-period
+    rows are summarised to first/last to keep the answer context-cheap; the WAL
+    and final-state summary still cover the full horizon.
+    """
+    # Call-time import to reuse the REST /project recipe (projection-base + the
+    # one engine fold) without an import-time cycle, mirroring run_waterfall.
+    from loanwhiz.api.main import ProjectRequest, deal_project
+
+    if scenarios is None:
+        scenarios = ["base", "stress"]
+
+    # When the caller supplies explicit assumptions, apply them to every
+    # requested scenario as a per-scenario override (the endpoint merges each
+    # present field over the named preset).
+    assumptions: dict[str, dict] | None = None
+    if any(v is not None for v in (cpr_pct, cdr_pct, recovery_pct, rate_shift_bps)):
+        override = {
+            "cpr_pct": cpr_pct,
+            "cdr_pct": cdr_pct,
+            "recovery_pct": recovery_pct,
+            "rate_shift_bps": rate_shift_bps,
+        }
+        assumptions = {scenario: override for scenario in scenarios}
+
+    try:
+        req = ProjectRequest(scenarios=scenarios, months=months, assumptions=assumptions)
+        payload = deal_project(deal_id, req)
+    except Exception as exc:  # noqa: BLE001 — surface a graceful tool error
+        # A bad deal_id raises an HTTPException (404/422); other failures are
+        # turned into an honest tool error rather than crashing the agent.
+        return {
+            "error": f"projection failed for deal {deal_id!r}: {exc}",
+            "confidence": 0.0,
+            "citations": [],
+        }
+
+    # Deterministic engine fold → full confidence; the underlying tape reads are
+    # cited in the per-period analytics (same posture as run_waterfall).
+    return _bound_projection(payload) | {
+        "confidence": 1.0,
+        "citations": [],
+        "duration_ms": 0,
+    }
+
+
 @tool
 def check_covenants(deal_id: str = DEFAULT_DEAL_ID) -> dict:
     """Check covenant compliance for a deal: trigger status, proximity to breach, and any active breaches.
@@ -431,6 +549,7 @@ def list_deal_tapes(deal_id: str = DEFAULT_DEAL_ID, period: str | None = None) -
 SF_TOOLS = [
     load_esma_tape,
     run_waterfall,
+    project_cashflows,
     check_covenants,
     forecast_trigger_breaches,
     aggregate_collections,
