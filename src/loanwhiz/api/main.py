@@ -29,13 +29,16 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 from datetime import date
 from pathlib import Path
 from collections.abc import Callable
 from typing import Any
 
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+from starlette.exceptions import HTTPException as StarletteHTTPException
 from pydantic import BaseModel, Field, field_validator
 
 from loanwhiz.agent.executor import execute_query
@@ -129,9 +132,47 @@ app = FastAPI(
     version="0.1.0",
 )
 
+_log = logging.getLogger("loanwhiz.api")
+
+
+# CORS-on-error (#347). An *unhandled* exception in a route is otherwise
+# converted to a 500 by Starlette's ``ServerErrorMiddleware``, which sits
+# OUTSIDE the ``CORSMiddleware`` below — so that 500 carries no
+# ``Access-Control-Allow-Origin`` header and the browser surfaces it as an
+# opaque CORS / ``ERR_FAILED`` error rather than the real 500 (the symptom that
+# made ``/pool`` look like a CORS bug). We catch unhandled exceptions in an HTTP
+# middleware and return a normal ``JSONResponse``; because this middleware runs
+# INSIDE ``CORSMiddleware`` (added after it, so CORS is the outermost wrapper),
+# that error response propagates back out through CORS and carries the CORS
+# headers. ``HTTPException`` is deliberately NOT caught here — FastAPI renders
+# those as clean responses (e.g. the 404 from ``_require_deal``) that already
+# pass through CORS, so we let them propagate untouched.
+#
+# Ordering note: Starlette applies ``add_middleware`` calls so the LAST one
+# added is the OUTERMOST. This error-catching middleware is added first and
+# ``CORSMiddleware`` second, so CORS wraps it — exactly what puts the error
+# response inside CORS.
+@app.middleware("http")
+async def _cors_safe_error_middleware(request: Request, call_next):
+    try:
+        return await call_next(request)
+    except StarletteHTTPException:
+        # Deliberate HTTP errors render through FastAPI's own handler — let them
+        # propagate so status/detail are preserved.
+        raise
+    except Exception:  # noqa: BLE001 — convert any unhandled error to a CORS-safe 500
+        _log.exception(
+            "Unhandled error serving %s %s", request.method, request.url.path
+        )
+        return JSONResponse(
+            status_code=500, content={"detail": "Internal server error"}
+        )
+
+
 # Allow the local Next.js demo frontend (v2, served on :3000) to call this API
 # from the browser. Scoped to the two localhost dev origins — this is a local
-# demo allowlist, not a production CORS policy.
+# demo allowlist, not a production CORS policy. Added AFTER the error middleware
+# above so CORS is the outermost wrapper (see the ordering note).
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],
@@ -2129,30 +2170,67 @@ def deal_report_verification(
 # artifact cache (#132). Module-level so tests can patch it at a tmp_path.
 TAPE_ANALYTICS_CACHE_DIR = "/tmp/loanwhiz_cache/tape_analytics"
 
+# Committed seed directory for pre-normalised tape analytics (#347). Mirrors
+# DEAL_MODEL_SEED_DIR: unlike the ephemeral runtime cache above (under /tmp,
+# empty on a clean/offline host), the seed dir ships *committed*
+# ``{sha256(url)}.json`` artifacts so the demo's Pool & Performance page renders
+# real per-period analytics for the flagship deal (green-lion-2026-1) with no
+# live HuggingFace tape fetch. It lives inside the package so it installs and
+# version-controls with the code, and is patchable in tests like its siblings.
+# Generated/refreshed by ``scripts/seed_tape_analytics.py``. The loader below
+# consults it on a runtime-cache miss; a real fetch that later writes the
+# runtime cache still takes precedence.
+TAPE_ANALYTICS_SEED_DIR = str(Path(__file__).resolve().parents[1] / "data" / "tapes" / "seed")
+
 # In-process memo: tape URL -> EsmaTapeOutput.model_dump() dict. Module-level
 # so it persists across requests within a process; tests clear it for
 # determinism.
 _TAPE_ANALYTICS_MEMO: dict[str, dict] = {}
 
 
-def _tape_cache_path(url: str) -> Path:
-    """On-disk cache path for a tape URL.
+def _tape_cache_name(url: str) -> str:
+    """Filesystem-safe cache filename for a tape URL.
 
-    The URL is the cache key; we hash it to a filesystem-safe filename rather
-    than embedding the raw URL.
+    The URL is the cache key; we hash it to a stable ``{sha256}.json`` name
+    rather than embedding the raw URL. Shared by the runtime cache and the
+    committed seed so both key on the URL identically.
     """
     digest = hashlib.sha256(url.encode("utf-8")).hexdigest()
-    return Path(TAPE_ANALYTICS_CACHE_DIR) / f"{digest}.json"
+    return f"{digest}.json"
+
+
+def _tape_cache_path(url: str) -> Path:
+    """On-disk runtime-cache path for a tape URL."""
+    return Path(TAPE_ANALYTICS_CACHE_DIR) / _tape_cache_name(url)
+
+
+def _tape_seed_path(url: str) -> Path:
+    """Committed-seed path for a tape URL (#347)."""
+    return Path(TAPE_ANALYTICS_SEED_DIR) / _tape_cache_name(url)
 
 
 def _normalised_tape_output(url: str) -> dict:
     """Return the normalised ``EsmaTapeOutput`` dict for a tape URL, cached.
 
-    Checks the in-process memo, then the on-disk JSON cache, and only on a miss
-    runs the (network-fetching, CPU-heavy) :class:`EsmaTapeNormaliser`. A miss
-    populates both layers so the analytics for any given tape is computed at
-    most once. The returned dict is the unchanged ``EsmaTapeOutput.model_dump()``
-    shape — callers spread it into ``TapeAnalyticsPeriod`` as before.
+    Resolution order:
+
+    1. in-process memo (instant repeat reads within a process);
+    2. on-disk runtime cache under ``TAPE_ANALYTICS_CACHE_DIR`` (survives
+       restarts; written by a cold normalisation);
+    3. committed seed under ``TAPE_ANALYTICS_SEED_DIR`` (#347 — ships with the
+       repo so a clean/offline host serves real analytics without a live tape
+       fetch);
+    4. only on a miss in all three, run the (network-fetching, CPU-heavy)
+       :class:`EsmaTapeNormaliser`.
+
+    The runtime cache wins over the seed (mirrors ``DEAL_MODEL_SEED_DIR``
+    precedence), so a fresh cold normalisation overrides the shipped seed. A
+    successful live fetch populates the memo + runtime cache so any given tape
+    is normalised at most once. The returned dict is the unchanged
+    ``EsmaTapeOutput.model_dump()`` shape — callers spread it into
+    ``TapeAnalyticsPeriod`` as before. Raises if the tape cannot be resolved
+    from any layer (e.g. no seed and no network); ``deal_tape_analytics``
+    catches that to degrade gracefully.
     """
     memo_hit = _TAPE_ANALYTICS_MEMO.get(url)
     if memo_hit is not None:
@@ -2161,6 +2239,12 @@ def _normalised_tape_output(url: str) -> dict:
     cache_path = _tape_cache_path(url)
     if cache_path.exists():
         output = json.loads(cache_path.read_text(encoding="utf-8"))
+        _TAPE_ANALYTICS_MEMO[url] = output
+        return output
+
+    seed_path = _tape_seed_path(url)
+    if seed_path.exists():
+        output = json.loads(seed_path.read_text(encoding="utf-8"))
         _TAPE_ANALYTICS_MEMO[url] = output
         return output
 
@@ -2204,6 +2288,31 @@ class TapeAnalyticsPeriod(BaseModel):
     data_source: str = "direct"
 
 
+def _tape_analytics_period(tape: dict) -> TapeAnalyticsPeriod | None:
+    """Resolve one tape's analytics, or ``None`` if it can't be served (#347).
+
+    A tape with no cache/seed entry and no reachable source (offline) raises in
+    ``_normalised_tape_output``; rather than aborting the whole
+    ``/tape-analytics`` response (which would blank the entire Pool page), we
+    log and return ``None`` so the period is skipped and the rest still render.
+    """
+    try:
+        return TapeAnalyticsPeriod(
+            tape_date=tape["date"],
+            **_normalised_tape_output(tape["url"]),
+        )
+    except Exception:  # noqa: BLE001 — degrade gracefully on any per-tape failure
+        # Broad on purpose: the primary case is an offline tape (no cache/seed,
+        # source unreachable), but a malformed seed or any other per-tape error
+        # should also skip that one period rather than blank the whole Pool
+        # page. Log with the traceback (``exception``) so a genuine bug behind
+        # the skip is still diagnosable instead of silently masked.
+        _log.exception(
+            "tape-analytics: skipping unresolvable tape %s", tape.get("url")
+        )
+        return None
+
+
 @app.get("/deal/{deal_id}/tape-analytics", response_model=list[TapeAnalyticsPeriod])
 def deal_tape_analytics(deal_id: str) -> list[TapeAnalyticsPeriod]:
     """Return per-period pool analytics across the deal's ESMA tapes.
@@ -2214,17 +2323,15 @@ def deal_tape_analytics(deal_id: str) -> list[TapeAnalyticsPeriod]:
     property-type breakdowns.
 
     Per-tape analytics is served from a keyed cache (in-process memo + on-disk
-    JSON, keyed by tape URL) so a given tape is normalised at most once; see the
-    caching note at the top of this block.
+    JSON + committed seed, keyed by tape URL) so a given tape is normalised at
+    most once; see the caching note at the top of this block. A tape that can't
+    be resolved (no seed and no live source, e.g. offline) is **skipped** rather
+    than failing the whole response (#347) — the endpoint returns the periods it
+    can serve, empty only when none resolve.
     """
     deal = _require_deal(deal_id)
-    return [
-        TapeAnalyticsPeriod(
-            tape_date=tape["date"],
-            **_normalised_tape_output(tape["url"]),
-        )
-        for tape in deal["tape_urls"]
-    ]
+    periods = [_tape_analytics_period(tape) for tape in deal["tape_urls"]]
+    return [p for p in periods if p is not None]
 
 
 # --- end tape-analytics (#110) -----------------------------------------------
