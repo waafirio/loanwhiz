@@ -116,24 +116,26 @@ function ConformanceBody({
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead className="w-[120px]">Control</TableHead>
-              <TableHead>Title</TableHead>
-              <TableHead className="w-[120px]">Status</TableHead>
+              <TableHead className="sticky left-0 z-20 w-[120px] min-w-[120px] bg-card">
+                Control
+              </TableHead>
+              <TableHead className="min-w-[280px]">Title</TableHead>
+              <TableHead className="w-[120px] min-w-[120px]">Status</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {controls.map((c) => (
               <TableRow key={c.control_id}>
-                <TableCell className="font-mono text-xs">
+                <TableCell className="sticky left-0 z-10 w-[120px] min-w-[120px] bg-card align-top font-mono text-xs">
                   {c.control_id}
                 </TableCell>
-                <TableCell className="text-sm">
+                <TableCell className="max-w-[640px] whitespace-normal break-words align-top text-sm">
                   {c.title}
                   <span className="block text-xs text-muted-foreground">
                     {c.rationale}
                   </span>
                 </TableCell>
-                <TableCell>
+                <TableCell className="w-[120px] min-w-[120px] align-top">
                   <StatusBadge status={c.status} />
                 </TableCell>
               </TableRow>
