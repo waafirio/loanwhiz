@@ -29,7 +29,7 @@ CLIENTS
       collections_aggregator
             |                         ^
             +-------- DATA LAYER -----+
-      deeploans ETL (ESMA tape ingestion, multi-annex; live deeploans:// path + direct fallback)
+      direct-read ESMA tape ingestion (HuggingFace CSV/parquet, multi-annex; the canonical tape path)
       Docling extraction pipeline (prospectus -> deal model JSON)
       HuggingFace: 5 deals across 3 jurisdictions (NL / IT / ES RMBS)
 
@@ -37,7 +37,7 @@ CROSS-DEAL / FRAMEWORK SURFACE
       capability matrix  (primitives x 5 deals, validated/ran/not-applicable; /capability-matrix + Showcase)
       engine validation  (Green Lion 2024-1 Notes & Cash, to the cent; /validation)
       governed MCP server  (mcp/ — the 8 primitives as MCP tools, evidence pack travels with each call)
-      governance surface  (FINOS evidence pack + deeploans-vs-direct provenance; /governance)
+      governance surface  (FINOS evidence pack + direct-read tape provenance; /governance)
 ```
 
 ---
@@ -101,7 +101,7 @@ Then open http://localhost:3000. The sidebar groups the views into two sections 
 6. **Showcase** — the primitives × 5 deals **capability matrix** (Dutch / Italian / Spanish RMBS), each cell `validated` / `ran` / `not-applicable` with the honest reason behind it (tally **1 validated / 9 ran / 15 not-applicable**).
 7. **Validation** — the seasoned-deal proof: the waterfall engine reproduced against **Green Lion 2024-1's own published Notes & Cash Priority of Payments, to the cent** (revenue 11/11, redemption 4/4; Class A interest engine-computed).
 8. **Framework** — the typed primitive-registry catalogue.
-9. **Governance** — the FINOS evidence pack (audit trail, confidence, citations, `finos_compliant`) plus per-tape `deeploans`-vs-`direct` data provenance.
+9. **Governance** — the FINOS evidence pack (audit trail, confidence, citations, `finos_compliant`) plus per-tape direct-read `data_source` provenance.
 
 The docked chat panel answers ad-hoc deal questions grounded in the loaded deal model and tapes.
 
@@ -268,16 +268,16 @@ Tape ingestion is format-agnostic: loan tapes may be supplied as **CSV or parque
 
 ## Data provenance & governance
 
-LoanWhiz is built on two open frameworks that together carry the **trust story**: [deeploans](https://github.com/Algoritmica-ai/deeploans) (Algoritmica's open-source ESMA loan-level ETL) for data, and the [FINOS AI Governance Framework](https://github.com/finos/ai-governance-framework) for auditability.
+LoanWhiz's **trust story** rests on the [FINOS AI Governance Framework](https://github.com/finos/ai-governance-framework) for auditability, applied over an honest record of where each loan tape came from. [deeploans](https://github.com/Algoritmica-ai/deeploans) (Algoritmica's open-source, Apache-2.0 ESMA loan-level ETL) is a credited project input — see "Built On" below.
 
-**Honest data provenance — deeploans is on the live path.** ESMA tape ingestion is routed through the deeploans backend when one is available, with a clean fallback to a direct-URL pandas read otherwise:
+**Canonical tape ingestion — direct read.** ESMA tape ingestion is a **direct read** from the tape's source URL. `esma_tape_normaliser._load_tape` loads the tape via pandas, dispatching on the file extension (`.parquet`/`.pq` → `read_parquet`, otherwise `read_csv`):
 
-- A tape referenced as `deeploans://{asset_class}/{table_name}` (e.g. `deeploans://sme/loans`) is fetched through the running deeploans ETL backend (`loanwhiz.data.deeploans_client.DeepLoansClient.fetch_tape`). This is a genuinely reachable ingestion path, not a decorative dependency.
-- Any other tape URL (the Green Lion HuggingFace CSVs, a local `file://` path) takes the direct pandas path. The demo runs with **or without** a deeploans backend — the 10 June demo environment has none, and the direct path keeps everything working.
+- The Green Lion HuggingFace CSVs and any `http(s)://` / `file://` CSV-or-parquet tape are read directly. This is the canonical (and only) ingestion path — no external backend is in the loop, so the demo runs anywhere with network access to the tape URL. See [docs/tape-ingestion.md](docs/tape-ingestion.md) for the full model.
+- deeploans is **not** on the live path: the upstream backend is serve-only and serves SME data, so it cannot ingest LoanWhiz's RMBS tapes on demand. It stays a decoupled Apache-2.0 upstream credit, not a runtime dependency.
 
-Either way, the `esma_tape_normaliser` records which path produced the data as a `data_source` field (`"deeploans"` or `"direct"`) on its output. That provenance flows through `/deal/{id}/tape-analytics` and the agent's `load_esma_tape` tool into the governance evidence pack — so the trust story extends all the way down to where the data came from.
+The `esma_tape_normaliser` records the ingestion provenance as a `data_source` field (`"direct"`) on its output. That provenance flows through `/deal/{id}/tape-analytics` and the agent's `load_esma_tape` tool into the governance evidence pack — so the trust story extends all the way down to where the data came from.
 
-**Governance surface.** Every governed agent query emits one FINOS-aligned evidence pack (audit trail, conservative aggregate confidence, deduplicated citations, human-review flag, and a real `finos_compliant` consistency check). The demo UI's **Governance** view (and the chat panel's evidence slide-over) surface this per answer, including the per-tape `deeploans`-vs-`direct` provenance. See [docs/governance.md](docs/governance.md).
+**Governance surface.** Every governed agent query emits one FINOS-aligned evidence pack (audit trail, conservative aggregate confidence, deduplicated citations, human-review flag, and a real `finos_compliant` consistency check). The demo UI's **Governance** view (and the chat panel's evidence slide-over) surface this per answer, including the per-tape direct-read provenance. See [docs/governance.md](docs/governance.md).
 
 ---
 

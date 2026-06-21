@@ -4,12 +4,13 @@ Primary data source for the LoanWhiz hackathon demo (10 June 2026).
 
 Why this module exists
 ----------------------
-The deeploans backend (see ``loanwhiz.data.deeploans_client``) is the
-canonical ESMA tape data source when running locally, but it requires a
-running FastAPI process and (optionally) a BigQuery connection that may not
-be available in the demo environment. This module provides a zero-dependency
-fallback: it loads Green Lion 2026-1 data **directly from HuggingFace** using
-only ``pandas`` (already a project dependency) and Python's standard library.
+LoanWhiz's canonical ESMA tape ingestion path is the **direct read** — a loan
+tape is loaded straight from its source URL (HuggingFace CSV/parquet, local
+``file://``) via ``pandas``, the same path ``esma_tape_normaliser._load_tape``
+takes. This module is that path for the Green Lion 2026-1 deal: it loads the
+deal's tapes and reports **directly from HuggingFace** using only ``pandas``
+(already a project dependency) and Python's standard library — no external
+service or backend required.
 
 Green Lion 2026-1 B.V. is a Dutch RMBS / consumer ABS deal. Algoritmica.ai
 published a complete synthetic dataset on HuggingFace under

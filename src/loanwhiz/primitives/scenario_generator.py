@@ -24,12 +24,20 @@ and the CPR with the same survival convention. That one shared helper *is* the
 C5 fix: defaults and prepayments now peel a consistent monthly fraction of the
 surviving balance, and over 12 months each reproduces its own annual rate.
 
-Pool-level, not loan-level
---------------------------
-This generator is deliberately pool-level (a single roll-down of the aggregate
-pool balance), matching the design spec — loan-level projection is out of scope
-(future B7). Scheduled amortisation uses a simple constant-rate proxy in the
-absence of a loan-level amortisation schedule.
+Scheduled amortisation: loan-level when available, proxy otherwise
+------------------------------------------------------------------
+Prepayments and defaults are scenario-driven (CPR / CDR) and peel off the
+surviving *pool* balance — that is inherently a pool-level treatment and stays
+so. **Scheduled** principal, however, is now loan-level when a tape is
+available: :meth:`ScenarioGenerator.generate` accepts an optional
+``scheduled_principal_schedule`` (a per-period pool scheduled-principal series
+derived from the tape by
+:func:`loanwhiz.primitives.loan_level_amortisation.pool_scheduled_principal_schedule`),
+and uses it in place of the flat ``scheduled_amort_rate`` proxy (#281). When no
+schedule is supplied — a deal with no loan tape (e.g. the report-driven
+cold-start deals) — the generator falls back to the constant-rate proxy, so its
+behaviour is byte-identical to before. The fold kernel, the ``PeriodInputs``
+contract, and the C5 CDR↔SMM decomposition are untouched either way.
 """
 
 from __future__ import annotations
@@ -162,16 +170,20 @@ class ScenarioGenerator:
         rate_pct: float,
         months: int,
         start_date: str | None = None,
+        scheduled_principal_schedule: list[float] | None = None,
     ) -> list[PeriodInputs]:
         """Roll the pool forward ``months`` periods into synthetic ``PeriodInputs``.
 
         Each period peels, off the *surviving* pool balance and in order:
-        scheduled principal (the amortisation proxy), then prepayments (monthly
-        SMM) and defaults (monthly MDR) — both decomposed with the **same**
-        survival convention (C5). The realized loss is the defaulted balance net
-        of recoveries; the recovered principal joins the available principal
-        funds. Pool interest accrues on the period's opening pool balance at the
-        rate-shifted coupon (Act/360, 30-day months).
+        scheduled principal, then prepayments (monthly SMM) and defaults (monthly
+        MDR) — the latter two decomposed with the **same** survival convention
+        (C5). Scheduled principal is the loan-level
+        ``scheduled_principal_schedule[k]`` when supplied (capped at the opening
+        pool balance), otherwise the flat ``scheduled_amort_rate`` proxy (#281).
+        The realized loss is the defaulted balance net of recoveries; the
+        recovered principal joins the available principal funds. Pool interest
+        accrues on the period's opening pool balance at the rate-shifted coupon
+        (Act/360, 30-day months).
 
         Parameters
         ----------
@@ -190,6 +202,16 @@ class ScenarioGenerator:
             ISO reporting date the first projected period closes on. Defaults to
             ``seed.reporting_date`` (the dates are advisory labels — the engine
             keys off the order, not the calendar).
+        scheduled_principal_schedule:
+            Optional per-period pool scheduled-principal series (EUR), derived
+            from the deal's loan tape by
+            :func:`loanwhiz.primitives.loan_level_amortisation.pool_scheduled_principal_schedule`.
+            When supplied, period *k* uses ``schedule[k]`` (capped at that
+            period's opening pool balance) as scheduled principal instead of the
+            flat ``scheduled_amort_rate`` proxy (#281). A shorter list than
+            ``months`` is zero-padded (the loans have fully amortised). When
+            ``None`` (no tape), the constant-rate proxy is used and behaviour is
+            unchanged.
 
         Returns
         -------
@@ -209,9 +231,19 @@ class ScenarioGenerator:
         pool_balance = seed.pool_balance
         periods: list[PeriodInputs] = []
 
-        for _ in range(months):
-            # Scheduled principal — constant-rate amortisation proxy.
-            scheduled_principal = pool_balance * assumptions.scheduled_amort_rate
+        for period_idx in range(months):
+            # Scheduled principal: the loan-level tape-derived schedule when
+            # supplied (capped at the opening balance so it can't repay more
+            # than is outstanding), else the constant-rate pool proxy (#281).
+            if scheduled_principal_schedule is not None:
+                scheduled_from_tape = (
+                    scheduled_principal_schedule[period_idx]
+                    if period_idx < len(scheduled_principal_schedule)
+                    else 0.0
+                )
+                scheduled_principal = min(max(0.0, scheduled_from_tape), pool_balance)
+            else:
+                scheduled_principal = pool_balance * assumptions.scheduled_amort_rate
             balance_after_scheduled = max(0.0, pool_balance - scheduled_principal)
 
             # Prepayments and defaults peel off the SAME surviving balance with
