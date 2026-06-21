@@ -12,12 +12,18 @@ from loanwhiz.extraction.assembler import (
     _slug,
 )
 from loanwhiz.primitives.audit_logger import audit_result
+from loanwhiz.primitives.base import PrimitiveResult
 from loanwhiz.primitives.collections_aggregator import CollectionsAggregator, CollectionsInput
 from loanwhiz.primitives.covenant_monitor import CovenantInput, CovenantMonitor
 from loanwhiz.primitives.esma_tape_normaliser import EsmaTapeInput, EsmaTapeNormaliser
+from loanwhiz.primitives.portfolio_monitor import (
+    PortfolioMonitor,
+    PortfolioMonitorInput,
+)
 from loanwhiz.primitives.proximity_trend_monitor import (
     ProximityTrendInput,
     ProximityTrendMonitor,
+    ProximityTrendOutput,
 )
 
 # Audit log dir for primitive calls reached through the agent tools — mirrors
@@ -398,6 +404,61 @@ def check_covenants(deal_id: str = DEFAULT_DEAL_ID) -> dict:
     }
 
 
+def _deal_proximity_trend_result(
+    deal: dict,
+) -> PrimitiveResult[ProximityTrendOutput] | None:
+    """Per-deal covenant early-warning result (the forecast chain), or ``None``.
+
+    Loads the deal's tapes, reconstructs each period's structural state, runs the
+    covenant monitor over the full reporting series, then fits each trigger's
+    proximity-to-breach trend — returning the full
+    :class:`PrimitiveResult` (so callers keep the trend monitor's confidence,
+    citations, and duration). Returns ``None`` when the deal cannot be evaluated
+    offline (no tapes / reconstruction unavailable in this environment) so
+    callers can report an honest gap rather than fabricate a forecast. Shared by
+    ``forecast_trigger_breaches`` (single deal) and ``monitor_portfolio`` (across
+    the registry).
+    """
+    from loanwhiz.api.main import (
+        _extracted_triggers_to_definitions,
+        _normalised_tape_output,
+        _reconstruct_series,
+    )
+
+    try:
+        periods = [_normalised_tape_output(tape["url"]) for tape in deal["tape_urls"]]
+        triggers = (
+            _extracted_triggers_to_definitions(deal)
+            or CovenantMonitor.DEFAULT_TRIGGERS
+        )
+        series = _reconstruct_series(deal)
+    except Exception:
+        # No cached model / unreachable tapes / reconstruction gap — honest None.
+        return None
+
+    covenant_input = CovenantInput.from_deal_states(
+        series.states,
+        periods=periods if periods else None,
+        triggers=triggers,
+    )
+    covenant_result = CovenantMonitor().execute(covenant_input)
+    # The trend monitor analyses the already-evaluated covenant series.
+    return ProximityTrendMonitor().execute(
+        ProximityTrendInput.from_covenant_output(covenant_result.output)
+    )
+
+
+def _deal_proximity_trend(deal: dict) -> ProximityTrendOutput | None:
+    """Per-deal proximity-trend output (the portfolio loader's view), or ``None``.
+
+    Thin wrapper over :func:`_deal_proximity_trend_result` that hands the
+    portfolio monitor exactly the :class:`ProximityTrendOutput` it rolls up (the
+    monitor attaches its own audit/citations at the portfolio level).
+    """
+    result = _deal_proximity_trend_result(deal)
+    return result.output if result is not None else None
+
+
 @tool
 def forecast_trigger_breaches(deal_id: str = DEFAULT_DEAL_ID) -> dict:
     """Early-warning forecast: project periods-to-breach per covenant trigger, ranked by urgency.
@@ -414,12 +475,6 @@ def forecast_trigger_breaches(deal_id: str = DEFAULT_DEAL_ID) -> dict:
     This is the trend/projection companion to ``check_covenants`` (which reports
     current per-period status). Do NOT pass tape data.
     """
-    from loanwhiz.api.main import (
-        _extracted_triggers_to_definitions,
-        _normalised_tape_output,
-        _reconstruct_series,
-    )
-
     deal = DEAL_REGISTRY.get(deal_id)
     if deal is None:
         # Do NOT silently fall back to the default deal (see check_covenants).
@@ -429,19 +484,20 @@ def forecast_trigger_breaches(deal_id: str = DEFAULT_DEAL_ID) -> dict:
             "confidence": 0.0,
             "citations": [],
         }
-    periods = [_normalised_tape_output(tape["url"]) for tape in deal["tape_urls"]]
-    triggers = _extracted_triggers_to_definitions(deal) or CovenantMonitor.DEFAULT_TRIGGERS
-    series = _reconstruct_series(deal)
-    covenant_input = CovenantInput.from_deal_states(
-        series.states,
-        periods=periods if periods else None,
-        triggers=triggers,
-    )
-    covenant_result = CovenantMonitor().execute(covenant_input)
-    # The trend monitor analyses the already-evaluated covenant series.
-    trend_result = ProximityTrendMonitor().execute(
-        ProximityTrendInput.from_covenant_output(covenant_result.output)
-    )
+    trend_result = _deal_proximity_trend_result(deal)
+    if trend_result is None:
+        return {
+            "deal_id": deal_id,
+            "deal_name": deal["deal_name"],
+            "forecast_status": "unavailable",
+            "note": (
+                "The deal's reporting series could not be reconstructed in this "
+                "environment (model/tapes not cached), so no early-warning "
+                "forecast is available."
+            ),
+            "confidence": 0.0,
+            "citations": [],
+        }
     return trend_result.output.model_dump() | {
         "confidence": trend_result.confidence,
         "citations": [c.model_dump() for c in trend_result.citations],
@@ -688,6 +744,39 @@ def list_deal_tapes(deal_id: str = DEFAULT_DEAL_ID, period: str | None = None) -
     return result
 
 
+@tool
+def monitor_portfolio() -> dict:
+    """Cross-deal covenant watchlist: which deal is breaching or about to breach first.
+
+    Use this for PORTFOLIO-LEVEL / multi-deal questions — "across all my deals,
+    which one needs attention?", "is any deal breaching a covenant?", "rank the
+    book by covenant urgency". Takes no arguments: it monitors the whole deal
+    registry. For each deal it runs the same early-warning chain as
+    ``forecast_trigger_breaches`` (reconstruct the series, run the covenant
+    monitor, fit each trigger's proximity-to-breach trend), then rolls every
+    deal's projection up into one watchlist ranked most-urgent first
+    (already-breached deals, then soonest projected breach, then clear, then
+    deals that could not be evaluated offline).
+
+    Returns the watchlist ``rows`` (one per deal: ``watch_status``,
+    ``worst_trigger_proximity_pct``, ``most_urgent_trigger``,
+    ``periods_to_breach``, ``rank``, and an honest ``evaluable``/``reason``),
+    the ``tally``, the ``most_urgent_deal``, and a plain-English ``summary``. A
+    deal whose model/tapes are not cached in this environment is reported
+    ``watch_status='unavailable'`` with a reason — never a fabricated status.
+    This is the cross-deal companion to the single-deal
+    ``forecast_trigger_breaches``.
+    """
+    result = PortfolioMonitor(proximity_loader=_deal_proximity_trend).execute(
+        PortfolioMonitorInput(deals=DEAL_REGISTRY)
+    )
+    return result.output.model_dump() | {
+        "confidence": result.confidence,
+        "citations": [c.model_dump() for c in result.citations],
+        "duration_ms": result.audit_entry.duration_ms,
+    }
+
+
 # Collect all tools for the agent
 SF_TOOLS = [
     load_esma_tape,
@@ -700,6 +789,7 @@ SF_TOOLS = [
     get_deal_model,
     list_deal_tapes,
     stress_matrix,  # #323 — appended (additive; keeps existing ordering stable)
+    monitor_portfolio,  # #326 — appended (additive; keeps existing ordering stable)
 ]
 SF_TOOL_NODE = ToolNode(SF_TOOLS)
 

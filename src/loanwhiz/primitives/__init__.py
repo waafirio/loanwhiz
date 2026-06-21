@@ -48,6 +48,14 @@ from loanwhiz.primitives.pool_stratification import (
     PoolStratificationOutput,
     StratumCell,
 )
+from loanwhiz.primitives.portfolio_monitor import (
+    DealWatchRow,
+    PortfolioMonitor,
+    PortfolioMonitorInput,
+    PortfolioMonitorOutput,
+    PortfolioWatchlist,
+    build_portfolio_watchlist,
+)
 from loanwhiz.primitives.proximity_trend_monitor import (
     ProximityTrendInput,
     ProximityTrendMonitor,
@@ -79,6 +87,13 @@ __all__ = [
     "PoolStratificationInput",
     "PoolStratificationOutput",
     "StratumCell",
+    # portfolio_monitor (#326) — cross-deal covenant watchlist aggregator
+    "build_portfolio_watchlist",
+    "DealWatchRow",
+    "PortfolioMonitor",
+    "PortfolioMonitorInput",
+    "PortfolioMonitorOutput",
+    "PortfolioWatchlist",
     "Primitive",
     "PrimitiveMetadata",
     "PrimitiveResult",
