@@ -230,10 +230,10 @@ def _audit(primitive: Primitive, primitive_input: object, result: PrimitiveResul
 # primitives are "live": each is called by a REST endpoint AND exposed as a
 # LangGraph agent tool (loanwhiz.agent.tools). `audit_logger` is "live" because
 # the deal endpoints now record audit entries through it (see _audit above).
-# The remaining primitive is "library-only": registered (so it appears in
-# the catalogue) and importable as library code, but reached by no endpoint or
-# agent tool — fully wiring report_verifier is a spine / seasoned-deal concern
-# out of this issue's scope. `GET /primitives` surfaces this so nothing is
+# `report_verifier` is now "live" too (#320, epic #262): reached by the
+# `GET /deal/{id}/report-verification` endpoint AND the `verify_report` agent
+# tool, both of which diff the live folded distributions against the investor
+# report. `GET /primitives` surfaces this so nothing is
 # advertised as live that a judge can't reach. Unknown / future primitives
 # default to "library-only" (the conservative, honest default). The duplicate
 # engines cashflow_projector / multi_period_waterfall_runner were deleted in #276.
@@ -245,7 +245,7 @@ _PRIMITIVE_REACHABILITY: dict[str, str] = {
     "covenant_monitor": _REACHABILITY_LIVE,
     "waterfall_runner": _REACHABILITY_LIVE,
     "audit_logger": _REACHABILITY_LIVE,
-    "report_verifier": _REACHABILITY_LIBRARY_ONLY,
+    "report_verifier": _REACHABILITY_LIVE,
 }
 
 
@@ -1708,6 +1708,233 @@ def deal_reconciliation(deal_id: str) -> ReconciliationResponse:
 
 
 # --- end reconciliation (#189, S9) -------------------------------------------
+
+
+# --- report verification (#320, epic #262) -----------------------------------
+# Self-contained block (response models + helper + handler) wiring the
+# previously library-only ``report_verifier`` primitive into the live REST
+# path. It diffs the deal's published monthly investor-report figures against
+# the engine-computed distributions of the SAME reconstructed ledger
+# ``/waterfall`` / ``/reconciliation`` read, flagging per-line-item breaks with
+# citations — the demo's "did the servicer apply the waterfall correctly?"
+# tool. The coarser %-tolerance check here is subsumed for to-the-cent proofs
+# by the Reconciler (``report_verifier`` is ``.. deprecated:: #270``); it is
+# retained and now exposed as the break tool this issue (#320) scopes. Kept
+# contiguous to minimise conflicts with siblings on the epic branch.
+
+
+class ReportVerificationLineItem(BaseModel):
+    """One reconciled line item (mirrors ``report_verifier.ReportedFigure``)."""
+
+    line_item: str
+    reported_value: float
+    computed_value: float
+    delta: float
+    delta_pct: float
+    match: bool
+    tolerance_pct: float
+
+
+class ReportVerificationResponse(BaseModel):
+    """Response body for ``GET /deal/{deal_id}/report-verification``.
+
+    The per-line-item break report of the deal's investor report for a period
+    against the engine-computed distributions of the reconstructed ledger.
+    """
+
+    deal_id: str
+    reporting_period: str
+    investor_report_url: str
+    figures_checked: int
+    figures_matched: int
+    figures_mismatched: int
+    line_items: list[ReportVerificationLineItem]
+    overall_match: bool
+    summary: str
+    confidence: float
+    citations: list[dict]
+
+
+def _computed_waterfall_dict(deal_id: str, deal: dict) -> tuple[dict[str, Any], str]:
+    """Build the enriched ``WaterfallOutput``-shaped dict the verifier compares.
+
+    Sources the computed side from the SAME reconstructed ``DealStateSeries``
+    that ``/waterfall`` and ``/reconciliation`` read — Class A interest/principal
+    from the latest transition's tranche movement, and ``pool_balance`` /
+    ``reserve_fund_balance`` / ``total_collections`` enriched from the final
+    ``DealState`` (the #187 "wire it live" seam). Returns the dict plus the
+    final reporting date so the caller can align the report period.
+
+    A deal with ``<2`` tapes (no transition) yields a Class-A-only dict at the
+    seed date — the verifier then simply compares fewer line items.
+    """
+    from loanwhiz.primitives.report_verifier import ReportVerifier
+
+    series = _reconstruct_series(deal_id, deal)
+
+    if not series.period_results:
+        seed = series.states[0]
+        bare = {
+            "tranche_distributions": [
+                {"tranche": "class_a", "interest_received": 0.0, "principal_received": 0.0}
+            ]
+        }
+        return bare, seed.reporting_date
+
+    opening = series.states[-2]
+    closing = series.states[-1]
+    latest = series.period_results[-1]
+    revenue = latest.revenue_execution
+
+    open_bal = opening.class_a_balance
+    close_bal = closing.class_a_balance
+    class_a_principal = max(0.0, open_bal - close_bal)
+    class_a_interest = revenue.distributed_to("class_a_interest")
+
+    bare = {
+        "tranche_distributions": [
+            {
+                "tranche": "class_a",
+                "interest_received": class_a_interest,
+                "principal_received": class_a_principal,
+            }
+        ]
+    }
+
+    collections = closing.collections
+    total_collections = (
+        collections.interest + collections.total_principal + collections.recovery
+        if collections is not None
+        else None
+    )
+
+    enriched = ReportVerifier.enrich_waterfall_output(
+        bare,
+        pool_balance=closing.pool_balance,
+        reserve_fund_balance=closing.reserve_balance,
+        total_collections=total_collections,
+    )
+    return enriched, closing.reporting_date
+
+
+def _select_investor_report(
+    deal: dict, period: str | None, fold_date: str
+) -> dict | None:
+    """Pick the investor report ``{period, url}`` entry to verify.
+
+    With an explicit ``period`` query, the first report whose ``period`` label
+    contains that substring (case-insensitive) is selected. Without one, the
+    report whose label aligns with the latest folded period (matched on the
+    ``YYYY-MM`` of the fold date, then on year) is preferred; failing any match
+    the most recent report is used. Returns ``None`` only when the deal lists no
+    investor reports at all.
+    """
+    reports = deal.get("investor_report_urls") or []
+    if not reports:
+        return None
+
+    if period is not None:
+        want = period.lower()
+        for r in reports:
+            if want in str(r.get("period", "")).lower():
+                return r
+        # An explicit period that matches nothing falls through to the default
+        # alignment below rather than 404ing — the caller asked for a period the
+        # deal doesn't report; serving the latest is more useful than an error.
+
+    # Default: align the report to the latest folded period by month, then year.
+    month_map = {
+        "01": "january", "02": "february", "03": "march", "04": "april",
+        "05": "may", "06": "june", "07": "july", "08": "august",
+        "09": "september", "10": "october", "11": "november", "12": "december",
+    }
+    parts = fold_date.split("-")
+    if len(parts) >= 2:
+        year, mm = parts[0], parts[1]
+        month_name = month_map.get(mm, "")
+        for r in reports:
+            label = str(r.get("period", "")).lower()
+            if month_name and month_name in label and year in label:
+                return r
+        for r in reports:
+            if year in str(r.get("period", "")).lower():
+                return r
+    return reports[-1]
+
+
+@app.get(
+    "/deal/{deal_id}/report-verification",
+    response_model=ReportVerificationResponse,
+)
+def deal_report_verification(
+    deal_id: str, period: str | None = None, tolerance_pct: float = 1.0
+) -> ReportVerificationResponse:
+    """Verify a deal's investor report against the engine-computed distributions.
+
+    Runs the ``report_verifier`` primitive over the live folded ledger: extracts
+    the period's published figures from the monthly investor-report PDF and diffs
+    them against the Class A distributions + enriched pool/reserve/collections of
+    the reconstructed ``DealStateSeries`` (the same ledger ``/waterfall`` reads),
+    returning a per-line-item break report with citations — the "did the servicer
+    apply the waterfall correctly?" tool (#320).
+
+    The optional ``period`` query (e.g. ``"april 2026"`` or ``"2026"``) selects
+    which monthly investor report to verify; omitted, the report aligned with the
+    latest folded period is used. A deal with no published investor reports
+    returns HTTP 422 naming the gap; an unknown ``deal_id`` returns 404.
+
+    The %-tolerance comparison here is the coarser sibling of the Reconciler's
+    to-the-cent proof (#270 — ``report_verifier`` is deprecated in favour of it
+    for exact reconciliation); it is exposed as the demo break tool, not the
+    canonical reconciliation surface (that is ``/validation``).
+    """
+    from loanwhiz.primitives.report_verifier import (
+        ReportVerifier,
+        ReportVerifierInput,
+    )
+
+    deal = _require_deal(deal_id)
+
+    computed, fold_date = _computed_waterfall_dict(deal_id, deal)
+    report = _select_investor_report(deal, period, fold_date)
+    if report is None:
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                f"deal {deal_id!r} publishes no investor reports "
+                "(investor_report_urls is empty); nothing to verify against."
+            ),
+        )
+
+    verifier = ReportVerifier()
+    verifier_input = ReportVerifierInput(
+        investor_report_url=report["url"],
+        waterfall_output=computed,
+        reporting_period=report["period"],
+        tolerance_pct=tolerance_pct,
+    )
+    result = verifier.execute(verifier_input)
+    _audit(verifier, verifier_input, result)
+
+    out = result.output
+    return ReportVerificationResponse(
+        deal_id=deal_id,
+        reporting_period=out.reporting_period,
+        investor_report_url=report["url"],
+        figures_checked=out.figures_checked,
+        figures_matched=out.figures_matched,
+        figures_mismatched=out.figures_mismatched,
+        line_items=[
+            ReportVerificationLineItem(**li.model_dump()) for li in out.line_items
+        ],
+        overall_match=out.overall_match,
+        summary=out.summary,
+        confidence=result.confidence,
+        citations=[c.model_dump() for c in result.citations],
+    )
+
+
+# --- end report verification (#320) ------------------------------------------
 
 
 # --- tape-analytics (#110) ---------------------------------------------------
