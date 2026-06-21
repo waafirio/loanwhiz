@@ -15,6 +15,10 @@ from loanwhiz.primitives.audit_logger import audit_result
 from loanwhiz.primitives.collections_aggregator import CollectionsAggregator, CollectionsInput
 from loanwhiz.primitives.covenant_monitor import CovenantInput, CovenantMonitor
 from loanwhiz.primitives.esma_tape_normaliser import EsmaTapeInput, EsmaTapeNormaliser
+from loanwhiz.primitives.proximity_trend_monitor import (
+    ProximityTrendInput,
+    ProximityTrendMonitor,
+)
 
 # Audit log dir for primitive calls reached through the agent tools — mirrors
 # the REST API's ``API_AUDIT_LOG_DIR`` so the agent path is governed like the
@@ -395,6 +399,57 @@ def check_covenants(deal_id: str = DEFAULT_DEAL_ID) -> dict:
 
 
 @tool
+def forecast_trigger_breaches(deal_id: str = DEFAULT_DEAL_ID) -> dict:
+    """Early-warning forecast: project periods-to-breach per covenant trigger, ranked by urgency.
+
+    Use this for FORWARD-LOOKING covenant questions — "which trigger breaches
+    first?", "how many periods until the reserve-fund trigger fires?", "is any
+    covenant trending toward breach?". Pass only the ``deal_id`` — the tool loads
+    the deal's tapes, reconstructs each period's structural state, runs the
+    covenant monitor over the full reporting series, then fits each trigger's
+    proximity-to-breach trend and projects when (if ever) it crosses the
+    threshold. Triggers are returned ranked most-urgent first (already-breached,
+    then soonest projected breach, then no-projected-breach).
+
+    This is the trend/projection companion to ``check_covenants`` (which reports
+    current per-period status). Do NOT pass tape data.
+    """
+    from loanwhiz.api.main import (
+        _extracted_triggers_to_definitions,
+        _normalised_tape_output,
+        _reconstruct_series,
+    )
+
+    deal = DEAL_REGISTRY.get(deal_id)
+    if deal is None:
+        # Do NOT silently fall back to the default deal (see check_covenants).
+        return {
+            "error": f"deal {deal_id!r} not found",
+            "available_deals": list(DEAL_REGISTRY),
+            "confidence": 0.0,
+            "citations": [],
+        }
+    periods = [_normalised_tape_output(tape["url"]) for tape in deal["tape_urls"]]
+    triggers = _extracted_triggers_to_definitions(deal) or CovenantMonitor.DEFAULT_TRIGGERS
+    series = _reconstruct_series(deal)
+    covenant_input = CovenantInput.from_deal_states(
+        series.states,
+        periods=periods if periods else None,
+        triggers=triggers,
+    )
+    covenant_result = CovenantMonitor().execute(covenant_input)
+    # The trend monitor analyses the already-evaluated covenant series.
+    trend_result = ProximityTrendMonitor().execute(
+        ProximityTrendInput.from_covenant_output(covenant_result.output)
+    )
+    return trend_result.output.model_dump() | {
+        "confidence": trend_result.confidence,
+        "citations": [c.model_dump() for c in trend_result.citations],
+        "duration_ms": trend_result.audit_entry.duration_ms,
+    }
+
+
+@tool
 def aggregate_collections(deal_id: str = DEFAULT_DEAL_ID, period: str | None = None) -> dict:
     """Available revenue and principal funds for a reporting period.
 
@@ -428,6 +483,73 @@ def aggregate_collections(deal_id: str = DEFAULT_DEAL_ID, period: str | None = N
         "confidence": result.confidence,
         "citations": [c.model_dump() for c in result.citations],
         "duration_ms": result.audit_entry.duration_ms,
+    }
+
+
+@tool
+def verify_report(
+    deal_id: str = DEFAULT_DEAL_ID,
+    period: str | None = None,
+    tolerance_pct: float = 1.0,
+) -> dict:
+    """Verify a deal's investor report against the engine-computed distributions.
+
+    Use this for ANY question about whether the servicer applied the waterfall
+    correctly, whether the published investor-report figures tie out to the
+    deal's computation, or to find line-item "breaks" between the reported and
+    computed numbers. Pass only the ``deal_id`` and an optional ``period``
+    substring (e.g. "april 2026" or "2026") selecting which monthly investor
+    report to check — the tool reconstructs the deal's folded ledger itself and
+    diffs the report's Class A interest/principal, pool balance, reserve balance,
+    and total collections against the engine output. Do NOT pass a report URL or
+    waterfall data.
+
+    Returns per-line-item comparisons (reported vs computed, delta, delta_pct,
+    and a match flag at the given ``tolerance_pct``), an ``overall_match`` flag,
+    a human-readable ``summary``, and the governance evidence (confidence +
+    citations). An unknown ``deal_id`` returns an ``error`` dict listing the
+    available deals; a deal with no published investor reports returns an
+    ``error`` explaining the gap.
+    """
+    # Call-time import to reuse the REST /report-verification recipe (the live
+    # fold + investor-report selection) without an import-time cycle
+    # (api.main -> agent.executor -> agent.tools -> api.main).
+    from fastapi import HTTPException
+
+    from loanwhiz.api.main import deal_report_verification
+
+    deal = DEAL_REGISTRY.get(deal_id)
+    if deal is None:
+        # Do NOT silently fall back to the default deal — answering a
+        # verification question about the wrong deal is worse than an explicit
+        # miss (mirrors check_covenants / aggregate_collections).
+        return {
+            "error": f"deal {deal_id!r} not found",
+            "available_deals": list(DEAL_REGISTRY),
+            "confidence": 0.0,
+            "citations": [],
+        }
+
+    try:
+        resp = deal_report_verification(
+            deal_id, period=period, tolerance_pct=tolerance_pct
+        )
+    except HTTPException as exc:
+        # e.g. the deal publishes no investor reports (422) — surface the
+        # endpoint's own detail rather than crashing the tool call.
+        return {
+            "error": str(exc.detail),
+            "confidence": 0.0,
+            "citations": [],
+        }
+
+    data = resp.model_dump() if hasattr(resp, "model_dump") else dict(resp)
+    confidence = data.pop("confidence", None)
+    citations = data.pop("citations", [])
+    return data | {
+        "confidence": confidence,
+        "citations": citations,
+        "duration_ms": 0,
     }
 
 
@@ -572,7 +694,9 @@ SF_TOOLS = [
     run_waterfall,
     project_cashflows,
     check_covenants,
+    forecast_trigger_breaches,
     aggregate_collections,
+    verify_report,
     get_deal_model,
     list_deal_tapes,
     stress_matrix,  # #323 — appended (additive; keeps existing ordering stable)

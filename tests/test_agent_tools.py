@@ -15,12 +15,14 @@ from loanwhiz.agent.tools import (
     DEFAULT_DEAL_ID,
     aggregate_collections,
     check_covenants,
+    forecast_trigger_breaches,
     get_deal_model,
     list_deal_tapes,
     load_esma_tape,
     project_cashflows,
     run_waterfall,
     stress_matrix,
+    verify_report,
 )
 from loanwhiz.config import DEAL_REGISTRY
 from loanwhiz.primitives.base import AuditEntry, Citation, PrimitiveResult
@@ -452,6 +454,176 @@ def test_check_covenants_unknown_deal_errors():
     assert "green-lion-2026-1" in result["available_deals"]
 
 
+# ---------------------------------------------------------------------------
+# forecast_trigger_breaches (#322)
+# ---------------------------------------------------------------------------
+
+
+def _make_deteriorating_covenant_output() -> CovenantOutput:
+    """A 3-period covenant output where one trigger trends toward breach (40 →
+    60 → 80 proximity) and another holds flat well clear (10 each)."""
+    from loanwhiz.primitives.covenant_monitor import TriggerStatus
+
+    statuses = []
+    for i, prox in enumerate((40.0, 60.0, 80.0)):
+        statuses.append(
+            TriggerStatus(
+                trigger_name="cumulative_loss_trigger",
+                period=f"2026-{i + 1:02d}-28",
+                metric_value=prox / 100.0 * 1.5,
+                threshold=1.5,
+                is_triggered=False,
+                proximity_pct=prox,
+                direction="deteriorating" if i else "n/a",
+            )
+        )
+        statuses.append(
+            TriggerStatus(
+                trigger_name="clean_up_call",
+                period=f"2026-{i + 1:02d}-28",
+                metric_value=10.0,
+                threshold=10.0,
+                is_triggered=False,
+                proximity_pct=10.0,
+                direction="stable" if i else "n/a",
+            )
+        )
+    return CovenantOutput(
+        trigger_statuses=statuses,
+        active_triggers=[],
+        near_miss_triggers=["cumulative_loss_trigger"],
+        summary="loss trigger near miss",
+    )
+
+
+def test_forecast_trigger_breaches_returns_ranked_projection():
+    """The forecast tool runs the covenant monitor over the deal's series, then
+    the proximity-trend monitor, returning a ranked projection list. The
+    covenant output is a deteriorating series so a projection surfaces and the
+    deteriorating trigger ranks most-urgent."""
+    fake_result = _covenant_result(_make_deteriorating_covenant_output())
+
+    with ExitStack() as stack:
+        mock_exec = _patch_covenant_deps(stack, fake_result)
+        result = forecast_trigger_breaches.invoke({"deal_id": "green-lion-2026-1"})
+
+    mock_exec.assert_called_once()
+    assert isinstance(result, dict)
+    assert result["confidence"] == 1.0
+    assert isinstance(result["projections"], list) and result["projections"]
+    names = [p["trigger_name"] for p in result["projections"]]
+    assert "cumulative_loss_trigger" in names
+    # Ranking puts the deteriorating loss trigger ahead of the flat one.
+    assert names[0] == "cumulative_loss_trigger"
+    assert result["most_urgent"] == "cumulative_loss_trigger"
+
+
+def test_forecast_trigger_breaches_unknown_deal_errors():
+    """Unknown deal_id returns an explicit error without running the monitor —
+    no silent fall-back (see check_covenants)."""
+    with ExitStack() as stack:
+        mock_exec = _patch_covenant_deps(
+            stack, _covenant_result(_make_covenant_output())
+        )
+        result = forecast_trigger_breaches.invoke({"deal_id": "no-such-deal"})
+
+    mock_exec.assert_not_called()
+    assert "not found" in result["error"]
+    assert result["confidence"] == 0.0
+# verify_report (#320 — report_verifier wired as an agent tool)
+# ---------------------------------------------------------------------------
+
+
+_FAKE_VERIFICATION_RESPONSE = types.SimpleNamespace(
+    model_dump=lambda: {
+        "deal_id": "green-lion-2026-1",
+        "reporting_period": "April 2026",
+        "investor_report_url": "https://example.com/report-april-2026.pdf",
+        "figures_checked": 2,
+        "figures_matched": 1,
+        "figures_mismatched": 1,
+        "line_items": [
+            {
+                "line_item": "class_a_interest_paid",
+                "reported_value": 9_050_000.0,
+                "computed_value": 9_000_000.0,
+                "delta": 50_000.0,
+                "delta_pct": 0.56,
+                "match": False,
+                "tolerance_pct": 1.0,
+            },
+        ],
+        "overall_match": False,
+        "summary": "1/2 figures match within 1% tolerance; 1 mismatch.",
+        "confidence": 0.9,
+        "citations": [{"document": "Green Lion Investor Report"}],
+    }
+)
+
+
+def test_verify_report_delegates_to_endpoint_recipe():
+    """The tool delegates to the /report-verification recipe and passes through
+    the break report + governance evidence."""
+    with patch(
+        "loanwhiz.api.main.deal_report_verification",
+        return_value=_FAKE_VERIFICATION_RESPONSE,
+    ) as mock_recipe:
+        result = verify_report.invoke({"deal_id": "green-lion-2026-1"})
+
+    mock_recipe.assert_called_once_with(
+        "green-lion-2026-1", period=None, tolerance_pct=1.0
+    )
+    assert isinstance(result, dict)
+    assert result["confidence"] == 0.9
+    assert result["overall_match"] is False
+    assert result["line_items"][0]["line_item"] == "class_a_interest_paid"
+    assert result["citations"]  # governance evidence travels with the answer
+
+
+def test_verify_report_passes_period_and_tolerance():
+    """Period filter + tolerance are threaded through to the endpoint recipe."""
+    with patch(
+        "loanwhiz.api.main.deal_report_verification",
+        return_value=_FAKE_VERIFICATION_RESPONSE,
+    ) as mock_recipe:
+        verify_report.invoke(
+            {"deal_id": "green-lion-2026-1", "period": "march 2026", "tolerance_pct": 2.0}
+        )
+
+    mock_recipe.assert_called_once_with(
+        "green-lion-2026-1", period="march 2026", tolerance_pct=2.0
+    )
+
+
+def test_verify_report_unknown_deal_errors():
+    """An unknown deal returns an explicit error and never calls the recipe —
+    no silent fall-back to the default deal."""
+    with patch(
+        "loanwhiz.api.main.deal_report_verification",
+    ) as mock_recipe:
+        result = verify_report.invoke({"deal_id": "no-such-deal"})
+
+    mock_recipe.assert_not_called()
+    assert "not found" in result["error"]
+    assert result["confidence"] == 0.0
+    assert "green-lion-2026-1" in result["available_deals"]
+
+
+def test_verify_report_no_investor_reports_returns_error():
+    """When the endpoint raises 422 (no investor reports), the tool surfaces the
+    detail as an error dict rather than crashing."""
+    from fastapi import HTTPException
+
+    with patch(
+        "loanwhiz.api.main.deal_report_verification",
+        side_effect=HTTPException(status_code=422, detail="no investor_report_urls"),
+    ):
+        result = verify_report.invoke({"deal_id": "green-lion-2026-1"})
+
+    assert "investor_report" in result["error"]
+    assert result["confidence"] == 0.0
+
+
 def _make_multi_period_covenant_output(n_periods: int) -> CovenantOutput:
     """Synthetic covenant output spanning ``n_periods`` periods × 2 triggers.
 
@@ -820,15 +992,17 @@ def test_sf_tools_has_expected_tools():
         "run_waterfall",
         "project_cashflows",
         "check_covenants",
+        "forecast_trigger_breaches",
         "aggregate_collections",
+        "verify_report",
         "get_deal_model",
         "list_deal_tapes",
         "stress_matrix",
     ]
 
 
-def test_sf_tools_has_exactly_eight_tools():
-    assert len(SF_TOOLS) == 8
+def test_sf_tools_has_exactly_ten_tools():
+    assert len(SF_TOOLS) == 10
 
 
 def test_sf_tool_node_is_tool_node_instance():
@@ -856,7 +1030,7 @@ def test_sf_tools_all_have_invoke_method():
 def test_list_available_tools_returns_list_of_dicts():
     result = list_available_tools()
     assert isinstance(result, list)
-    assert len(result) == 8
+    assert len(result) == 10
 
 
 def test_list_available_tools_has_name_and_description():

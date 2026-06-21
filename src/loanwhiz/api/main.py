@@ -34,7 +34,7 @@ from pathlib import Path
 from collections.abc import Callable
 from typing import Any
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field, field_validator
 
@@ -44,7 +44,10 @@ from loanwhiz.extraction.assembler import (
     DEFAULT_DEAL_CACHE_DIR,
     DealModel,
     _slug,
+    build_deal_rules,
 )
+from loanwhiz.api import compare as _compare
+from loanwhiz.domain.rules import DealRules
 from loanwhiz.governance import EvidencePackLogger, finos_conformance_summary
 from loanwhiz.primitives.collections_aggregator import (
     CollectionsAggregator,
@@ -54,6 +57,10 @@ from loanwhiz.primitives.base import Citation
 from loanwhiz.primitives.capability_matrix import (
     CapabilityMatrix,
     build_capability_matrix,
+)
+from loanwhiz.primitives.relative_value_screener import (
+    RelativeValueScorecard,
+    build_relative_value_scorecard,
 )
 from loanwhiz.primitives.covenant_monitor import (
     CovenantInput,
@@ -223,10 +230,10 @@ def _audit(primitive: Primitive, primitive_input: object, result: PrimitiveResul
 # primitives are "live": each is called by a REST endpoint AND exposed as a
 # LangGraph agent tool (loanwhiz.agent.tools). `audit_logger` is "live" because
 # the deal endpoints now record audit entries through it (see _audit above).
-# The remaining primitive is "library-only": registered (so it appears in
-# the catalogue) and importable as library code, but reached by no endpoint or
-# agent tool — fully wiring report_verifier is a spine / seasoned-deal concern
-# out of this issue's scope. `GET /primitives` surfaces this so nothing is
+# `report_verifier` is now "live" too (#320, epic #262): reached by the
+# `GET /deal/{id}/report-verification` endpoint AND the `verify_report` agent
+# tool, both of which diff the live folded distributions against the investor
+# report. `GET /primitives` surfaces this so nothing is
 # advertised as live that a judge can't reach. Unknown / future primitives
 # default to "library-only" (the conservative, honest default). The duplicate
 # engines cashflow_projector / multi_period_waterfall_runner were deleted in #276.
@@ -238,7 +245,7 @@ _PRIMITIVE_REACHABILITY: dict[str, str] = {
     "covenant_monitor": _REACHABILITY_LIVE,
     "waterfall_runner": _REACHABILITY_LIVE,
     "audit_logger": _REACHABILITY_LIVE,
-    "report_verifier": _REACHABILITY_LIBRARY_ONLY,
+    "report_verifier": _REACHABILITY_LIVE,
 }
 
 
@@ -631,6 +638,233 @@ def deal_compliance(deal_id: str) -> dict:
     result = monitor.execute(covenant_input)
     _audit(monitor, covenant_input, result)
     return result.output.model_dump()
+
+
+# ---------------------------------------------------------------------------
+# Cross-deal comparison endpoint (#283, Epic 7 — analyst-facing tools)
+#
+# GET /compare?deals=a,b,c[&target=a] assembles + ALIGNS the per-deal artefacts
+# the platform already produces (canonical DealRules from the cached DealModel,
+# the reconstructed DealStateSeries) into one N-way comparison payload that the
+# dashboard view and the drill-down chat both consume. No new modelling — pure
+# assembly/alignment over existing per-deal outputs (the alignment / median maths
+# lives in loanwhiz.api.compare as pure, unit-testable functions).
+#
+# Honest degradation is load-bearing here: a deal can have a canonical DealRules
+# (so the structural diff renders) without a reconstructable series (no tape, no
+# offline report). Rather than 500 or hide it, each deal carries provenance flags
+# (has_structural / has_performance) + a note so a thinner deal isn't read as
+# equivalent to a fuller one (the spec's provenance-difference requirement).
+# ---------------------------------------------------------------------------
+
+
+def _resolve_deal_rules(deal_id: str, deal: dict) -> DealRules | None:
+    """Canonical ``DealRules`` for a deal from its cached ``DealModel``, or None.
+
+    Reuses the same cached-model resolution ``/deal/{id}/model`` and
+    ``/deal/{id}/compliance`` read, then bridges it onto the canonical
+    ``DealRules`` via the extraction assembler's ``build_deal_rules`` (the #273
+    generalization — taxonomy mapping + honest ``unmapped`` escape). Runs in the
+    deterministic-only (no-LLM) path so the request never fans out to Gemini.
+    Returns ``None`` when the deal has no cached model (a cold deal): the caller
+    degrades honestly rather than 500-ing the whole comparison.
+    """
+    model = _load_cached_deal_model(deal)
+    if model is None:
+        return None
+    jurisdiction = deal.get("jurisdiction") or "Unknown"
+    result = build_deal_rules(
+        model,
+        deal_id=deal_id,
+        jurisdiction=jurisdiction,
+        currency=deal.get("currency", "EUR"),
+        use_llm=False,
+    )
+    return result.output
+
+
+def _deal_risk_summary(
+    deal_id: str, states: list[PrimitivesDealState], triggers: list[TriggerDefinition]
+) -> _compare.RiskSummary:
+    """Latest-period covenant proximity-to-breach summary for one deal.
+
+    Runs the same ``CovenantMonitor`` ``/deal/{id}/compliance`` uses over the
+    deal's reconstructed states (``periods=None`` synthesises the minimal period
+    dicts the monitor needs, so a report-driven deal with no tape still gets a
+    real proximity series). Picks the latest period's tightest (closest-to-
+    breach) evaluable trigger for the at-a-glance triage row.
+    """
+    summary = _compare.RiskSummary(deal_id=deal_id)
+    if not states:
+        return summary
+    latest = states[-1]
+    summary.latest_period = latest.reporting_date
+    summary.latest_pool_factor = latest.pool_factor
+    summary.latest_cumulative_loss_rate_pct = latest.cumulative_loss_rate_pct
+
+    covenant_input = CovenantInput.from_deal_states(
+        states,
+        periods=None,
+        triggers=triggers or CovenantMonitor.DEFAULT_TRIGGERS,
+    )
+    monitor = CovenantMonitor()
+    result = monitor.execute(covenant_input)
+    out = result.output
+    summary.active_triggers = list(out.active_triggers)
+    summary.near_miss_triggers = list(out.near_miss_triggers)
+
+    # Tightest evaluable trigger in the latest period.
+    latest_statuses = [
+        st
+        for st in out.trigger_statuses
+        if st.period == latest.reporting_date
+        and st.evaluable
+        and st.proximity_pct is not None
+    ]
+    if latest_statuses:
+        tightest = max(latest_statuses, key=lambda st: st.proximity_pct or 0.0)
+        summary.tightest_trigger = tightest.trigger_name
+        summary.tightest_proximity_pct = tightest.proximity_pct
+    return summary
+
+
+@app.get("/compare", response_model=_compare.CompareResponse)
+def compare_deals(
+    deals: str = Query(..., description="Comma-separated deal ids, 2..N (e.g. a,b,c)."),
+    target: str | None = Query(
+        default=None, description="Optional deal id to benchmark against the comp set."
+    ),
+) -> _compare.CompareResponse:
+    """Assemble + align ``DealRules`` + ``DealStateSeries`` across N deals.
+
+    Returns one comparison payload: Panel-1 structural diff (rows aligned by the
+    canonical ``RecipientType`` / ``MetricType``), Panel-2 overlaid performance
+    series + a latest-period covenant-proximity risk summary, and — when
+    ``target`` is set — comp-set medians + per-target deviations (the benchmark
+    lens) plus jurisdiction/vintage comp suggestions.
+
+    Honest degradation:
+
+    * ``< 2`` deals, an unknown deal id, or a ``target`` not in ``deals`` →
+      labelled **422** (a comparison needs at least two real deals).
+    * A deal with no cached model (structural unavailable) or no reconstructable
+      series (performance unavailable) is **kept in the set** with provenance
+      flags + a note, never dropped and never a 500.
+    """
+    deal_ids = [d.strip() for d in deals.split(",") if d.strip()]
+    if len(deal_ids) < 2:
+        raise HTTPException(
+            status_code=422,
+            detail="A comparison needs at least 2 deal ids (got "
+            f"{len(deal_ids)}). Pass ?deals=a,b[,c...].",
+        )
+    # Dedupe preserving order (a repeated id is a degenerate column).
+    seen: set[str] = set()
+    order = [d for d in deal_ids if not (d in seen or seen.add(d))]
+    if len(order) < 2:
+        raise HTTPException(
+            status_code=422,
+            detail="A comparison needs at least 2 DISTINCT deal ids.",
+        )
+
+    # Validate every id (404→422: a bad id in the set is a client error on the
+    # comparison request, not a missing top-level resource).
+    contexts: dict[str, dict] = {}
+    for deal_id in order:
+        ctx = DEALS.get(deal_id)
+        if ctx is None:
+            raise HTTPException(
+                status_code=422, detail=f"Unknown deal id '{deal_id}' in comparison set."
+            )
+        contexts[deal_id] = ctx
+
+    if target is not None and target not in order:
+        raise HTTPException(
+            status_code=422,
+            detail=f"target '{target}' is not in the comparison set {order}.",
+        )
+
+    notes: list[str] = []
+    rules_by_deal: dict[str, DealRules] = {}
+    states_by_deal: dict[str, list[PrimitivesDealState]] = {}
+    deal_refs: list[_compare.DealRef] = []
+
+    for deal_id in order:
+        ctx = contexts[deal_id]
+        rules = _resolve_deal_rules(deal_id, ctx)
+        has_structural = rules is not None
+        if rules is not None:
+            rules_by_deal[deal_id] = rules
+
+        states: list[PrimitivesDealState] = []
+        try:
+            series = _reconstruct_series(deal_id, ctx)
+            states = list(series.states)
+        except HTTPException:
+            # _not_modelable_deal / _misconfigured_deal — degrade honestly: this
+            # deal contributes to the structural diff but not the performance panel.
+            states = []
+        has_performance = bool(states)
+        if states:
+            states_by_deal[deal_id] = states
+
+        deal_name = (rules.deal_name if rules else ctx["deal_name"])
+        jurisdiction = (
+            rules.jurisdiction if rules and rules.jurisdiction else ctx.get("jurisdiction") or "Unknown"
+        )
+        ref_note: str | None = None
+        if not has_structural:
+            ref_note = "No cached model — structural diff unavailable for this deal."
+            notes.append(f"{deal_id}: {ref_note}")
+        elif not has_performance:
+            ref_note = "No reconstructable series — performance/risk unavailable for this deal."
+            notes.append(f"{deal_id}: {ref_note}")
+        deal_refs.append(
+            _compare.DealRef(
+                deal_id=deal_id,
+                deal_name=deal_name,
+                jurisdiction=jurisdiction,
+                vintage=_compare.parse_vintage(deal_name),
+                is_target=(deal_id == target),
+                has_structural=has_structural,
+                has_performance=has_performance,
+                note=ref_note,
+            )
+        )
+
+    structural_rows = _compare.build_structural_diff(rules_by_deal, order)
+    performance_series, common_periods = _compare.build_performance_panel(
+        states_by_deal, order
+    )
+
+    risk_summary: list[_compare.RiskSummary] = []
+    for deal_id in order:
+        states = states_by_deal.get(deal_id, [])
+        triggers = _extracted_triggers_to_definitions(contexts[deal_id])
+        risk_summary.append(_deal_risk_summary(deal_id, states, triggers))
+
+    response = _compare.CompareResponse(
+        deals=deal_refs,
+        target_deal_id=target,
+        structural_rows=structural_rows,
+        performance_series=performance_series,
+        risk_summary=risk_summary,
+        common_periods=common_periods,
+        notes=notes,
+    )
+
+    if target is not None:
+        response = _compare.apply_benchmark(response, target)
+        target_ref = next(d for d in deal_refs if d.deal_id == target)
+        response.comp_suggestions = _compare.suggest_comps(
+            target_deal_id=target,
+            target_jurisdiction=target_ref.jurisdiction,
+            target_vintage=target_ref.vintage,
+            registry=DEALS,
+            already_selected=set(order),
+        )
+
+    return response
 
 
 # ---------------------------------------------------------------------------
@@ -1476,6 +1710,233 @@ def deal_reconciliation(deal_id: str) -> ReconciliationResponse:
 # --- end reconciliation (#189, S9) -------------------------------------------
 
 
+# --- report verification (#320, epic #262) -----------------------------------
+# Self-contained block (response models + helper + handler) wiring the
+# previously library-only ``report_verifier`` primitive into the live REST
+# path. It diffs the deal's published monthly investor-report figures against
+# the engine-computed distributions of the SAME reconstructed ledger
+# ``/waterfall`` / ``/reconciliation`` read, flagging per-line-item breaks with
+# citations — the demo's "did the servicer apply the waterfall correctly?"
+# tool. The coarser %-tolerance check here is subsumed for to-the-cent proofs
+# by the Reconciler (``report_verifier`` is ``.. deprecated:: #270``); it is
+# retained and now exposed as the break tool this issue (#320) scopes. Kept
+# contiguous to minimise conflicts with siblings on the epic branch.
+
+
+class ReportVerificationLineItem(BaseModel):
+    """One reconciled line item (mirrors ``report_verifier.ReportedFigure``)."""
+
+    line_item: str
+    reported_value: float
+    computed_value: float
+    delta: float
+    delta_pct: float
+    match: bool
+    tolerance_pct: float
+
+
+class ReportVerificationResponse(BaseModel):
+    """Response body for ``GET /deal/{deal_id}/report-verification``.
+
+    The per-line-item break report of the deal's investor report for a period
+    against the engine-computed distributions of the reconstructed ledger.
+    """
+
+    deal_id: str
+    reporting_period: str
+    investor_report_url: str
+    figures_checked: int
+    figures_matched: int
+    figures_mismatched: int
+    line_items: list[ReportVerificationLineItem]
+    overall_match: bool
+    summary: str
+    confidence: float
+    citations: list[dict]
+
+
+def _computed_waterfall_dict(deal_id: str, deal: dict) -> tuple[dict[str, Any], str]:
+    """Build the enriched ``WaterfallOutput``-shaped dict the verifier compares.
+
+    Sources the computed side from the SAME reconstructed ``DealStateSeries``
+    that ``/waterfall`` and ``/reconciliation`` read — Class A interest/principal
+    from the latest transition's tranche movement, and ``pool_balance`` /
+    ``reserve_fund_balance`` / ``total_collections`` enriched from the final
+    ``DealState`` (the #187 "wire it live" seam). Returns the dict plus the
+    final reporting date so the caller can align the report period.
+
+    A deal with ``<2`` tapes (no transition) yields a Class-A-only dict at the
+    seed date — the verifier then simply compares fewer line items.
+    """
+    from loanwhiz.primitives.report_verifier import ReportVerifier
+
+    series = _reconstruct_series(deal_id, deal)
+
+    if not series.period_results:
+        seed = series.states[0]
+        bare = {
+            "tranche_distributions": [
+                {"tranche": "class_a", "interest_received": 0.0, "principal_received": 0.0}
+            ]
+        }
+        return bare, seed.reporting_date
+
+    opening = series.states[-2]
+    closing = series.states[-1]
+    latest = series.period_results[-1]
+    revenue = latest.revenue_execution
+
+    open_bal = opening.class_a_balance
+    close_bal = closing.class_a_balance
+    class_a_principal = max(0.0, open_bal - close_bal)
+    class_a_interest = revenue.distributed_to("class_a_interest")
+
+    bare = {
+        "tranche_distributions": [
+            {
+                "tranche": "class_a",
+                "interest_received": class_a_interest,
+                "principal_received": class_a_principal,
+            }
+        ]
+    }
+
+    collections = closing.collections
+    total_collections = (
+        collections.interest + collections.total_principal + collections.recovery
+        if collections is not None
+        else None
+    )
+
+    enriched = ReportVerifier.enrich_waterfall_output(
+        bare,
+        pool_balance=closing.pool_balance,
+        reserve_fund_balance=closing.reserve_balance,
+        total_collections=total_collections,
+    )
+    return enriched, closing.reporting_date
+
+
+def _select_investor_report(
+    deal: dict, period: str | None, fold_date: str
+) -> dict | None:
+    """Pick the investor report ``{period, url}`` entry to verify.
+
+    With an explicit ``period`` query, the first report whose ``period`` label
+    contains that substring (case-insensitive) is selected. Without one, the
+    report whose label aligns with the latest folded period (matched on the
+    ``YYYY-MM`` of the fold date, then on year) is preferred; failing any match
+    the most recent report is used. Returns ``None`` only when the deal lists no
+    investor reports at all.
+    """
+    reports = deal.get("investor_report_urls") or []
+    if not reports:
+        return None
+
+    if period is not None:
+        want = period.lower()
+        for r in reports:
+            if want in str(r.get("period", "")).lower():
+                return r
+        # An explicit period that matches nothing falls through to the default
+        # alignment below rather than 404ing — the caller asked for a period the
+        # deal doesn't report; serving the latest is more useful than an error.
+
+    # Default: align the report to the latest folded period by month, then year.
+    month_map = {
+        "01": "january", "02": "february", "03": "march", "04": "april",
+        "05": "may", "06": "june", "07": "july", "08": "august",
+        "09": "september", "10": "october", "11": "november", "12": "december",
+    }
+    parts = fold_date.split("-")
+    if len(parts) >= 2:
+        year, mm = parts[0], parts[1]
+        month_name = month_map.get(mm, "")
+        for r in reports:
+            label = str(r.get("period", "")).lower()
+            if month_name and month_name in label and year in label:
+                return r
+        for r in reports:
+            if year in str(r.get("period", "")).lower():
+                return r
+    return reports[-1]
+
+
+@app.get(
+    "/deal/{deal_id}/report-verification",
+    response_model=ReportVerificationResponse,
+)
+def deal_report_verification(
+    deal_id: str, period: str | None = None, tolerance_pct: float = 1.0
+) -> ReportVerificationResponse:
+    """Verify a deal's investor report against the engine-computed distributions.
+
+    Runs the ``report_verifier`` primitive over the live folded ledger: extracts
+    the period's published figures from the monthly investor-report PDF and diffs
+    them against the Class A distributions + enriched pool/reserve/collections of
+    the reconstructed ``DealStateSeries`` (the same ledger ``/waterfall`` reads),
+    returning a per-line-item break report with citations — the "did the servicer
+    apply the waterfall correctly?" tool (#320).
+
+    The optional ``period`` query (e.g. ``"april 2026"`` or ``"2026"``) selects
+    which monthly investor report to verify; omitted, the report aligned with the
+    latest folded period is used. A deal with no published investor reports
+    returns HTTP 422 naming the gap; an unknown ``deal_id`` returns 404.
+
+    The %-tolerance comparison here is the coarser sibling of the Reconciler's
+    to-the-cent proof (#270 — ``report_verifier`` is deprecated in favour of it
+    for exact reconciliation); it is exposed as the demo break tool, not the
+    canonical reconciliation surface (that is ``/validation``).
+    """
+    from loanwhiz.primitives.report_verifier import (
+        ReportVerifier,
+        ReportVerifierInput,
+    )
+
+    deal = _require_deal(deal_id)
+
+    computed, fold_date = _computed_waterfall_dict(deal_id, deal)
+    report = _select_investor_report(deal, period, fold_date)
+    if report is None:
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                f"deal {deal_id!r} publishes no investor reports "
+                "(investor_report_urls is empty); nothing to verify against."
+            ),
+        )
+
+    verifier = ReportVerifier()
+    verifier_input = ReportVerifierInput(
+        investor_report_url=report["url"],
+        waterfall_output=computed,
+        reporting_period=report["period"],
+        tolerance_pct=tolerance_pct,
+    )
+    result = verifier.execute(verifier_input)
+    _audit(verifier, verifier_input, result)
+
+    out = result.output
+    return ReportVerificationResponse(
+        deal_id=deal_id,
+        reporting_period=out.reporting_period,
+        investor_report_url=report["url"],
+        figures_checked=out.figures_checked,
+        figures_matched=out.figures_matched,
+        figures_mismatched=out.figures_mismatched,
+        line_items=[
+            ReportVerificationLineItem(**li.model_dump()) for li in out.line_items
+        ],
+        overall_match=out.overall_match,
+        summary=out.summary,
+        confidence=result.confidence,
+        citations=[c.model_dump() for c in result.citations],
+    )
+
+
+# --- end report verification (#320) ------------------------------------------
+
+
 # --- tape-analytics (#110) ---------------------------------------------------
 # Self-contained block (response model + handler) for the per-period pool
 # analytics endpoint. Kept contiguous to minimise conflicts with the sibling
@@ -1751,6 +2212,47 @@ def capability_matrix() -> CapabilityMatrix:
 
 
 # --- end cross-deal capability matrix (#241) ---------------------------------
+
+
+# --- cross-deal relative-value / spread screener (#324) ----------------------
+# Self-contained block (handler) for GET /relative-value-screener — the
+# quantitative analyst tool that ranks tranches ACROSS deals by structural
+# relative value (subordination/CE, WAL, trigger headroom, pool quality) into
+# one comparable scorecard. It is the quantitative sibling of the qualitative
+# deal-comparison tool (#283).
+#
+# Like /capability-matrix it is offline & deterministic: it screens the live
+# DEAL_REGISTRY, loading each deal's committed extracted seed model via
+# `_load_cached_deal_model` (which never triggers a cold extraction). No loan
+# tape is fetched and no engine is run in the request path.
+#
+# Honesty (#193 discipline): the committed seed carries structural data only
+# (tranche sizes/ratings, triggers — often with qualitative thresholds), not
+# live pool analytics. So dimensions whose true numeric form needs live period
+# data (true WAL, live trigger headroom, tape-derived pool quality) are returned
+# with `available=false` and a real reason rather than fabricated; the composite
+# blends only the available dimensions. See the screener module for the contract.
+
+
+@app.get("/relative-value-screener", response_model=RelativeValueScorecard)
+def relative_value_screener() -> RelativeValueScorecard:
+    """Return the cross-deal relative-value scorecard ranking tranches by structural RV.
+
+    For every (deal, tranche) it scores the four relative-value dimensions
+    (subordination/CE, WAL, trigger headroom, pool quality) from the deal's
+    committed extracted seed model, normalises each across the screened cohort,
+    blends the available dimensions into a composite, and ranks tranches
+    cross-deal. Runs offline and deterministically — no loan-tape fetch, no live
+    waterfall, in the request path. Live-only dimensions are reported honestly
+    as unavailable rather than fabricated.
+    """
+    return build_relative_value_scorecard(
+        DEALS,
+        seed_loader=_load_cached_deal_model,
+    )
+
+
+# --- end cross-deal relative-value screener (#324) ---------------------------
 
 
 # --- engine validation (#212, V6 / epic #206; #270 Reconciler) ---------------
