@@ -240,24 +240,24 @@ The LoanWhiz Extraction Pipeline is classified as a **decision-support tool**. I
 
 ### Pattern
 
-Governance does not stop at the model — it extends to **where the data came from**. Every normalised ESMA tape records which ingestion path produced it, and that provenance is carried through to the agent's evidence pack so an auditor can see, per answer, whether the underlying loan tape was sourced through the [deeploans](https://github.com/Algoritmica-ai/deeploans) ETL backend or read directly.
+Governance does not stop at the model — it extends to **where the data came from**. Every normalised ESMA tape records which ingestion path produced it, and that provenance is carried through to the agent's evidence pack so an auditor can see, per answer, where the underlying loan tape was sourced.
 
-### deeploans on the live ingestion path
+### Direct read — the canonical ingestion path
 
-deeploans is Algoritmica's open-source ESMA loan-level ETL — the hackathon organiser's own tool. LoanWhiz routes ESMA tape ingestion through it for real, not decoratively:
+LoanWhiz's canonical (and only) ESMA tape ingestion path is the **direct read**: a loan tape is loaded straight from its source URL. See [`docs/tape-ingestion.md`](tape-ingestion.md) for the full model.
 
-- A tape referenced as `deeploans://{asset_class}/{table_name}` is fetched from the running deeploans FastAPI backend by `DeepLoansClient.fetch_tape` (`loanwhiz/data/deeploans_client.py`), which pages the `GET /api/v1/{credit_type}/{table_name}` endpoint into a DataFrame.
-- Any other tape URL (HuggingFace CSV/parquet, local `file://`) takes the direct pandas path.
+- A tape URL (HuggingFace CSV/parquet, local `file://`) is read directly by `esma_tape_normaliser._load_tape`, which dispatches on the file extension (`.parquet`/`.pq` → `pandas.read_parquet`, otherwise `pandas.read_csv`).
+- The result is tagged `data_source="direct"` and carried through the evidence pack.
 
-`esma_tape_normaliser._load_tape` performs this routing and tags the result. When a `deeploans://` reference is supplied but no deeploans backend is reachable, ingestion fails loudly with a clear error rather than silently mis-reading the reference — so the provenance label is never wrong.
+> **Note on deeploans.** [deeploans](https://github.com/Algoritmica-ai/deeploans) is Algoritmica's open-source, Apache-2.0 ESMA loan-level ETL — the hackathon organiser's own tool, credited as a project input. It is **not** on LoanWhiz's live ingestion path: the upstream backend is serve-only (BigQuery-backed, batch-ETL'd) and serves SME data, so it cannot ingest LoanWhiz's RMBS tapes on demand. LoanWhiz therefore reads tapes directly; deeploans is a decoupled upstream credit, not a runtime dependency.
 
 ### Recorded provenance
 
 | Field | Where | Value |
 |---|---|---|
-| `EsmaTapeOutput.data_source` | `esma_tape_normaliser.py` | `"deeploans"` when fetched through the deeploans backend, `"direct"` for the direct-URL read |
+| `EsmaTapeOutput.data_source` | `esma_tape_normaliser.py` | always `"direct"` — the tape was read directly from its source URL |
 | `TapeAnalyticsPeriod.data_source` | `GET /deal/{id}/tape-analytics` | the same provenance, per reporting period |
-| Tape citation excerpt | `Citation.excerpt` (`"… (ingested via deeploans)"`) | the human-readable provenance carried into the agent's deduplicated citation trail |
+| Tape citation excerpt | `Citation.excerpt` (`"… (ingested via direct)"`) | the human-readable provenance carried into the agent's deduplicated citation trail |
 
 The Governance view and the chat panel's evidence slide-over surface this per answer, so the FINOS audit trail (§1) and citation trail (§3) now include honest data provenance — not just *what* the agent computed, but *where the data it computed on came from*.
 
@@ -273,7 +273,7 @@ This governance framework applies to:
 
 It does not apply to:
 
-- The internals of external data sources (the deeploans ETL transforms and the HuggingFace datasets themselves are governed by their own publishers) — though **which** source produced each tape *is* tracked, as data provenance (§7).
+- The internals of external data sources (the HuggingFace datasets the tapes are read from are governed by their own publishers) — though **which** source produced each tape *is* tracked, as data provenance (§7).
 - The Gemini 2.5 Pro model itself (governed by Google's model policies)
 - Client applications built on top of the LoanWhiz REST API (governed by the client application's own policies)
 
