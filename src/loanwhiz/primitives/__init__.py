@@ -39,6 +39,31 @@ from loanwhiz.primitives.esma_tape_normaliser import (
     EsmaTapeNormaliser,
     EsmaTapeOutput,
 )
+from loanwhiz.primitives.pool_stratification import (
+    ConcentrationCheck,
+    ConcentrationLimit,
+    MigrationCell,
+    PoolStratification,
+    PoolStratificationInput,
+    PoolStratificationOutput,
+    StratumCell,
+)
+from loanwhiz.primitives.portfolio_monitor import (
+    DealWatchRow,
+    PortfolioMonitor,
+    PortfolioMonitorInput,
+    PortfolioMonitorOutput,
+    PortfolioWatchlist,
+    build_portfolio_watchlist,
+)
+from loanwhiz.primitives.proximity_trend_monitor import (
+    ProximityTrendInput,
+    ProximityTrendMonitor,
+    ProximityTrendOutput,
+    TriggerProjection,
+    project_from_covenant_output,
+    project_proximity_trends,
+)
 from loanwhiz.primitives.registry import PRIMITIVE_REGISTRY, register_primitive
 
 __all__ = [
@@ -55,11 +80,32 @@ __all__ = [
     "EsmaTapeInput",
     "EsmaTapeNormaliser",
     "EsmaTapeOutput",
+    "ConcentrationCheck",
+    "ConcentrationLimit",
+    "MigrationCell",
+    "PoolStratification",
+    "PoolStratificationInput",
+    "PoolStratificationOutput",
+    "StratumCell",
+    # portfolio_monitor (#326) — cross-deal covenant watchlist aggregator
+    "build_portfolio_watchlist",
+    "DealWatchRow",
+    "PortfolioMonitor",
+    "PortfolioMonitorInput",
+    "PortfolioMonitorOutput",
+    "PortfolioWatchlist",
     "Primitive",
     "PrimitiveMetadata",
     "PrimitiveResult",
     "PRIMITIVE_REGISTRY",
     "register_primitive",
+    # proximity_trend_monitor (#322) — early-warning / proximity-trend monitor
+    "ProximityTrendInput",
+    "ProximityTrendMonitor",
+    "ProximityTrendOutput",
+    "TriggerProjection",
+    "project_from_covenant_output",
+    "project_proximity_trends",
     "ReportAdapter",
     # report_extractor (#271) — lazily exposed (see __getattr__)
     "ReportExtractor",

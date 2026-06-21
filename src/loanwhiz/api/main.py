@@ -34,9 +34,9 @@ from pathlib import Path
 from collections.abc import Callable
 from typing import Any
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from loanwhiz.agent.executor import execute_query
 from loanwhiz.config import DEAL_REGISTRY
@@ -44,7 +44,10 @@ from loanwhiz.extraction.assembler import (
     DEFAULT_DEAL_CACHE_DIR,
     DealModel,
     _slug,
+    build_deal_rules,
 )
+from loanwhiz.api import compare as _compare
+from loanwhiz.domain.rules import DealRules
 from loanwhiz.governance import EvidencePackLogger, finos_conformance_summary
 from loanwhiz.primitives.collections_aggregator import (
     CollectionsAggregator,
@@ -54,6 +57,10 @@ from loanwhiz.primitives.base import Citation
 from loanwhiz.primitives.capability_matrix import (
     CapabilityMatrix,
     build_capability_matrix,
+)
+from loanwhiz.primitives.relative_value_screener import (
+    RelativeValueScorecard,
+    build_relative_value_scorecard,
 )
 from loanwhiz.primitives.covenant_monitor import (
     CovenantInput,
@@ -166,14 +173,28 @@ _SCENARIO_PRESETS: dict[str, dict] = {
 }
 
 
-def _scenario_assumptions(name: str) -> ScenarioAssumptions:
+def _scenario_assumptions(
+    name: str, override: "ScenarioAssumptionsOverride | None" = None
+) -> ScenarioAssumptions:
     """Resolve a scenario label to its :class:`ScenarioAssumptions` preset.
 
     Unknown labels fall back to the ``base`` preset (carrying the requested
     name), so a caller asking for a custom scenario name still gets a populated,
     deterministic projection rather than a 422.
+
+    When a caller supplies an ``override`` (#319), each present field wins over
+    the preset; omitted override fields keep the preset value. This is what makes
+    ``/project`` a real CPR/CDR/recovery tool rather than two hardcoded presets —
+    an analyst can project at, e.g., CPR 20 / CDR 5 / recovery 40 against a named
+    or ad-hoc scenario. With no override the behaviour is byte-for-byte the prior
+    preset/base resolution.
     """
-    preset = _SCENARIO_PRESETS.get(name, _SCENARIO_PRESETS["base"])
+    preset = dict(_SCENARIO_PRESETS.get(name, _SCENARIO_PRESETS["base"]))
+    if override is not None:
+        for key in ("cpr_pct", "cdr_pct", "recovery_pct", "rate_shift_bps"):
+            value = getattr(override, key)
+            if value is not None:
+                preset[key] = value
     return ScenarioAssumptions(name=name, **preset)
 
 # ---------------------------------------------------------------------------
@@ -213,10 +234,10 @@ def _audit(primitive: Primitive, primitive_input: object, result: PrimitiveResul
 # primitives are "live": each is called by a REST endpoint AND exposed as a
 # LangGraph agent tool (loanwhiz.agent.tools). `audit_logger` is "live" because
 # the deal endpoints now record audit entries through it (see _audit above).
-# The remaining primitive is "library-only": registered (so it appears in
-# the catalogue) and importable as library code, but reached by no endpoint or
-# agent tool — fully wiring report_verifier is a spine / seasoned-deal concern
-# out of this issue's scope. `GET /primitives` surfaces this so nothing is
+# `report_verifier` is now "live" too (#320, epic #262): reached by the
+# `GET /deal/{id}/report-verification` endpoint AND the `verify_report` agent
+# tool, both of which diff the live folded distributions against the investor
+# report. `GET /primitives` surfaces this so nothing is
 # advertised as live that a judge can't reach. Unknown / future primitives
 # default to "library-only" (the conservative, honest default). The duplicate
 # engines cashflow_projector / multi_period_waterfall_runner were deleted in #276.
@@ -228,7 +249,7 @@ _PRIMITIVE_REACHABILITY: dict[str, str] = {
     "covenant_monitor": _REACHABILITY_LIVE,
     "waterfall_runner": _REACHABILITY_LIVE,
     "audit_logger": _REACHABILITY_LIVE,
-    "report_verifier": _REACHABILITY_LIBRARY_ONLY,
+    "report_verifier": _REACHABILITY_LIVE,
 }
 
 
@@ -256,11 +277,39 @@ class QueryResponse(BaseModel):
     evidence_pack_id: str
 
 
+class ScenarioAssumptionsOverride(BaseModel):
+    """Caller-supplied CPR / CDR / recovery / rate-shift for one scenario (#319).
+
+    All fields are optional: an omitted field falls back to the named preset's
+    value (or the ``base`` preset when the scenario name is unknown), so a caller
+    can override just the CDR while leaving CPR / recovery / rate-shift at the
+    preset. Bounds mirror :class:`ScenarioAssumptions` so a malformed override is
+    a 422 (validation error) rather than a 500 in the engine.
+    """
+
+    cpr_pct: float | None = Field(
+        default=None, ge=0.0, le=100.0, description="Annual CPR (%)."
+    )
+    cdr_pct: float | None = Field(
+        default=None, ge=0.0, le=100.0, description="Annual CDR (%)."
+    )
+    recovery_pct: float | None = Field(
+        default=None, ge=0.0, le=100.0, description="Recovery on defaults (%)."
+    )
+    rate_shift_bps: float | None = Field(
+        default=None, description="Additive rate shift (bps)."
+    )
+
+
 class ProjectRequest(BaseModel):
     """Request body for ``POST /deal/{deal_id}/project``."""
 
     scenarios: list[str] = Field(default_factory=lambda: ["base", "stress"])
     months: int = 12
+    # Optional per-scenario CPR / CDR / recovery / rate-shift overrides (#319).
+    # Keyed by scenario name; absent → the named preset / base fallback is used
+    # exactly as before, so existing no-``assumptions`` requests are unchanged.
+    assumptions: dict[str, ScenarioAssumptionsOverride] | None = None
 
 
 # Directory where ``loanwhiz.extraction.assembler.extract_deal_model`` caches
@@ -354,10 +403,19 @@ class ScenarioWal(BaseModel):
                              projection horizon. ``0.0`` when no Class A principal
                              is returned.
         wal_class_a_years:   ``wal_class_a_months / 12`` for convenience.
+        wal_class_b_months / wal_class_b_years:  Class B WAL (#319), same convention.
+        wal_class_c_months / wal_class_c_years:  Class C WAL (#319), same convention.
+
+    Class B / C WAL default to ``0.0`` so older call sites that constructed this
+    model with only the Class A fields remain valid (additive surface).
     """
 
     wal_class_a_months: float
     wal_class_a_years: float
+    wal_class_b_months: float = 0.0
+    wal_class_b_years: float = 0.0
+    wal_class_c_months: float = 0.0
+    wal_class_c_years: float = 0.0
 
 
 # ---------------------------------------------------------------------------
@@ -584,6 +642,233 @@ def deal_compliance(deal_id: str) -> dict:
     result = monitor.execute(covenant_input)
     _audit(monitor, covenant_input, result)
     return result.output.model_dump()
+
+
+# ---------------------------------------------------------------------------
+# Cross-deal comparison endpoint (#283, Epic 7 — analyst-facing tools)
+#
+# GET /compare?deals=a,b,c[&target=a] assembles + ALIGNS the per-deal artefacts
+# the platform already produces (canonical DealRules from the cached DealModel,
+# the reconstructed DealStateSeries) into one N-way comparison payload that the
+# dashboard view and the drill-down chat both consume. No new modelling — pure
+# assembly/alignment over existing per-deal outputs (the alignment / median maths
+# lives in loanwhiz.api.compare as pure, unit-testable functions).
+#
+# Honest degradation is load-bearing here: a deal can have a canonical DealRules
+# (so the structural diff renders) without a reconstructable series (no tape, no
+# offline report). Rather than 500 or hide it, each deal carries provenance flags
+# (has_structural / has_performance) + a note so a thinner deal isn't read as
+# equivalent to a fuller one (the spec's provenance-difference requirement).
+# ---------------------------------------------------------------------------
+
+
+def _resolve_deal_rules(deal_id: str, deal: dict) -> DealRules | None:
+    """Canonical ``DealRules`` for a deal from its cached ``DealModel``, or None.
+
+    Reuses the same cached-model resolution ``/deal/{id}/model`` and
+    ``/deal/{id}/compliance`` read, then bridges it onto the canonical
+    ``DealRules`` via the extraction assembler's ``build_deal_rules`` (the #273
+    generalization — taxonomy mapping + honest ``unmapped`` escape). Runs in the
+    deterministic-only (no-LLM) path so the request never fans out to Gemini.
+    Returns ``None`` when the deal has no cached model (a cold deal): the caller
+    degrades honestly rather than 500-ing the whole comparison.
+    """
+    model = _load_cached_deal_model(deal)
+    if model is None:
+        return None
+    jurisdiction = deal.get("jurisdiction") or "Unknown"
+    result = build_deal_rules(
+        model,
+        deal_id=deal_id,
+        jurisdiction=jurisdiction,
+        currency=deal.get("currency", "EUR"),
+        use_llm=False,
+    )
+    return result.output
+
+
+def _deal_risk_summary(
+    deal_id: str, states: list[PrimitivesDealState], triggers: list[TriggerDefinition]
+) -> _compare.RiskSummary:
+    """Latest-period covenant proximity-to-breach summary for one deal.
+
+    Runs the same ``CovenantMonitor`` ``/deal/{id}/compliance`` uses over the
+    deal's reconstructed states (``periods=None`` synthesises the minimal period
+    dicts the monitor needs, so a report-driven deal with no tape still gets a
+    real proximity series). Picks the latest period's tightest (closest-to-
+    breach) evaluable trigger for the at-a-glance triage row.
+    """
+    summary = _compare.RiskSummary(deal_id=deal_id)
+    if not states:
+        return summary
+    latest = states[-1]
+    summary.latest_period = latest.reporting_date
+    summary.latest_pool_factor = latest.pool_factor
+    summary.latest_cumulative_loss_rate_pct = latest.cumulative_loss_rate_pct
+
+    covenant_input = CovenantInput.from_deal_states(
+        states,
+        periods=None,
+        triggers=triggers or CovenantMonitor.DEFAULT_TRIGGERS,
+    )
+    monitor = CovenantMonitor()
+    result = monitor.execute(covenant_input)
+    out = result.output
+    summary.active_triggers = list(out.active_triggers)
+    summary.near_miss_triggers = list(out.near_miss_triggers)
+
+    # Tightest evaluable trigger in the latest period.
+    latest_statuses = [
+        st
+        for st in out.trigger_statuses
+        if st.period == latest.reporting_date
+        and st.evaluable
+        and st.proximity_pct is not None
+    ]
+    if latest_statuses:
+        tightest = max(latest_statuses, key=lambda st: st.proximity_pct or 0.0)
+        summary.tightest_trigger = tightest.trigger_name
+        summary.tightest_proximity_pct = tightest.proximity_pct
+    return summary
+
+
+@app.get("/compare", response_model=_compare.CompareResponse)
+def compare_deals(
+    deals: str = Query(..., description="Comma-separated deal ids, 2..N (e.g. a,b,c)."),
+    target: str | None = Query(
+        default=None, description="Optional deal id to benchmark against the comp set."
+    ),
+) -> _compare.CompareResponse:
+    """Assemble + align ``DealRules`` + ``DealStateSeries`` across N deals.
+
+    Returns one comparison payload: Panel-1 structural diff (rows aligned by the
+    canonical ``RecipientType`` / ``MetricType``), Panel-2 overlaid performance
+    series + a latest-period covenant-proximity risk summary, and — when
+    ``target`` is set — comp-set medians + per-target deviations (the benchmark
+    lens) plus jurisdiction/vintage comp suggestions.
+
+    Honest degradation:
+
+    * ``< 2`` deals, an unknown deal id, or a ``target`` not in ``deals`` →
+      labelled **422** (a comparison needs at least two real deals).
+    * A deal with no cached model (structural unavailable) or no reconstructable
+      series (performance unavailable) is **kept in the set** with provenance
+      flags + a note, never dropped and never a 500.
+    """
+    deal_ids = [d.strip() for d in deals.split(",") if d.strip()]
+    if len(deal_ids) < 2:
+        raise HTTPException(
+            status_code=422,
+            detail="A comparison needs at least 2 deal ids (got "
+            f"{len(deal_ids)}). Pass ?deals=a,b[,c...].",
+        )
+    # Dedupe preserving order (a repeated id is a degenerate column).
+    seen: set[str] = set()
+    order = [d for d in deal_ids if not (d in seen or seen.add(d))]
+    if len(order) < 2:
+        raise HTTPException(
+            status_code=422,
+            detail="A comparison needs at least 2 DISTINCT deal ids.",
+        )
+
+    # Validate every id (404→422: a bad id in the set is a client error on the
+    # comparison request, not a missing top-level resource).
+    contexts: dict[str, dict] = {}
+    for deal_id in order:
+        ctx = DEALS.get(deal_id)
+        if ctx is None:
+            raise HTTPException(
+                status_code=422, detail=f"Unknown deal id '{deal_id}' in comparison set."
+            )
+        contexts[deal_id] = ctx
+
+    if target is not None and target not in order:
+        raise HTTPException(
+            status_code=422,
+            detail=f"target '{target}' is not in the comparison set {order}.",
+        )
+
+    notes: list[str] = []
+    rules_by_deal: dict[str, DealRules] = {}
+    states_by_deal: dict[str, list[PrimitivesDealState]] = {}
+    deal_refs: list[_compare.DealRef] = []
+
+    for deal_id in order:
+        ctx = contexts[deal_id]
+        rules = _resolve_deal_rules(deal_id, ctx)
+        has_structural = rules is not None
+        if rules is not None:
+            rules_by_deal[deal_id] = rules
+
+        states: list[PrimitivesDealState] = []
+        try:
+            series = _reconstruct_series(deal_id, ctx)
+            states = list(series.states)
+        except HTTPException:
+            # _not_modelable_deal / _misconfigured_deal — degrade honestly: this
+            # deal contributes to the structural diff but not the performance panel.
+            states = []
+        has_performance = bool(states)
+        if states:
+            states_by_deal[deal_id] = states
+
+        deal_name = (rules.deal_name if rules else ctx["deal_name"])
+        jurisdiction = (
+            rules.jurisdiction if rules and rules.jurisdiction else ctx.get("jurisdiction") or "Unknown"
+        )
+        ref_note: str | None = None
+        if not has_structural:
+            ref_note = "No cached model — structural diff unavailable for this deal."
+            notes.append(f"{deal_id}: {ref_note}")
+        elif not has_performance:
+            ref_note = "No reconstructable series — performance/risk unavailable for this deal."
+            notes.append(f"{deal_id}: {ref_note}")
+        deal_refs.append(
+            _compare.DealRef(
+                deal_id=deal_id,
+                deal_name=deal_name,
+                jurisdiction=jurisdiction,
+                vintage=_compare.parse_vintage(deal_name),
+                is_target=(deal_id == target),
+                has_structural=has_structural,
+                has_performance=has_performance,
+                note=ref_note,
+            )
+        )
+
+    structural_rows = _compare.build_structural_diff(rules_by_deal, order)
+    performance_series, common_periods = _compare.build_performance_panel(
+        states_by_deal, order
+    )
+
+    risk_summary: list[_compare.RiskSummary] = []
+    for deal_id in order:
+        states = states_by_deal.get(deal_id, [])
+        triggers = _extracted_triggers_to_definitions(contexts[deal_id])
+        risk_summary.append(_deal_risk_summary(deal_id, states, triggers))
+
+    response = _compare.CompareResponse(
+        deals=deal_refs,
+        target_deal_id=target,
+        structural_rows=structural_rows,
+        performance_series=performance_series,
+        risk_summary=risk_summary,
+        common_periods=common_periods,
+        notes=notes,
+    )
+
+    if target is not None:
+        response = _compare.apply_benchmark(response, target)
+        target_ref = next(d for d in deal_refs if d.deal_id == target)
+        response.comp_suggestions = _compare.suggest_comps(
+            target_deal_id=target,
+            target_jurisdiction=target_ref.jurisdiction,
+            target_vintage=target_ref.vintage,
+            registry=DEALS,
+            already_selected=set(order),
+        )
+
+    return response
 
 
 # ---------------------------------------------------------------------------
@@ -1459,6 +1744,233 @@ def deal_reconciliation(deal_id: str) -> ReconciliationResponse:
 # --- end reconciliation (#189, S9) -------------------------------------------
 
 
+# --- report verification (#320, epic #262) -----------------------------------
+# Self-contained block (response models + helper + handler) wiring the
+# previously library-only ``report_verifier`` primitive into the live REST
+# path. It diffs the deal's published monthly investor-report figures against
+# the engine-computed distributions of the SAME reconstructed ledger
+# ``/waterfall`` / ``/reconciliation`` read, flagging per-line-item breaks with
+# citations — the demo's "did the servicer apply the waterfall correctly?"
+# tool. The coarser %-tolerance check here is subsumed for to-the-cent proofs
+# by the Reconciler (``report_verifier`` is ``.. deprecated:: #270``); it is
+# retained and now exposed as the break tool this issue (#320) scopes. Kept
+# contiguous to minimise conflicts with siblings on the epic branch.
+
+
+class ReportVerificationLineItem(BaseModel):
+    """One reconciled line item (mirrors ``report_verifier.ReportedFigure``)."""
+
+    line_item: str
+    reported_value: float
+    computed_value: float
+    delta: float
+    delta_pct: float
+    match: bool
+    tolerance_pct: float
+
+
+class ReportVerificationResponse(BaseModel):
+    """Response body for ``GET /deal/{deal_id}/report-verification``.
+
+    The per-line-item break report of the deal's investor report for a period
+    against the engine-computed distributions of the reconstructed ledger.
+    """
+
+    deal_id: str
+    reporting_period: str
+    investor_report_url: str
+    figures_checked: int
+    figures_matched: int
+    figures_mismatched: int
+    line_items: list[ReportVerificationLineItem]
+    overall_match: bool
+    summary: str
+    confidence: float
+    citations: list[dict]
+
+
+def _computed_waterfall_dict(deal_id: str, deal: dict) -> tuple[dict[str, Any], str]:
+    """Build the enriched ``WaterfallOutput``-shaped dict the verifier compares.
+
+    Sources the computed side from the SAME reconstructed ``DealStateSeries``
+    that ``/waterfall`` and ``/reconciliation`` read — Class A interest/principal
+    from the latest transition's tranche movement, and ``pool_balance`` /
+    ``reserve_fund_balance`` / ``total_collections`` enriched from the final
+    ``DealState`` (the #187 "wire it live" seam). Returns the dict plus the
+    final reporting date so the caller can align the report period.
+
+    A deal with ``<2`` tapes (no transition) yields a Class-A-only dict at the
+    seed date — the verifier then simply compares fewer line items.
+    """
+    from loanwhiz.primitives.report_verifier import ReportVerifier
+
+    series = _reconstruct_series(deal_id, deal)
+
+    if not series.period_results:
+        seed = series.states[0]
+        bare = {
+            "tranche_distributions": [
+                {"tranche": "class_a", "interest_received": 0.0, "principal_received": 0.0}
+            ]
+        }
+        return bare, seed.reporting_date
+
+    opening = series.states[-2]
+    closing = series.states[-1]
+    latest = series.period_results[-1]
+    revenue = latest.revenue_execution
+
+    open_bal = opening.class_a_balance
+    close_bal = closing.class_a_balance
+    class_a_principal = max(0.0, open_bal - close_bal)
+    class_a_interest = revenue.distributed_to("class_a_interest")
+
+    bare = {
+        "tranche_distributions": [
+            {
+                "tranche": "class_a",
+                "interest_received": class_a_interest,
+                "principal_received": class_a_principal,
+            }
+        ]
+    }
+
+    collections = closing.collections
+    total_collections = (
+        collections.interest + collections.total_principal + collections.recovery
+        if collections is not None
+        else None
+    )
+
+    enriched = ReportVerifier.enrich_waterfall_output(
+        bare,
+        pool_balance=closing.pool_balance,
+        reserve_fund_balance=closing.reserve_balance,
+        total_collections=total_collections,
+    )
+    return enriched, closing.reporting_date
+
+
+def _select_investor_report(
+    deal: dict, period: str | None, fold_date: str
+) -> dict | None:
+    """Pick the investor report ``{period, url}`` entry to verify.
+
+    With an explicit ``period`` query, the first report whose ``period`` label
+    contains that substring (case-insensitive) is selected. Without one, the
+    report whose label aligns with the latest folded period (matched on the
+    ``YYYY-MM`` of the fold date, then on year) is preferred; failing any match
+    the most recent report is used. Returns ``None`` only when the deal lists no
+    investor reports at all.
+    """
+    reports = deal.get("investor_report_urls") or []
+    if not reports:
+        return None
+
+    if period is not None:
+        want = period.lower()
+        for r in reports:
+            if want in str(r.get("period", "")).lower():
+                return r
+        # An explicit period that matches nothing falls through to the default
+        # alignment below rather than 404ing — the caller asked for a period the
+        # deal doesn't report; serving the latest is more useful than an error.
+
+    # Default: align the report to the latest folded period by month, then year.
+    month_map = {
+        "01": "january", "02": "february", "03": "march", "04": "april",
+        "05": "may", "06": "june", "07": "july", "08": "august",
+        "09": "september", "10": "october", "11": "november", "12": "december",
+    }
+    parts = fold_date.split("-")
+    if len(parts) >= 2:
+        year, mm = parts[0], parts[1]
+        month_name = month_map.get(mm, "")
+        for r in reports:
+            label = str(r.get("period", "")).lower()
+            if month_name and month_name in label and year in label:
+                return r
+        for r in reports:
+            if year in str(r.get("period", "")).lower():
+                return r
+    return reports[-1]
+
+
+@app.get(
+    "/deal/{deal_id}/report-verification",
+    response_model=ReportVerificationResponse,
+)
+def deal_report_verification(
+    deal_id: str, period: str | None = None, tolerance_pct: float = 1.0
+) -> ReportVerificationResponse:
+    """Verify a deal's investor report against the engine-computed distributions.
+
+    Runs the ``report_verifier`` primitive over the live folded ledger: extracts
+    the period's published figures from the monthly investor-report PDF and diffs
+    them against the Class A distributions + enriched pool/reserve/collections of
+    the reconstructed ``DealStateSeries`` (the same ledger ``/waterfall`` reads),
+    returning a per-line-item break report with citations — the "did the servicer
+    apply the waterfall correctly?" tool (#320).
+
+    The optional ``period`` query (e.g. ``"april 2026"`` or ``"2026"``) selects
+    which monthly investor report to verify; omitted, the report aligned with the
+    latest folded period is used. A deal with no published investor reports
+    returns HTTP 422 naming the gap; an unknown ``deal_id`` returns 404.
+
+    The %-tolerance comparison here is the coarser sibling of the Reconciler's
+    to-the-cent proof (#270 — ``report_verifier`` is deprecated in favour of it
+    for exact reconciliation); it is exposed as the demo break tool, not the
+    canonical reconciliation surface (that is ``/validation``).
+    """
+    from loanwhiz.primitives.report_verifier import (
+        ReportVerifier,
+        ReportVerifierInput,
+    )
+
+    deal = _require_deal(deal_id)
+
+    computed, fold_date = _computed_waterfall_dict(deal_id, deal)
+    report = _select_investor_report(deal, period, fold_date)
+    if report is None:
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                f"deal {deal_id!r} publishes no investor reports "
+                "(investor_report_urls is empty); nothing to verify against."
+            ),
+        )
+
+    verifier = ReportVerifier()
+    verifier_input = ReportVerifierInput(
+        investor_report_url=report["url"],
+        waterfall_output=computed,
+        reporting_period=report["period"],
+        tolerance_pct=tolerance_pct,
+    )
+    result = verifier.execute(verifier_input)
+    _audit(verifier, verifier_input, result)
+
+    out = result.output
+    return ReportVerificationResponse(
+        deal_id=deal_id,
+        reporting_period=out.reporting_period,
+        investor_report_url=report["url"],
+        figures_checked=out.figures_checked,
+        figures_matched=out.figures_matched,
+        figures_mismatched=out.figures_mismatched,
+        line_items=[
+            ReportVerificationLineItem(**li.model_dump()) for li in out.line_items
+        ],
+        overall_match=out.overall_match,
+        summary=out.summary,
+        confidence=result.confidence,
+        citations=[c.model_dump() for c in result.citations],
+    )
+
+
+# --- end report verification (#320) ------------------------------------------
+
+
 # --- tape-analytics (#110) ---------------------------------------------------
 # Self-contained block (response model + handler) for the per-period pool
 # analytics endpoint. Kept contiguous to minimise conflicts with the sibling
@@ -1737,6 +2249,47 @@ def capability_matrix() -> CapabilityMatrix:
 # --- end cross-deal capability matrix (#241) ---------------------------------
 
 
+# --- cross-deal relative-value / spread screener (#324) ----------------------
+# Self-contained block (handler) for GET /relative-value-screener — the
+# quantitative analyst tool that ranks tranches ACROSS deals by structural
+# relative value (subordination/CE, WAL, trigger headroom, pool quality) into
+# one comparable scorecard. It is the quantitative sibling of the qualitative
+# deal-comparison tool (#283).
+#
+# Like /capability-matrix it is offline & deterministic: it screens the live
+# DEAL_REGISTRY, loading each deal's committed extracted seed model via
+# `_load_cached_deal_model` (which never triggers a cold extraction). No loan
+# tape is fetched and no engine is run in the request path.
+#
+# Honesty (#193 discipline): the committed seed carries structural data only
+# (tranche sizes/ratings, triggers — often with qualitative thresholds), not
+# live pool analytics. So dimensions whose true numeric form needs live period
+# data (true WAL, live trigger headroom, tape-derived pool quality) are returned
+# with `available=false` and a real reason rather than fabricated; the composite
+# blends only the available dimensions. See the screener module for the contract.
+
+
+@app.get("/relative-value-screener", response_model=RelativeValueScorecard)
+def relative_value_screener() -> RelativeValueScorecard:
+    """Return the cross-deal relative-value scorecard ranking tranches by structural RV.
+
+    For every (deal, tranche) it scores the four relative-value dimensions
+    (subordination/CE, WAL, trigger headroom, pool quality) from the deal's
+    committed extracted seed model, normalises each across the screened cohort,
+    blends the available dimensions into a composite, and ranks tranches
+    cross-deal. Runs offline and deterministically — no loan-tape fetch, no live
+    waterfall, in the request path. Live-only dimensions are reported honestly
+    as unavailable rather than fabricated.
+    """
+    return build_relative_value_scorecard(
+        DEALS,
+        seed_loader=_load_cached_deal_model,
+    )
+
+
+# --- end cross-deal relative-value screener (#324) ---------------------------
+
+
 # --- engine validation (#212, V6 / epic #206; #270 Reconciler) ---------------
 # Self-contained block (response models + handler) for GET
 # /deal/{deal_id}/validation — the headline cold-start proof surfaced over HTTP so
@@ -1919,27 +2472,52 @@ def deal_validation(deal_id: str) -> ValidationResponse:
 # --- end engine validation (#212) --------------------------------------------
 
 
-def _wal_from_series(series: DealStateSeries) -> ScenarioWal:
-    """Class A weighted-average life from a projected ``DealStateSeries`` (#275).
+def _wal_months_for_tranche(series: DealStateSeries, balance_attr: str) -> float:
+    """Weighted-average life (months) of one tranche over a projected series (#319).
 
-    WAL is ``sum(t × principal_t) / sum(principal_t)`` over the projection
-    horizon, where ``t`` is the period ordinal (1-based) and ``principal_t`` is
-    the Class A principal repaid in period ``t`` — read as the per-period drop in
-    the Class A outstanding balance across the state chain. ``0.0`` when no Class
-    A principal is returned (avoids divide-by-zero). This is a real WAL derived
-    from the engine-computed amortisation, not the faked "full horizon if any
-    principal" the single-period path used.
+    Generic over the tranche balance attribute (``class_a_balance`` /
+    ``class_b_balance`` / ``class_c_balance``). WAL is
+    ``sum(t × principal_t) / sum(principal_t)`` over the projection horizon, where
+    ``t`` is the period ordinal (1-based) and ``principal_t`` is the principal
+    repaid to that tranche in period ``t`` — read as the per-period drop in the
+    tranche's outstanding balance across the engine-computed state chain. ``0.0``
+    when the tranche returns no principal (avoids divide-by-zero), e.g. a
+    junior tranche that never amortises over the horizon.
     """
     numerator = 0.0
     denominator = 0.0
     for t in range(1, len(series.states)):
         principal_t = max(
-            0.0, series.states[t - 1].class_a_balance - series.states[t].class_a_balance
+            0.0,
+            getattr(series.states[t - 1], balance_attr)
+            - getattr(series.states[t], balance_attr),
         )
         numerator += t * principal_t
         denominator += principal_t
-    months = numerator / denominator if denominator > 0.0 else 0.0
-    return ScenarioWal(wal_class_a_months=months, wal_class_a_years=months / 12.0)
+    return numerator / denominator if denominator > 0.0 else 0.0
+
+
+def _wal_from_series(series: DealStateSeries) -> ScenarioWal:
+    """Per-tranche weighted-average life from a projected ``DealStateSeries`` (#275/#319).
+
+    Class A WAL is the original #275 surface (kept by name + value); Class B / C
+    WAL are added additively (#319) using the same engine-derived amortisation,
+    so the projection answers "WAL under CPR/CDR/recovery" for every tranche, not
+    just the senior. This is a real WAL derived from the engine-computed
+    amortisation, not the faked "full horizon if any principal" the single-period
+    path used.
+    """
+    class_a = _wal_months_for_tranche(series, "class_a_balance")
+    class_b = _wal_months_for_tranche(series, "class_b_balance")
+    class_c = _wal_months_for_tranche(series, "class_c_balance")
+    return ScenarioWal(
+        wal_class_a_months=class_a,
+        wal_class_a_years=class_a / 12.0,
+        wal_class_b_months=class_b,
+        wal_class_b_years=class_b / 12.0,
+        wal_class_c_months=class_c,
+        wal_class_c_years=class_c / 12.0,
+    )
 
 
 def _projection_payload(series: DealStateSeries, scenario: str) -> dict:
@@ -1950,19 +2528,40 @@ def _projection_payload(series: DealStateSeries, scenario: str) -> dict:
     the caller. Read off the engine-computed series — there is no separate
     projection bookkeeping (one engine, one source of truth).
     """
-    periods = [
-        {
-            "period": idx,
-            "reporting_date": state.reporting_date,
-            "pool_balance_eur": state.pool_balance,
-            "class_a_balance": state.class_a_balance,
-            "class_b_balance": state.class_b_balance,
-            "class_c_balance": state.class_c_balance,
-            "reserve_balance": state.reserve_balance,
-            "cumulative_losses": state.cumulative_losses,
-        }
-        for idx, state in enumerate(series.states)
-    ]
+    periods = []
+    for idx, state in enumerate(series.states):
+        prior = series.states[idx - 1] if idx > 0 else None
+        # Per-tranche principal cashflow = the period-over-period drop in the
+        # tranche's outstanding balance, floored at 0 (#319). Period 0 is the
+        # seed (no transition yet), so its cashflows are 0. Read off the
+        # engine-computed series — no separate cashflow bookkeeping.
+        periods.append(
+            {
+                "period": idx,
+                "reporting_date": state.reporting_date,
+                "pool_balance_eur": state.pool_balance,
+                "class_a_balance": state.class_a_balance,
+                "class_b_balance": state.class_b_balance,
+                "class_c_balance": state.class_c_balance,
+                "class_a_principal_eur": (
+                    max(0.0, prior.class_a_balance - state.class_a_balance)
+                    if prior is not None
+                    else 0.0
+                ),
+                "class_b_principal_eur": (
+                    max(0.0, prior.class_b_balance - state.class_b_balance)
+                    if prior is not None
+                    else 0.0
+                ),
+                "class_c_principal_eur": (
+                    max(0.0, prior.class_c_balance - state.class_c_balance)
+                    if prior is not None
+                    else 0.0
+                ),
+                "reserve_balance": state.reserve_balance,
+                "cumulative_losses": state.cumulative_losses,
+            }
+        )
     final = series.final_state
     return {
         "scenario": scenario,
@@ -2013,6 +2612,7 @@ def deal_project(deal_id: str, req: ProjectRequest) -> dict:
     seed_date = "projection-start"
     generator = ScenarioGenerator()
 
+    overrides = req.assumptions or {}
     # Loan-level scheduled-amortisation schedule from the deal's latest tape
     # (#281), shared across scenarios (it depends only on the tape + horizon,
     # not the scenario). ``None`` for no-tape deals → the generator's
@@ -2022,7 +2622,7 @@ def deal_project(deal_id: str, req: ProjectRequest) -> dict:
     projections: dict[str, dict] = {}
     wal: dict[str, dict] = {}
     for scenario in req.scenarios:
-        assumptions = _scenario_assumptions(scenario)
+        assumptions = _scenario_assumptions(scenario, overrides.get(scenario))
         seed = PrimitivesDealState.seed_from_prospectus(
             capital_structure,
             reserve_target=reserve_target,
@@ -2058,8 +2658,12 @@ def deal_project(deal_id: str, req: ProjectRequest) -> dict:
 
         projection = _projection_payload(series, scenario)
         scenario_wal = _wal_from_series(series)
+        # Class A WAL stays inline by its original keys (#275); the full
+        # per-tranche WAL (A/B/C) is also surfaced inline under "wal" and in the
+        # top-level "wal" map (#319).
         projection["wal_class_a_months"] = scenario_wal.wal_class_a_months
         projection["wal_class_a_years"] = scenario_wal.wal_class_a_years
+        projection["wal"] = scenario_wal.model_dump()
         projections[scenario] = projection
         wal[scenario] = scenario_wal.model_dump()
 
@@ -2070,6 +2674,259 @@ def deal_project(deal_id: str, req: ProjectRequest) -> dict:
         "projections": projections,
         "wal": wal,
     }
+
+
+# ---------------------------------------------------------------------------
+# Scenario / stress matrix (#323)
+#
+# A grid of forward projections across a CPR × CDR (× rate-shift) scenario
+# matrix, returning a tranche-level outcome surface per cell: cumulative loss,
+# per-tranche WAL, total waterfall shortfall, and the first projected period at
+# which any covenant trigger breaches. The grid is driven THROUGH the same #319
+# projection fold ``deal_project`` uses (one ``ScenarioGenerator`` stream folded
+# through ``run_period`` per cell) — there is no second engine. Kept contiguous
+# with the ``/project`` block above to minimise additive merge conflicts with
+# siblings editing this module. ``deal_project`` is intentionally left untouched
+# so existing ``/project`` callers are byte-for-byte unchanged.
+# ---------------------------------------------------------------------------
+
+# Hard cap on the number of grid cells a single request may enumerate. Each cell
+# is a full multi-period fold + a covenant pass, so an unbounded grid (e.g. a
+# 20 × 20 × 5 request) would fold 2000 deals synchronously and hang the worker.
+# A request whose Cartesian product exceeds this returns a labelled 422 rather
+# than a 500 / hang — the bound is generous for the analyst use case (an 8 × 8
+# CPR × CDR surface is 64 cells) while refusing a runaway grid.
+_MAX_MATRIX_CELLS = 64
+
+
+class StressMatrixRequest(BaseModel):
+    """Request body for ``POST /deal/{deal_id}/stress-matrix`` (#323).
+
+    The matrix axes are explicit lists of assumption values; the cells are their
+    Cartesian product. ``recovery_pct`` is a single scalar held constant across
+    the grid (the base preset's recovery when omitted) — the matrix varies CPR ×
+    CDR × rate-shift, not recovery, so an analyst reads a clean 2-D / 3-D surface.
+    ``rate_shift_bps`` defaults to ``[0.0]`` so an omitted axis yields a 2-D
+    CPR × CDR grid; supply multiple values for a 3-D matrix. Bounds mirror
+    :class:`ScenarioAssumptionsOverride` so a malformed value is a 422, not a 500.
+    """
+
+    cpr_pct: list[float] = Field(
+        ..., min_length=1, description="CPR (%) axis — one projection column per value."
+    )
+    cdr_pct: list[float] = Field(
+        ..., min_length=1, description="CDR (%) axis — one projection row per value."
+    )
+    rate_shift_bps: list[float] = Field(
+        default_factory=lambda: [0.0],
+        min_length=1,
+        description="Rate-shift (bps) axis. Defaults to [0.0] → a 2-D CPR×CDR grid.",
+    )
+    recovery_pct: float | None = Field(
+        default=None,
+        ge=0.0,
+        le=100.0,
+        description="Recovery on defaults (%), held constant across the grid. "
+        "Defaults to the base preset's recovery when omitted.",
+    )
+    months: int = Field(default=12, ge=1, description="Projection horizon in months.")
+
+    @field_validator("cpr_pct", "cdr_pct")
+    @classmethod
+    def _pct_bounds(cls, values: list[float]) -> list[float]:
+        for v in values:
+            if not (0.0 <= v <= 100.0):
+                raise ValueError(f"axis value {v} out of bounds [0, 100]")
+        return values
+
+
+def _first_breach(series: DealStateSeries, deal: dict) -> dict:
+    """First projected period at which any covenant trigger breaches (#323).
+
+    Runs the SAME covenant recipe the ``/compliance`` endpoint and the
+    ``check_covenants`` tool use — the deal's extracted triggers (falling back to
+    :data:`CovenantMonitor.DEFAULT_TRIGGERS`) evaluated over the projected state
+    chain — and returns the earliest period where a trigger fires. Because every
+    projected state shares the ``"projection-start"`` reporting date (the forward
+    fold has no real calendar), the states are relabelled ``projection+{idx}m``
+    for the covenant pass so the breach maps unambiguously back to a period index.
+
+    Returns ``{period, label, trigger}`` for the first breach, or
+    ``{period: None, label: None, trigger: None}`` when no trigger fires over the
+    horizon. ``period`` is the 0-based index into the projected series (period 0
+    is the seed; a breach there means the deal opens already in breach).
+    """
+    triggers = _extracted_triggers_to_definitions(deal) or CovenantMonitor.DEFAULT_TRIGGERS
+    relabelled = [
+        st.model_copy(update={"reporting_date": f"projection+{idx}m"})
+        for idx, st in enumerate(series.states)
+    ]
+    covenant_input = CovenantInput.from_deal_states(relabelled, triggers=triggers)
+    output = CovenantMonitor().execute(covenant_input).output
+    label_to_idx = {f"projection+{idx}m": idx for idx in range(len(relabelled))}
+    breaches = [
+        (label_to_idx.get(s.period, len(relabelled)), s)
+        for s in output.trigger_statuses
+        if s.is_triggered
+    ]
+    if not breaches:
+        return {"period": None, "label": None, "trigger": None}
+    idx, status = min(breaches, key=lambda pair: pair[0])
+    return {"period": idx, "label": status.period, "trigger": status.trigger_name}
+
+
+def _stress_cell_outcomes(series: DealStateSeries, deal: dict) -> dict:
+    """Per-cell tranche-level outcome surface from a projected series (#323).
+
+    Reads four outcomes off the engine-computed series — no separate
+    bookkeeping, one source of truth:
+
+    - ``loss``: the deal's cumulative pool losses at the projection horizon
+      (``series.final_state.cumulative_losses``).
+    - ``wal``: per-tranche (A/B/C) weighted-average life, via the existing
+      :func:`_wal_from_series`.
+    - ``shortfall``: total unfunded amount across the horizon — the sum of every
+      period's revenue + redemption waterfall ``total_shortfall``. ``0.0`` when
+      every period fully funds its waterfall.
+    - ``first_breach``: the earliest period any covenant trigger fires
+      (:func:`_first_breach`).
+    """
+    final = series.final_state
+    shortfall = sum(
+        r.revenue_execution.total_shortfall + r.redemption_execution.total_shortfall
+        for r in series.period_results
+    )
+    breach = _first_breach(series, deal)
+    return {
+        "loss": final.cumulative_losses,
+        "wal": _wal_from_series(series).model_dump(),
+        "shortfall": shortfall,
+        "first_breach_period": breach["period"],
+        "first_breach_label": breach["label"],
+        "first_breach_trigger": breach["trigger"],
+    }
+
+
+def _run_stress_matrix(deal_id: str, deal: dict, req: StressMatrixRequest) -> dict:
+    """Drive the #319 projection fold across the CPR × CDR × rate-shift grid (#323).
+
+    Resolves the projection base + structural config once (the same resolvers
+    ``deal_project`` uses, so the Green-Lion fallback / 422-for-misconfigured
+    posture is inherited), then for each ``(cpr, cdr, rate_shift)`` cell seeds
+    period-0, folds a :class:`ScenarioGenerator` stream through ``run_period``
+    (capturing each :class:`PeriodResult` so shortfall is recoverable), and
+    extracts the cell's outcome surface via :func:`_stress_cell_outcomes`.
+
+    Returns the echoed axes + grid dimensions + a flat ``cells`` list (row-major
+    over cdr × cpr × rate_shift), so a client can pivot it into a surface.
+    """
+    n_cells = len(req.cpr_pct) * len(req.cdr_pct) * len(req.rate_shift_bps)
+    if n_cells > _MAX_MATRIX_CELLS:
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                f"Requested stress matrix has {n_cells} cells "
+                f"({len(req.cpr_pct)} CPR × {len(req.cdr_pct)} CDR × "
+                f"{len(req.rate_shift_bps)} rate-shift), exceeding the "
+                f"{_MAX_MATRIX_CELLS}-cell cap. Narrow an axis and retry."
+            ),
+        )
+
+    base = _resolve_projection_base(deal_id, deal)
+    capital_structure, reserve_target, original_pool_balance = _resolve_structural_config(
+        deal_id, deal
+    )
+    # Constant recovery across the grid: the request's value, else the base preset.
+    recovery_pct = (
+        req.recovery_pct
+        if req.recovery_pct is not None
+        else _SCENARIO_PRESETS["base"]["recovery_pct"]
+    )
+
+    generator = ScenarioGenerator()
+    rates = {
+        k: float(capital_structure[k])
+        for k in ("class_a_rate_pct", "class_b_rate_pct", "class_c_rate_pct")
+        if k in capital_structure
+    }
+    rates.setdefault("class_a_rate_pct", base["class_a_rate_pct"])
+
+    cells: list[dict] = []
+    for cdr in req.cdr_pct:
+        for cpr in req.cpr_pct:
+            for rate_shift in req.rate_shift_bps:
+                assumptions = ScenarioAssumptions(
+                    name=f"cpr{cpr}-cdr{cdr}-rs{rate_shift}",
+                    cpr_pct=cpr,
+                    cdr_pct=cdr,
+                    recovery_pct=recovery_pct,
+                    rate_shift_bps=rate_shift,
+                )
+                seed = PrimitivesDealState.seed_from_prospectus(
+                    capital_structure,
+                    reserve_target=reserve_target,
+                    original_pool_balance=original_pool_balance,
+                    opening_pool_balance=base["current_pool_balance"],
+                    reporting_date="projection-start",
+                )
+                period_inputs = generator.generate(
+                    seed,
+                    assumptions=assumptions,
+                    rate_pct=base["class_a_rate_pct"],
+                    months=req.months,
+                )
+                states = [seed]
+                period_results = []
+                current = seed
+                for period in period_inputs:
+                    result = run_period(current, period, rates=rates)
+                    current = result.closing_state
+                    states.append(current)
+                    period_results.append(result)
+                series = DealStateSeries(states=states, period_results=period_results)
+                cells.append(
+                    {
+                        "cpr_pct": cpr,
+                        "cdr_pct": cdr,
+                        "rate_shift_bps": rate_shift,
+                        **_stress_cell_outcomes(series, deal),
+                    }
+                )
+
+    return {
+        "deal_id": deal_id,
+        "months": req.months,
+        "recovery_pct": recovery_pct,
+        "axes": {
+            "cpr_pct": list(req.cpr_pct),
+            "cdr_pct": list(req.cdr_pct),
+            "rate_shift_bps": list(req.rate_shift_bps),
+        },
+        "dimensions": {
+            "cpr": len(req.cpr_pct),
+            "cdr": len(req.cdr_pct),
+            "rate_shift": len(req.rate_shift_bps),
+            "cells": len(cells),
+        },
+        "cells": cells,
+    }
+
+
+@app.post("/deal/{deal_id}/stress-matrix")
+def deal_stress_matrix(deal_id: str, req: StressMatrixRequest) -> dict:
+    """Forward-project the deal across a CPR × CDR (× rate-shift) scenario matrix (#323).
+
+    Each grid cell is one forward projection through the SAME ``run_period``
+    engine the ``/project`` endpoint (#319) uses; the response is a tranche-level
+    outcome surface — cumulative loss, per-tranche WAL (A/B/C), total waterfall
+    shortfall, and the first projected period any covenant trigger breaches — per
+    ``(cpr, cdr, rate_shift)`` cell. The projection base / structural config is
+    resolved from the deal context exactly as ``/project`` does, so a
+    misconfigured non-Green-Lion deal fails loudly (422) rather than projecting on
+    Green Lion's structure (#268). An oversized grid (> the cell cap) returns 422.
+    """
+    deal = _require_deal(deal_id)
+    return _run_stress_matrix(deal_id, deal, req)
 
 
 # ---------------------------------------------------------------------------

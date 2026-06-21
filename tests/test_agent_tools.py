@@ -15,10 +15,14 @@ from loanwhiz.agent.tools import (
     DEFAULT_DEAL_ID,
     aggregate_collections,
     check_covenants,
+    forecast_trigger_breaches,
     get_deal_model,
     list_deal_tapes,
     load_esma_tape,
+    project_cashflows,
     run_waterfall,
+    stress_matrix,
+    verify_report,
 )
 from loanwhiz.config import DEAL_REGISTRY
 from loanwhiz.primitives.base import AuditEntry, Citation, PrimitiveResult
@@ -221,6 +225,155 @@ def test_run_waterfall_defaults_to_demo_deal():
 
 
 # ---------------------------------------------------------------------------
+# project_cashflows (#319)
+#
+# These exercise the REAL engine fold end to end (the tool wraps the live
+# /project recipe over the Green Lion deal — no mock of the unit under test),
+# matching the planner's `integration` test-level contract for the projection
+# path.
+# ---------------------------------------------------------------------------
+
+
+def test_project_cashflows_returns_per_tranche_cashflows_and_wal():
+    """The tool returns per-scenario per-period tranche balances + principal
+    cashflows + per-tranche WAL, with full confidence on the deterministic fold."""
+    result = project_cashflows.invoke(
+        {"deal_id": "green-lion-2026-1", "scenarios": ["base"], "months": 6}
+    )
+    assert result["confidence"] == 1.0
+    assert "error" not in result
+    proj = result["projections"]["base"]
+    # Per-tranche principal cashflows present on each period (#319).
+    first_transition = proj["periods"][1]
+    for key in ("class_a_principal_eur", "class_b_principal_eur", "class_c_principal_eur"):
+        assert key in first_transition
+    # Per-tranche WAL present (#319) — A from #275, B/C added here.
+    wal = result["wal"]["base"]
+    for key in (
+        "wal_class_a_months",
+        "wal_class_b_months",
+        "wal_class_c_months",
+    ):
+        assert key in wal
+
+
+def test_project_cashflows_applies_custom_assumptions():
+    """Explicit CPR/CDR/recovery override the presets for every scenario — a
+    higher CDR / lower recovery yields strictly larger cumulative losses."""
+    base = project_cashflows.invoke(
+        {"deal_id": "green-lion-2026-1", "scenarios": ["base"], "months": 6}
+    )
+    stressed = project_cashflows.invoke(
+        {
+            "deal_id": "green-lion-2026-1",
+            "scenarios": ["base"],
+            "months": 6,
+            "cdr_pct": 8.0,
+            "recovery_pct": 20.0,
+        }
+    )
+    base_losses = base["projections"]["base"]["cumulative_losses"]
+    stressed_losses = stressed["projections"]["base"]["cumulative_losses"]
+    assert stressed_losses > base_losses
+
+
+def test_project_cashflows_bounds_long_horizon():
+    """A horizon beyond MAX_VERBATIM_PERIODS collapses per-period rows to
+    first/last while keeping the final-state + WAL summary."""
+    result = project_cashflows.invoke(
+        {"deal_id": "green-lion-2026-1", "scenarios": ["base"], "months": 24}
+    )
+    proj = result["projections"]["base"]
+    assert len(proj["periods"]) == 2  # first + last only
+    assert "periods_summarised" in proj
+    # Final-state + WAL still cover the full horizon.
+    assert "final_class_a_balance" in proj
+    assert "wal_class_a_months" in proj
+
+
+def test_project_cashflows_short_horizon_verbatim():
+    """At/under the bound the per-period rows are returned verbatim."""
+    result = project_cashflows.invoke(
+        {"deal_id": "green-lion-2026-1", "scenarios": ["base"], "months": 4}
+    )
+    proj = result["projections"]["base"]
+    assert len(proj["periods"]) == 5  # seed + 4 transitions, not summarised
+    assert "periods_summarised" not in proj
+
+
+def test_project_cashflows_unknown_deal_errors():
+    """A bad deal id returns a graceful tool error, not a crash."""
+    result = project_cashflows.invoke({"deal_id": "no-such-deal"})
+    assert result["confidence"] == 0.0
+    assert "error" in result
+
+
+def test_project_cashflows_defaults_to_demo_deal():
+    """With no deal_id the tool serves the default demo deal and both presets."""
+    result = project_cashflows.invoke({})
+    assert "error" not in result
+    assert set(result["projections"]) == {"base", "stress"}
+
+
+# ---------------------------------------------------------------------------
+# stress_matrix (#323)
+#
+# These exercise the REAL grid fold end to end (the tool wraps the live
+# /stress-matrix recipe over the Green Lion deal — no mock of the unit under
+# test), matching the planner's `integration` test-level contract.
+# ---------------------------------------------------------------------------
+
+
+def test_stress_matrix_returns_outcome_surface():
+    """The tool returns a tranche-level outcome surface (loss/wal/shortfall/
+    first-breach) per cell, with full confidence on the deterministic fold."""
+    result = stress_matrix.invoke(
+        {
+            "deal_id": "green-lion-2026-1",
+            "cpr_pct": [10, 20],
+            "cdr_pct": [1, 5],
+            "months": 6,
+        }
+    )
+    assert result["confidence"] == 1.0
+    assert "error" not in result
+    assert result["dimensions"]["cells"] == 4
+    assert len(result["cells"]) == 4
+    for cell in result["cells"]:
+        assert {"loss", "wal", "shortfall", "first_breach_period"} <= set(cell)
+        assert {"wal_class_a_months", "wal_class_b_months", "wal_class_c_months"} <= set(
+            cell["wal"]
+        )
+
+
+def test_stress_matrix_defaults_to_demo_grid():
+    """With no axes the tool serves the default demo grid over the default deal."""
+    result = stress_matrix.invoke({})
+    assert "error" not in result
+    # Default grid is 2 CPR × 2 CDR × 1 rate-shift = 4 cells.
+    assert result["dimensions"]["cells"] == 4
+
+
+def test_stress_matrix_unknown_deal_errors():
+    """A bad deal id returns a graceful tool error, not a crash."""
+    result = stress_matrix.invoke(
+        {"deal_id": "no-such-deal", "cpr_pct": [10], "cdr_pct": [1]}
+    )
+    assert result["confidence"] == 0.0
+    assert "error" in result
+
+
+def test_stress_matrix_oversized_grid_errors_gracefully():
+    """An oversized grid (> cell cap) surfaces a graceful error, not a hang."""
+    big = [float(x) for x in range(9)]  # 9 × 9 = 81 > 64
+    result = stress_matrix.invoke(
+        {"deal_id": "green-lion-2026-1", "cpr_pct": big, "cdr_pct": big, "months": 3}
+    )
+    assert result["confidence"] == 0.0
+    assert "error" in result
+
+
+# ---------------------------------------------------------------------------
 # check_covenants
 # ---------------------------------------------------------------------------
 
@@ -299,6 +452,176 @@ def test_check_covenants_unknown_deal_errors():
     assert "not found" in result["error"]
     assert result["confidence"] == 0.0
     assert "green-lion-2026-1" in result["available_deals"]
+
+
+# ---------------------------------------------------------------------------
+# forecast_trigger_breaches (#322)
+# ---------------------------------------------------------------------------
+
+
+def _make_deteriorating_covenant_output() -> CovenantOutput:
+    """A 3-period covenant output where one trigger trends toward breach (40 →
+    60 → 80 proximity) and another holds flat well clear (10 each)."""
+    from loanwhiz.primitives.covenant_monitor import TriggerStatus
+
+    statuses = []
+    for i, prox in enumerate((40.0, 60.0, 80.0)):
+        statuses.append(
+            TriggerStatus(
+                trigger_name="cumulative_loss_trigger",
+                period=f"2026-{i + 1:02d}-28",
+                metric_value=prox / 100.0 * 1.5,
+                threshold=1.5,
+                is_triggered=False,
+                proximity_pct=prox,
+                direction="deteriorating" if i else "n/a",
+            )
+        )
+        statuses.append(
+            TriggerStatus(
+                trigger_name="clean_up_call",
+                period=f"2026-{i + 1:02d}-28",
+                metric_value=10.0,
+                threshold=10.0,
+                is_triggered=False,
+                proximity_pct=10.0,
+                direction="stable" if i else "n/a",
+            )
+        )
+    return CovenantOutput(
+        trigger_statuses=statuses,
+        active_triggers=[],
+        near_miss_triggers=["cumulative_loss_trigger"],
+        summary="loss trigger near miss",
+    )
+
+
+def test_forecast_trigger_breaches_returns_ranked_projection():
+    """The forecast tool runs the covenant monitor over the deal's series, then
+    the proximity-trend monitor, returning a ranked projection list. The
+    covenant output is a deteriorating series so a projection surfaces and the
+    deteriorating trigger ranks most-urgent."""
+    fake_result = _covenant_result(_make_deteriorating_covenant_output())
+
+    with ExitStack() as stack:
+        mock_exec = _patch_covenant_deps(stack, fake_result)
+        result = forecast_trigger_breaches.invoke({"deal_id": "green-lion-2026-1"})
+
+    mock_exec.assert_called_once()
+    assert isinstance(result, dict)
+    assert result["confidence"] == 1.0
+    assert isinstance(result["projections"], list) and result["projections"]
+    names = [p["trigger_name"] for p in result["projections"]]
+    assert "cumulative_loss_trigger" in names
+    # Ranking puts the deteriorating loss trigger ahead of the flat one.
+    assert names[0] == "cumulative_loss_trigger"
+    assert result["most_urgent"] == "cumulative_loss_trigger"
+
+
+def test_forecast_trigger_breaches_unknown_deal_errors():
+    """Unknown deal_id returns an explicit error without running the monitor —
+    no silent fall-back (see check_covenants)."""
+    with ExitStack() as stack:
+        mock_exec = _patch_covenant_deps(
+            stack, _covenant_result(_make_covenant_output())
+        )
+        result = forecast_trigger_breaches.invoke({"deal_id": "no-such-deal"})
+
+    mock_exec.assert_not_called()
+    assert "not found" in result["error"]
+    assert result["confidence"] == 0.0
+# verify_report (#320 — report_verifier wired as an agent tool)
+# ---------------------------------------------------------------------------
+
+
+_FAKE_VERIFICATION_RESPONSE = types.SimpleNamespace(
+    model_dump=lambda: {
+        "deal_id": "green-lion-2026-1",
+        "reporting_period": "April 2026",
+        "investor_report_url": "https://example.com/report-april-2026.pdf",
+        "figures_checked": 2,
+        "figures_matched": 1,
+        "figures_mismatched": 1,
+        "line_items": [
+            {
+                "line_item": "class_a_interest_paid",
+                "reported_value": 9_050_000.0,
+                "computed_value": 9_000_000.0,
+                "delta": 50_000.0,
+                "delta_pct": 0.56,
+                "match": False,
+                "tolerance_pct": 1.0,
+            },
+        ],
+        "overall_match": False,
+        "summary": "1/2 figures match within 1% tolerance; 1 mismatch.",
+        "confidence": 0.9,
+        "citations": [{"document": "Green Lion Investor Report"}],
+    }
+)
+
+
+def test_verify_report_delegates_to_endpoint_recipe():
+    """The tool delegates to the /report-verification recipe and passes through
+    the break report + governance evidence."""
+    with patch(
+        "loanwhiz.api.main.deal_report_verification",
+        return_value=_FAKE_VERIFICATION_RESPONSE,
+    ) as mock_recipe:
+        result = verify_report.invoke({"deal_id": "green-lion-2026-1"})
+
+    mock_recipe.assert_called_once_with(
+        "green-lion-2026-1", period=None, tolerance_pct=1.0
+    )
+    assert isinstance(result, dict)
+    assert result["confidence"] == 0.9
+    assert result["overall_match"] is False
+    assert result["line_items"][0]["line_item"] == "class_a_interest_paid"
+    assert result["citations"]  # governance evidence travels with the answer
+
+
+def test_verify_report_passes_period_and_tolerance():
+    """Period filter + tolerance are threaded through to the endpoint recipe."""
+    with patch(
+        "loanwhiz.api.main.deal_report_verification",
+        return_value=_FAKE_VERIFICATION_RESPONSE,
+    ) as mock_recipe:
+        verify_report.invoke(
+            {"deal_id": "green-lion-2026-1", "period": "march 2026", "tolerance_pct": 2.0}
+        )
+
+    mock_recipe.assert_called_once_with(
+        "green-lion-2026-1", period="march 2026", tolerance_pct=2.0
+    )
+
+
+def test_verify_report_unknown_deal_errors():
+    """An unknown deal returns an explicit error and never calls the recipe —
+    no silent fall-back to the default deal."""
+    with patch(
+        "loanwhiz.api.main.deal_report_verification",
+    ) as mock_recipe:
+        result = verify_report.invoke({"deal_id": "no-such-deal"})
+
+    mock_recipe.assert_not_called()
+    assert "not found" in result["error"]
+    assert result["confidence"] == 0.0
+    assert "green-lion-2026-1" in result["available_deals"]
+
+
+def test_verify_report_no_investor_reports_returns_error():
+    """When the endpoint raises 422 (no investor reports), the tool surfaces the
+    detail as an error dict rather than crashing."""
+    from fastapi import HTTPException
+
+    with patch(
+        "loanwhiz.api.main.deal_report_verification",
+        side_effect=HTTPException(status_code=422, detail="no investor_report_urls"),
+    ):
+        result = verify_report.invoke({"deal_id": "green-lion-2026-1"})
+
+    assert "investor_report" in result["error"]
+    assert result["confidence"] == 0.0
 
 
 def _make_multi_period_covenant_output(n_periods: int) -> CovenantOutput:
@@ -667,15 +990,20 @@ def test_sf_tools_has_expected_tools():
     assert tool_names == [
         "load_esma_tape",
         "run_waterfall",
+        "project_cashflows",
         "check_covenants",
+        "forecast_trigger_breaches",
         "aggregate_collections",
+        "verify_report",
         "get_deal_model",
         "list_deal_tapes",
+        "stress_matrix",
+        "monitor_portfolio",
     ]
 
 
-def test_sf_tools_has_exactly_six_tools():
-    assert len(SF_TOOLS) == 6
+def test_sf_tools_has_exactly_eleven_tools():
+    assert len(SF_TOOLS) == 11
 
 
 def test_sf_tool_node_is_tool_node_instance():
@@ -703,7 +1031,7 @@ def test_sf_tools_all_have_invoke_method():
 def test_list_available_tools_returns_list_of_dicts():
     result = list_available_tools()
     assert isinstance(result, list)
-    assert len(result) == 6
+    assert len(result) == 11
 
 
 def test_list_available_tools_has_name_and_description():
