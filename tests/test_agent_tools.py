@@ -998,11 +998,12 @@ def test_sf_tools_has_expected_tools():
         "get_deal_model",
         "list_deal_tapes",
         "stress_matrix",
+        "monitor_portfolio",
     ]
 
 
-def test_sf_tools_has_exactly_ten_tools():
-    assert len(SF_TOOLS) == 10
+def test_sf_tools_has_exactly_eleven_tools():
+    assert len(SF_TOOLS) == 11
 
 
 def test_sf_tool_node_is_tool_node_instance():
@@ -1030,7 +1031,7 @@ def test_sf_tools_all_have_invoke_method():
 def test_list_available_tools_returns_list_of_dicts():
     result = list_available_tools()
     assert isinstance(result, list)
-    assert len(result) == 10
+    assert len(result) == 11
 
 
 def test_list_available_tools_has_name_and_description():
