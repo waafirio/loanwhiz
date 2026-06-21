@@ -190,6 +190,9 @@ def test_compare_projects_tape_report_absent_deal(monkeypatch):
         s for s in body["performance_series"] if s["deal_id"] == "projectable-test"
     )
     assert series["points"], "expected a non-empty projected series"
+    # The overlay renders a curve, not a single collapsed point: distinct dates.
+    dates = [p["reporting_date"] for p in series["points"]]
+    assert len(set(dates)) > 1
     # The reported deal in the same set keeps its 'reported' provenance.
     rep = next(d for d in body["deals"] if d["deal_id"] == MODELABLE)
     assert rep["performance_provenance"] == "reported"
@@ -216,6 +219,12 @@ def test_projected_series_from_canonical_builds_series_when_projectable():
     assert len(series.states) > 1
     # Pool amortizes forward: the last pool factor is below the seed's.
     assert series.states[-1].pool_factor < series.states[0].pool_factor
+    # Each state carries a DISTINCT, ordered reporting_date, so the /compare
+    # overlay (keyed by reporting_date) renders a curve rather than collapsing
+    # every point onto a single X value (#345 regression guard).
+    dates = [st.reporting_date for st in series.states]
+    assert len(set(dates)) == len(dates)
+    assert dates == sorted(dates)
 
 
 def test_compare_benchmark_lens_sets_median_and_deviation():

@@ -1631,7 +1631,18 @@ def _projected_series_from_canonical(
             result = run_period(current, period, rates=rates)
             current = result.closing_state
             states.append(current)
-        return DealStateSeries(states=states, period_results=[])
+        # The projection seed + generated states all carry the same
+        # "projection-start" reporting_date (the generator advances period
+        # ordinals, not calendar dates — /project re-indexes by ordinal in its
+        # payload). For the /compare overlay the series is keyed by
+        # ``reporting_date``, so re-label each state with an ordered,
+        # lexicographically-sortable synthetic period label, else every point
+        # collapses onto one X value and the line renders as a single dot (#345).
+        ordered = [
+            state.model_copy(update={"reporting_date": f"projected-period-{idx:02d}"})
+            for idx, state in enumerate(states)
+        ]
+        return DealStateSeries(states=ordered, period_results=[])
     except Exception:  # noqa: BLE001 — projection is best-effort; degrade, never 500
         return None
 
