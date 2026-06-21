@@ -34,10 +34,14 @@ EXPECTED_LIVE_TOOLS = {
     "covenant_monitor",
     "waterfall_runner",
     "audit_logger",
-}
-EXPECTED_LIBRARY_ONLY = {
+    # report_verifier is now live (#320): reached by the
+    # /deal/{id}/report-verification endpoint + the verify_report agent tool.
     "report_verifier",
 }
+# Every registered primitive is now reached in the live path — no library-only
+# primitives remain. The set is kept (empty) so the catalogue-honesty assertions
+# below still iterate over it and the union math in the resource tests is stable.
+EXPECTED_LIBRARY_ONLY: set[str] = set()
 
 
 async def _list_tools(server) -> list[types.Tool]:
@@ -113,8 +117,10 @@ async def test_tool_call_returns_primitive_result_with_governance_evidence():
 async def test_unknown_tool_is_rejected():
     """Calling a non-live / unknown primitive name is an error, not a crash."""
     server = build_server()
-    result = await _call_tool(server, "report_verifier", {})
-    assert result.isError is True  # library-only — not exposed as a tool
+    # A genuinely-unknown name (report_verifier is now live — #320) must still be
+    # rejected as an error rather than crashing the server.
+    result = await _call_tool(server, "nonexistent_primitive", {})
+    assert result.isError is True
 
 
 async def test_catalogue_resource_lists_all_primitives_with_honest_reachability():

@@ -1277,6 +1277,119 @@ def test_deal_waterfall_unknown_returns_404():
 
 
 # ---------------------------------------------------------------------------
+# Report verification (#320 — report_verifier wired live; Gemini mocked)
+# ---------------------------------------------------------------------------
+#
+# The endpoint diffs the deal's investor-report figures (extracted via Gemini,
+# patched here) against the engine-computed distributions of the SAME
+# reconstructed ledger ``/waterfall`` reads. We patch ``_extract_figures_with_gemini``
+# (the primitive's network boundary) so the tests are offline + deterministic,
+# and patch ``_reconstruct_series`` so the computed side is the small real fold.
+
+
+def _patch_gemini(reported: dict[str, float]):
+    """Patch the report_verifier's Gemini extraction to return ``reported``."""
+    return patch(
+        "loanwhiz.primitives.report_verifier._extract_figures_with_gemini",
+        return_value=dict(reported),
+    )
+
+
+def _no_report_cache(monkeypatch):
+    """Point the verifier's per-period cache at an empty tmp dir so it extracts.
+
+    Without this the verifier may read a stale ``/tmp/loanwhiz_cache`` entry from
+    a prior run instead of calling the patched extractor.
+    """
+    import pathlib
+    import tempfile
+
+    import loanwhiz.primitives.report_verifier as rv
+
+    monkeypatch.setattr(
+        rv, "_CACHE_DIR", pathlib.Path(tempfile.mkdtemp()) / "nonexistent"
+    )
+
+
+def test_report_verification_returns_break_report(monkeypatch):
+    """`/report-verification` diffs reported vs computed and flags breaks.
+
+    The reported Class A interest is set wildly off the engine-computed value, so
+    the line item is flagged as a mismatch (a "break"); the response carries the
+    per-line-item comparison, overall_match, summary, confidence, and citations.
+    """
+    _no_report_cache(monkeypatch)
+    series = _small_reconstructed_series()
+    # Reported figures: deliberately-wrong Class A interest (a break) plus three
+    # figures the engine can source (pool/reserve/collections enrichment).
+    reported = {
+        "class_a_interest_paid": 999_999_999.0,  # nowhere near computed → break
+        "class_a_principal_paid": 1.0,           # also a break
+        "pool_balance": series.states[-1].pool_balance,        # matches → ok
+        "reserve_fund_balance": series.states[-1].reserve_balance,  # matches → ok
+    }
+
+    with patch("loanwhiz.api.main._reconstruct_series", return_value=series), _patch_gemini(reported):
+        resp = client.get("/deal/green-lion-2026-1/report-verification")
+
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["deal_id"] == "green-lion-2026-1"
+    assert body["investor_report_url"].endswith(".pdf")
+    # Four reported figures all had a computed counterpart → four checked.
+    assert body["figures_checked"] == 4
+    by_item = {li["line_item"]: li for li in body["line_items"]}
+    # The two deliberately-wrong figures are flagged as breaks.
+    assert by_item["class_a_interest_paid"]["match"] is False
+    assert by_item["class_a_principal_paid"]["match"] is False
+    # The pool/reserve figures fed back exactly → matches within tolerance.
+    assert by_item["pool_balance"]["match"] is True
+    assert by_item["reserve_fund_balance"]["match"] is True
+    assert body["overall_match"] is False
+    assert body["figures_mismatched"] == 2
+    assert 0.0 <= body["confidence"] <= 1.0
+    assert isinstance(body["citations"], list) and body["citations"]
+
+
+def test_report_verification_period_filter_selects_report(monkeypatch):
+    """An explicit ``period`` query selects the matching monthly investor report."""
+    _no_report_cache(monkeypatch)
+    series = _small_reconstructed_series()
+    reported = {"class_a_interest_paid": 1.0}
+
+    with patch("loanwhiz.api.main._reconstruct_series", return_value=series), _patch_gemini(reported):
+        resp = client.get(
+            "/deal/green-lion-2026-1/report-verification", params={"period": "march 2026"}
+        )
+
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["reporting_period"] == "March 2026"
+    assert "march-2026" in body["investor_report_url"]
+
+
+def test_report_verification_unknown_deal_returns_404():
+    resp = client.get("/deal/unknown/report-verification")
+    assert resp.status_code == 404
+
+
+def test_report_verification_no_investor_reports_returns_422(monkeypatch):
+    """A deal with no published investor reports → 422 naming the gap."""
+    _no_report_cache(monkeypatch)
+    series = _small_reconstructed_series()
+    deal_no_reports = dict(GREEN_LION)
+    deal_no_reports["investor_report_urls"] = []
+
+    with patch("loanwhiz.api.main._require_deal", return_value=deal_no_reports), patch(
+        "loanwhiz.api.main._reconstruct_series", return_value=series
+    ):
+        resp = client.get("/deal/green-lion-2026-1/report-verification")
+
+    assert resp.status_code == 422
+    assert "investor_report" in resp.json()["detail"]
+
+
+# ---------------------------------------------------------------------------
 # Tape analytics (primitive mocked)
 # ---------------------------------------------------------------------------
 
@@ -1523,12 +1636,12 @@ def test_primitives_reachability_marks_live_vs_library_only():
     """The live/library-only split is honest (#197).
 
     The four data primitives — each called by a REST endpoint AND exposed as a
-    LangGraph agent tool — plus `audit_logger` (now wired into the REST primitive
-    path) are marked `live`. `report_verifier` is registered (so it appears in the
-    catalogue) but reached by no endpoint or agent tool, so it is `library-only` —
-    nothing is advertised as live that a client can't reach. (The duplicate
-    engines `cashflow_projector` / `multi_period_waterfall_runner` were deleted in
-    #276, so they no longer appear in the catalogue at all.)
+    LangGraph agent tool — plus `audit_logger` (wired into the REST primitive
+    path) are marked `live`. `report_verifier` is now `live` too (#320): the
+    `/deal/{id}/report-verification` endpoint and the `verify_report` agent tool
+    reach it, so nothing is advertised as live that a client can't reach. (The
+    duplicate engines `cashflow_projector` / `multi_period_waterfall_runner` were
+    deleted in #276, so they no longer appear in the catalogue at all.)
     """
     resp = client.get("/primitives")
     assert resp.status_code == 200
@@ -1540,11 +1653,9 @@ def test_primitives_reachability_marks_live_vs_library_only():
         "covenant_monitor",
         "waterfall_runner",
         "audit_logger",
+        "report_verifier",
     ):
         assert by_name[name] == "live", f"{name} should be live"
-
-    for name in ("report_verifier",):
-        assert by_name[name] == "library-only", f"{name} should be library-only"
 
     # The deleted duplicate engines must not reappear in the catalogue.
     assert "cashflow_projector" not in by_name
@@ -2525,3 +2636,70 @@ def test_green_lion_2026_1_still_uses_tape_path():
     assert result is sentinel
     tapes.assert_called_once()
     reports.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# GET /relative-value-screener — cross-deal relative-value screener (#324)
+# ---------------------------------------------------------------------------
+
+
+def test_relative_value_screener_endpoint_returns_scorecard():
+    """The screener endpoint returns the cross-deal scorecard over the real seeds.
+
+    The autouse fixture points ``DEAL_MODEL_SEED_DIR`` at an empty dir, so we
+    override it back to the real committed seeds (mirroring the cold-start
+    endpoint tests) to exercise the real cross-deal cohort.
+    """
+    with patch("loanwhiz.api.main.DEAL_MODEL_SEED_DIR", _REAL_SEED_DIR):
+        resp = client.get("/relative-value-screener")
+    assert resp.status_code == 200, resp.json()
+    body = resp.json()
+    # Shape: the four named relative-value dimensions, a weights map, ranked rows.
+    assert body["dimensions"] == [
+        "subordination_ce",
+        "wal",
+        "trigger_headroom",
+        "pool_quality",
+    ]
+    assert abs(sum(body["weights"].values()) - 1.0) < 1e-9
+    assert body["tally"]["tranches_scored"] >= 3
+    assert body["tranches"], "no tranches scored over the real seeds"
+
+
+def test_relative_value_screener_endpoint_is_honest_and_ranked():
+    """Each row carries all four dimensions; unavailable ones are not fabricated."""
+    with patch("loanwhiz.api.main.DEAL_MODEL_SEED_DIR", _REAL_SEED_DIR):
+        body = client.get("/relative-value-screener").json()
+    for row in body["tranches"]:
+        assert set(row["factors"]) == {
+            "subordination_ce",
+            "wal",
+            "trigger_headroom",
+            "pool_quality",
+        }
+        for factor in row["factors"].values():
+            assert factor["reason"].strip()
+            if not factor["available"]:
+                # Honesty contract: no fabricated value/score when unavailable.
+                assert factor["value"] is None
+                assert factor["score"] is None
+    # Scored rows form a contiguous 1..N rank prefix (best→worst by composite).
+    scored = [r for r in body["tranches"] if r["composite_score"] is not None]
+    assert [r["rank"] for r in scored] == list(range(1, len(scored) + 1))
+
+
+def test_relative_value_screener_endpoint_is_deterministic_and_offline():
+    """Two calls return identical rankings; no tape fetch happens in the path.
+
+    Determinism + offline is the same contract as /capability-matrix. We assert
+    determinism directly and offline-ness by patching the tape-series builders
+    to blow up if the request path ever touches them.
+    """
+    with patch("loanwhiz.api.main.DEAL_MODEL_SEED_DIR", _REAL_SEED_DIR), patch.object(
+        api_main, "_reconstruct_series_from_tapes", side_effect=AssertionError("tape fetched")
+    ):
+        first = client.get("/relative-value-screener").json()
+        second = client.get("/relative-value-screener").json()
+    assert [(r["deal_id"], r["tranche_name"], r["rank"]) for r in first["tranches"]] == [
+        (r["deal_id"], r["tranche_name"], r["rank"]) for r in second["tranches"]
+    ]

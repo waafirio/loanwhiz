@@ -21,6 +21,7 @@ from loanwhiz.agent.tools import (
     load_esma_tape,
     project_cashflows,
     run_waterfall,
+    verify_report,
 )
 from loanwhiz.config import DEAL_REGISTRY
 from loanwhiz.primitives.base import AuditEntry, Citation, PrimitiveResult
@@ -470,6 +471,98 @@ def test_forecast_trigger_breaches_unknown_deal_errors():
     mock_exec.assert_not_called()
     assert "not found" in result["error"]
     assert result["confidence"] == 0.0
+# verify_report (#320 — report_verifier wired as an agent tool)
+# ---------------------------------------------------------------------------
+
+
+_FAKE_VERIFICATION_RESPONSE = types.SimpleNamespace(
+    model_dump=lambda: {
+        "deal_id": "green-lion-2026-1",
+        "reporting_period": "April 2026",
+        "investor_report_url": "https://example.com/report-april-2026.pdf",
+        "figures_checked": 2,
+        "figures_matched": 1,
+        "figures_mismatched": 1,
+        "line_items": [
+            {
+                "line_item": "class_a_interest_paid",
+                "reported_value": 9_050_000.0,
+                "computed_value": 9_000_000.0,
+                "delta": 50_000.0,
+                "delta_pct": 0.56,
+                "match": False,
+                "tolerance_pct": 1.0,
+            },
+        ],
+        "overall_match": False,
+        "summary": "1/2 figures match within 1% tolerance; 1 mismatch.",
+        "confidence": 0.9,
+        "citations": [{"document": "Green Lion Investor Report"}],
+    }
+)
+
+
+def test_verify_report_delegates_to_endpoint_recipe():
+    """The tool delegates to the /report-verification recipe and passes through
+    the break report + governance evidence."""
+    with patch(
+        "loanwhiz.api.main.deal_report_verification",
+        return_value=_FAKE_VERIFICATION_RESPONSE,
+    ) as mock_recipe:
+        result = verify_report.invoke({"deal_id": "green-lion-2026-1"})
+
+    mock_recipe.assert_called_once_with(
+        "green-lion-2026-1", period=None, tolerance_pct=1.0
+    )
+    assert isinstance(result, dict)
+    assert result["confidence"] == 0.9
+    assert result["overall_match"] is False
+    assert result["line_items"][0]["line_item"] == "class_a_interest_paid"
+    assert result["citations"]  # governance evidence travels with the answer
+
+
+def test_verify_report_passes_period_and_tolerance():
+    """Period filter + tolerance are threaded through to the endpoint recipe."""
+    with patch(
+        "loanwhiz.api.main.deal_report_verification",
+        return_value=_FAKE_VERIFICATION_RESPONSE,
+    ) as mock_recipe:
+        verify_report.invoke(
+            {"deal_id": "green-lion-2026-1", "period": "march 2026", "tolerance_pct": 2.0}
+        )
+
+    mock_recipe.assert_called_once_with(
+        "green-lion-2026-1", period="march 2026", tolerance_pct=2.0
+    )
+
+
+def test_verify_report_unknown_deal_errors():
+    """An unknown deal returns an explicit error and never calls the recipe —
+    no silent fall-back to the default deal."""
+    with patch(
+        "loanwhiz.api.main.deal_report_verification",
+    ) as mock_recipe:
+        result = verify_report.invoke({"deal_id": "no-such-deal"})
+
+    mock_recipe.assert_not_called()
+    assert "not found" in result["error"]
+    assert result["confidence"] == 0.0
+    assert "green-lion-2026-1" in result["available_deals"]
+
+
+def test_verify_report_no_investor_reports_returns_error():
+    """When the endpoint raises 422 (no investor reports), the tool surfaces the
+    detail as an error dict rather than crashing."""
+    from fastapi import HTTPException
+
+    with patch(
+        "loanwhiz.api.main.deal_report_verification",
+        side_effect=HTTPException(status_code=422, detail="no investor_report_urls"),
+    ):
+        result = verify_report.invoke({"deal_id": "green-lion-2026-1"})
+
+    assert "investor_report" in result["error"]
+    assert result["confidence"] == 0.0
 
 
 def _make_multi_period_covenant_output(n_periods: int) -> CovenantOutput:
@@ -842,13 +935,14 @@ def test_sf_tools_has_expected_tools():
         "check_covenants",
         "forecast_trigger_breaches",
         "aggregate_collections",
+        "verify_report",
         "get_deal_model",
         "list_deal_tapes",
     ]
 
 
-def test_sf_tools_has_exactly_eight_tools():
-    assert len(SF_TOOLS) == 8
+def test_sf_tools_has_exactly_nine_tools():
+    assert len(SF_TOOLS) == 9
 
 
 def test_sf_tool_node_is_tool_node_instance():
@@ -876,7 +970,7 @@ def test_sf_tools_all_have_invoke_method():
 def test_list_available_tools_returns_list_of_dicts():
     result = list_available_tools()
     assert isinstance(result, list)
-    assert len(result) == 8
+    assert len(result) == 9
 
 
 def test_list_available_tools_has_name_and_description():

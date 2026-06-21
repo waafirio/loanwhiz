@@ -738,3 +738,117 @@ export interface CapabilityMatrix {
 export function getCapabilityMatrix(): Promise<CapabilityMatrix> {
   return request<CapabilityMatrix>("/capability-matrix");
 }
+
+// ---------------------------------------------------------------------------
+// Deal comparison  —  GET /compare?deals=a,b,c[&target=a]   (#283, Epic 7)
+// (one N-way comparison payload: structural diff aligned by RecipientType /
+// MetricType, overlaid performance series, latest-period covenant-proximity
+// risk summary, and — with a target — comp-set medians + per-target deviations.
+// Mirrors loanwhiz.api.compare.CompareResponse.)
+// ---------------------------------------------------------------------------
+
+/** One deal in the comparison set, with provenance/coverage flags. */
+export interface CompareDealRef {
+  deal_id: string;
+  deal_name: string;
+  jurisdiction: string;
+  /** Origination year parsed from the deal name, or null. */
+  vintage: number | null;
+  is_target: boolean;
+  /** A canonical DealRules was assembled (Panel 1 available for this deal). */
+  has_structural: boolean;
+  /** A DealStateSeries reconstructed (Panel 2 available for this deal). */
+  has_performance: boolean;
+  /** One-line honesty note when a panel is unavailable for this deal. */
+  note: string | null;
+}
+
+/** One deal's value for one aligned structural row (Panel 1 cell). */
+export interface StructuralCell {
+  deal_id: string;
+  present: boolean;
+  /** The deal's own (issuer) label for the step/trigger. */
+  label: string | null;
+  /** Human-readable cell value (recipient basis / threshold). */
+  detail: string | null;
+  /** Numeric value for benchmarking (a normalised threshold / amount). */
+  value: number | null;
+  /** False for an `unmapped` recipient/metric — rendered "not comparable". */
+  comparable: boolean;
+  /** Comp-set median (set on every cell of a benchmarked row). */
+  comp_median: number | null;
+  /** value − comp_median (signed), set on the target cell only. */
+  deviation: number | null;
+}
+
+/** One aligned row of the structural-diff table (a recipient or a metric). */
+export interface StructuralRow {
+  /** Canonical row key: a RecipientType / MetricType value (or a section key). */
+  key: string;
+  /** 'tranche' | 'waterfall:revenue' | 'waterfall:redemption' | 'trigger' | 'reserve'. */
+  section: string;
+  label: string;
+  /** True when the deals' cells are not all equal — diff-highlight. */
+  differs: boolean;
+  cells: StructuralCell[];
+}
+
+/** One (period, metric-bundle) sample of a deal's overlaid Panel-2 series. */
+export interface PerformancePoint {
+  reporting_date: string;
+  pool_factor: number;
+  reserve_balance: number;
+  reserve_target: number;
+  total_pdl: number;
+  cumulative_losses: number;
+  cumulative_loss_rate_pct: number;
+}
+
+/** One deal's overlaid performance series. */
+export interface PerformanceSeries {
+  deal_id: string;
+  points: PerformancePoint[];
+}
+
+/** Latest-period risk snapshot per deal (the triage row above Panel 2). */
+export interface RiskSummary {
+  deal_id: string;
+  latest_period: string | null;
+  /** Worst (closest-to-breach) covenant in the latest period. */
+  tightest_trigger: string | null;
+  tightest_proximity_pct: number | null;
+  active_triggers: string[];
+  near_miss_triggers: string[];
+  latest_pool_factor: number | null;
+  latest_cumulative_loss_rate_pct: number | null;
+  comp_median_proximity_pct: number | null;
+  proximity_deviation: number | null;
+}
+
+/** The single comparison payload the view + chat both consume. */
+export interface CompareResponse {
+  deals: CompareDealRef[];
+  target_deal_id: string | null;
+  structural_rows: StructuralRow[];
+  performance_series: PerformanceSeries[];
+  risk_summary: RiskSummary[];
+  /** Reporting dates shared by all performance-bearing deals. */
+  common_periods: string[];
+  /** Registry deal_ids (not in the set) sharing the target's jurisdiction/vintage. */
+  comp_suggestions: string[];
+  /** Honesty notes about coverage / provenance differences. */
+  notes: string[];
+}
+
+/**
+ * Fetch one N-way comparison payload for `dealIds` (2..N). Pass `target` to
+ * enable the benchmark lens (comp-set medians + per-target deviations).
+ */
+export function getCompare(
+  dealIds: string[],
+  target?: string,
+): Promise<CompareResponse> {
+  const params = new URLSearchParams({ deals: dealIds.join(",") });
+  if (target) params.set("target", target);
+  return request<CompareResponse>(`/compare?${params.toString()}`);
+}
