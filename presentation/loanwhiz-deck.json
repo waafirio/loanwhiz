@@ -61,7 +61,7 @@
       "cards": [
         { "title": "MCP server", "accent": "primary", "body": "The 8 SF primitives exposed as a governed MCP server — typed I/O + the evidence pack — consumable on any MCP host." },
         { "title": "Deal = data, not code", "accent": "accent", "body": "Add a deal by dropping JSON into deals.json; no Python. The interpreter executes the deal's extracted model, not hardcoded logic." },
-        { "title": "Open & portable", "accent": "navy", "body": "Apache-2.0; CSV or parquet tapes; deeploans (Algoritmica's ESMA ETL) on the ingestion path with a direct fallback." }
+        { "title": "Open & portable", "accent": "navy", "body": "Apache-2.0; CSV or parquet tapes read directly from their source URL — the canonical tape ingestion path. deeploans (Algoritmica's ESMA ETL) is a credited upstream input." }
       ]
     },
     {
@@ -73,7 +73,7 @@
         { "title": "Audit trail", "body": "Append-only entry per call: hashes, model version, timestamp, duration." },
         { "title": "Confidence scoring", "body": "Mandatory on every primitive — coverage · cross-ref · self-assessment." },
         { "title": "Verbatim citations", "body": "Every fact grounded to a section + excerpt a reviewer can locate." },
-        { "title": "Data provenance", "body": "Each tape tagged deeploans vs direct, carried into the evidence pack." },
+        { "title": "Data provenance", "body": "Each tape tagged with its direct-read data_source, carried into the evidence pack." },
         { "title": "Human-review routing", "body": "Confidence < 0.70 → flagged; output can't be used until signed off." },
         { "title": "Model-risk class", "body": "Decision-support tier, zero autonomy — outputs are inputs, never actions." }
       ]

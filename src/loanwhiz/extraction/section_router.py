@@ -58,6 +58,67 @@ class SectionMap:
         """Return section body text (convenience — same as ``section.text``)."""
         return section.text
 
+    # ------------------------------------------------------------------
+    # Descendant-span helpers (#316)
+    # ------------------------------------------------------------------
+
+    def _descendant_end_char(self, section: Section) -> int:
+        """Char offset where ``section``'s descendant span ends (exclusive).
+
+        :func:`route_sections` ends each :class:`Section`'s ``.text`` at the
+        *next header of any level*, so a parent heading's ``.text`` excludes
+        its child sub-sections.  For a prospectus that titles its waterfall
+        parent generically (e.g. Sol-Lion's §3.4.7.4 whose 12 steps actually
+        live in the child §3.4.7.4.2), the parent ``.text`` is just the heading
+        line and the waterfall extractor sees ~0 steps (#316).
+
+        This returns the offset of the next header whose ``level <= section.level``
+        (i.e. the next sibling-or-shallower heading), or ``len(full_text)`` if
+        none follows — the *parent-plus-all-descendants* span.
+        """
+        # Find this section's index in document order (by start_char, which is
+        # unique per header).
+        try:
+            idx = next(
+                i for i, s in enumerate(self.sections)
+                if s.start_char == section.start_char and s.level == section.level
+            )
+        except StopIteration:
+            # Section not part of this map — fall back to its own narrow end.
+            return section.end_char
+
+        for s in self.sections[idx + 1:]:
+            if s.level <= section.level:
+                return s.start_char
+        return len(self.full_text)
+
+    def descendant_text(self, section: Section) -> str:
+        """Return ``section`` plus all of its deeper sub-sections as one span.
+
+        Unlike ``section.text`` (which stops at the next header of *any* level),
+        this spans from the section heading down to the next header of the same
+        or a shallower level — so a generically-titled parent carries the steps
+        that live in its child sub-sections (#316).
+        """
+        return self.full_text[section.start_char:self._descendant_end_char(section)]
+
+    def with_descendant_text(self, section: Section) -> Section:
+        """Return a copy of ``section`` whose ``.text`` is the descendant span.
+
+        Used by the LLM router so a routed parent section feeds the downstream
+        waterfall extractor its full child-section step list rather than a
+        heading-only stub.  Leaves the underlying :class:`SectionMap` and the
+        original :class:`Section` untouched (the keyword/English path is
+        unaffected).
+        """
+        return Section(
+            title=section.title,
+            level=section.level,
+            start_char=section.start_char,
+            end_char=self._descendant_end_char(section),
+            text=self.descendant_text(section),
+        )
+
 
 # ---------------------------------------------------------------------------
 # Parser
@@ -65,6 +126,33 @@ class SectionMap:
 
 # Matches a markdown heading at the start of a line:  ## 3.1 Definitions
 _HEADER_RE = re.compile(r"^(#{1,6})\s+(.+)$", re.MULTILINE)
+
+# Matches an enumerated payment-list marker at (roughly) the start of a line:
+# ``(a)`` / ``(b)`` lettered cascades, ``(i)``/``(ii)`` roman, or a bare
+# ``1.``/``2.`` numbered list — the shape a Priority-of-Payments waterfall takes
+# in any language.  Used as a deterministic "this segment holds the real step
+# list" signal so the LLM router can prefer the section that *contains* the
+# cascade over a generically-titled summary table or a stub parent (#316).
+_PAYMENT_LIST_RE = re.compile(
+    r"^\s*(?:[-*]\s*)?(?:\(\s*[a-zA-Z]+\s*\)|\(\s*[ivxlcdm]+\s*\)|\d{1,2}[.)])\s+",
+    re.MULTILINE,
+)
+
+# A segment needs at least this many enumerated markers to count as carrying a
+# real cascade — one stray ``(a)`` in prose shouldn't flip the signal, but a
+# genuine waterfall always lists several ordered steps.
+_PAYMENT_LIST_MIN_MARKERS = 3
+
+
+def _has_payment_list(text: str) -> bool:
+    """True if ``text`` contains an enumerated payment-step list (#316).
+
+    Deterministic, language-neutral signal: counts ``(a)``/``(b)`` (or roman /
+    numbered) list markers; ``True`` once at least :data:`_PAYMENT_LIST_MIN_MARKERS`
+    distinct ordered markers appear.  A summary pointer-table (rank numbers only)
+    or a stub parent heading scores ``False``; the real cascade scores ``True``.
+    """
+    return len(_PAYMENT_LIST_RE.findall(text)) >= _PAYMENT_LIST_MIN_MARKERS
 
 
 def route_sections(markdown_text: str) -> SectionMap:
@@ -154,6 +242,7 @@ def classify_segments_llm(
     *,
     roles: tuple[str, ...] = CANONICAL_SECTION_ROLES,
     max_title_chars: int = 120,
+    body_snippet_chars: int = 280,
 ) -> dict[str, Section | None]:
     """Classify the header segments into canonical section roles via the LLM.
 
@@ -161,11 +250,21 @@ def classify_segments_llm(
     regex (:func:`extract_key_sf_sections`) for non-English / non-standard
     prospectuses (spec: "LLM-semantic section routing"). The markdown is already
     segmented deterministically by ``#`` headers (cheap, language-neutral);
-    here the LLM is asked, given the ordered list of segment **titles**, which
-    segment index best fills each canonical role — regardless of language or
-    numbering. The keyword router stays the deterministic fast path; the
-    assembler falls back to this only for roles the keyword router could not
-    locate.
+    here the LLM is asked, given the ordered list of segment **titles** *plus a
+    body snippet and a deterministic "has enumerated payment list" signal per
+    segment* (#316), which segment index best fills each canonical role —
+    regardless of language or numbering. The body/signal is what lets the router
+    distinguish a generically-titled real step-list (e.g. Sol-Lion's
+    "Application" section) from a summary pointer-table or a stub parent that
+    *titles* like a waterfall but holds no steps. The keyword router stays the
+    deterministic fast path; the assembler falls back to this only for roles the
+    keyword router could not locate.
+
+    Each returned :class:`Section` for a *located* role carries its **descendant
+    span** as ``.text`` (parent heading down to the next same-or-shallower
+    header) rather than the narrow next-header slice, so a routed parent whose
+    steps live in a child sub-section feeds the downstream waterfall extractor
+    the full step list (#316).
 
     Returns a ``{role: Section | None}`` map. On any LLM error (no credentials,
     network, malformed response) returns all-``None`` so the caller degrades to
@@ -180,6 +279,10 @@ def classify_segments_llm(
         The canonical roles to fill (defaults to :data:`CANONICAL_SECTION_ROLES`).
     max_title_chars:
         Truncate each segment title to this many characters in the prompt.
+    body_snippet_chars:
+        How many characters of each segment's descendant span to show the LLM as
+        a body snippet (after the heading line) so it can judge content, not just
+        the title.
     """
     sections = section_map.sections
     if not sections:
@@ -193,19 +296,46 @@ def classify_segments_llm(
     except Exception:
         return {role: None for role in roles}
 
-    numbered = "\n".join(
-        f"{i}: {sec.title[:max_title_chars]}" for i, sec in enumerate(sections)
-    )
+    # Per-segment context: title + a body snippet (taken from the descendant
+    # span so a parent's snippet reflects its child steps) + the deterministic
+    # has_payment_list signal. This is what lets the LLM tell a real (possibly
+    # generically-titled) step list apart from a summary table / stub (#316).
+    seg_lines: list[str] = []
+    for i, sec in enumerate(sections):
+        span = section_map.descendant_text(sec)
+        # Snippet = the span after its heading line (the steps, not the title).
+        body = span.split("\n", 1)[1] if "\n" in span else ""
+        snippet = " ".join(body.split())[:body_snippet_chars]
+        has_list = _has_payment_list(span)
+        seg_lines.append(
+            f"{i}: title={sec.title[:max_title_chars]!r} | "
+            f"has_payment_list={str(has_list).lower()} | "
+            f"snippet={snippet!r}"
+        )
+    numbered = "\n".join(seg_lines)
     role_lines = "\n".join(f"- {r}" for r in roles)
     prompt = (
         "You are routing the sections of a structured-finance prospectus "
         "(RMBS/ABS) onto a fixed set of canonical roles. The section titles "
         "below may be in any language (English, Italian, Spanish, ...) and use "
-        "any numbering scheme.\n\n"
-        "Numbered section titles (index: title):\n"
+        "any numbering scheme. Each section line gives its index, title, a "
+        "'has_payment_list' flag (true when the section body contains an "
+        "enumerated payment cascade — (a), (b), (c)... — not just a summary "
+        "rank table), and a short body snippet.\n\n"
+        "Numbered sections (index: title | has_payment_list | snippet):\n"
         f"{numbered}\n\n"
-        "For each canonical role, return the index of the single section whose "
-        "title best matches it by meaning, or -1 if no section fits. Roles:\n"
+        "For each canonical role, return the index of the single section that "
+        "best fills it by MEANING and CONTENT — not title alone. For the "
+        "priority-of-payments / waterfall roles "
+        "(revenue_priority_of_payments, redemption_priority_of_payments, "
+        "post_enforcement_priority) STRONGLY PREFER a section with "
+        "has_payment_list=true that actually enumerates the steps, even when "
+        "its title is generic (e.g. 'Application'); do NOT pick a summary table "
+        "or a stub parent heading that merely titles like a waterfall but has "
+        "has_payment_list=false. If a single combined cascade serves both the "
+        "revenue and the redemption (capital) order, you may return the SAME "
+        "index for both of those roles. Return -1 for a role with no fitting "
+        "section. Roles:\n"
         f"{role_lines}\n\n"
         'Respond as compact JSON mapping each role to an index, e.g. '
         '{"definitions": 12, "revenue_priority_of_payments": 30, ...}. '
@@ -240,7 +370,13 @@ def classify_segments_llm(
             idx = int(idx)
         except (TypeError, ValueError):
             idx = -1
-        result[role] = sections[idx] if 0 <= idx < len(sections) else None
+        if 0 <= idx < len(sections):
+            # Return the routed section widened to its descendant span, so a
+            # generically-titled parent feeds the waterfall extractor the steps
+            # that live in its child sub-sections (#316).
+            result[role] = section_map.with_descendant_text(sections[idx])
+        else:
+            result[role] = None
     return result
 
 

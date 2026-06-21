@@ -1,8 +1,11 @@
 """Tests for EsmaTapeNormaliser primitive.
 
-Two categories:
-1. Unit tests for ``_detect_annex`` — no network, fast.
-2. Integration test against the real Green Lion April 2026 tape on HuggingFace.
+Categories:
+1. Unit tests for ``_detect_annex`` and the analytics — no network, fast.
+2. Direct-read ingestion tests (``TestDirectReadIngestion``) — the canonical
+   tape path: a tape is read directly from its source URL (local ``file://``
+   CSV/parquet here) and tagged ``data_source="direct"``.
+3. Integration test against the real Green Lion April 2026 tape on HuggingFace.
    Marked ``@pytest.mark.slow`` so CI can skip it with ``-m "not slow"`` when
    network access is unavailable.
 """
@@ -10,13 +13,11 @@ Two categories:
 from __future__ import annotations
 
 from pathlib import Path
-from unittest.mock import patch
 
 import pandas as pd
 import pytest
 
 from loanwhiz.config import GREEN_LION
-from loanwhiz.data.deeploans_client import DeepLoansClient
 from loanwhiz.primitives.esma_tape_normaliser import (
     EsmaTapeInput,
     EsmaTapeNormaliser,
@@ -307,14 +308,15 @@ class TestCombinedParquetSplit:
         assert result.output.loan_count == 5  # 2 + 2 + 1 across all months
 
 
-class TestDeeploansRouting:
-    """``_load_tape`` routes ``deeploans://`` refs through the deeploans backend.
+class TestDirectReadIngestion:
+    """``_load_tape`` reads tapes directly from their source URL.
 
-    All tests mock the ``DeepLoansClient.fetch_tape`` boundary, so they run with
-    **no live deeploans backend** — the demo/CI environment requirement.
+    Direct read (HuggingFace CSV/parquet, local ``file://``) is the canonical —
+    and only — LoanWhiz tape ingestion path; every loaded tape is tagged
+    ``data_source="direct"``.
     """
 
-    def test_direct_url_is_tagged_direct(self, tmp_path: Path) -> None:
+    def test_direct_csv_url_is_tagged_direct(self, tmp_path: Path) -> None:
         df = _rmbs_frame("2026-04-30", balances=[100_000.0, 200_000.0])
         csv_path = tmp_path / "tape.csv"
         df.to_csv(csv_path, index=False)
@@ -323,52 +325,18 @@ class TestDeeploansRouting:
             EsmaTapeInput(file_url=f"file://{csv_path}")
         )
         assert result.output.data_source == "direct"
-
-    def test_deeploans_ref_routes_through_client(self) -> None:
-        tape = _rmbs_frame("2026-04-30", balances=[100_000.0, 200_000.0])
-
-        with patch.object(
-            DeepLoansClient, "fetch_tape", return_value=tape
-        ) as mock_fetch:
-            result = EsmaTapeNormaliser().execute(
-                EsmaTapeInput(file_url="deeploans://sme/green_lion_loans")
-            )
-
-        mock_fetch.assert_called_once_with("sme", "green_lion_loans")
-        assert result.output.data_source == "deeploans"
         assert result.output.loan_count == 2
         assert result.output.pool_balance_eur == pytest.approx(300_000.0)
 
-    def test_deeploans_ref_propagates_into_load_tape(self) -> None:
-        tape = _rmbs_frame("2026-04-30", balances=[150_000.0])
-        with patch.object(DeepLoansClient, "fetch_tape", return_value=tape):
-            df, data_source = _load_tape("deeploans://sme/loans", period=None)
-        assert data_source == "deeploans"
-        assert len(df) == 1
+    def test_direct_parquet_url_is_tagged_direct(self, tmp_path: Path) -> None:
+        df = _rmbs_frame("2026-04-30", balances=[150_000.0])
+        pq_path = tmp_path / "tape.parquet"
+        df.to_parquet(pq_path, index=False)
 
-    def test_unreachable_deeploans_backend_raises(self) -> None:
-        # fetch_tape returns None when the backend is unreachable; the loader
-        # must raise a clear error rather than silently mis-reading the literal
-        # "deeploans://" string as a file path.
-        with patch.object(DeepLoansClient, "fetch_tape", return_value=None):
-            with pytest.raises(RuntimeError, match="no deeploans backend is reachable"):
-                _load_tape("deeploans://sme/loans", period=None)
+        loaded, data_source = _load_tape(f"file://{pq_path}", period=None)
 
-    def test_deeploans_ref_supports_period_slicing(self) -> None:
-        jan = _rmbs_frame("2024-01-31", balances=[100_000.0, 200_000.0])
-        feb = _rmbs_frame("2024-02-29", balances=[300_000.0])
-        combined = pd.concat([jan, feb], ignore_index=True)
-
-        with patch.object(DeepLoansClient, "fetch_tape", return_value=combined):
-            result = EsmaTapeNormaliser().execute(
-                EsmaTapeInput(
-                    file_url="deeploans://sme/loans", period="2024-02-29"
-                )
-            )
-
-        assert result.output.data_source == "deeploans"
-        assert result.output.loan_count == 1
-        assert result.output.pool_balance_eur == pytest.approx(300_000.0)
+        assert data_source == "direct"
+        assert len(loaded) == 1
 
 
 # ---------------------------------------------------------------------------
@@ -450,3 +418,65 @@ class TestEsmaTapeNormaliserIntegration:
         # Green Lion has 'province' column
         assert result.output.geographic_breakdown is not None
         assert len(result.output.geographic_breakdown) > 0
+
+
+# ---------------------------------------------------------------------------
+# ESMA Annex 2 canonical-column resolution + citation anchoring (#280)
+# ---------------------------------------------------------------------------
+
+
+class TestAnnex2ColumnResolution:
+    """Issuer/vintage column-name synonyms resolve onto canonical names via the
+    ESMA Annex 2 table, and the output citation is anchored to RREL codes."""
+
+    def test_canonical_green_lion_tape_is_byte_stable(self, tmp_path: Path) -> None:
+        # A tape already in canonical column names must produce the exact same
+        # analytics it did before Annex-2 resolution was wired in.
+        df = _rmbs_frame("2026-04-30", balances=[100_000.0, 300_000.0])
+        csv = tmp_path / "canon.csv"
+        df.to_csv(csv, index=False)
+        out = EsmaTapeNormaliser().execute(
+            EsmaTapeInput(file_url=f"file://{csv}")
+        ).output
+        assert out.pool_balance_eur == 400_000.0
+        assert out.pool_stats["wtd_ltv"] == 70.0
+        assert out.arrears_breakdown["current_pct"] == 100.0
+        assert out.annex_detected == "Annex 2 (RMBS)"
+
+    def test_synonym_columns_resolve(self, tmp_path: Path) -> None:
+        # A tape using issuer-variant column names still produces correct pool
+        # analytics because the Annex 2 table resolves them to canonical names.
+        df = pd.DataFrame(
+            {
+                "outstanding_balance": [100_000.0, 300_000.0],  # → current_balance
+                "current_ltv": [60.0, 80.0],                    # → cltomv_current
+                "arrears_status": ["Performing", "180+d"],      # → arrears_bucket
+                "default_flag": ["N", "N"],                     # → default_crr_flag
+                "epc_rating": ["A", "B"],                       # → epc_label
+                "property_type": ["House", "Apartment"],
+                "deal_name": ["Variant Deal", "Variant Deal"],  # → transaction_name
+                "data_cut_off_date": ["2026-04-30", "2026-04-30"],  # → reporting_date
+            }
+        )
+        csv = tmp_path / "variant.csv"
+        df.to_csv(csv, index=False)
+        out = EsmaTapeNormaliser().execute(
+            EsmaTapeInput(file_url=f"file://{csv}", reporting_date="2026-04-30")
+        ).output
+        # Balance resolved from the synonym column.
+        assert out.pool_balance_eur == 400_000.0
+        # Balance-weighted LTV: (100k*60 + 300k*80)/400k = 75.0
+        assert out.pool_stats["wtd_ltv"] == 75.0
+        # 180+d arrears bucket resolved from the synonym column.
+        assert out.arrears_breakdown["arrears_180d_plus_pct"] == 50.0
+
+    def test_citation_is_annex2_anchored(self, tmp_path: Path) -> None:
+        df = _rmbs_frame("2026-04-30", balances=[100_000.0])
+        csv = tmp_path / "anchor.csv"
+        df.to_csv(csv, index=False)
+        result = EsmaTapeNormaliser().execute(EsmaTapeInput(file_url=f"file://{csv}"))
+        citation = result.citations[0]
+        # RREL codes for the mapped columns appear in the locator + excerpt.
+        assert "RREL" in citation.page_or_row
+        assert "RREL18" in citation.excerpt  # current_balance
+        assert "RREL40" in citation.excerpt  # cltomv_current (LTV)

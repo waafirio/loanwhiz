@@ -1105,3 +1105,151 @@ class TestNonFlatProximitySeries:
         ]
         assert loss_statuses[0].is_triggered is False
         assert loss_statuses[1].is_triggered is True
+
+
+# ---------------------------------------------------------------------------
+# B7 — tape-native covenant triggers (arrears / LTV)
+# ---------------------------------------------------------------------------
+
+
+class TestTapeNativeTriggers:
+    """Arrears-severity, default-rate, and weighted-average-LTV triggers keyed
+    directly on the ESMA tape's pool analytics (``pool_stats`` /
+    ``arrears_breakdown``)."""
+
+    @staticmethod
+    def _tape_period(
+        date: str,
+        *,
+        wtd_ltv: float | None = None,
+        arrears_180d: float | None = None,
+        default_pct: float | None = None,
+    ) -> dict:
+        period: dict = {"reporting_date": date}
+        pool_stats: dict = {}
+        arrears: dict = {}
+        if wtd_ltv is not None:
+            pool_stats["wtd_ltv"] = wtd_ltv
+        if arrears_180d is not None:
+            arrears["arrears_180d_plus_pct"] = arrears_180d
+        if default_pct is not None:
+            arrears["default_pct"] = default_pct
+        if pool_stats:
+            period["pool_stats"] = pool_stats
+        if arrears:
+            period["arrears_breakdown"] = arrears
+        return period
+
+    def test_tape_native_triggers_exist_and_are_separate(self) -> None:
+        names = {t.name for t in CovenantMonitor.TAPE_NATIVE_TRIGGERS}
+        assert names == {
+            "severe_arrears_trigger",
+            "tape_default_rate_trigger",
+            "weighted_average_ltv_trigger",
+        }
+        # NOT folded into DEFAULT_TRIGGERS.
+        default_names = {t.name for t in CovenantMonitor.DEFAULT_TRIGGERS}
+        assert names.isdisjoint(default_names)
+
+    def test_citations_are_annex2_anchored(self) -> None:
+        for t in CovenantMonitor.TAPE_NATIVE_TRIGGERS:
+            assert t.citation.document == "ESMA RTS Annex 2 (RMBS)"
+            assert "RREL" in t.citation.page_or_row
+
+    def test_severe_arrears_fires_above_threshold(self) -> None:
+        period = self._tape_period("2026-02-28", arrears_180d=6.0)
+        out = CovenantMonitor().execute(
+            CovenantInput(periods=[period], triggers=CovenantMonitor.TAPE_NATIVE_TRIGGERS)
+        ).output
+        assert "severe_arrears_trigger" in out.active_triggers
+
+    def test_severe_arrears_compliant_below_threshold(self) -> None:
+        period = self._tape_period("2026-02-28", arrears_180d=1.0)
+        out = CovenantMonitor().execute(
+            CovenantInput(periods=[period], triggers=CovenantMonitor.TAPE_NATIVE_TRIGGERS)
+        ).output
+        assert "severe_arrears_trigger" not in out.active_triggers
+
+    def test_ltv_trigger_fires_above_threshold(self) -> None:
+        period = self._tape_period("2026-02-28", wtd_ltv=85.0)
+        out = CovenantMonitor().execute(
+            CovenantInput(periods=[period], triggers=CovenantMonitor.TAPE_NATIVE_TRIGGERS)
+        ).output
+        assert "weighted_average_ltv_trigger" in out.active_triggers
+
+    def test_default_rate_trigger_distinct_from_loss_metric(self) -> None:
+        # default_pct in arrears_breakdown drives the tape default-rate trigger;
+        # it must NOT be canonicalised to the structural loss metric here.
+        period = self._tape_period("2026-02-28", default_pct=4.0)
+        out = CovenantMonitor().execute(
+            CovenantInput(periods=[period], triggers=CovenantMonitor.TAPE_NATIVE_TRIGGERS)
+        ).output
+        assert "tape_default_rate_trigger" in out.active_triggers
+
+    def test_near_miss_arrears(self) -> None:
+        # threshold 5.0; 4.5 → proximity 90% → near-miss (80 <= p < 100).
+        period = self._tape_period("2026-02-28", arrears_180d=4.5)
+        out = CovenantMonitor().execute(
+            CovenantInput(periods=[period], triggers=CovenantMonitor.TAPE_NATIVE_TRIGGERS)
+        ).output
+        assert "severe_arrears_trigger" in out.near_miss_triggers
+        assert "severe_arrears_trigger" not in out.active_triggers
+
+    def test_not_evaluable_when_metric_absent(self) -> None:
+        # A period with no pool_stats / arrears_breakdown → all not-evaluable,
+        # NOT a fake 0 / compliant.
+        period = {"reporting_date": "2026-02-28"}
+        out = CovenantMonitor().execute(
+            CovenantInput(periods=[period], triggers=CovenantMonitor.TAPE_NATIVE_TRIGGERS)
+        ).output
+        assert set(out.unevaluable_triggers) == {
+            "severe_arrears_trigger",
+            "tape_default_rate_trigger",
+            "weighted_average_ltv_trigger",
+        }
+        assert out.active_triggers == []
+        assert out.near_miss_triggers == []
+
+    def test_ltv_synonym_resolves(self) -> None:
+        # A trigger written with a synonym metric name resolves onto wtd_ltv.
+        trig = TriggerDefinition(
+            name="wa_ltv_alt",
+            description="LTV via synonym",
+            metric="weighted_average_ltv",
+            threshold=80.0,
+            direction="above",
+            consequence="cover thins",
+            citation=Citation(document="d", page_or_row="r", excerpt="e"),
+        )
+        period = self._tape_period("2026-02-28", wtd_ltv=90.0)
+        out = CovenantMonitor().execute(
+            CovenantInput(periods=[period], triggers=[trig])
+        ).output
+        assert "wa_ltv_alt" in out.active_triggers
+
+    def test_default_triggers_unchanged_by_b7_addition(self) -> None:
+        # Regression lock: a Green-Lion-style period evaluated against the
+        # default triggers produces the same active/near-miss output as before
+        # the B7 addition (a healthy pool → no breaches).
+        period = {
+            "reporting_date": "2026-02-28",
+            "default_pct": 0.1,
+            "pool_balance_eur": 900_000_000.0,
+        }
+        out = CovenantMonitor().execute(
+            CovenantInput(
+                periods=[period],
+                original_pool_balance=1_000_000_000.0,
+                reserve_account_balance=10_000_000.0,
+                reserve_account_target=10_000_000.0,
+            )
+        ).output
+        # cumulative_loss (default_pct 0.1 < 1.5) not breached.
+        assert "cumulative_loss_trigger" not in out.active_triggers
+        # No tape-native trigger names leak into the default evaluation.
+        for name in (
+            "severe_arrears_trigger",
+            "tape_default_rate_trigger",
+            "weighted_average_ltv_trigger",
+        ):
+            assert name not in {s.trigger_name for s in out.trigger_statuses}

@@ -586,3 +586,66 @@ Citation(
 
 5. **Internal computations that are not traceable to an external source** use the
    `document="<primitive_name>:internal"` convention (Example 4 above).
+
+---
+
+## 6. ESMA Annex 2 field-code mapping & tape-native (B7) covenants
+
+The tape side of LoanWhiz has a regulatory canonical schema — the **ESMA
+Securitisation RTS Annex 2** loan-level template for residential real estate
+(RMBS). The canonical mapping between the regulatory **RREL field code**, the
+semantic field, and the LoanWhiz canonical column lives in one module:
+`src/loanwhiz/domain/esma_annex2.py`.
+
+### The mapping table (`esma_annex2.ANNEX2_RMBS_FIELDS`)
+
+Each record (`Annex2Field`) carries `code` (e.g. `RREL18`), `field_name`,
+`description`, `canonical_column`, and issuer/vintage `synonyms`. The load-bearing
+RMBS fields the normaliser and covenant signals consume:
+
+| RREL code | Field | Canonical column |
+|---|---|---|
+| RREL1 | loan identifier | `loan_identifier` |
+| RREL3 | transaction name | `transaction_name` |
+| RREL5 | reporting date | `reporting_date` |
+| RREL15 | geographic region | `province` |
+| RREL16 | property type | `property_type` |
+| RREL17 | EPC | `epc_label` |
+| RREL18 | current balance | `current_balance` |
+| RREL22 | current interest rate | `current_interest_rate_pct` |
+| RREL24 | interest-rate type | `rate_type` |
+| RREL30 | remaining term | `remaining_term_months` |
+| RREL31 | seasoning | `seasoning_months` |
+| RREL40 | current LTV | `cltomv_current` |
+| RREL62 | arrears balance | `arrears_balance` |
+| RREL63 | days in arrears | `days_in_arrears` |
+| RREL64 | arrears bucket | `arrears_bucket` |
+| RREL66 | default status | `default_crr_flag` |
+
+Accessors: `field_for_code(code)`, `field_for_name(name)`, `code_for_column(col)`,
+`canonical_column_for(col)` (resolves a synonym to its canonical name), and
+`locator_for(field_name)` (the `"<RREL code> · <description>"` string for a
+`Citation.page_or_row`). `esma_tape_normaliser` uses the table to resolve
+issuer/vintage column-name drift onto canonical names (a tape spelled
+`outstanding_balance` still resolves to `current_balance`) and anchors its output
+`Citation` to the matched RREL codes. Columns already in canonical form resolve to
+themselves, so a Green-Lion tape is unchanged.
+
+### Tape-native (B7) covenant triggers (`covenant_monitor.TAPE_NATIVE_TRIGGERS`)
+
+Pool-risk early-warning triggers sourced directly from the loan tape's pool
+analytics — a **separate composable list**, not folded into `DEFAULT_TRIGGERS`
+(adding them to the GL-2026-1 defaults would change that deal's covenant output):
+
+| Trigger | Metric (tape key) | Default threshold | Direction |
+|---|---|---|---|
+| `severe_arrears_trigger` | `arrears_breakdown.arrears_180d_plus_pct` | 5% | above |
+| `tape_default_rate_trigger` | `arrears_breakdown.default_pct` | 3% | above |
+| `weighted_average_ltv_trigger` | `pool_stats.wtd_ltv` | 80% | above |
+
+Each carries an ESMA Annex 2-anchored `Citation` (`locator_for(...)`). Compose
+tape-native monitoring with
+`CovenantInput(triggers=CovenantMonitor.DEFAULT_TRIGGERS + CovenantMonitor.TAPE_NATIVE_TRIGGERS)`
+or pass `TAPE_NATIVE_TRIGGERS` alone. Synonym metric names (`wa_ltv`,
+`weighted_average_ltv`, `arrears_severe_pct`, `tape_default_pct`, …) resolve onto
+the tape keys via the monitor's `_METRIC_ALIASES`.
