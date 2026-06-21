@@ -759,6 +759,13 @@ export interface CompareDealRef {
   has_structural: boolean;
   /** A DealStateSeries reconstructed (Panel 2 available for this deal). */
   has_performance: boolean;
+  /**
+   * Provenance of this deal's Panel-2 series: "reported" when reconstructed
+   * from the deal's own tape/report history, "projected" when derived from the
+   * canonical model's forward projection (projected-not-reported), or null when
+   * no series is available.
+   */
+  performance_provenance: "reported" | "projected" | null;
   /** One-line honesty note when a panel is unavailable for this deal. */
   note: string | null;
 }
