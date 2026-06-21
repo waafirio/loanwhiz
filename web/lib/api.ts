@@ -486,27 +486,63 @@ export interface TrancheDistribution {
 }
 
 /**
- * Mirrors `WaterfallOutput` — one scenario's projected waterfall, with the
- * Class A weighted-average life (WAL) the `/project` endpoint now surfaces
- * additively on each scenario.
+ * One projected period in a scenario's forward state series — mirrors a row of
+ * `_projection_payload`'s `periods[]` (#319). The forward projection folds a
+ * synthetic `PeriodInputs` stream through the same `run_period` kernel history
+ * uses, so each period carries the engine-computed pool / tranche balances plus
+ * the per-period principal cashflow paid to each class (the period-over-period
+ * drop in that class's outstanding balance, floored at 0).
  */
-export interface WaterfallProjection {
-  reporting_period: string;
-  revenue_waterfall: WaterfallStep[];
-  redemption_waterfall: WaterfallStep[];
-  tranche_distributions: TrancheDistribution[];
-  total_distributed: number;
-  shortfall: number;
-  /** Class A weighted-average life in months over the projection horizon. */
-  wal_class_a_months: number;
-  /** `wal_class_a_months / 12`. */
-  wal_class_a_years: number;
+export interface ProjectionPeriod {
+  period: number;
+  reporting_date: string;
+  pool_balance_eur: number;
+  class_a_balance: number;
+  class_b_balance: number;
+  class_c_balance: number;
+  /** Principal paid to Class A this period (#319). */
+  class_a_principal_eur: number;
+  class_b_principal_eur: number;
+  class_c_principal_eur: number;
+  reserve_balance: number;
+  cumulative_losses: number;
 }
 
-/** Class A WAL for one scenario — mirrors `ScenarioWal`. */
+/**
+ * One scenario's forward projection — mirrors `_projection_payload`'s output
+ * (#319). The `/project` endpoint no longer returns a single reported-period
+ * waterfall; it returns the per-period projected state series (`periods`) plus
+ * a final-state summary and the engine-derived WAL. Fields the server may omit
+ * (older deals, partial responses) are optional so the page can degrade
+ * gracefully rather than throw.
+ */
+export interface ScenarioProjection {
+  scenario: string;
+  periods: ProjectionPeriod[];
+  final_pool_balance_eur: number;
+  final_class_a_balance: number;
+  final_class_b_balance: number;
+  final_class_c_balance: number;
+  cumulative_losses: number;
+  /** Class A weighted-average life in months over the projection horizon. */
+  wal_class_a_months?: number;
+  /** `wal_class_a_months / 12`. */
+  wal_class_a_years?: number;
+  /** Full per-tranche WAL surfaced inline (#319). */
+  wal?: ScenarioWal;
+}
+
+/**
+ * Per-scenario weighted-average life — mirrors `ScenarioWal`. Class A is always
+ * present; B/C are additive (#319) and may be absent on older responses.
+ */
 export interface ScenarioWal {
   wal_class_a_months: number;
   wal_class_a_years: number;
+  wal_class_b_months?: number;
+  wal_class_b_years?: number;
+  wal_class_c_months?: number;
+  wal_class_c_years?: number;
 }
 
 export interface ProjectionResult {
@@ -514,7 +550,7 @@ export interface ProjectionResult {
   months: number;
   scenarios: string[];
   /** Keyed by scenario name (e.g. "base", "stress"). */
-  projections: Record<string, WaterfallProjection>;
+  projections: Record<string, ScenarioProjection>;
   /** Per-scenario Class A WAL, keyed by scenario name. */
   wal: Record<string, ScenarioWal>;
 }
