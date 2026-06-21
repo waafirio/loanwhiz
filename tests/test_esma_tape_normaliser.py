@@ -1,8 +1,11 @@
 """Tests for EsmaTapeNormaliser primitive.
 
-Two categories:
-1. Unit tests for ``_detect_annex`` — no network, fast.
-2. Integration test against the real Green Lion April 2026 tape on HuggingFace.
+Categories:
+1. Unit tests for ``_detect_annex`` and the analytics — no network, fast.
+2. Direct-read ingestion tests (``TestDirectReadIngestion``) — the canonical
+   tape path: a tape is read directly from its source URL (local ``file://``
+   CSV/parquet here) and tagged ``data_source="direct"``.
+3. Integration test against the real Green Lion April 2026 tape on HuggingFace.
    Marked ``@pytest.mark.slow`` so CI can skip it with ``-m "not slow"`` when
    network access is unavailable.
 """
@@ -10,13 +13,11 @@ Two categories:
 from __future__ import annotations
 
 from pathlib import Path
-from unittest.mock import patch
 
 import pandas as pd
 import pytest
 
 from loanwhiz.config import GREEN_LION
-from loanwhiz.data.deeploans_client import DeepLoansClient
 from loanwhiz.primitives.esma_tape_normaliser import (
     EsmaTapeInput,
     EsmaTapeNormaliser,
@@ -307,14 +308,15 @@ class TestCombinedParquetSplit:
         assert result.output.loan_count == 5  # 2 + 2 + 1 across all months
 
 
-class TestDeeploansRouting:
-    """``_load_tape`` routes ``deeploans://`` refs through the deeploans backend.
+class TestDirectReadIngestion:
+    """``_load_tape`` reads tapes directly from their source URL.
 
-    All tests mock the ``DeepLoansClient.fetch_tape`` boundary, so they run with
-    **no live deeploans backend** — the demo/CI environment requirement.
+    Direct read (HuggingFace CSV/parquet, local ``file://``) is the canonical —
+    and only — LoanWhiz tape ingestion path; every loaded tape is tagged
+    ``data_source="direct"``.
     """
 
-    def test_direct_url_is_tagged_direct(self, tmp_path: Path) -> None:
+    def test_direct_csv_url_is_tagged_direct(self, tmp_path: Path) -> None:
         df = _rmbs_frame("2026-04-30", balances=[100_000.0, 200_000.0])
         csv_path = tmp_path / "tape.csv"
         df.to_csv(csv_path, index=False)
@@ -323,52 +325,18 @@ class TestDeeploansRouting:
             EsmaTapeInput(file_url=f"file://{csv_path}")
         )
         assert result.output.data_source == "direct"
-
-    def test_deeploans_ref_routes_through_client(self) -> None:
-        tape = _rmbs_frame("2026-04-30", balances=[100_000.0, 200_000.0])
-
-        with patch.object(
-            DeepLoansClient, "fetch_tape", return_value=tape
-        ) as mock_fetch:
-            result = EsmaTapeNormaliser().execute(
-                EsmaTapeInput(file_url="deeploans://sme/green_lion_loans")
-            )
-
-        mock_fetch.assert_called_once_with("sme", "green_lion_loans")
-        assert result.output.data_source == "deeploans"
         assert result.output.loan_count == 2
         assert result.output.pool_balance_eur == pytest.approx(300_000.0)
 
-    def test_deeploans_ref_propagates_into_load_tape(self) -> None:
-        tape = _rmbs_frame("2026-04-30", balances=[150_000.0])
-        with patch.object(DeepLoansClient, "fetch_tape", return_value=tape):
-            df, data_source = _load_tape("deeploans://sme/loans", period=None)
-        assert data_source == "deeploans"
-        assert len(df) == 1
+    def test_direct_parquet_url_is_tagged_direct(self, tmp_path: Path) -> None:
+        df = _rmbs_frame("2026-04-30", balances=[150_000.0])
+        pq_path = tmp_path / "tape.parquet"
+        df.to_parquet(pq_path, index=False)
 
-    def test_unreachable_deeploans_backend_raises(self) -> None:
-        # fetch_tape returns None when the backend is unreachable; the loader
-        # must raise a clear error rather than silently mis-reading the literal
-        # "deeploans://" string as a file path.
-        with patch.object(DeepLoansClient, "fetch_tape", return_value=None):
-            with pytest.raises(RuntimeError, match="no deeploans backend is reachable"):
-                _load_tape("deeploans://sme/loans", period=None)
+        loaded, data_source = _load_tape(f"file://{pq_path}", period=None)
 
-    def test_deeploans_ref_supports_period_slicing(self) -> None:
-        jan = _rmbs_frame("2024-01-31", balances=[100_000.0, 200_000.0])
-        feb = _rmbs_frame("2024-02-29", balances=[300_000.0])
-        combined = pd.concat([jan, feb], ignore_index=True)
-
-        with patch.object(DeepLoansClient, "fetch_tape", return_value=combined):
-            result = EsmaTapeNormaliser().execute(
-                EsmaTapeInput(
-                    file_url="deeploans://sme/loans", period="2024-02-29"
-                )
-            )
-
-        assert result.output.data_source == "deeploans"
-        assert result.output.loan_count == 1
-        assert result.output.pool_balance_eur == pytest.approx(300_000.0)
+        assert data_source == "direct"
+        assert len(loaded) == 1
 
 
 # ---------------------------------------------------------------------------

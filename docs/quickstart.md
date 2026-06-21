@@ -199,7 +199,7 @@ See `src/loanwhiz/api/README.md` for the full endpoint reference and curl exampl
 The Next.js dashboard (`./scripts/run-demo-v2.sh`, UI on :3000) groups its views into two sidebar sections (`NAV_GROUPS` in `web/lib/nav.ts`):
 
 - **Deal Analytics** — Overview, Pool & Performance, Waterfall, Compliance, Projection (the per-deal analyst views, one loaded deal at a time).
-- **Platform & Governance** — Showcase (the primitives × 5 deals capability matrix across Dutch / Italian / Spanish RMBS), Validation (the Green Lion 2024-1 engine-vs-Notes-&-Cash proof, to the cent), Framework (the primitive-registry catalogue), and Governance (the FINOS evidence pack + `deeploans`-vs-`direct` data provenance).
+- **Platform & Governance** — Showcase (the primitives × 5 deals capability matrix across Dutch / Italian / Spanish RMBS), Validation (the Green Lion 2024-1 engine-vs-Notes-&-Cash proof, to the cent), Framework (the primitive-registry catalogue), and Governance (the FINOS evidence pack + direct-read tape `data_source` provenance).
 
 The capability matrix is the honest source of truth for what is validated vs ran vs not-applicable across the deal set — never read the cross-jurisdiction coverage as "validated everywhere".
 

@@ -292,7 +292,7 @@ arrow(Inches(6.05), my+Inches(1.28), Inches(0.5), Inches(0.35), vert=True)
 dy = Inches(6.18)
 box(Inches(0.7), dy, Inches(11.9), Inches(0.7),
     "DATA LAYER",
-    "Docling extraction (prospectus → JSON)   ·   deeploans ETL / ESMA tape ingestion   ·   HuggingFace: green-lion-2026 + green-lion-2024-2025 (27-month history)",
+    "Docling extraction (prospectus → JSON)   ·   direct-read ESMA tape ingestion (CSV/parquet)   ·   HuggingFace: green-lion-2026 + green-lion-2024-2025 (27-month history)",
     NAVY, WHITE, sub_col=RGBColor(0xC7,0xD3,0xE8))
 
 # ===========================================================================
