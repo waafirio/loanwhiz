@@ -96,6 +96,14 @@ export default function PoolPage() {
         title="Pool & Performance"
         description="Per-period pool analytics across the reported ESMA tapes — balance, loan count, arrears, weighted LTV, and distributions."
       />
+      {/*
+        The backend serves tape-analytics from a committed seed (offline-capable
+        for the flagship deal) and degrades a per-tape failure to a partial 200
+        rather than a 500 (#347), so a seeded-offline deal lands on the data
+        branches below, not ErrorState. ErrorState now only fires on a genuine
+        API error (e.g. the deal is unknown / the API is down); an empty 200
+        ([] periods) renders the EmptyState inside PoolContent.
+      */}
       {hasTapes === false ? (
         <NoTapesNotice what="per-period pool analytics" />
       ) : error ? (

@@ -1568,18 +1568,28 @@ def _by_url_normaliser_side_effect():
 
 @pytest.fixture
 def _isolated_tape_cache(tmp_path):
-    """Point the tape-analytics cache at a clean tmp dir and empty memo.
+    """Point the tape-analytics cache (and seed dir) at clean tmp dirs.
 
     Keeps the analytics-cache tests deterministic: each test starts cold (no
     on-disk artifact, no in-process memo) and never touches the shared
-    ``/tmp/loanwhiz_cache/tape_analytics`` dir.
+    ``/tmp/loanwhiz_cache/tape_analytics`` dir. The committed seed dir
+    (``TAPE_ANALYTICS_SEED_DIR``, #347) is redirected to an *empty* tmp dir too,
+    so these tests still exercise the live-normaliser path rather than being
+    short-circuited by the real committed seeds — the seed-served behaviour has
+    its own dedicated tests below.
     """
     from loanwhiz.api import main as api_main
 
     saved_memo = dict(api_main._TAPE_ANALYTICS_MEMO)
     api_main._TAPE_ANALYTICS_MEMO.clear()
-    with patch("loanwhiz.api.main.TAPE_ANALYTICS_CACHE_DIR", str(tmp_path)):
-        yield tmp_path
+    cache_dir = tmp_path / "cache"
+    seed_dir = tmp_path / "seed"
+    cache_dir.mkdir()
+    seed_dir.mkdir()
+    with patch("loanwhiz.api.main.TAPE_ANALYTICS_CACHE_DIR", str(cache_dir)), patch(
+        "loanwhiz.api.main.TAPE_ANALYTICS_SEED_DIR", str(seed_dir)
+    ):
+        yield cache_dir
     api_main._TAPE_ANALYTICS_MEMO.clear()
     api_main._TAPE_ANALYTICS_MEMO.update(saved_memo)
 
@@ -1673,6 +1683,142 @@ def test_deal_tape_analytics_on_disk_cache_survives_fresh_process(_isolated_tape
 
     assert resp.status_code == 200
     assert resp.json() == primed.json()
+
+
+def _seed_tape(seed_dir: Path, url: str, dump: dict) -> None:
+    """Write a committed-seed-shaped ``{sha256(url)}.json`` for *url* (#347)."""
+    name = api_main._tape_cache_name(url)
+    (seed_dir / name).write_text(json.dumps(dump), encoding="utf-8")
+
+
+def test_deal_tape_analytics_served_from_seed_without_network(tmp_path):
+    """The flagship deal renders pool analytics from the committed seed offline.
+
+    The seed dir is populated for every GL-2026-1 tape and the normaliser is
+    patched to RAISE — proving that with no live network and no runtime cache
+    the endpoint still returns full analytics from the committed seed (#347).
+    """
+    seed_dir = tmp_path / "seed"
+    cache_dir = tmp_path / "cache"
+    seed_dir.mkdir()
+    cache_dir.mkdir()
+    tapes = GREEN_LION["tape_urls"]
+    for tape in tapes:
+        _seed_tape(seed_dir, tape["url"], _tape_dump_for(tape))
+
+    saved_memo = dict(api_main._TAPE_ANALYTICS_MEMO)
+    api_main._TAPE_ANALYTICS_MEMO.clear()
+    try:
+        with patch("loanwhiz.api.main.TAPE_ANALYTICS_CACHE_DIR", str(cache_dir)), patch(
+            "loanwhiz.api.main.TAPE_ANALYTICS_SEED_DIR", str(seed_dir)
+        ), patch("loanwhiz.api.main.EsmaTapeNormaliser") as MockNorm:
+            MockNorm.return_value.execute.side_effect = AssertionError(
+                "normaliser must not run when a committed seed exists (offline)"
+            )
+            resp = client.get("/deal/green-lion-2026-1/tape-analytics")
+    finally:
+        api_main._TAPE_ANALYTICS_MEMO.clear()
+        api_main._TAPE_ANALYTICS_MEMO.update(saved_memo)
+
+    assert resp.status_code == 200
+    body = resp.json()
+    assert len(body) == GREEN_LION_TAPE_COUNT
+    assert [p["tape_date"] for p in body] == [t["date"] for t in tapes]
+    # No live network call happened — the normaliser was never constructed.
+    MockNorm.assert_not_called()
+
+
+def test_deal_tape_analytics_degrades_to_partial_when_a_tape_is_unresolvable(tmp_path):
+    """An un-resolvable tape is skipped (partial 200), not a fatal 500 (#347).
+
+    Only the first tape is seeded; the rest have no seed and the normaliser is
+    patched to raise (offline). The endpoint returns HTTP 200 with just the
+    seeded period rather than blanking the whole Pool page.
+    """
+    seed_dir = tmp_path / "seed"
+    cache_dir = tmp_path / "cache"
+    seed_dir.mkdir()
+    cache_dir.mkdir()
+    tapes = GREEN_LION["tape_urls"]
+    first = tapes[0]
+    _seed_tape(seed_dir, first["url"], _tape_dump_for(first))
+
+    saved_memo = dict(api_main._TAPE_ANALYTICS_MEMO)
+    api_main._TAPE_ANALYTICS_MEMO.clear()
+    try:
+        with patch("loanwhiz.api.main.TAPE_ANALYTICS_CACHE_DIR", str(cache_dir)), patch(
+            "loanwhiz.api.main.TAPE_ANALYTICS_SEED_DIR", str(seed_dir)
+        ), patch("loanwhiz.api.main.EsmaTapeNormaliser") as MockNorm:
+            MockNorm.return_value.execute.side_effect = RuntimeError("offline")
+            resp = client.get("/deal/green-lion-2026-1/tape-analytics")
+    finally:
+        api_main._TAPE_ANALYTICS_MEMO.clear()
+        api_main._TAPE_ANALYTICS_MEMO.update(saved_memo)
+
+    assert resp.status_code == 200
+    body = resp.json()
+    # Only the seeded tape survives; the rest are skipped, not fatal.
+    assert len(body) == 1
+    assert body[0]["tape_date"] == first["date"]
+
+
+def test_error_response_carries_cors_headers(tmp_path):
+    """A genuine 500 still carries CORS headers so the browser sees the error.
+
+    An unhandled route exception is converted to a 500; without the #347
+    exception handler that 500 bypasses ``CORSMiddleware`` and the browser
+    reports an opaque CORS error. With the handler, the 500 response carries
+    ``access-control-allow-origin`` for the allowed dev origin.
+    """
+    seed_dir = tmp_path / "seed"
+    cache_dir = tmp_path / "cache"
+    seed_dir.mkdir()
+    cache_dir.mkdir()
+
+    saved_memo = dict(api_main._TAPE_ANALYTICS_MEMO)
+    api_main._TAPE_ANALYTICS_MEMO.clear()
+    try:
+        # Force the route to raise inside the per-tape resolve's *caller* by
+        # making the helper itself blow up — patch _tape_analytics_period to
+        # raise so the whole route 500s (the degradation helper is bypassed).
+        with patch("loanwhiz.api.main.TAPE_ANALYTICS_CACHE_DIR", str(cache_dir)), patch(
+            "loanwhiz.api.main.TAPE_ANALYTICS_SEED_DIR", str(seed_dir)
+        ), patch(
+            "loanwhiz.api.main._tape_analytics_period",
+            side_effect=RuntimeError("boom"),
+        ):
+            # raise_server_exceptions=False so the TestClient returns the 500
+            # response (with CORS headers) instead of re-raising the exception.
+            local_client = TestClient(app, raise_server_exceptions=False)
+            resp = local_client.get(
+                "/deal/green-lion-2026-1/tape-analytics",
+                headers={"Origin": "http://localhost:3000"},
+            )
+    finally:
+        api_main._TAPE_ANALYTICS_MEMO.clear()
+        api_main._TAPE_ANALYTICS_MEMO.update(saved_memo)
+
+    assert resp.status_code == 500
+    assert (
+        resp.headers.get("access-control-allow-origin") == "http://localhost:3000"
+    )
+
+
+def test_http_exception_still_renders_cleanly_with_cors():
+    """The #347 catch-all must NOT swallow HTTPException — 404 stays a clean 404.
+
+    A 404 from ``_require_deal`` must keep its status + carry CORS headers, not
+    be turned into a 500 by the new exception handler.
+    """
+    local_client = TestClient(app, raise_server_exceptions=False)
+    resp = local_client.get(
+        "/deal/unknown/tape-analytics",
+        headers={"Origin": "http://localhost:3000"},
+    )
+    assert resp.status_code == 404
+    assert (
+        resp.headers.get("access-control-allow-origin") == "http://localhost:3000"
+    )
 
 
 # ---------------------------------------------------------------------------
