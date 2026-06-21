@@ -43,10 +43,6 @@ from typing import Any
 import pandas as pd
 from pydantic import BaseModel, Field
 
-from loanwhiz.data.deeploans_client import (
-    DeepLoansClient,
-    parse_deeploans_url,
-)
 from loanwhiz.domain.esma_annex2 import canonical_column_for, code_for_column
 from loanwhiz.primitives.base import (
     AuditEntry,
@@ -85,47 +81,40 @@ _MISSING_BALANCE_THRESHOLD = 0.05
 # (query string stripped).
 _PARQUET_SUFFIXES = (".parquet", ".pq")
 
-# Provenance labels for the loaded frame — which ingestion path produced it.
-# ``"deeploans"`` means the tape was fetched through the deeploans ETL backend
-# (the organiser's open-source tool); ``"direct"`` means the historical
-# direct-URL pandas read (HuggingFace / local file). Surfaced honestly on
-# ``EsmaTapeOutput.data_source`` so the governance view can show real provenance.
-DATA_SOURCE_DEEPLOANS = "deeploans"
+# Provenance label for the loaded frame. LoanWhiz's canonical tape ingestion
+# path is the **direct read** — a loan tape is loaded straight from its source
+# URL (HuggingFace CSV/parquet, local ``file://``) via pandas. ``"direct"`` is
+# the only ingestion path, so it is the only provenance value; it is surfaced on
+# ``EsmaTapeOutput.data_source`` so the governance view records honestly where
+# each tape came from. (The field is retained as the provenance contract even
+# though it is currently single-valued; an additional ingestion source would
+# extend it here.)
 DATA_SOURCE_DIRECT = "direct"
 
 
 def _load_tape(file_url: str, period: str | None) -> tuple[pd.DataFrame, str]:
     """Load a loan tape from *file_url* as a DataFrame, with its provenance.
 
-    Routing
-    ~~~~~~~
-    A ``deeploans://{asset_class}/{table_name}`` reference is routed through the
-    **deeploans ETL backend** (:meth:`DeepLoansClient.fetch_tape`) — the live,
-    organiser-supplied ingestion path — and tagged ``data_source="deeploans"``.
-    Every other URL takes the historical **direct** path and is tagged
-    ``data_source="direct"``: the format is detected from the URL/path extension
-    (a ``.parquet``/``.pq`` suffix is read via :func:`pandas.read_parquet`;
-    anything else via :func:`pandas.read_csv` with ``low_memory=False``).
-
-    The deeploans path requires a reachable deeploans backend; when it is
-    unreachable the reference cannot be resolved and a clear ``RuntimeError`` is
-    raised (rather than silently mis-reading the literal ``deeploans://`` string
-    as a file). Ordinary URLs never need the backend, so the demo path keeps
-    working with or without it.
+    Ingestion
+    ~~~~~~~~~
+    The tape is read **directly** from *file_url* — the canonical LoanWhiz tape
+    ingestion path — and tagged ``data_source="direct"``. The format is detected
+    from the URL/path extension: a ``.parquet``/``.pq`` suffix is read via
+    :func:`pandas.read_parquet`; anything else via :func:`pandas.read_csv` with
+    ``low_memory=False``. This covers HuggingFace CSV/parquet tapes and local
+    ``file://`` paths — the sources every LoanWhiz deal actually uses.
 
     Combined multi-month tapes (e.g. ``Overall_2024_2025_all_months.parquet``)
     carry many ``reporting_date`` values in one file. Since the LoanWhiz model
     is one-tape-per-period, *period* selects a single reporting cut-off: when
     set and a ``reporting_date`` column is present, the frame is filtered to
     rows whose ``reporting_date`` (string-cast) equals *period*. Selecting a
-    period absent from the file is an error. Period-slicing applies to both
-    ingestion paths.
+    period absent from the file is an error.
 
     Parameters
     ----------
     file_url:
-        URL or path to the tape (CSV or parquet), or a
-        ``deeploans://{asset_class}/{table_name}`` reference.
+        URL or path to the tape (CSV or parquet).
     period:
         Optional reporting-date selector for combined multi-month tapes. When
         ``None`` the whole frame is returned unchanged (the historical path).
@@ -134,36 +123,21 @@ def _load_tape(file_url: str, period: str | None) -> tuple[pd.DataFrame, str]:
     -------
     (pandas.DataFrame, str)
         The loaded tape (sliced to *period* when requested) and its provenance
-        label — :data:`DATA_SOURCE_DEEPLOANS` or :data:`DATA_SOURCE_DIRECT`.
+        label — always :data:`DATA_SOURCE_DIRECT`.
 
     Raises
     ------
     ValueError
         When *period* is set but matches no rows in the tape.
-    RuntimeError
-        When *file_url* is a ``deeploans://`` reference but no deeploans backend
-        is reachable to resolve it.
     """
-    deeploans_ref = parse_deeploans_url(file_url)
-    if deeploans_ref is not None:
-        asset_class, table_name = deeploans_ref
-        df = DeepLoansClient().fetch_tape(asset_class, table_name)
-        if df is None:
-            raise RuntimeError(
-                f"deeploans tape reference {file_url!r} could not be resolved: "
-                "no deeploans backend is reachable. Start the deeploans backend, "
-                "or supply a direct CSV/parquet tape URL instead."
-            )
-        data_source = DATA_SOURCE_DEEPLOANS
+    # Strip any query string before matching the extension so signed URLs
+    # (``...parquet?token=...``) still route to the parquet reader.
+    path = file_url.split("?", 1)[0]
+    if path.lower().endswith(_PARQUET_SUFFIXES):
+        df = pd.read_parquet(file_url)
     else:
-        # Strip any query string before matching the extension so signed URLs
-        # (``...parquet?token=...``) still route to the parquet reader.
-        path = file_url.split("?", 1)[0]
-        if path.lower().endswith(_PARQUET_SUFFIXES):
-            df = pd.read_parquet(file_url)
-        else:
-            df = pd.read_csv(file_url, low_memory=False)
-        data_source = DATA_SOURCE_DIRECT
+        df = pd.read_csv(file_url, low_memory=False)
+    data_source = DATA_SOURCE_DIRECT
 
     if period is not None:
         col_map = {c.lower(): c for c in df.columns}
@@ -254,10 +228,10 @@ class EsmaTapeOutput(BaseModel):
                                ``None``.
         annex_detected:        Human-readable Annex label, e.g.
                                ``"Annex 2 (RMBS)"``.
-        data_source:           Ingestion provenance — ``"deeploans"`` when the
-                               tape was fetched through the deeploans ETL
-                               backend, ``"direct"`` for the direct-URL pandas
-                               read (HuggingFace / local file). Surfaced so the
+        data_source:           Ingestion provenance — always ``"direct"``: the
+                               tape was read directly from its source URL
+                               (HuggingFace CSV/parquet, local file), LoanWhiz's
+                               canonical tape ingestion path. Surfaced so the
                                governance view can show honest data provenance.
     """
 

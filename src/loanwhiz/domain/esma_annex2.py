@@ -3,9 +3,10 @@
 The tape side of LoanWhiz already has a *canonical schema* — the regulatory
 **ESMA Securitisation RTS Annex 2** loan-level template for residential real
 estate (RMBS) underlying exposures. Every column in an ESMA Annex 2 loan tape
-carries a stable **RREL field code** (``RREL1`` … ``RRELnn``); a deeploans /
-HuggingFace tape exposes those as human-readable column names that vary subtly
-across issuers and vintages. This module is the **single canonical mapping**
+carries a stable **RREL field code** (``RREL1`` … ``RRELnn``); a real loan tape
+(e.g. the HuggingFace CSV/parquet tapes LoanWhiz reads directly) exposes those
+as human-readable column names that vary subtly across issuers and vintages.
+This module is the **single canonical mapping**
 between the regulatory RREL code, the semantic meaning of the field, and the
 ``canonical_column`` name LoanWhiz normalises to.
 

@@ -138,8 +138,9 @@ FINOS_CONTROL_CATALOGUE: list[FinosControl] = [
         rationale=(
             "LoanWhiz ingests only structured ESMA loan tapes and prospectus "
             "documents through typed primitives; it has no open external "
-            "knowledge base. Tape provenance (deeploans vs direct) is recorded, "
-            "but content-level filtering of third-party tapes is deferred to the "
+            "knowledge base. Tape provenance (the direct-read source URL) is "
+            "recorded, but content-level filtering of third-party tapes is "
+            "deferred to the "
             "publisher (governance.md §8)."
         ),
         loanwhiz_evidence=[

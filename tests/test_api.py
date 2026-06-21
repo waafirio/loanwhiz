@@ -1087,7 +1087,9 @@ def test_deal_project_uses_loan_level_tape_schedule(monkeypatch):
     tape_deal = {
         "deal_name": "Tape Deal 2025-1 B.V.",
         "prospectus_url": "https://example.test/tape-2025-1.pdf",
-        "tape_urls": [{"date": "2025-12-31", "url": "deeploans://RMBS/tape"}],
+        "tape_urls": [
+            {"date": "2025-12-31", "url": "https://example.test/tape-2025-1.csv"}
+        ],
         "investor_report_urls": [],
         "projection_base": {
             "current_pool_balance": 500_000_000.0,
