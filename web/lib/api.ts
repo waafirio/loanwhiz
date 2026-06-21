@@ -89,13 +89,19 @@ export function getHealth(): Promise<HealthStatus> {
 // ---------------------------------------------------------------------------
 
 /**
- * One available deal — id + display name — from `GET /deals`. The `id` is the
- * value to thread into the `/deal/{id}/...` routes; the deal selector in the
- * top bar populates from this list (see web/components/deal-selector.tsx).
+ * One available deal — id + display name + filtering facets — from `GET /deals`.
+ * The `id` is the value to thread into the `/deal/{id}/...` routes; the deal
+ * selector in the top bar populates from this list (see
+ * web/components/deal-selector.tsx). `jurisdiction` and `vintage` let the
+ * comparison picker filter a large (EDW-scale) deal universe (#344);
+ * `jurisdiction` is `"Unknown"` when the registry carries none and `vintage`
+ * is `null` when the deal name embeds no year.
  */
 export interface DealSummary {
   id: string;
   name: string;
+  jurisdiction: string;
+  vintage: number | null;
 }
 
 export function getDeals(): Promise<DealSummary[]> {
