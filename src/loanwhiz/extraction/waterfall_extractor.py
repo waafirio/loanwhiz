@@ -187,7 +187,7 @@ Trigger is not in effect") — null if unconditional
 simultaneously; false otherwise
 
 For the citation field, use:
-- document: "Green Lion 2026-1 Prospectus"
+- document: "{deal_name} Prospectus"
 - page_or_row: the section reference visible in the text (e.g. "Section 5.2(a)")
 - excerpt: the first 150 characters of the relevant paragraph for that step
 
@@ -507,6 +507,7 @@ def extract_waterfall(
         waterfall_section_name_upper=section_name.upper(),
         definitions_block=definitions_block,
         section_text=section_text,
+        deal_name=deal_name,
     )
 
     # Call Gemini with forced function calling.

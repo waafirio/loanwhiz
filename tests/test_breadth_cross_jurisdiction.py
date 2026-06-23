@@ -17,8 +17,11 @@ these tests assert:
     ``build_capability_matrix`` cell state (so "ran end-to-end" and "the matrix
     says ran" can't silently diverge);
   * the breadth set spans the expected jurisdictions AND vintages;
-  * the honest not-applicable skips (ES covenants, IT/ES tape-path, ES waterfall)
-    carry real reasons — no wall of green.
+  * the honest not-applicable skips (IT/ES tape-path) carry real reasons — no
+    wall of green. (After the #368 ES re-extraction the Spanish deal's covenants
+    and waterfall execution became applicable — real extracted triggers + a
+    redemption/post-enforcement priority-of-payments cascade — so they are no
+    longer in the not-applicable set.)
 
 Runs fully offline over the *real* shipped ``DEAL_REGISTRY`` + committed seeds,
 so a regression in a seed or in a prereq primitive path is caught here.
@@ -50,9 +53,12 @@ _COVENANT_RUN_DEALS = {
     "green-lion-2023-1",
     "green-lion-2024-1",
     "leone-arancio-2023-1",  # Italy — real extracted triggers (#274 refreshed seed)
+    "sol-lion-ii",  # Spain — real extracted trigger (#368 re-extraction)
 }
-# The minimal Spanish seed carries no triggers → covenant monitoring is N/A.
-_COVENANT_NA_DEALS = {"sol-lion-ii"}
+# Every breadth deal now carries at least one extracted covenant trigger, so
+# none are covenant-N/A. (Kept as an explicit empty set so the parametrised N/A
+# assertions below stay structurally present for a future tape-only deal.)
+_COVENANT_NA_DEALS: set[str] = set()
 
 
 # ---------------------------------------------------------------------------
@@ -195,11 +201,16 @@ def test_harness_covenant_state_matches_matrix(deal_runs, matrix, deal_id):
 # ---------------------------------------------------------------------------
 
 
-def test_spanish_covenants_are_honestly_not_applicable(deal_runs):
+def test_spanish_covenants_run_through_live_monitor(deal_runs):
+    # After the #368 re-extraction the Spanish seed carries a real extracted
+    # trigger (early_liquidation_trigger), so covenant monitoring runs end-to-end
+    # like the NL/IT deals rather than being not-applicable.
     es = _deal_run(deal_runs, "sol-lion-ii")
     assert es.jurisdiction == "Spain"
     run = es.run("covenant_monitoring")
-    assert run.state == STATE_NOT_APPLICABLE
+    assert run.state == STATE_RAN, run.reason
+    assert run.detail["trigger_count"] >= 1
+    assert run.detail["status_count"] == run.detail["trigger_count"]
     assert run.reason.strip()
 
 
@@ -213,10 +224,14 @@ def test_it_es_tape_path_cells_are_not_applicable_with_reason(matrix, deal_id):
         assert cell.reason.strip()
 
 
-def test_spanish_waterfall_is_not_applicable_with_reason(matrix):
-    # Sol-Lion's minimal extraction carries no waterfall steps → not-applicable.
+def test_spanish_waterfall_executes_with_extracted_cascade(matrix):
+    # After the #368 re-extraction Sol-Lion's seed carries an executable
+    # priority-of-payments cascade (redemption + post-enforcement steps; the
+    # revenue PoP section yielded no enumerable steps), so waterfall execution
+    # runs rather than being not-applicable.
     cell = _matrix_cell(matrix, "sol-lion-ii", "waterfall_execution")
-    assert cell.state == STATE_NOT_APPLICABLE
+    assert cell.state == STATE_RAN, cell.reason
+    assert cell.evidence.detail["step_count"] >= 1
     assert cell.reason.strip()
 
 

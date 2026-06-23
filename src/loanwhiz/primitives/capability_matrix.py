@@ -253,11 +253,30 @@ def _classify_waterfall_execution(
     model: DealModel | None,
     validators: Mapping[str, Callable[[], ReconciliationReport]],
 ) -> tuple[str, str, CellEvidence]:
-    """Waterfall execution — applies when a revenue waterfall was extracted."""
+    """Waterfall execution — applies when *any* priority-of-payments waterfall
+    with executable steps was extracted.
+
+    Most deals (Green Lion, Leone Arancio) extract a ``revenue`` waterfall, so it
+    is the preferred cascade reported here. But a deal may legitimately extract a
+    ``redemption`` and/or ``post_enforcement`` waterfall without a step-level
+    ``revenue`` cascade — e.g. Sol-Lion II (ES), whose revenue PoP section was
+    located but yielded no enumerable steps, while its redemption (8) and
+    post-enforcement (7) cascades extracted cleanly. Keying solely on ``revenue``
+    would mark such a deal ``not-applicable`` with a *factually false* reason
+    ("no waterfall extracted"), so this counts any waterfall carrying steps.
+    """
     waterfalls = model.waterfalls if model else {}
-    revenue = (waterfalls.get("revenue") or {}) if waterfalls else {}
-    steps = revenue.get("steps") or []
-    if not steps:
+    # Prefer the revenue cascade when it carries steps; otherwise fall back to the
+    # first non-empty waterfall so a redemption/post-enforcement-only deal still
+    # reports the real extracted capability.
+    chosen_type = ""
+    chosen_steps: list = []
+    for wf_type in ("revenue", "redemption", "post_enforcement"):
+        wf_steps = ((waterfalls.get(wf_type) or {}).get("steps") or []) if waterfalls else []
+        if wf_steps:
+            chosen_type, chosen_steps = wf_type, wf_steps
+            break
+    if not chosen_steps:
         return (
             STATE_NOT_APPLICABLE,
             "No priority-of-payments waterfall extracted from this deal's prospectus.",
@@ -269,12 +288,13 @@ def _classify_waterfall_execution(
         )
     return (
         STATE_RAN,
-        f"Extracted {len(steps)}-step revenue waterfall executes against period funds.",
+        f"Extracted {len(chosen_steps)}-step {chosen_type} waterfall executes against period funds.",
         CellEvidence(
             confidence=1.0,  # deterministic interpreter run
             citation=_seed_citation(model, "Extracted deal model seed."),
             detail={
-                "revenue_step_count": len(steps),
+                "waterfall_type": chosen_type,
+                "step_count": len(chosen_steps),
                 "waterfalls": sorted(waterfalls.keys()),
             },
         ),
