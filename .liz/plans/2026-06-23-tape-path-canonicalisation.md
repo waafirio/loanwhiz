@@ -1,7 +1,7 @@
 ---
 id: 2026-06-23-tape-path-canonicalisation
 title: Tape-path canonicalisation & residual-gap closure (post-2026-06-22 audit)
-status: draft
+status: decomposed
 created: 2026-06-23
 updated: 2026-06-23
 epics: []
@@ -120,7 +120,99 @@ Epic 2 (IT/ES extraction) ────────┘  except 2c (validation) Af
 
 ## Decomposition
 
-<filled in Phase 2>
+Three epics, 10 children. Cross-epic order: Epic 1 and Epic 3 are fully
+parallel; Epic 2's extraction fixes run in parallel too, with only child
+**2c** gated `After` the Epic-1 umbrella (it needs the generalised engine
++ tape adapter to validate end-to-end).
+
+### Epic 1: Tape-path canonicalisation & engine generality   (umbrella #<N>)
+
+The root-cause fix: bring the tape path onto the canonical schema the
+report path already uses, and generalise the engine off its hardcoded
+A/B/C tranche assumption. Completing this unlocks real EDW breadth, makes
+tape-native covenants fire on real deals, removes the silent
+wrong-reconstruction risk, and closes the synthetic-isolation test gap.
+
+- **Generalise the engine tranche schema** — migrate the active engine
+  from hardcoded `class_a/b/c` (`primitives/deal_state.py`) onto the
+  canonical `tranches: list[TrancheState]` that `domain.state` already
+  defines; thread it through `period_state_machine`, `waterfall_interpreter`,
+  and `covenant_monitor`; regression-lock GL's A/B/C output byte-for-byte.
+  Sequencing: sequential. Paths: `src/loanwhiz/primitives/deal_state.py`,
+  `src/loanwhiz/primitives/period_state_machine.py`,
+  `src/loanwhiz/primitives/waterfall_interpreter.py`,
+  `src/loanwhiz/primitives/covenant_monitor.py`.
+- **Tape→canonical `PeriodInputs` adapter** — build the missing
+  `source="tape"` adapter that constructs canonical `PeriodInputs`
+  (collection legs **and** a populated `RiskSignals` — arrears_90d/180d,
+  wa_ltv, default_pct, pool_balance) from the normalised tape, so the tape
+  path folds through the same kernel and schema as the report path (no
+  more `risk_signals=None`). Sequencing: sequential. After #<1a>. Paths:
+  `src/loanwhiz/primitives/**`, `src/loanwhiz/domain/**`,
+  `src/loanwhiz/api/main.py`.
+- **Loan-level amortisation in historical reconstruction** — use
+  `loan_level_amortisation` in the tape-driven collections/period path
+  (today it is wired into projection only), replacing the pool-level
+  proxy for history. Sequencing: parallel. After #<1b>. Paths:
+  `src/loanwhiz/primitives/collections_aggregator.py`,
+  `src/loanwhiz/primitives/loan_level_amortisation.py`,
+  `src/loanwhiz/primitives/period_state_machine.py`.
+- **Integrated tape→waterfall→covenant E2E on real non-GL data** — an
+  integration test (and any wiring it forces) that folds a *real* tape
+  through collections → period state → waterfall → covenant evaluation,
+  proving the tape-native arrears/LTV covenants (#280) actually fire;
+  closes the "primitives tested only in synthetic isolation" gap.
+  Sequencing: sequential. After #<1b>. Paths: `tests/**`,
+  `src/loanwhiz/api/main.py`.
+
+### Epic 2: IT/ES extraction reality   (umbrella #<N>)
+
+Make "many deals, many jurisdictions" actually true for the two
+non-English deals. The corrupted Leone seed is also a standalone
+integrity bug worth fixing immediately.
+
+- **Repair the corrupted Leone Arancio (IT) seed** — remove the
+  Green-Lion contamination (the seed claims `completeness_score: 1.0` but
+  carries GL's verbatim waterfall + 40 GL citations); restore an honest
+  extraction (real IT `DealRules` if extractable, else an honest partial
+  with truthful completeness — never a false 1.0). Sequencing: parallel.
+  Paths: `src/loanwhiz/data/deals/seed/**`, `src/loanwhiz/extraction/**`.
+- **Resolve Sol-Lion II (ES) empty-waterfall section-routing #316** — tune
+  the payment-list signal / LLM section router so the Spanish prospectus
+  yields ≥1 executable waterfall instead of empty `waterfalls: {}` at 0.30
+  completeness. Sequencing: parallel. Paths:
+  `src/loanwhiz/extraction/section_router.py`,
+  `src/loanwhiz/extraction/assembler.py`, `src/loanwhiz/data/deals/seed/**`.
+- **Cross-jurisdiction cold-start validation (IT+ES)** — once extraction
+  is honest, validate Leone + Sol-Lion cold-start end-to-end through the
+  generalised engine (depends on Epic 1). Sequencing: sequential.
+  After #<2a>. Also After #<Epic-1 umbrella>. Paths: `tests/**`,
+  `src/loanwhiz/api/main.py`.
+
+### Epic 3: Seam hardening — gate wiring, governance uniformity, unit guard   (umbrella #<N>)
+
+The independent built-but-unwired loose ends. All three children touch
+disjoint seams and run in parallel.
+
+- **Wire reconciliation-as-gate (#272) into the report path** — invoke
+  `reconcile_as_gate` in the report cold-start path so reconciled fields
+  are auto-trusted and only unreconciled + low-confidence fields route to
+  human review (the gate is built and tested but `main.py` never calls it).
+  Sequencing: parallel. Paths: `src/loanwhiz/api/main.py`,
+  `src/loanwhiz/primitives/reconciliation_gate.py`.
+- **Governance envelope uniformity (#277 finish)** — add `audit_result()`
+  to the agent `check_covenants` tool, persist the MCP server's audit
+  entries to disk (matching the REST pattern), and refresh the agent model
+  card to list all 11 shipped tools (it lists 4). Sequencing: parallel.
+  Paths: `src/loanwhiz/agent/tools.py`, `mcp/**`,
+  `src/loanwhiz/governance/agent_model_card.py`.
+- **Runtime `threshold_unit` guard** — add a consumption-side check that
+  converts/asserts a trigger's `threshold_unit` to the monitor's canonical
+  unit before evaluation, closing the latent 100× misread risk
+  (normalisation today happens only at extraction). Sequencing: parallel.
+  Paths: `src/loanwhiz/api/main.py`,
+  `src/loanwhiz/primitives/covenant_monitor.py`,
+  `src/loanwhiz/domain/rules.py`.
 
 ## Filed issues
 
