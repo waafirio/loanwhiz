@@ -794,6 +794,51 @@ def test_deal_compliance_uses_extracted_triggers(tmp_path):
     assert pdl.citation.excerpt == "Custom PDL Trigger"
 
 
+def test_deal_compliance_converts_fraction_unit_threshold_to_percent(tmp_path):
+    """A fraction-unit extracted threshold reaches the monitor on the percent
+    scale — the consumption-side C8 100x guard, exercised end-to-end through the
+    /compliance route."""
+    extracted = [
+        {
+            "name": "frac_loss_trigger",
+            "display_name": "Fractional Loss Trigger",
+            "description": "Fires above a 1.5% loss rate, expressed as a fraction.",
+            "metric": "default_pct",
+            "threshold": 0.015,
+            "threshold_unit": "fraction",
+            "direction": "above",
+            "consequence": "Principal switches to sequential.",
+            "section_reference": "Section 6.1",
+            "citation": {},
+        },
+    ]
+    _seed_cached_deal_model_with_triggers(str(tmp_path), extracted)
+
+    captured: dict = {}
+
+    class _SpyMonitor:
+        DEFAULT_TRIGGERS = CovenantMonitor.DEFAULT_TRIGGERS
+
+        def execute(self, input):  # noqa: A002
+            captured["triggers"] = input.triggers
+            return _FakeResult({"summary": "ok"})
+
+    series = _small_reconstructed_series()
+    with patch("loanwhiz.api.main.DEAL_MODEL_CACHE_DIR", str(tmp_path)), patch(
+        "loanwhiz.api.main.EsmaTapeNormaliser"
+    ) as MockNorm, patch(
+        "loanwhiz.api.main._reconstruct_series", return_value=series
+    ), patch("loanwhiz.api.main.CovenantMonitor", _SpyMonitor):
+        MockNorm.return_value.execute.return_value = _FakeResult({"row_count": 1})
+        resp = client.get("/deal/green-lion-2026-1/compliance")
+
+    assert resp.status_code == 200
+    (fed,) = captured["triggers"]
+    # 0.015 fraction → 1.5 percent; without the guard it would reach the
+    # percent-scaled metric 100x low and never fire.
+    assert fed.threshold == 1.5
+
+
 def test_deal_compliance_falls_back_when_no_extracted_triggers(tmp_path):
     """Empty covenants.triggers (and cache miss) → fall back to DEFAULT_TRIGGERS."""
     # Seeded model exists but carries an empty triggers list.
@@ -2348,6 +2393,163 @@ def test_validation_unfixtured_deal_degrades_gracefully():
 def test_validation_unknown_deal_returns_404():
     resp = client.get("/deal/does-not-exist/validation")
     assert resp.status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# Reconciliation-as-gate  —  GET /deal/{deal_id}/report-gate  (#272, epic #362)
+# ---------------------------------------------------------------------------
+# Offline + deterministic: extracts the deal's committed Notes & Cash fixtures
+# into a typed ParsedReport (no network/LLM), folds + reconciles to the cent, then
+# auto-trusts every reconciled field and routes ONLY the unreconciled +
+# low-confidence ones to human review. NOT integration-marked — must run in the
+# fast suite, mirroring the /validation tests. These are the seam that proves the
+# gate (#272) is actually reachable from the live API (it was dead code before).
+
+
+def test_report_gate_green_lion_2024_1_runs_and_auto_trusts_reconciled():
+    """The gate, over HTTP: the engine reconciles GL-2024-1 to the cent across all
+    3 quarterly periods, auto-trusting the confirmed fields — computed offline."""
+    resp = client.get("/deal/green-lion-2024-1/report-gate")
+    assert resp.status_code == 200
+    body = resp.json()
+
+    assert body["available"] is True
+    assert body["deal_id"] == "green-lion-2024-1"
+    assert body["deal_name"] == "Green Lion 2024-1 B.V."
+    assert body["reconciliation_passed"] is True
+    assert body["periods_checked"] == 3
+    # The gate confirmed real PoP-step fields to the cent (auto-trusted).
+    assert body["reconciled_field_count"] > 0
+    assert body["confidence_threshold"] == pytest.approx(0.7)
+    assert body["summary"]
+
+
+def test_report_gate_no_low_confidence_residue_for_clean_deal():
+    """GL-2024-1's deterministic extract reconciles cleanly: nothing is left for a
+    human (no unreconciled + low-confidence residue)."""
+    body = client.get("/deal/green-lion-2024-1/report-gate").json()
+    assert body["review_item_count"] == 0
+    assert body["review_items"] == []
+
+
+def test_report_gate_inversion_reconciled_overrides_low_confidence():
+    """End-to-end over the real gate: a field the engine reconciles is auto-trusted
+    even at low confidence, while an unreconciled low-confidence field IS routed —
+    the review-burden inversion (#272), observable through the HTTP surface.
+
+    Patches the offline ParsedReport builder so the report carries two pre-seeded
+    LOW-confidence provenance entries: one on a revenue PoP step the engine WILL
+    reconcile (Class A interest "(d)"), one on a field the engine never proves
+    (reserve_balance). Only the latter must surface in review_items.
+    """
+    from loanwhiz.api import main as api_main
+    from loanwhiz.domain.provenance import FieldProvenance
+    from loanwhiz.primitives.report_extractor import ParsedReport
+
+    base = api_main._build_green_lion_2024_1_parsed_report()
+    # Index of the "(d)" Class A interest step in period 0's revenue PoP.
+    labels = [s.priority_label for s in base.periods[0].revenue_pop]
+    d_idx = labels.index("(d)")
+    reconciled_path = f"periods.0.revenue_pop.{d_idx}.amount"
+    unreconciled_path = "periods.0.reserve_balance"
+
+    seeded = base.model_copy(
+        update={
+            "provenance": {
+                reconciled_path: FieldProvenance(
+                    source="report", method="ocr+llm", confidence=0.2, reconciled=False
+                ),
+                unreconciled_path: FieldProvenance(
+                    source="report", method="ocr+llm", confidence=0.2, reconciled=False
+                ),
+            }
+        }
+    )
+
+    def _seeded_builder() -> ParsedReport:
+        return seeded.model_copy(deep=True)
+
+    _, model_loader = api_main._REPORT_GATE_BUILDERS["green-lion-2024-1"]
+    with patch.dict(
+        api_main._REPORT_GATE_BUILDERS,
+        {"green-lion-2024-1": (_seeded_builder, model_loader)},
+        clear=False,
+    ):
+        body = client.get("/deal/green-lion-2024-1/report-gate").json()
+
+    review_paths = {item["field_path"] for item in body["review_items"]}
+    # The engine reconciled "(d)" to the cent → auto-trusted despite 0.2 confidence.
+    assert reconciled_path not in review_paths
+    # reserve_balance is unreconciled AND low-confidence → routed to a human.
+    assert unreconciled_path in review_paths
+    assert body["review_item_count"] == 1
+    item = next(
+        i for i in body["review_items"] if i["field_path"] == unreconciled_path
+    )
+    assert item["confidence"] == pytest.approx(0.2)
+    assert "low-confidence" in item["reason"]
+
+
+def test_report_gate_confidence_threshold_query_is_honored():
+    """The optional confidence_threshold query flows into the gate's routing."""
+    from loanwhiz.api import main as api_main
+    from loanwhiz.domain.provenance import FieldProvenance
+    from loanwhiz.primitives.report_extractor import ParsedReport
+
+    base = api_main._build_green_lion_2024_1_parsed_report()
+    seeded = base.model_copy(
+        update={
+            "provenance": {
+                "periods.0.reserve_balance": FieldProvenance(
+                    source="report", method="ocr+llm", confidence=0.6, reconciled=False
+                )
+            }
+        }
+    )
+
+    def _seeded_builder() -> ParsedReport:
+        return seeded.model_copy(deep=True)
+
+    _, model_loader = api_main._REPORT_GATE_BUILDERS["green-lion-2024-1"]
+    with patch.dict(
+        api_main._REPORT_GATE_BUILDERS,
+        {"green-lion-2024-1": (_seeded_builder, model_loader)},
+        clear=False,
+    ):
+        # 0.6 < 0.7 → routed; 0.6 >= 0.5 → not routed (strictly-below).
+        flagged = client.get(
+            "/deal/green-lion-2024-1/report-gate",
+            params={"confidence_threshold": 0.7},
+        ).json()
+        not_flagged = client.get(
+            "/deal/green-lion-2024-1/report-gate",
+            params={"confidence_threshold": 0.5},
+        ).json()
+
+    assert flagged["review_item_count"] == 1
+    assert flagged["confidence_threshold"] == pytest.approx(0.7)
+    assert not_flagged["review_item_count"] == 0
+
+
+def test_report_gate_unfixtured_deal_degrades_gracefully():
+    """A registered deal with no committed report fixture / cached model returns
+    200 available=false with an honest note — never a 500."""
+    resp = client.get("/deal/green-lion-2023-1/report-gate")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["available"] is False
+    assert body["deal_id"] == "green-lion-2023-1"
+    assert body["note"]
+    assert body["review_items"] == []
+    assert body["reconciliation_passed"] is False
+
+
+def test_report_gate_unknown_deal_returns_404():
+    resp = client.get("/deal/does-not-exist/report-gate")
+    assert resp.status_code == 404
+
+
+# --- end reconciliation-as-gate (#272) ---------------------------------------
 
 
 # ---------------------------------------------------------------------------

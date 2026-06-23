@@ -23,11 +23,24 @@ AGENT_MODEL_CARD: dict = {
     "name": "LoanWhiz Agent v0.1",
     "type": "LangGraph ReAct agent",
     "backbone": "Gemini 2.5 Flash (Vertex AI, project=loanwhiz)",
+    # All 11 tools the agent registers in ``loanwhiz.agent.tools.SF_TOOLS``,
+    # in that registration order. Kept as an explicit literal (rather than
+    # imported from the agent module) so this static governance document carries
+    # no import-time dependency on the langchain/langgraph tool chain. The
+    # ``test_model_card_lists_all_agent_tools`` guard asserts this stays in sync
+    # with ``SF_TOOLS`` so a future added tool surfaces as a failing test.
     "tools": [
         "load_esma_tape",
         "run_waterfall",
+        "project_cashflows",
         "check_covenants",
+        "forecast_trigger_breaches",
         "aggregate_collections",
+        "verify_report",
+        "get_deal_model",
+        "list_deal_tapes",
+        "stress_matrix",
+        "monitor_portfolio",
     ],
     "intended_use": "Structured finance Q&A over RMBS deal data",
     "out_of_scope": [

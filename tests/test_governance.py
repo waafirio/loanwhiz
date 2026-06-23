@@ -487,5 +487,22 @@ class TestAgentModelCard:
     def test_tools_list_is_non_empty(self) -> None:
         assert len(AGENT_MODEL_CARD["tools"]) > 0
 
+    def test_model_card_lists_all_agent_tools(self) -> None:
+        """The card must enumerate every tool the agent actually ships.
+
+        Guards the #371 refresh (4 → 11 tools): the card's ``tools`` set must
+        equal the names registered in ``SF_TOOLS``, so a future added tool that
+        forgets to update the card surfaces here as a failing test rather than a
+        silently-understated governance artifact. Imported locally to keep this
+        governance test module free of an import-time langchain dependency.
+        """
+        from loanwhiz.agent.tools import SF_TOOLS
+
+        registered = {t.name for t in SF_TOOLS}
+        assert set(AGENT_MODEL_CARD["tools"]) == registered
+        assert len(AGENT_MODEL_CARD["tools"]) == 11
+        # No duplicates crept into the literal list.
+        assert len(AGENT_MODEL_CARD["tools"]) == len(set(AGENT_MODEL_CARD["tools"]))
+
     def test_out_of_scope_is_list(self) -> None:
         assert isinstance(AGENT_MODEL_CARD["out_of_scope"], list)

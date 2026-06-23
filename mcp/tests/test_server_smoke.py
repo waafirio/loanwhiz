@@ -114,6 +114,37 @@ async def test_tool_call_returns_primitive_result_with_governance_evidence():
     assert len(audit["input_hash"]) == 64  # SHA-256 hex digest
 
 
+async def test_tool_call_persists_an_audit_entry(tmp_path, monkeypatch):
+    """A tool call writes one AuditLogEntry to disk — not just returns it.
+
+    Mirrors the REST path's ``_audit(...)``: the MCP server now persists a
+    best-effort provenance record per call under ``MCP_AUDIT_LOG_DIR`` (#371),
+    so the trust story is durable, not only in-flight in the response envelope.
+    Uses audit_logger so the call is fully offline + deterministic.
+    """
+    from pathlib import Path
+
+    import loanwhiz_primitives_mcp.server as server_mod
+
+    log_dir = tmp_path / "mcp_audit"
+    monkeypatch.setattr(server_mod, "MCP_AUDIT_LOG_DIR", str(log_dir))
+
+    server = build_server()
+    result = await _call_tool(
+        server,
+        "audit_logger",
+        {"log_dir": "/tmp/loanwhiz_mcp_smoke", "auto_flag_threshold": 0.7},
+    )
+    assert result.isError is False
+
+    # Exactly one AuditLogEntry JSONL line landed under the patched audit dir.
+    written = sum(
+        len([ln for ln in p.read_text().splitlines() if ln.strip()])
+        for p in Path(log_dir).rglob("*.jsonl")
+    )
+    assert written == 1
+
+
 async def test_unknown_tool_is_rejected():
     """Calling a non-live / unknown primitive name is an error, not a crash."""
     server = build_server()

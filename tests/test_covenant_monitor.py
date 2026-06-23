@@ -19,6 +19,7 @@ import pytest
 
 from loanwhiz.primitives.base import Citation
 from loanwhiz.primitives.covenant_monitor import (
+    CANONICAL_THRESHOLD_UNIT,
     CovenantInput,
     CovenantMonitor,
     CovenantOutput,
@@ -31,6 +32,7 @@ from loanwhiz.primitives.covenant_monitor import (
     _extract_metric,
     _is_triggered,
     evaluate_triggers,
+    to_canonical_threshold,
 )
 from loanwhiz.primitives.deal_state import DealState
 from loanwhiz.primitives.registry import PRIMITIVE_REGISTRY
@@ -1253,3 +1255,152 @@ class TestTapeNativeTriggers:
             "weighted_average_ltv_trigger",
         ):
             assert name not in {s.trigger_name for s in out.trigger_statuses}
+
+
+# ---------------------------------------------------------------------------
+# threshold_unit consumption guard — the C8 100x guard's monitor-side half.
+# ---------------------------------------------------------------------------
+
+
+class TestToCanonicalThreshold:
+    """``to_canonical_threshold`` converts an extracted threshold onto the
+    monitor's canonical percent scale (the consumption-side 100x guard)."""
+
+    def test_canonical_unit_is_percent(self) -> None:
+        assert CANONICAL_THRESHOLD_UNIT == "percent"
+
+    def test_percent_passes_through_unchanged(self) -> None:
+        # A percent threshold is already on the canonical scale.
+        assert to_canonical_threshold(1.5, "percent") == 1.5
+
+    def test_fraction_scales_to_percent(self) -> None:
+        # The real 100x fix: a ratio expressed as a fraction must be ×100 so it
+        # is not misread 100x low against a percent-scaled metric.
+        assert to_canonical_threshold(0.015, "fraction") == 1.5
+        assert to_canonical_threshold(0.05, "fraction") == 5.0
+
+    def test_bps_scales_to_percent(self) -> None:
+        # 250 bps == 2.5%.
+        assert to_canonical_threshold(250.0, "bps") == 2.5
+        assert to_canonical_threshold(150.0, "bps") == 1.5
+
+    def test_none_threshold_passes_through(self) -> None:
+        # Qualitative / PDL-style "any positive balance fires" triggers carry a
+        # None threshold — the converter is a no-op regardless of unit.
+        assert to_canonical_threshold(None, "fraction") is None
+        assert to_canonical_threshold(None, "eur") is None
+        assert to_canonical_threshold(None, None) is None
+
+    def test_eur_passes_through_unchanged(self) -> None:
+        # EUR is an absolute balance, not a ratio — no percent conversion
+        # applies, and seeded balance triggers legitimately use it (e.g. a -1.0
+        # sentinel the extractor couldn't quantify). It must not raise or rescale.
+        assert to_canonical_threshold(-1.0, "eur") == -1.0
+        assert to_canonical_threshold(1_000_000.0, "eur") == 1_000_000.0
+
+    def test_unit_aliases_are_normalised(self) -> None:
+        # The converter reuses taxonomy.normalize_threshold_unit, so extractor
+        # synonyms resolve before the scale is chosen.
+        assert to_canonical_threshold(3.5, "percentage") == 3.5
+        assert to_canonical_threshold(3.5, "%") == 3.5
+        assert to_canonical_threshold(0.05, "ratio") == 5.0
+        assert to_canonical_threshold(250.0, "basis_points") == 2.5
+
+    def test_unknown_or_missing_unit_defaults_to_fraction(self) -> None:
+        # normalize_threshold_unit defaults an unknown/missing unit to
+        # "fraction" (the engine's native ratio form), so the converter scales it
+        # to percent rather than leaving a 100x-low value.
+        assert to_canonical_threshold(0.05, None) == 5.0
+        assert to_canonical_threshold(0.05, "wibble") == 5.0
+
+
+class TestMapExtractedTriggerUnitGuard:
+    """The consumption seam (`api.main._map_extracted_trigger`) applies the
+    unit guard so an extracted trigger reaches the monitor on the percent scale."""
+
+    def test_fraction_unit_trigger_lands_percent_scaled(self) -> None:
+        from loanwhiz.api.main import _map_extracted_trigger
+
+        raw = {
+            "name": "frac_loss_trigger",
+            "display_name": "Fractional Loss Trigger",
+            "description": "Fires above a 1.5% loss rate expressed as a fraction.",
+            "metric": "cumulative_loss_rate_pct",
+            "threshold": 0.015,
+            "threshold_unit": "fraction",
+            "direction": "above",
+            "consequence": "switch to sequential",
+            "section_reference": "Section 5.2",
+            "citation": {},
+        }
+        td = _map_extracted_trigger(raw)
+        # 0.015 fraction → 1.5 percent, matching the monitor's percent metric.
+        assert td.threshold == 1.5
+        assert td.direction == "above"
+
+    def test_bps_unit_trigger_lands_percent_scaled(self) -> None:
+        from loanwhiz.api.main import _map_extracted_trigger
+
+        raw = {
+            "name": "bps_loss_trigger",
+            "display_name": "BPS Loss Trigger",
+            "metric": "cumulative_loss_rate_pct",
+            "threshold": 150.0,
+            "threshold_unit": "bps",
+            "direction": "above",
+            "consequence": "switch to sequential",
+        }
+        td = _map_extracted_trigger(raw)
+        assert td.threshold == 1.5
+
+    def test_percent_unit_trigger_is_identity(self) -> None:
+        from loanwhiz.api.main import _map_extracted_trigger
+
+        raw = {
+            "name": "pct_loss_trigger",
+            "metric": "default_pct",
+            "threshold": 3.5,
+            "threshold_unit": "percentage",
+            "direction": "above",
+            "consequence": "switch to sequential",
+        }
+        td = _map_extracted_trigger(raw)
+        # Green Lion's path: percent-unit triggers are unchanged (identity), so
+        # /compliance output is preserved.
+        assert td.threshold == 3.5
+
+    def test_non_zero_eur_pdl_trigger_maps_to_none_threshold(self) -> None:
+        from loanwhiz.api.main import _map_extracted_trigger
+
+        # A seeded PDL trigger: non_zero direction + eur unit + 0.0 threshold.
+        raw = {
+            "name": "class_a_pdl_trigger",
+            "metric": "pdl_debit_balance",
+            "threshold": 0.0,
+            "threshold_unit": "eur",
+            "direction": "non_zero",
+            "consequence": "replenish PDL",
+        }
+        td = _map_extracted_trigger(raw)
+        # non_zero nulls the threshold (any positive fires); the eur unit on a
+        # None threshold is a no-op, not a raise.
+        assert td.threshold is None
+        assert td.direction == "above"
+
+    def test_eur_balance_trigger_threshold_preserved(self) -> None:
+        from loanwhiz.api.main import _map_extracted_trigger
+
+        # The seeded reserve-replenishment sentinel: eur unit, real numeric
+        # threshold, direction below — must survive the seam unchanged (no raise,
+        # no rescale), preserving the existing /compare evaluation.
+        raw = {
+            "name": "reserve_fund_replenishment_trigger",
+            "metric": "reserve_fund_balance",
+            "threshold": -1.0,
+            "threshold_unit": "eur",
+            "direction": "below",
+            "consequence": "replenish reserve",
+        }
+        td = _map_extracted_trigger(raw)
+        assert td.threshold == -1.0
+        assert td.direction == "below"

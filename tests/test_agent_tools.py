@@ -169,6 +169,23 @@ def test_aggregate_collections_writes_audit_entry(tmp_path, monkeypatch):
     assert _audit_entries_under(log_dir) == 1
 
 
+def test_check_covenants_writes_audit_entry(tmp_path, monkeypatch):
+    """check_covenants now routes its direct CovenantMonitor.execute() through
+    audit_result() — closing the #277 envelope gap so a covenant check reached
+    through the agent leaves a durable provenance record, like the REST path."""
+    log_dir = tmp_path / "audit"
+    monkeypatch.setattr("loanwhiz.agent.tools.AGENT_AUDIT_LOG_DIR", str(log_dir))
+
+    with ExitStack() as stack:
+        _patch_covenant_deps(stack, _covenant_result(_make_covenant_output()))
+        result = check_covenants.invoke({"deal_id": "green-lion-2026-1"})
+
+    # Tool output unchanged by the audit wiring.
+    assert result["confidence"] == 1.0
+    # Exactly one AuditLogEntry was persisted for the covenant call.
+    assert _audit_entries_under(log_dir) == 1
+
+
 # ---------------------------------------------------------------------------
 # run_waterfall
 # ---------------------------------------------------------------------------

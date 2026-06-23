@@ -70,6 +70,7 @@ from loanwhiz.primitives.covenant_monitor import (
     CovenantInput,
     CovenantMonitor,
     TriggerDefinition,
+    to_canonical_threshold,
 )
 from loanwhiz.domain.state import DealState as DomainDealState
 from loanwhiz.primitives.deal_state import DealState as PrimitivesDealState
@@ -614,8 +615,15 @@ def _map_extracted_trigger(raw: dict) -> TriggerDefinition:
       the convention ``covenant_monitor`` already uses (``threshold is None`` →
       any positive value triggers). ``"above"`` / ``"below"`` pass through.
     - ``threshold_unit`` has no slot on ``TriggerDefinition`` (the monitor
-      reasons numerically from metric + threshold + direction only); it is
-      intentionally not forwarded.
+      reasons numerically from metric + threshold + direction only), but it is
+      **not** silently dropped: the threshold is converted onto the monitor's
+      canonical percent scale via
+      :func:`~loanwhiz.primitives.covenant_monitor.to_canonical_threshold`
+      before the definition is built. This is the consumption-side half of the
+      C8 ``100x`` guard — a ``fraction`` / ``bps`` threshold is rescaled to
+      percent so it can't be misread against a percent-scaled ratio metric.
+      (``percent`` and ``eur`` thresholds, and ``non_zero`` / PDL triggers whose
+      threshold is ``None``, pass through unchanged.)
     - ``citation`` is a free-form dict in the extracted schema; rebuild a
       :class:`Citation`, falling back to the trigger's ``section_reference`` /
       ``display_name`` when individual keys are absent.
@@ -625,6 +633,13 @@ def _map_extracted_trigger(raw: dict) -> TriggerDefinition:
     if direction == "non_zero":
         direction = "above"
         threshold = None  # any positive (debit) balance fires the trigger
+
+    # Consumption-side unit guard: convert the extracted threshold onto the
+    # monitor's canonical percent scale (the C8 100x guard's monitor-side half).
+    # A None threshold (non_zero / PDL-style) passes straight through.
+    threshold = to_canonical_threshold(
+        threshold, raw.get("threshold_unit"), trigger_name=raw.get("name")
+    )
 
     citation_raw = raw.get("citation") or {}
     citation = Citation(
@@ -2727,6 +2742,216 @@ def deal_validation(deal_id: str) -> ValidationResponse:
 
 
 # --- end engine validation (#212) --------------------------------------------
+
+
+# ---------------------------------------------------------------------------
+# /deal/{deal_id}/report-gate — reconciliation-AS-GATE over HTTP (#272, epic #362)
+# ---------------------------------------------------------------------------
+# Wires the reconciliation-as-gate (``loanwhiz.primitives.reconciliation_gate``)
+# into the live report path. The gate is built + unit-tested (#272) but was never
+# reachable from the API; this is the seam that exposes it. It runs the full
+# extract → adapt → fold → reconcile → annotate → route flow over the deal's
+# report and surfaces the inversion of the review burden: every report field the
+# engine confirmed **to the cent** is auto-trusted (``reconciled=True``), and ONLY
+# the unreconciled + low-confidence fields are routed to human review.
+#
+# Offline + deterministic (like /validation): both inputs come from committed
+# fixtures — the ``ParsedReport`` is extracted from the deal's Notes & Cash ``.txt``
+# fixtures via the deterministic format registry (no network/LLM/PDF), and the
+# extracted ``DealModel`` is loaded from the deal's committed seed (the same source
+# ``/validation``'s offline proof reads, ``reconciler.load_green_lion_2024_1_model``)
+# — NOT the runtime ``_load_cached_deal_model`` cache, so the gate is reproducible
+# regardless of cache state. A deal absent from the gate registry degrades honestly
+# to HTTP 200 ``available=false`` with a note, never a 500. ``_REPORT_GATE_BUILDERS``
+# is patchable in tests, mirroring the other module-level seams (``_REPORT_LOADERS``
+# / ``_VALIDATION_BUILDERS``).
+
+
+def _build_green_lion_2024_1_parsed_report() -> "ParsedReport":  # noqa: F821
+    """Deterministically extract GL-2024-1's committed reports into one ``ParsedReport``.
+
+    Each committed Notes & Cash fixture is one quarterly period; the deterministic
+    extractor returns one period per call, so the three are spliced into one report
+    (oldest-first — the fold + reconciler read them positionally). No network, no
+    LLM: the deterministic format registry short-circuits the LLM path. Mirrors the
+    ``tests/test_reconciliation_gate.py::gl_parsed_report`` fixture so the live gate
+    folds identically to the offline proof.
+    """
+    # Deferred imports (mirrors the file's report_verifier / reconciler-fold
+    # discipline): keep the API module from pulling the extractor in at load.
+    from loanwhiz.primitives import reconciler as _reconciler
+    from loanwhiz.primitives.report_extractor import (
+        ParsedReport,
+        ParsedReportPeriod,
+        ReportExtractInput,
+        extract_report,
+    )
+
+    deal_name = "Green Lion 2024-1 B.V."
+    periods: list[ParsedReportPeriod] = []
+    for fixture, _label in _reconciler._GREEN_LION_2024_1_FIXTURES:
+        text = (_reconciler._FIXTURE_DIR / fixture).read_text(encoding="utf-8")
+        parsed = extract_report(
+            ReportExtractInput(deal_name=deal_name, text=text)
+        ).output
+        periods.extend(parsed.periods)
+    return ParsedReport(
+        deal_name=deal_name,
+        report_type="notes_and_cash",
+        periods=periods,
+        extraction_method="deterministic",
+    )
+
+
+def _load_green_lion_2024_1_gate_model() -> Any:
+    """Load GL-2024-1's committed extracted ``DealModel`` for the gate (offline).
+
+    Reads the committed seed directly via the reconciler's loader — the same source
+    ``/validation`` uses — so the gate's model resolution is independent of the
+    runtime ``_load_cached_deal_model`` cache (which tests may blank out). The model
+    is duck-typed by ``ReportAdapter.from_deal_model`` (only ``.waterfalls`` is read).
+    """
+    from loanwhiz.primitives.reconciler import load_green_lion_2024_1_model
+
+    return load_green_lion_2024_1_model()
+
+
+#: Per-deal OFFLINE reconciliation-as-gate builders, keyed by the canonical deal id
+#: used in the /deal/{deal_id}/... routes. Each entry pairs a ``ParsedReport``
+#: builder (typed, per-field provenance, extracted from committed fixtures —
+#: no network/LLM/PDF) with the deal's extracted ``DealModel`` loader (committed
+#: seed). A deal absent from this map cannot run the gate offline →
+#: ``available=false``. Patchable in tests.
+_REPORT_GATE_BUILDERS: dict[
+    str, tuple[Callable[[], "ParsedReport"], Callable[[], Any]]  # noqa: F821
+] = {
+    "green-lion-2024-1": (
+        _build_green_lion_2024_1_parsed_report,
+        _load_green_lion_2024_1_gate_model,
+    ),
+}
+
+_REPORT_GATE_UNAVAILABLE_NOTE = (
+    "No reconciliation-as-gate available for this deal. The gate requires a "
+    "committed extracted model and an offline-parseable Notes & Cash report "
+    "fixture, which this deal does not yet have. See Green Lion 2024-1 for the "
+    "headline gate."
+)
+
+
+class ReportGateReviewItem(BaseModel):
+    """One report field routed to human review (mirrors ``reconciliation_gate.ReviewItem``).
+
+    Surfaced only for fields the engine could NOT confirm AND whose extraction
+    confidence is below the threshold — the residue a human must still check after
+    the engine auto-trusted everything it reconciled to the cent.
+    """
+
+    field_path: str
+    confidence: float
+    reason: str
+
+
+class ReportGateResponse(BaseModel):
+    """Response body for ``GET /deal/{deal_id}/report-gate``.
+
+    The reconciliation-as-gate outcome (#272): the engine recomputed the deal's
+    published distributions and confirmed them to the cent, auto-trusting every
+    field it reconciled and routing ONLY the unreconciled + low-confidence fields
+    to human review.
+
+    ``available`` is ``false`` for a registered deal with no offline gate inputs
+    (committed report fixture + extracted model) — the UI then renders an honest
+    "no gate available" state instead of an error. When ``true``,
+    ``reconciled_field_count`` is how many report
+    fields the engine confirmed to the cent, ``reconciliation_passed`` whether the
+    whole reconciliation tied out, and ``review_items`` the residual fields a human
+    must still check (auto-trusted reconciled fields never appear here).
+    """
+
+    deal_id: str
+    deal_name: str
+    available: bool
+    note: str | None = None
+
+    reconciliation_passed: bool = False
+    periods_checked: int = 0
+    reconciled_field_count: int = 0
+    confidence_threshold: float = 0.0
+    review_item_count: int = 0
+    review_items: list[ReportGateReviewItem] = Field(default_factory=list)
+    summary: str | None = None
+
+
+@app.get("/deal/{deal_id}/report-gate", response_model=ReportGateResponse)
+def deal_report_gate(
+    deal_id: str, confidence_threshold: float = 0.7
+) -> ReportGateResponse:
+    """Run the reconciliation-as-gate over a deal's report (#272).
+
+    Extracts the deal's Notes & Cash report into a typed, provenanced
+    ``ParsedReport`` (offline + deterministic — committed fixtures, no network/LLM),
+    folds it through the shared ``run_period`` engine, reconciles the engine-computed
+    Priority of Payments against the deal's published figures **to the cent**, then
+    marks every confirmed field ``reconciled=True`` and routes ONLY the
+    unreconciled + low-confidence fields to human review. This inverts the review
+    burden: instead of a human checking everything the extractor produced, they
+    check only the handful the engine could not confirm.
+
+    The optional ``confidence_threshold`` query (default ``0.7``) is the extraction-
+    confidence floor below which an *unreconciled* field is routed to a human;
+    reconciled fields are auto-trusted regardless of confidence.
+
+    A registered deal with no offline gate inputs (committed report fixture +
+    extracted model — i.e. absent from ``_REPORT_GATE_BUILDERS``) returns HTTP 200
+    ``available=false`` with an honest note (like ``/validation``); an unknown deal
+    id 404s.
+    """
+    # Deferred import: keep the API module from pulling the gate (and its extractor
+    # chain) in at load — mirrors the gate module's own deferred-import discipline.
+    from loanwhiz.primitives.reconciliation_gate import reconcile_as_gate
+
+    deal = _require_deal(deal_id)
+    builders = _REPORT_GATE_BUILDERS.get(deal_id)
+    if builders is None:
+        # No offline gate inputs (report fixture + committed model) for this deal —
+        # it cannot run the gate in the request path. Degrade honestly, not a 500.
+        return ReportGateResponse(
+            deal_id=deal_id,
+            deal_name=deal["deal_name"],
+            available=False,
+            note=_REPORT_GATE_UNAVAILABLE_NOTE,
+        )
+
+    report_builder, model_loader = builders
+    parsed_report = report_builder()
+    model = model_loader()
+    result = reconcile_as_gate(
+        parsed_report, model, confidence_threshold=confidence_threshold
+    )
+    recon = result.reconciliation
+    return ReportGateResponse(
+        deal_id=deal_id,
+        deal_name=parsed_report.deal_name,
+        available=True,
+        reconciliation_passed=recon.passed,
+        periods_checked=recon.periods_checked,
+        reconciled_field_count=result.reconciled_field_count,
+        confidence_threshold=confidence_threshold,
+        review_item_count=len(result.review_items),
+        review_items=[
+            ReportGateReviewItem(**item.model_dump()) for item in result.review_items
+        ],
+        summary=(
+            f"{result.reconciled_field_count} field(s) auto-trusted "
+            f"(reconciled to the cent across {recon.periods_checked} period(s)); "
+            f"{len(result.review_items)} field(s) routed to human review "
+            f"(unreconciled and below confidence {confidence_threshold:.2f})."
+        ),
+    )
+
+
+# --- end reconciliation-as-gate (#272) ---------------------------------------
 
 
 def _wal_months_for_tranche(series: DealStateSeries, balance_attr: str) -> float:
