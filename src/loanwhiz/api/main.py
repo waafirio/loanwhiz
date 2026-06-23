@@ -618,10 +618,9 @@ def _map_extracted_trigger(raw: dict) -> TriggerDefinition:
       :func:`~loanwhiz.primitives.covenant_monitor.to_canonical_threshold`
       before the definition is built. This is the consumption-side half of the
       C8 ``100x`` guard — a ``fraction`` / ``bps`` threshold is rescaled to
-      percent so it can't be misread against a percent-scaled ratio metric, and
-      a stray ``eur`` unit on a real numeric threshold raises rather than
-      coercing. (``non_zero`` / EUR-balance triggers carry ``threshold=None``,
-      which the converter passes through unchanged.)
+      percent so it can't be misread against a percent-scaled ratio metric.
+      (``percent`` and ``eur`` thresholds, and ``non_zero`` / PDL triggers whose
+      threshold is ``None``, pass through unchanged.)
     - ``citation`` is a free-form dict in the extracted schema; rebuild a
       :class:`Citation`, falling back to the trigger's ``section_reference`` /
       ``display_name`` when individual keys are absent.

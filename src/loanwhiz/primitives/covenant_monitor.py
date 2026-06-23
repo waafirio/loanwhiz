@@ -148,10 +148,12 @@ def _canonical_metric(metric: str) -> str:
 # percent-scaled metric, the latent 100x / 10000x misread.
 #
 # ``to_canonical_threshold`` converts a ``(threshold, threshold_unit)`` pair onto
-# the monitor's percent canonical, asserting (rather than silently coercing) a
-# unit that cannot be compared against a ratio metric. It is the single place the
-# unit contract is enforced on the consumption side — call it at the mapping
-# seam, don't re-implement the factors elsewhere.
+# the monitor's percent canonical, rescaling the ratio units (``fraction`` /
+# ``bps``) so they can't be misread 100x against a percent-scaled metric. The
+# ``eur`` unit is an absolute balance, not a ratio, so it passes through
+# unchanged (the monitor compares it directly against absolute balance metrics).
+# It is the single place the unit contract is enforced on the consumption side —
+# call it at the mapping seam, don't re-implement the factors elsewhere.
 
 # Canonical evaluation scale for the monitor's ratio metrics. Exposed as a
 # module constant so callers/tests can reference the contract by name.
@@ -170,8 +172,9 @@ def to_canonical_threshold(
     above). This is the consumption-side half of the C8 ``100x`` guard: the
     extraction side locks ``threshold_unit`` to ``percent | fraction | bps | eur``
     once, and this function applies that unit before the threshold ever reaches
-    the numeric evaluation core — so a unit mistake fails loudly here rather than
-    silently misreading by 100x downstream.
+    the numeric evaluation core — so a ratio expressed as a ``fraction`` or
+    ``bps`` is rescaled to percent here rather than silently misreading by 100x
+    downstream.
 
     Conversions (after aliasing the raw unit via
     :func:`~loanwhiz.extraction.taxonomy.normalize_threshold_unit`, so
