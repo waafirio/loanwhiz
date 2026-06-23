@@ -32,14 +32,19 @@ it builds one canonical ``PeriodInputs`` with ``source="tape"`` carrying:
   pool analytics, with ESMA RTS Annex 2 RREL field codes anchored in each
   field's :class:`~loanwhiz.domain.provenance.FieldProvenance` citation.
 
-``RiskSignals`` fields are **balances**, not percentages
---------------------------------------------------------
-The tape normaliser publishes arrears / default as *percentages of loan count*;
-:class:`RiskSignals` fields (``arrears_90d`` / ``arrears_180d`` / ``default_pct``
-notwithstanding its name) are pool *balances* (and ``wa_ltv`` a ratio). The
-adapter converts each percentage to a balance via ``pool_balance × pct / 100``;
-``wa_ltv`` passes through (already a balance-weighted average); ``pool_balance``
-is the tape's ``pool_balance_eur``.
+Honouring each ``RiskSignals`` field's documented contract
+----------------------------------------------------------
+The canonical :class:`RiskSignals` fields are **not** all the same unit, and the
+adapter honours each one's documented meaning rather than dumping percentages in:
+
+- ``arrears_90d`` / ``arrears_180d`` — pool **balances** ("Balance >=N days in
+  arrears"); the normaliser publishes them as percentages of loan count, so the
+  adapter converts via ``pool_balance × pct / 100``.
+- ``default_pct`` — the defaulted **fraction of the pool** (per its name and
+  docstring, "Defaulted balance as a fraction of the pool"): the normaliser's
+  ``default_pct`` percentage carried through as a 0–1 fraction (``pct / 100``).
+- ``wa_ltv`` — the balance-weighted LTV ratio, passed through unchanged.
+- ``pool_balance`` — the tape's ``pool_balance_eur`` balance.
 
 ``arrears_90d`` derivation (honest, conservative)
 -------------------------------------------------
@@ -115,13 +120,15 @@ class TapeAdapter:
 
         - ``pool_balance`` ← ``tape.pool_balance_eur`` (RREL18);
         - ``wa_ltv`` ← ``tape.pool_stats["wtd_ltv"]`` (RREL40), 0.0 when absent;
-        - ``default_pct`` ← balance of defaulted loans = ``pool_balance ×
-          arrears_breakdown["default_pct"] / 100`` (RREL66);
+        - ``default_pct`` ← defaulted **fraction** of the pool =
+          ``arrears_breakdown["default_pct"] / 100`` (RREL66) — a 0–1 fraction,
+          per the field's documented "fraction of the pool" contract;
         - ``arrears_180d`` ← balance ≥180 days in arrears = ``pool_balance ×
           arrears_breakdown["arrears_180d_plus_pct"] / 100`` (RREL64);
         - ``arrears_90d`` ← balance **≥90 days** in arrears. The normaliser has
-          no distinct ≥90d bucket, so this is the conservative ≥180d ∪ defaulted
-          balance (≥90d ⊇ ≥180d ⊇ default) — documented, never fabricated.
+          no distinct ≥90d bucket, so this is the conservative ≥180d-arrears ∪
+          defaulted *balance* (≥90d ⊇ ≥180d ⊇ default) — documented, never
+          fabricated.
 
         Returns ``(RiskSignals, ProvenanceMap)`` where the provenance map keys
         each ``risk_signals.<field>`` to a deterministic, fully-confident,
@@ -137,17 +144,20 @@ class TapeAdapter:
 
         default_balance = _pct_to_balance(pool_balance, default_pct)
         arrears_180d_balance = _pct_to_balance(pool_balance, arrears_180d_pct)
-        # ≥90d in arrears ⊇ ≥180d in arrears ∪ defaulted (no finer bucket on the
-        # tape). The two buckets are mutually exclusive in the normaliser's
+        # ≥90d-arrears *balance* ⊇ ≥180d-arrears ∪ defaulted (no finer bucket on
+        # the tape). The two buckets are mutually exclusive in the normaliser's
         # priority scheme (a defaulted loan is not also counted as 180+d), so the
         # union is their sum.
         arrears_90d_balance = arrears_180d_balance + default_balance
+        # ``default_pct`` is the defaulted *fraction* of the pool (0–1), per the
+        # field's documented contract — NOT a balance like the arrears fields.
+        default_fraction = max(0.0, default_pct) / 100.0
 
         signals = RiskSignals(
             arrears_90d=arrears_90d_balance,
             arrears_180d=arrears_180d_balance,
             wa_ltv=wa_ltv,
-            default_pct=default_balance,
+            default_pct=default_fraction,
             pool_balance=pool_balance,
         )
 

@@ -104,16 +104,18 @@ class TestRiskSignals:
         assert signals.pool_balance == 2_000_000.0
         assert signals.wa_ltv == 68.0
 
-    def test_default_and_arrears_percent_to_balance(self) -> None:
-        # default 2% of €1,000,000 = €20,000; 180d+ 4% = €40,000.
+    def test_arrears_percent_to_balance_and_default_to_fraction(self) -> None:
+        # 180d+ 4% of €1,000,000 = €40,000 (balance); default 2% → 0.02 fraction.
         signals, _ = TapeAdapter.risk_signals_from_tape(
             _tape(pool_balance_eur=1_000_000.0, arrears_180d_plus_pct=4.0, default_pct=2.0)
         )
-        assert signals.default_pct == pytest.approx(20_000.0)
         assert signals.arrears_180d == pytest.approx(40_000.0)
+        # default_pct is the defaulted FRACTION of the pool (0–1), per the
+        # canonical RiskSignals contract — not a balance.
+        assert signals.default_pct == pytest.approx(0.02)
 
-    def test_arrears_90d_is_180d_union_default(self) -> None:
-        # arrears_90d ⊇ 180d ∪ default = 40,000 + 20,000 = 60,000.
+    def test_arrears_90d_is_180d_union_default_balance(self) -> None:
+        # arrears_90d is a *balance*: ≥180d ∪ defaulted = €40,000 + €20,000.
         signals, _ = TapeAdapter.risk_signals_from_tape(
             _tape(pool_balance_eur=1_000_000.0, arrears_180d_plus_pct=4.0, default_pct=2.0)
         )
@@ -121,19 +123,25 @@ class TestRiskSignals:
         assert signals.arrears_90d >= signals.arrears_180d
 
     def test_zero_pool_yields_zero_balances_not_fabricated(self) -> None:
+        # Zero pool → zero arrears *balances* (nothing to apportion). The default
+        # *fraction* is independent of pool size, but the percentages here are
+        # also nonzero; the balances are what must collapse to 0.
         signals, _ = TapeAdapter.risk_signals_from_tape(
             _tape(pool_balance_eur=0.0, arrears_180d_plus_pct=4.0, default_pct=2.0)
         )
         assert signals.pool_balance == 0.0
-        assert signals.default_pct == 0.0
         assert signals.arrears_180d == 0.0
         assert signals.arrears_90d == 0.0
+        # The defaulted fraction is still the reported 2% (a fraction, not a
+        # balance) — it does not depend on the pool balance.
+        assert signals.default_pct == pytest.approx(0.02)
 
-    def test_zero_pct_yields_zero_balance(self) -> None:
+    def test_zero_pct_yields_zero(self) -> None:
         signals, _ = TapeAdapter.risk_signals_from_tape(
             _tape(arrears_180d_plus_pct=0.0, default_pct=0.0)
         )
         assert signals.arrears_90d == 0.0
+        assert signals.arrears_180d == 0.0
         assert signals.default_pct == 0.0
 
     def test_missing_wtd_ltv_defaults_to_zero(self) -> None:

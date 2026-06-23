@@ -2847,8 +2847,9 @@ def test_tape_path_folds_canonical_period_inputs_with_risk_signals(tmp_path):
     assert pi.risk_signals is not None
     assert pi.risk_signals.pool_balance == 1_000_000_000.0
     assert pi.risk_signals.wa_ltv == 71.0
-    # 1% default of €1bn = €10m; 2% 180d+ = €20m; arrears_90d = their union.
-    assert pi.risk_signals.default_pct == pytest.approx(10_000_000.0)
+    # default_pct is the defaulted fraction (1% → 0.01); arrears are balances:
+    # 2% 180d+ of €1bn = €20m; arrears_90d = ≥180d ∪ defaulted balance = €30m.
+    assert pi.risk_signals.default_pct == pytest.approx(0.01)
     assert pi.risk_signals.arrears_180d == pytest.approx(20_000_000.0)
     assert pi.risk_signals.arrears_90d == pytest.approx(30_000_000.0)
 
