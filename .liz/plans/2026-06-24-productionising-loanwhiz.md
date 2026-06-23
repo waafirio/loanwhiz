@@ -1,10 +1,10 @@
 ---
 id: 2026-06-24-productionising-loanwhiz
 title: Productionising LoanWhiz — extraction generality, self-service ingestion, analytical depth, governed seams
-status: decomposed
+status: filed
 created: 2026-06-24
 updated: 2026-06-24
-epics: []
+epics: [390, 391, 392, 393]
 ---
 
 # Productionising LoanWhiz — extraction generality, self-service ingestion, analytical depth, governed seams
@@ -101,7 +101,7 @@ Four epics, 13 children. Epics A, B, C, D all file in parallel; cross-epic
 dependencies are narrative (C's data quality benefits from A/B; none are hard
 blockers). Within Epic B the two children are sequential.
 
-### Epic A: Extraction generality   (umbrella #<N>)
+### Epic A: Extraction generality   (umbrella #390)
 
 Raise the realistic extraction success rate for an arbitrary EDW prospectus
 (unseen issuer/language/layout) from ~40–50% toward broad coverage, on the
@@ -124,7 +124,7 @@ existing sound, honestly-degrading base. All children are independent.
   multi-series, single-class, non-A/B/C naming) that currently mis-parse
   (Sol-Lion Class O = 42 EUR artifact). Sequencing: parallel. Paths: `src/loanwhiz/extraction/waterfall_extractor.py`, `src/loanwhiz/extraction/**`.
 
-### Epic B: Self-service ingestion   (umbrella #<N>)
+### Epic B: Self-service ingestion   (umbrella #391)
 
 Make onboarding a deal's full data set a product action, not per-deal dev work.
 
@@ -139,7 +139,7 @@ Make onboarding a deal's full data set a product action, not per-deal dev work.
   registry/cache the cold-start reads. Sequencing: sequential. After the
   general report ingestion child. Paths: `src/loanwhiz/api/main.py`, `src/loanwhiz/api/extraction_jobs.py`, `src/loanwhiz/config.py`.
 
-### Epic C: Analytical depth — comparison + chat   (umbrella #<N>)
+### Epic C: Analytical depth — comparison + chat   (umbrella #392)
 
 Turn comparison from display into analysis, and give chat real cross-source /
 cross-deal reach. All children are independent.
@@ -162,7 +162,7 @@ cross-deal reach. All children are independent.
   in one grounded answer instead of single-tool routing (which risks
   hallucinated synthesis). Sequencing: parallel. Paths: `src/loanwhiz/agent/planner.py`, `src/loanwhiz/agent/tools.py`.
 
-### Epic D: Governance at the seams   (umbrella #<N>)
+### Epic D: Governance at the seams   (umbrella #393)
 
 Close governance exactly where it is thinnest — the extraction pipeline, the
 newest `/extract` endpoint, and review enforcement. All children independent.
@@ -183,4 +183,20 @@ newest `/extract` endpoint, and review enforcement. All children independent.
 
 ## Filed issues
 
-<filled in Phase 4>
+- Epic "Extraction generality" → umbrella #390
+  - #394 Broaden the canonical recipient/metric taxonomy
+  - #395 Fix and link the definitions graph
+  - #396 Harden non-standard waterfall section routing
+  - #397 Structure-agnostic tranche parsing
+- Epic "Self-service ingestion" → umbrella #391
+  - #398 General report ingestion (kill per-deal _REPORT_LOADERS)
+  - #399 Tape & report ingest API  [After #398]
+- Epic "Analytical depth — comparison + chat" → umbrella #392
+  - #400 Wire scoring + reasoning into /compare
+  - #401 Expose deal comparison to chat
+  - #402 General investor-report reader tool for chat
+  - #403 Cross-source synthesis in chat
+- Epic "Governance at the seams" → umbrella #393
+  - #404 Govern the on-demand /extract endpoint
+  - #405 Surface per-field extraction confidence
+  - #406 Enforce human-review-required
