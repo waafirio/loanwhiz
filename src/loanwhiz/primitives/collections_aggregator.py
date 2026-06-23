@@ -43,8 +43,10 @@ Confidence
 - **0.9** — ``prev_tape_file_url`` supplied; the legs are derived per-loan.
 - **0.8** — only the scalar ``prev_pool_balance`` is supplied; principal is the
   pool balance delta (reliable total, but not separated).
-- **0.6** — neither supplied; principal is estimated from the tape's
-  ``scheduled_monthly_payment`` column (least certain).
+- **0.6** — neither supplied; principal is estimated by amortising the current
+  tape's performing loans one period via loan-level amortisation (#365 — the
+  same per-loan engine the projector uses; least certain because no prior-period
+  movement is observed to reconcile against).
 
 Green Lion 2026-1 field mapping
 --------------------------------
@@ -282,30 +284,37 @@ def _load_tape(file_url: str) -> pd.DataFrame:
     return df
 
 
-def _scheduled_principal_portion(
-    payment: pd.Series, balance: pd.Series, rate_pct: pd.Series, days: int
-) -> pd.Series:
-    """Per-loan scheduled *principal* portion of the contractual instalment.
+def _loan_level_scheduled_principal(df: pd.DataFrame, days: int) -> float:
+    """Pool scheduled principal for one period via loan-level amortisation (#365).
 
-    The scheduled instalment (``scheduled_monthly_payment``) covers both
-    interest and principal. The principal portion is the instalment minus the
-    period's interest accrual on the loan balance:
+    Amortises the loans in ``df`` one period forward with
+    :func:`loanwhiz.primitives.loan_level_amortisation.pool_scheduled_principal_schedule`
+    — the **same** per-loan engine the forward projector
+    (:class:`~loanwhiz.primitives.scenario_generator.ScenarioGenerator`) uses —
+    and scales the resulting monthly figure to the actual period length by
+    ``days / 30`` (the schedule assumes a 30-day month; mirrors the day-count
+    scaling the old ``scheduled_monthly_payment``-based proxy applied). This is
+    the historical-reconstruction counterpart of the projection wiring: per-loan
+    annuity (or the tape's stated instalment when present) instead of a flat
+    pool/cohort proxy.
 
-        principal_portion = scheduled_payment_for_period − interest_accrual
-
-    where ``scheduled_payment_for_period = monthly_payment × days / 30`` and
-    ``interest_accrual = balance × rate/100 × days / 360``. Floored at 0 (an
-    instalment smaller than its interest — e.g. interest-only — contributes no
-    scheduled principal). NaNs are treated as 0.
+    Non-performing loans are excluded by ``pool_scheduled_principal_schedule``
+    itself (they don't make scheduled payments), so the caller does not need to
+    pre-filter on the performing mask — though restricting ``df`` to the
+    performing-survivor cohort is harmless and keeps the figure aligned with the
+    cohort the result is reconciled against.
     """
-    payment = pd.to_numeric(payment, errors="coerce").fillna(0.0)
-    balance = pd.to_numeric(balance, errors="coerce").fillna(0.0)
-    rate_pct = pd.to_numeric(rate_pct, errors="coerce").fillna(0.0)
+    # Lazy import: the loan-level module imports the tape normaliser, and the
+    # primitives package has an import-cycle sensitivity at module load time
+    # (mirrors loan_level_amortisation's own lazy import of performing_mask).
+    from loanwhiz.primitives.loan_level_amortisation import (
+        pool_scheduled_principal_schedule,
+    )
 
-    payment_for_period = payment * (days / 30.0)
-    interest_accrual = balance * rate_pct / 100.0 * days / _DAY_COUNT_BASIS
-    principal_portion = payment_for_period - interest_accrual
-    return principal_portion.clip(lower=0.0)
+    if df is None or len(df) == 0:
+        return 0.0
+    monthly = pool_scheduled_principal_schedule(df, 1)[0]
+    return _clamp_non_negative(monthly * (days / 30.0))
 
 
 def _derive_legs_per_loan(
@@ -332,9 +341,15 @@ def _derive_legs_per_loan(
       **recovery** (cash collected on a distressed loan).
     - **Survived, was performing:** the cohort's **net** balance reduction
       (Σ prior − Σ current over this cohort, floored at 0) is split into
-      scheduled amortisation (the cohort's contractual principal portion, capped
-      at the net reduction) and prepayment (the residual). Using the cohort net
-      rather than per-loan gross is what makes the legs reconcile to the pool.
+      scheduled amortisation and prepayment (the residual). Scheduled
+      amortisation is the cohort's **loan-level** contractual principal — each
+      loan amortised one period forward by
+      :func:`loanwhiz.primitives.loan_level_amortisation.pool_scheduled_principal_schedule`
+      (#365), the same per-loan annuity engine the forward projector uses —
+      capped at the cohort net reduction. Using the cohort net rather than
+      per-loan gross is what makes the legs reconcile to the pool; the cap is
+      what keeps the *total* principal (scheduled + prepay) equal to the actual
+      pool movement even as the loan-level method refines the split.
 
     Returns a dict with ``scheduled_principal``, ``unscheduled_principal``,
     ``recoveries`` and ``realized_losses`` (all EUR, non-negative).
@@ -348,11 +363,6 @@ def _derive_legs_per_loan(
     ).fillna(0.0)
 
     prev_cols = ["loan_id", "current_balance", "_prev_non_performing"]
-    has_payment = "scheduled_monthly_payment" in prev.columns
-    if has_payment:
-        prev_cols.append("scheduled_monthly_payment")
-    if "current_interest_rate_pct" in prev.columns:
-        prev_cols.append("current_interest_rate_pct")
     prev_small = prev[prev_cols].copy()
     prev_small["current_balance"] = pd.to_numeric(
         prev_small["current_balance"], errors="coerce"
@@ -388,20 +398,18 @@ def _derive_legs_per_loan(
         float(prev_bal[perf_surv].sum() - cur_bal[perf_surv].sum())
     )
 
-    if has_payment and net_reduction > 0.0:
-        sched_portion = _scheduled_principal_portion(
-            merged["scheduled_monthly_payment"],
-            prev_bal,
-            merged["current_interest_rate_pct"]
-            if "current_interest_rate_pct" in merged.columns
-            else pd.Series(0.0, index=merged.index),
-            days_in_period,
-        )
-        cohort_scheduled = float(sched_portion[perf_surv].sum())
+    if net_reduction > 0.0:
+        # Loan-level amortisation over the performing-survivor cohort's PRIOR
+        # tape rows (#365): each loan amortised one period forward by the same
+        # per-loan annuity engine the projector uses. We feed the prior rows of
+        # exactly the performing survivors (the merge dropped no prev rows, so a
+        # loan_id membership filter recovers their full-column prior rows, incl.
+        # remaining_term_months which the annuity needs).
+        perf_surv_ids = set(merged.loc[perf_surv, "loan_id"])
+        cohort_prev = prev[prev["loan_id"].isin(perf_surv_ids)]
+        cohort_scheduled = _loan_level_scheduled_principal(cohort_prev, days_in_period)
     else:
-        # No payment column → can't separate; treat the whole net reduction as
-        # scheduled (the conservative classification — no spurious prepayment).
-        cohort_scheduled = net_reduction
+        cohort_scheduled = 0.0
 
     # Scheduled is capped at the cohort's net reduction; prepayment is the rest.
     scheduled_principal = min(cohort_scheduled, net_reduction)
@@ -519,7 +527,8 @@ class CollectionsAggregator(Primitive[CollectionsInput, CollectionsOutput]):
             derivation = "pool-delta"
             confidence = _CONFIDENCE_WITH_PREV
         else:
-            # Regime 3: estimate from the scheduled-payment column.
+            # Regime 3: estimate via loan-level amortisation of the current tape
+            # (#365 — same per-loan engine as projection; no prior movement).
             scheduled_principal, derivation, confidence = self._estimate_principal(
                 df, input
             )
@@ -661,17 +670,16 @@ class CollectionsAggregator(Primitive[CollectionsInput, CollectionsOutput]):
     def _estimate_principal(
         df: pd.DataFrame, input: CollectionsInput
     ) -> tuple[float, str, float]:
-        """Estimate scheduled principal from the scheduled-payment column.
+        """Estimate scheduled principal via loan-level amortisation (#365).
 
-        The weakest regime: ``scheduled_monthly_payment`` summed and scaled to
-        the period length. Returns ``(scheduled_principal, "estimate", conf)``.
+        The weakest regime — no prior tape and no prior pool balance, so no
+        observed movement to reconcile against. It amortises the current tape's
+        performing loans one period forward with the same per-loan engine the
+        projector uses (:func:`_loan_level_scheduled_principal`) instead of the
+        old flat ``scheduled_monthly_payment`` sum, so cold-start (no-prior-tape)
+        history shares projection's loan-level method. Returns
+        ``(scheduled_principal, "estimate", conf)``; confidence stays 0.6 — still
+        single-tape with no movement observed, so the level is unchanged.
         """
-        if "scheduled_monthly_payment" in df.columns:
-            payment_series = pd.to_numeric(
-                df["scheduled_monthly_payment"], errors="coerce"
-            )
-            monthly_total = float(payment_series.sum(skipna=True))
-            scheduled = monthly_total * (input.days_in_period / 30.0)
-        else:
-            scheduled = 0.0
+        scheduled = _loan_level_scheduled_principal(df, input.days_in_period)
         return scheduled, "estimate", _CONFIDENCE_WITHOUT_PREV

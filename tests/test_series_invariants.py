@@ -197,11 +197,21 @@ def test_non_negative_fires_on_a_negative_balance():
 def test_chaining_fires_when_closing_does_not_equal_next_opening():
     series = _healthy_series(2)
     # Tamper the carried-forward opening of period 2 so it no longer equals the
-    # closing the period-1 transition produced.
+    # closing the period-1 transition produced. The Class A balance now lives in
+    # the canonical ``tranches`` list (``class_a_balance`` is a read accessor over
+    # it), so the tamper edits the matching tranche entry.
     next_state = series.states[1]
     tampered = next_state.model_copy(
-        update={"class_a_balance": next_state.class_a_balance + 12_345.0}
+        update={
+            "tranches": [
+                t.model_copy(update={"balance": t.balance + 12_345.0})
+                if t.name == "class_a"
+                else t
+                for t in next_state.tranches
+            ]
+        }
     )
+    assert tampered.class_a_balance == next_state.class_a_balance + 12_345.0
     broken = series.model_copy(
         update={"states": [series.states[0], tampered, series.states[2]]}
     )

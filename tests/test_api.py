@@ -794,6 +794,51 @@ def test_deal_compliance_uses_extracted_triggers(tmp_path):
     assert pdl.citation.excerpt == "Custom PDL Trigger"
 
 
+def test_deal_compliance_converts_fraction_unit_threshold_to_percent(tmp_path):
+    """A fraction-unit extracted threshold reaches the monitor on the percent
+    scale — the consumption-side C8 100x guard, exercised end-to-end through the
+    /compliance route."""
+    extracted = [
+        {
+            "name": "frac_loss_trigger",
+            "display_name": "Fractional Loss Trigger",
+            "description": "Fires above a 1.5% loss rate, expressed as a fraction.",
+            "metric": "default_pct",
+            "threshold": 0.015,
+            "threshold_unit": "fraction",
+            "direction": "above",
+            "consequence": "Principal switches to sequential.",
+            "section_reference": "Section 6.1",
+            "citation": {},
+        },
+    ]
+    _seed_cached_deal_model_with_triggers(str(tmp_path), extracted)
+
+    captured: dict = {}
+
+    class _SpyMonitor:
+        DEFAULT_TRIGGERS = CovenantMonitor.DEFAULT_TRIGGERS
+
+        def execute(self, input):  # noqa: A002
+            captured["triggers"] = input.triggers
+            return _FakeResult({"summary": "ok"})
+
+    series = _small_reconstructed_series()
+    with patch("loanwhiz.api.main.DEAL_MODEL_CACHE_DIR", str(tmp_path)), patch(
+        "loanwhiz.api.main.EsmaTapeNormaliser"
+    ) as MockNorm, patch(
+        "loanwhiz.api.main._reconstruct_series", return_value=series
+    ), patch("loanwhiz.api.main.CovenantMonitor", _SpyMonitor):
+        MockNorm.return_value.execute.return_value = _FakeResult({"row_count": 1})
+        resp = client.get("/deal/green-lion-2026-1/compliance")
+
+    assert resp.status_code == 200
+    (fed,) = captured["triggers"]
+    # 0.015 fraction → 1.5 percent; without the guard it would reach the
+    # percent-scaled metric 100x low and never fire.
+    assert fed.threshold == 1.5
+
+
 def test_deal_compliance_falls_back_when_no_extracted_triggers(tmp_path):
     """Empty covenants.triggers (and cache miss) → fall back to DEFAULT_TRIGGERS."""
     # Seeded model exists but carries an empty triggers list.
@@ -2351,6 +2396,163 @@ def test_validation_unknown_deal_returns_404():
 
 
 # ---------------------------------------------------------------------------
+# Reconciliation-as-gate  —  GET /deal/{deal_id}/report-gate  (#272, epic #362)
+# ---------------------------------------------------------------------------
+# Offline + deterministic: extracts the deal's committed Notes & Cash fixtures
+# into a typed ParsedReport (no network/LLM), folds + reconciles to the cent, then
+# auto-trusts every reconciled field and routes ONLY the unreconciled +
+# low-confidence ones to human review. NOT integration-marked — must run in the
+# fast suite, mirroring the /validation tests. These are the seam that proves the
+# gate (#272) is actually reachable from the live API (it was dead code before).
+
+
+def test_report_gate_green_lion_2024_1_runs_and_auto_trusts_reconciled():
+    """The gate, over HTTP: the engine reconciles GL-2024-1 to the cent across all
+    3 quarterly periods, auto-trusting the confirmed fields — computed offline."""
+    resp = client.get("/deal/green-lion-2024-1/report-gate")
+    assert resp.status_code == 200
+    body = resp.json()
+
+    assert body["available"] is True
+    assert body["deal_id"] == "green-lion-2024-1"
+    assert body["deal_name"] == "Green Lion 2024-1 B.V."
+    assert body["reconciliation_passed"] is True
+    assert body["periods_checked"] == 3
+    # The gate confirmed real PoP-step fields to the cent (auto-trusted).
+    assert body["reconciled_field_count"] > 0
+    assert body["confidence_threshold"] == pytest.approx(0.7)
+    assert body["summary"]
+
+
+def test_report_gate_no_low_confidence_residue_for_clean_deal():
+    """GL-2024-1's deterministic extract reconciles cleanly: nothing is left for a
+    human (no unreconciled + low-confidence residue)."""
+    body = client.get("/deal/green-lion-2024-1/report-gate").json()
+    assert body["review_item_count"] == 0
+    assert body["review_items"] == []
+
+
+def test_report_gate_inversion_reconciled_overrides_low_confidence():
+    """End-to-end over the real gate: a field the engine reconciles is auto-trusted
+    even at low confidence, while an unreconciled low-confidence field IS routed —
+    the review-burden inversion (#272), observable through the HTTP surface.
+
+    Patches the offline ParsedReport builder so the report carries two pre-seeded
+    LOW-confidence provenance entries: one on a revenue PoP step the engine WILL
+    reconcile (Class A interest "(d)"), one on a field the engine never proves
+    (reserve_balance). Only the latter must surface in review_items.
+    """
+    from loanwhiz.api import main as api_main
+    from loanwhiz.domain.provenance import FieldProvenance
+    from loanwhiz.primitives.report_extractor import ParsedReport
+
+    base = api_main._build_green_lion_2024_1_parsed_report()
+    # Index of the "(d)" Class A interest step in period 0's revenue PoP.
+    labels = [s.priority_label for s in base.periods[0].revenue_pop]
+    d_idx = labels.index("(d)")
+    reconciled_path = f"periods.0.revenue_pop.{d_idx}.amount"
+    unreconciled_path = "periods.0.reserve_balance"
+
+    seeded = base.model_copy(
+        update={
+            "provenance": {
+                reconciled_path: FieldProvenance(
+                    source="report", method="ocr+llm", confidence=0.2, reconciled=False
+                ),
+                unreconciled_path: FieldProvenance(
+                    source="report", method="ocr+llm", confidence=0.2, reconciled=False
+                ),
+            }
+        }
+    )
+
+    def _seeded_builder() -> ParsedReport:
+        return seeded.model_copy(deep=True)
+
+    _, model_loader = api_main._REPORT_GATE_BUILDERS["green-lion-2024-1"]
+    with patch.dict(
+        api_main._REPORT_GATE_BUILDERS,
+        {"green-lion-2024-1": (_seeded_builder, model_loader)},
+        clear=False,
+    ):
+        body = client.get("/deal/green-lion-2024-1/report-gate").json()
+
+    review_paths = {item["field_path"] for item in body["review_items"]}
+    # The engine reconciled "(d)" to the cent → auto-trusted despite 0.2 confidence.
+    assert reconciled_path not in review_paths
+    # reserve_balance is unreconciled AND low-confidence → routed to a human.
+    assert unreconciled_path in review_paths
+    assert body["review_item_count"] == 1
+    item = next(
+        i for i in body["review_items"] if i["field_path"] == unreconciled_path
+    )
+    assert item["confidence"] == pytest.approx(0.2)
+    assert "low-confidence" in item["reason"]
+
+
+def test_report_gate_confidence_threshold_query_is_honored():
+    """The optional confidence_threshold query flows into the gate's routing."""
+    from loanwhiz.api import main as api_main
+    from loanwhiz.domain.provenance import FieldProvenance
+    from loanwhiz.primitives.report_extractor import ParsedReport
+
+    base = api_main._build_green_lion_2024_1_parsed_report()
+    seeded = base.model_copy(
+        update={
+            "provenance": {
+                "periods.0.reserve_balance": FieldProvenance(
+                    source="report", method="ocr+llm", confidence=0.6, reconciled=False
+                )
+            }
+        }
+    )
+
+    def _seeded_builder() -> ParsedReport:
+        return seeded.model_copy(deep=True)
+
+    _, model_loader = api_main._REPORT_GATE_BUILDERS["green-lion-2024-1"]
+    with patch.dict(
+        api_main._REPORT_GATE_BUILDERS,
+        {"green-lion-2024-1": (_seeded_builder, model_loader)},
+        clear=False,
+    ):
+        # 0.6 < 0.7 → routed; 0.6 >= 0.5 → not routed (strictly-below).
+        flagged = client.get(
+            "/deal/green-lion-2024-1/report-gate",
+            params={"confidence_threshold": 0.7},
+        ).json()
+        not_flagged = client.get(
+            "/deal/green-lion-2024-1/report-gate",
+            params={"confidence_threshold": 0.5},
+        ).json()
+
+    assert flagged["review_item_count"] == 1
+    assert flagged["confidence_threshold"] == pytest.approx(0.7)
+    assert not_flagged["review_item_count"] == 0
+
+
+def test_report_gate_unfixtured_deal_degrades_gracefully():
+    """A registered deal with no committed report fixture / cached model returns
+    200 available=false with an honest note — never a 500."""
+    resp = client.get("/deal/green-lion-2023-1/report-gate")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["available"] is False
+    assert body["deal_id"] == "green-lion-2023-1"
+    assert body["note"]
+    assert body["review_items"] == []
+    assert body["reconciliation_passed"] is False
+
+
+def test_report_gate_unknown_deal_returns_404():
+    resp = client.get("/deal/does-not-exist/report-gate")
+    assert resp.status_code == 404
+
+
+# --- end reconciliation-as-gate (#272) ---------------------------------------
+
+
+# ---------------------------------------------------------------------------
 # Per-deal structural config resolution + loud GL fallback (#268)
 # ---------------------------------------------------------------------------
 #
@@ -2668,18 +2870,29 @@ def test_waterfall_self_configured_non_gl_deal_does_not_consult_green_lion(tmp_p
         # A minimal real series so the endpoint renders without a tape fetch.
         return _small_reconstructed_series(original_pool_balance=original_pool_balance)
 
-    from loanwhiz.primitives.deal_state import PeriodCollections
+    from loanwhiz.primitives.collections_aggregator import CollectionsOutput
 
-    # The mocked aggregator's ``execute(...).output.to_period_collections()`` must
-    # return a real ``PeriodCollections`` so the (real) ``_reconstruct_series``
-    # period loop validates before the spied engine call.
-    agg_output = MagicMock()
-    agg_output.to_period_collections.return_value = PeriodCollections(
-        interest=1_000.0,
+    # The mocked aggregator's ``execute(...).output`` must be a real
+    # ``CollectionsOutput`` so the (real) ``_reconstruct_series`` period loop —
+    # which now builds a canonical ``PeriodInputs`` via the tape adapter from the
+    # collection legs — validates before the spied engine call. (The tape
+    # analytics fetch degrades to ``None`` here, so risk_signals is simply
+    # omitted; the legs drive the fold.)
+    agg_output = CollectionsOutput(
+        reporting_period="2026-02-28",
+        interest_collected=1_000.0,
+        swap_receipts=0.0,
+        available_revenue_funds=1_000.0,
         scheduled_principal=1_000.0,
-        prepayment=0.0,
-        recovery=0.0,
-        realized_loss=0.0,
+        unscheduled_principal=0.0,
+        recoveries=0.0,
+        realized_losses=0.0,
+        available_principal_funds=1_000.0,
+        pool_balance_eur=500_000_000.0,
+        loan_count=1000,
+        class_a_interest_due=1_000.0,
+        senior_fees=50_000.0,
+        summary="mock period",
     )
     mock_aggregator = MagicMock()
     mock_aggregator.execute.return_value.output = agg_output
@@ -2741,6 +2954,111 @@ def test_reconstruct_series_selects_tape_path_for_tape_deal():
     assert result is sentinel
     tapes.assert_called_once()
     reports.assert_not_called()
+
+
+def test_tape_path_folds_canonical_period_inputs_with_risk_signals(tmp_path):
+    """The tape path now folds canonical ``source="tape"`` ``PeriodInputs`` (#364).
+
+    Captures what the (real) ``_reconstruct_series_from_tapes`` loop hands to
+    ``reconstruct_period_series`` and asserts:
+
+    - each period is a canonical ``domain.PeriodInputs`` with ``source=="tape"``;
+    - it carries a populated ``RiskSignals`` derived from the period's tape
+      analytics (no more ``risk_signals=None`` on the tape path);
+    - its collection ``legs`` reduce, via ``_normalize_period``, to the EXACT
+      same ``PeriodCollections`` the legacy ``PeriodInput.to_period_collections``
+      path produced — the byte-for-byte safety property that keeps GL's
+      reconstructed series unchanged by the migration.
+    """
+    from loanwhiz.primitives.collections_aggregator import CollectionsOutput
+    from loanwhiz.primitives.period_state_machine import _normalize_period
+
+    collections = CollectionsOutput(
+        reporting_period="2026-03-31",
+        interest_collected=9_050_000.0,
+        swap_receipts=0.0,
+        available_revenue_funds=9_050_000.0,
+        scheduled_principal=5_000_000.0,
+        unscheduled_principal=1_200_000.0,
+        recoveries=300_000.0,
+        realized_losses=150_000.0,
+        available_principal_funds=6_500_000.0,
+        pool_balance_eur=1_000_000_000.0,
+        loan_count=1000,
+        class_a_interest_due=9_050_000.0,
+        senior_fees=50_000.0,
+        summary="mock period",
+    )
+    mock_aggregator = MagicMock()
+    mock_aggregator.execute.return_value.output = collections
+
+    tape_dump = {
+        "reporting_date": "2026-03-31",
+        "asset_class": "RMBS",
+        "transaction_name": "Green Lion 2026-1 B.V.",
+        "loan_count": 1000,
+        "pool_balance_eur": 1_000_000_000.0,
+        "pool_stats": {"wtd_ltv": 71.0},
+        "arrears_breakdown": {
+            "current_pct": 96.0,
+            "arrears_1_2m_pct": 1.0,
+            "arrears_180d_plus_pct": 2.0,
+            "default_pct": 1.0,
+        },
+        "epc_breakdown": None,
+        "rate_type_breakdown": None,
+        "property_type_breakdown": None,
+        "geographic_breakdown": None,
+        "annex_detected": "Annex 2 (RMBS)",
+        "data_source": "direct",
+    }
+
+    deal = {
+        "tape_urls": [
+            {"url": "https://example/t0.csv", "date": "2026-02-28"},
+            {"url": "https://example/t1.csv", "date": "2026-03-31"},
+        ]
+    }
+
+    captured = {}
+
+    def _spy_reconstruct(*, periods, **kw):
+        captured["periods"] = periods
+        return _small_reconstructed_series()
+
+    api_main._RECONSTRUCTION_MEMO.clear()
+    with patch("loanwhiz.api.main.RECONSTRUCTION_CACHE_DIR", str(tmp_path)), patch(
+        "loanwhiz.api.main.CollectionsAggregator", return_value=mock_aggregator
+    ), patch(
+        "loanwhiz.api.main._normalised_tape_output", return_value=tape_dump
+    ), patch(
+        "loanwhiz.api.main.reconstruct_period_series", side_effect=_spy_reconstruct
+    ):
+        api_main._reconstruct_series(api_main._GREEN_LION_DEAL_ID, deal)
+
+    api_main._RECONSTRUCTION_MEMO.clear()
+
+    periods = captured["periods"]
+    # 2 tapes → 1 transition → 1 canonical PeriodInputs.
+    assert len(periods) == 1
+    pi = periods[0]
+    assert isinstance(pi, api_main.CanonicalPeriodInputs)
+    assert pi.source == "tape"
+
+    # RiskSignals is populated from the tape analytics (no risk_signals=None).
+    assert pi.risk_signals is not None
+    assert pi.risk_signals.pool_balance == 1_000_000_000.0
+    assert pi.risk_signals.wa_ltv == 71.0
+    # default_pct is the defaulted fraction (1% → 0.01); arrears are balances:
+    # 2% 180d+ of €1bn = €20m; arrears_90d = ≥180d ∪ defaulted balance = €30m.
+    assert pi.risk_signals.default_pct == pytest.approx(0.01)
+    assert pi.risk_signals.arrears_180d == pytest.approx(20_000_000.0)
+    assert pi.risk_signals.arrears_90d == pytest.approx(30_000_000.0)
+
+    # Byte-for-byte: the canonical legs reduce to the same collections the legacy
+    # PeriodInput path produced.
+    legacy_collections = collections.to_period_collections()
+    assert _normalize_period(pi).collections == legacy_collections
 
 
 def test_reconstruct_series_selects_report_path_for_report_only_deal():

@@ -55,25 +55,47 @@ capital structure), never as hardcoded constants in this module.
 
 from __future__ import annotations
 
-from pydantic import BaseModel, Field, field_validator
+from typing import TYPE_CHECKING
+
+from pydantic import BaseModel, Field, computed_field, field_validator, model_validator
+
+if TYPE_CHECKING:
+    from loanwhiz.domain.state import TrancheState
+
+
+def _tranche_state_cls() -> type["TrancheState"]:
+    """Lazily resolve the canonical :class:`~loanwhiz.domain.state.TrancheState`.
+
+    ``deal_state`` is imported very early in the ``primitives`` package cascade
+    (``primitives.base`` is pulled in by ``domain.provenance``). Importing
+    ``domain.state`` at *module load* would close a pre-existing import cycle
+    (``domain`` → ``domain.inputs`` → ``domain.provenance`` →
+    ``primitives.base`` → ``primitives`` → ``deal_state`` → ``domain.state`` →
+    ``domain.provenance`` mid-init). Deferring the import to first use — by which
+    point the cascade has settled — keeps ``TrancheState`` canonical (no
+    duplicate type) while letting ``import loanwhiz.domain`` and
+    ``import loanwhiz.primitives`` both succeed regardless of order.
+    """
+    from loanwhiz.domain.state import TrancheState as _TrancheState
+
+    return _TrancheState
 
 # Allocation order for principal losses across the PDL ledgers. Losses are
 # borne junior-first: Class C absorbs first, then Class B, then Class A. This
 # is the standard sequential loss-allocation order for a senior/mezz/junior
 # RMBS capital structure; it is data about the *structure*, not a per-deal
-# branch (every deal modelled here has A/B/C in seniority order).
+# branch (the canonical A/B/C deals modelled here carry their tranches in
+# seniority order). A deal with a different tranche set passes its own
+# junior→senior ``allocation`` order to ``apply_losses``.
 _DEFAULT_LOSS_ALLOCATION: tuple[str, ...] = ("class_c", "class_b", "class_a")
 
-_PDL_FIELD = {
-    "class_a": "class_a_pdl",
-    "class_b": "class_b_pdl",
-    "class_c": "class_c_pdl",
-}
-_BALANCE_FIELD = {
-    "class_a": "class_a_balance",
-    "class_b": "class_b_balance",
-    "class_c": "class_c_balance",
-}
+# Canonical A/B/C tranche names, in seniority (senior→junior) order. This is
+# the order ``seed_from_prospectus`` lays the tranche list out in, and the order
+# the backward-compatible ``class_{a,b,c}_*`` accessors map onto. It is *not* a
+# hard constraint on the engine — the tranche list may carry any names in any
+# order — it only fixes the layout of the canonical Green-Lion structure so the
+# accessors and serialisation stay stable.
+_CANONICAL_TRANCHE_NAMES: tuple[str, ...] = ("class_a", "class_b", "class_c")
 
 
 def _clamp_non_negative(value: float) -> float:
@@ -138,6 +160,34 @@ class PeriodCollections(BaseModel):
 # ---------------------------------------------------------------------------
 
 
+class TranchePayment(BaseModel):
+    """The per-tranche distribution outcome for one period, keyed by name.
+
+    The generalised, deal-agnostic carrier of a tranche's two waterfall outcomes
+    — principal repaid and PDL cured — replacing the hardcoded ``class_{a,b,c}_*``
+    scalar pairs. ``WaterfallResult`` stores a list of these by tranche ``name``;
+    the ``class_{a,b,c}_*`` accessors read the matching entry so existing callers
+    are unbroken.
+
+    Attributes
+    ----------
+    name:
+        Tranche name, matching the :class:`~loanwhiz.domain.state.TrancheState`
+        and the ``DealState`` tranche it lands on.
+    principal:
+        Principal repaid to this tranche this period (reduces its outstanding
+        balance, floored at 0).
+    pdl_replenishment:
+        Amount the revenue waterfall applied to cure this tranche's PDL debit.
+        Capped on apply at the outstanding PDL balance — you cannot replenish
+        more than is owed.
+    """
+
+    name: str = Field(..., description="Tranche name.")
+    principal: float = Field(default=0.0, ge=0.0)
+    pdl_replenishment: float = Field(default=0.0, ge=0.0)
+
+
 class WaterfallResult(BaseModel):
     """The distribution outcome of one period's priority-of-payments.
 
@@ -148,21 +198,29 @@ class WaterfallResult(BaseModel):
     PDLs, top up / draw the reserve). **This module does not compute it** — it
     only defines its shape and how it lands on the state.
 
-    All amounts are in the deal currency and non-negative. The fields mirror
-    the existing ``waterfall_state`` vocabulary (per-class PDL replenishment,
-    reserve payment/withdrawal) so S4 can be wired in without a vocabulary
-    migration.
+    Generalised storage (deal-agnostic)
+    -----------------------------------
+    The per-tranche outcomes are stored as a ``tranches: list[TranchePayment]``
+    keyed by tranche *name* — so a deal that isn't exactly A/B/C round-trips
+    without hardcoded fields. The ``class_{a,b,c}_principal`` /
+    ``class_{a,b,c}_pdl_replenishment`` names remain available as **accessors**
+    over that list (and may be passed at construction as kwargs), so every
+    existing caller and the byte-stable serialisation are unchanged.
+
+    All amounts are in the deal currency and non-negative.
 
     Attributes
     ----------
+    tranches:
+        Per-tranche principal + PDL-replenishment outcomes, keyed by name.
     class_a_principal / class_b_principal / class_c_principal:
-        Principal repaid to each tranche this period (reduces that tranche's
-        outstanding balance, floored at 0).
+        Principal repaid to each tranche this period (accessor over ``tranches``;
+        reduces that tranche's outstanding balance, floored at 0).
     class_a_pdl_replenishment / class_b_pdl_replenishment /
     class_c_pdl_replenishment:
-        Amounts the revenue waterfall applied to cure each class's PDL debit.
-        Capped on apply at the outstanding PDL balance — you cannot replenish
-        more than is owed.
+        Amounts the revenue waterfall applied to cure each class's PDL debit
+        (accessor over ``tranches``). Capped on apply at the outstanding PDL
+        balance — you cannot replenish more than is owed.
     reserve_payment:
         Amount distributed *into* the reserve account (revenue waterfall
         top-up step). Capped on apply at the reserve target.
@@ -171,14 +229,98 @@ class WaterfallResult(BaseModel):
         0 on apply — you cannot draw the reserve negative).
     """
 
-    class_a_principal: float = Field(default=0.0, ge=0.0)
-    class_b_principal: float = Field(default=0.0, ge=0.0)
-    class_c_principal: float = Field(default=0.0, ge=0.0)
-    class_a_pdl_replenishment: float = Field(default=0.0, ge=0.0)
-    class_b_pdl_replenishment: float = Field(default=0.0, ge=0.0)
-    class_c_pdl_replenishment: float = Field(default=0.0, ge=0.0)
+    tranches: list[TranchePayment] = Field(default_factory=list)
     reserve_payment: float = Field(default=0.0, ge=0.0)
     reserve_draw: float = Field(default=0.0, ge=0.0)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _coerce_class_kwargs(cls, data: object) -> object:
+        """Accept legacy ``class_{a,b,c}_*`` kwargs, fold them into ``tranches``.
+
+        Keeps the old construction surface (``WaterfallResult(class_a_principal=…,
+        class_b_pdl_replenishment=…)``) working: when ``tranches`` is not supplied
+        explicitly, any ``class_<x>_principal`` / ``class_<x>_pdl_replenishment``
+        kwargs are gathered into a per-name :class:`TranchePayment` list in
+        canonical A/B/C order. A tranche named in either kwarg gets an entry; the
+        other half defaults to 0.
+        """
+        if not isinstance(data, dict):
+            return data
+        if data.get("tranches"):
+            return data
+        principals: dict[str, float] = {}
+        replenishments: dict[str, float] = {}
+        for key in list(data.keys()):
+            if key.endswith("_principal"):
+                principals[key[: -len("_principal")]] = data.pop(key)
+            elif key.endswith("_pdl_replenishment"):
+                replenishments[key[: -len("_pdl_replenishment")]] = data.pop(key)
+        if not principals and not replenishments:
+            return data
+        # Preserve canonical A/B/C order first, then any other names encountered.
+        names = list(_CANONICAL_TRANCHE_NAMES) + [
+            n
+            for n in list(principals) + list(replenishments)
+            if n not in _CANONICAL_TRANCHE_NAMES
+        ]
+        seen: set[str] = set()
+        tranches: list[dict[str, float | str]] = []
+        for name in names:
+            if name in seen or (name not in principals and name not in replenishments):
+                continue
+            seen.add(name)
+            tranches.append(
+                {
+                    "name": name,
+                    "principal": principals.get(name, 0.0),
+                    "pdl_replenishment": replenishments.get(name, 0.0),
+                }
+            )
+        data["tranches"] = tranches
+        return data
+
+    def _payment(self, name: str) -> TranchePayment | None:
+        for t in self.tranches:
+            if t.name == name:
+                return t
+        return None
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def class_a_principal(self) -> float:
+        p = self._payment("class_a")
+        return p.principal if p is not None else 0.0
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def class_b_principal(self) -> float:
+        p = self._payment("class_b")
+        return p.principal if p is not None else 0.0
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def class_c_principal(self) -> float:
+        p = self._payment("class_c")
+        return p.principal if p is not None else 0.0
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def class_a_pdl_replenishment(self) -> float:
+        p = self._payment("class_a")
+        return p.pdl_replenishment if p is not None else 0.0
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def class_b_pdl_replenishment(self) -> float:
+        p = self._payment("class_b")
+        return p.pdl_replenishment if p is not None else 0.0
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def class_c_pdl_replenishment(self) -> float:
+        p = self._payment("class_c")
+        return p.pdl_replenishment if p is not None else 0.0
 
 
 # ---------------------------------------------------------------------------
@@ -198,8 +340,14 @@ class DealState(BaseModel):
 
     Liability side (seeded from the PROSPECTUS — see spike S0)
     ---------------------------------------------------------
-    ``class_{a,b,c}_balance``  outstanding tranche balances.
-    ``class_{a,b,c}_pdl``      per-class PDL debit balances (0 = no deficiency).
+    ``tranches``               canonical per-tranche liability store
+                               (``list[TrancheState]`` — ``name`` / ``balance`` /
+                               ``pdl_balance``), so the engine is not hardcoded to
+                               three classes.
+    ``class_{a,b,c}_balance``  outstanding tranche balances (accessors over
+                               ``tranches``; also accepted as construction kwargs).
+    ``class_{a,b,c}_pdl``      per-class PDL debit balances (accessors; 0 = no
+                               deficiency).
     ``reserve_balance``        current reserve account cash.
     ``reserve_target``         the reserve account target (the cap on top-ups).
     ``cumulative_losses``      running total of realized principal losses.
@@ -233,12 +381,16 @@ class DealState(BaseModel):
     period_index: int = Field(default=0, ge=0, description="0-based period ordinal.")
 
     # --- liability side (prospectus-seeded) ---
-    class_a_balance: float = Field(..., ge=0.0, description="Class A outstanding (EUR).")
-    class_b_balance: float = Field(..., ge=0.0, description="Class B outstanding (EUR).")
-    class_c_balance: float = Field(..., ge=0.0, description="Class C outstanding (EUR).")
-    class_a_pdl: float = Field(default=0.0, ge=0.0, description="Class A PDL debit (EUR).")
-    class_b_pdl: float = Field(default=0.0, ge=0.0, description="Class B PDL debit (EUR).")
-    class_c_pdl: float = Field(default=0.0, ge=0.0, description="Class C PDL debit (EUR).")
+    # Canonical per-tranche liability store. Each ``TrancheState`` carries the
+    # tranche's ``name``, outstanding ``balance``, and ``pdl_balance`` (PDL debit;
+    # 0 = no deficiency). The legacy ``class_{a,b,c}_balance|_pdl`` scalar fields
+    # are kept as backward-compatible accessors (and accepted as construction
+    # kwargs) over this list — see ``_coerce_class_kwargs`` and the computed
+    # fields below — so the engine is no longer hardcoded to three classes while
+    # every existing caller and the serialised shape are unchanged.
+    tranches: list[TrancheState] = Field(
+        default_factory=list, description="Per-tranche outstanding balance + PDL debit."
+    )
     reserve_balance: float = Field(default=0.0, ge=0.0, description="Reserve cash (EUR).")
     reserve_target: float = Field(default=0.0, ge=0.0, description="Reserve target (EUR).")
     cumulative_losses: float = Field(
@@ -267,19 +419,172 @@ class DealState(BaseModel):
             raise ValueError("reporting_date must be a non-empty ISO date string")
         return v
 
+    @field_validator("tranches")
+    @classmethod
+    def _non_negative_tranches(cls, v: list[TrancheState]) -> list[TrancheState]:
+        """Enforce non-negative tranche balances / PDLs (the old per-field ``ge``).
+
+        ``TrancheState`` (the canonical domain type) carries no ``ge`` bound, so
+        the non-negativity the old ``class_{a,b,c}_balance|_pdl`` fields enforced
+        is re-asserted here at the ``DealState`` boundary."""
+        for t in v:
+            if t.balance < 0.0:
+                raise ValueError(f"tranche {t.name!r} balance must be >= 0")
+            if t.pdl_balance < 0.0:
+                raise ValueError(f"tranche {t.name!r} pdl_balance must be >= 0")
+        return v
+
+    @model_validator(mode="before")
+    @classmethod
+    def _coerce_class_kwargs(cls, data: object) -> object:
+        """Accept legacy ``class_{a,b,c}_balance|_pdl`` kwargs as ``tranches``.
+
+        Keeps the old construction surface working: a caller (or test) that
+        builds ``DealState(class_a_balance=…, class_b_balance=…, class_a_pdl=…)``
+        gets those folded into a canonical A/B/C-ordered ``tranches`` list when
+        ``tranches`` is not supplied explicitly. A tranche named in any of the
+        balance/pdl kwargs gets an entry; a missing balance defaults to 0.0, a
+        missing PDL to 0.0. Callers may instead pass ``tranches`` directly (the
+        canonical path) — then the ``class_*`` kwargs are ignored.
+        """
+        if not isinstance(data, dict):
+            return data
+        if data.get("tranches"):
+            # Explicit tranche list wins; drop any stray class_* kwargs so they
+            # don't trip the "unexpected field" guard.
+            for key in list(data.keys()):
+                if key.endswith("_balance") and key.startswith("class_"):
+                    data.pop(key, None)
+                elif key.endswith("_pdl") and key.startswith("class_"):
+                    data.pop(key, None)
+            return data
+        balances: dict[str, float] = {}
+        pdls: dict[str, float] = {}
+        for key in list(data.keys()):
+            if key.startswith("class_") and key.endswith("_balance"):
+                balances[key[: -len("_balance")]] = data.pop(key)
+            elif key.startswith("class_") and key.endswith("_pdl"):
+                pdls[key[: -len("_pdl")]] = data.pop(key)
+        if not balances and not pdls:
+            return data
+        names = list(_CANONICAL_TRANCHE_NAMES) + [
+            n
+            for n in list(balances) + list(pdls)
+            if n not in _CANONICAL_TRANCHE_NAMES
+        ]
+        seen: set[str] = set()
+        tranches: list[dict[str, float | str]] = []
+        for name in names:
+            if name in seen or (name not in balances and name not in pdls):
+                continue
+            seen.add(name)
+            tranches.append(
+                {
+                    "name": name,
+                    "balance": balances.get(name, 0.0),
+                    "pdl_balance": pdls.get(name, 0.0),
+                }
+            )
+        data["tranches"] = tranches
+        return data
+
+    # ------------------------------------------------------------------
+    # Tranche access (the canonical liability surface) + legacy accessors
+    # ------------------------------------------------------------------
+
+    def _tranche(self, name: str) -> TrancheState | None:
+        """The :class:`TrancheState` named ``name``, or ``None`` if absent."""
+        for t in self.tranches:
+            if t.name == name:
+                return t
+        return None
+
+    def _with_tranche_updates(
+        self,
+        balance_deltas: dict[str, float] | None = None,
+        pdl_values: dict[str, float] | None = None,
+        *,
+        extra: dict[str, object] | None = None,
+    ) -> "DealState":
+        """Return a new state with named tranches' balances / PDLs replaced.
+
+        The single name-keyed mutation primitive the transition methods use in
+        place of the old ``model_copy(update={"class_a_pdl": …})`` (which would
+        not work now that ``class_*`` are computed accessors). ``balance_deltas``
+        maps tranche name → new balance, ``pdl_values`` maps name → new PDL; only
+        the named tranches change, the rest carry forward. ``extra`` is merged
+        into the ``model_copy`` update for non-tranche fields (e.g. the reserve).
+        """
+        balance_deltas = balance_deltas or {}
+        pdl_values = pdl_values or {}
+        new_tranches: list[TrancheState] = []
+        for t in self.tranches:
+            upd: dict[str, float] = {}
+            if t.name in balance_deltas:
+                upd["balance"] = balance_deltas[t.name]
+            if t.name in pdl_values:
+                upd["pdl_balance"] = pdl_values[t.name]
+            new_tranches.append(t.model_copy(update=upd) if upd else t)
+        update: dict[str, object] = {"tranches": new_tranches}
+        if extra:
+            update.update(extra)
+        return self.model_copy(update=update)
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def class_a_balance(self) -> float:
+        """Class A outstanding balance (accessor over ``tranches``)."""
+        t = self._tranche("class_a")
+        return t.balance if t is not None else 0.0
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def class_b_balance(self) -> float:
+        """Class B outstanding balance (accessor over ``tranches``)."""
+        t = self._tranche("class_b")
+        return t.balance if t is not None else 0.0
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def class_c_balance(self) -> float:
+        """Class C outstanding balance (accessor over ``tranches``)."""
+        t = self._tranche("class_c")
+        return t.balance if t is not None else 0.0
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def class_a_pdl(self) -> float:
+        """Class A PDL debit (accessor over ``tranches``)."""
+        t = self._tranche("class_a")
+        return t.pdl_balance if t is not None else 0.0
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def class_b_pdl(self) -> float:
+        """Class B PDL debit (accessor over ``tranches``)."""
+        t = self._tranche("class_b")
+        return t.pdl_balance if t is not None else 0.0
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def class_c_pdl(self) -> float:
+        """Class C PDL debit (accessor over ``tranches``)."""
+        t = self._tranche("class_c")
+        return t.pdl_balance if t is not None else 0.0
+
     # ------------------------------------------------------------------
     # Derived quantities
     # ------------------------------------------------------------------
 
     @property
     def total_pdl(self) -> float:
-        """Sum of the three per-class PDL debit balances."""
-        return self.class_a_pdl + self.class_b_pdl + self.class_c_pdl
+        """Sum of every tranche's PDL debit balance."""
+        return sum(t.pdl_balance for t in self.tranches)
 
     @property
     def total_liabilities(self) -> float:
-        """Sum of the three outstanding tranche balances."""
-        return self.class_a_balance + self.class_b_balance + self.class_c_balance
+        """Sum of every tranche's outstanding balance."""
+        return sum(t.balance for t in self.tranches)
 
     @property
     def cumulative_loss_rate_pct(self) -> float:
@@ -321,11 +626,15 @@ class DealState(BaseModel):
         Parameters
         ----------
         capital_structure:
-            Mapping with at least ``class_a_balance``, ``class_b_balance``,
-            ``class_c_balance`` (the prospectus closing balances). Extra keys
-            (e.g. ``class_a_rate_pct``) are ignored. Sourced from the deal
-            model / registry — never hardcoded here — so the seed is
-            deal-agnostic.
+            Mapping of ``<tranche>_balance`` closing balances (e.g.
+            ``class_a_balance``, ``class_b_balance``, ``class_c_balance``). Extra
+            keys (e.g. ``class_a_rate_pct``) are ignored. The tranche list is
+            built from every ``<tranche>_balance`` key found, ordered
+            canonical-A/B/C-first then any other names in insertion order — so a
+            non-A/B/C structure seeds straight from its own balances. Sourced
+            from the deal model / registry — never hardcoded here — so the seed
+            is deal-agnostic. (A ``class_a/b/c_balance``-only structure seeds the
+            three canonical tranches exactly as before.)
         reserve_target:
             The reserve account target. The reserve opens funded at this amount
             (``reserve_balance == reserve_target``).
@@ -361,15 +670,39 @@ class DealState(BaseModel):
         factor = (
             opening_pool / original_pool_balance if original_pool_balance > 0.0 else 0.0
         )
+        # Build the tranche list from every ``<tranche>_balance`` key, ordered
+        # canonical-A/B/C-first then any further names in insertion order. PDLs
+        # all open at 0 (per spike S0 — the prospectus seeds balances, not PDLs).
+        _ensure_deal_state_built()
+        tranche_state = _tranche_state_cls()
+        balance_names = [
+            k[: -len("_balance")] for k in capital_structure if k.endswith("_balance")
+        ]
+        non_canonical = [n for n in balance_names if n not in _CANONICAL_TRANCHE_NAMES]
+        if not non_canonical:
+            # Purely-canonical structure: keep the prior strict A/B/C contract —
+            # all three balances are required (a ``KeyError`` on the missing one,
+            # matching the pre-refactor behaviour).
+            ordered_names = list(_CANONICAL_TRANCHE_NAMES)
+        else:
+            # Custom structure: seed exactly the tranches present (canonical names
+            # first, then the others in insertion order). Deal-agnostic — no
+            # hardcoded A/B/C requirement.
+            ordered_names = [
+                n for n in _CANONICAL_TRANCHE_NAMES if n in balance_names
+            ] + non_canonical
+        tranches = [
+            tranche_state(
+                name=name,
+                balance=float(capital_structure[f"{name}_balance"]),
+                pdl_balance=0.0,
+            )
+            for name in ordered_names
+        ]
         return cls(
             reporting_date=reporting_date,
             period_index=period_index,
-            class_a_balance=capital_structure["class_a_balance"],
-            class_b_balance=capital_structure["class_b_balance"],
-            class_c_balance=capital_structure["class_c_balance"],
-            class_a_pdl=0.0,
-            class_b_pdl=0.0,
-            class_c_pdl=0.0,
+            tranches=tranches,
             reserve_balance=reserve_target,
             reserve_target=reserve_target,
             cumulative_losses=0.0,
@@ -446,23 +779,32 @@ class DealState(BaseModel):
         if loss == 0.0:
             return self
 
-        updates: dict[str, float] = {}
+        # Absorb the loss junior-first along ``allocation``; any tranche in the
+        # state that ``allocation`` does not name is appended in reverse list
+        # order (most-junior-last by convention) so a non-A/B/C structure still
+        # absorbs across all its tranches without the caller having to restate
+        # the default order.
+        order = list(allocation) + [
+            t.name for t in reversed(self.tranches) if t.name not in allocation
+        ]
+        pdl_values: dict[str, float] = {}
         remaining = loss
-        for cls_key in allocation:
+        for name in order:
             if remaining <= 0.0:
                 break
-            pdl_field = _PDL_FIELD[cls_key]
-            bal_field = _BALANCE_FIELD[cls_key]
-            current_pdl = getattr(self, pdl_field)
-            balance = getattr(self, bal_field)
-            headroom = _clamp_non_negative(balance - current_pdl)
+            tranche = self._tranche(name)
+            if tranche is None:
+                continue
+            headroom = _clamp_non_negative(tranche.balance - tranche.pdl_balance)
             debit = min(remaining, headroom)
             if debit > 0.0:
-                updates[pdl_field] = current_pdl + debit
+                pdl_values[name] = tranche.pdl_balance + debit
                 remaining -= debit
 
-        updates["cumulative_losses"] = self.cumulative_losses + loss
-        return self.model_copy(update=updates)
+        return self._with_tranche_updates(
+            pdl_values=pdl_values,
+            extra={"cumulative_losses": self.cumulative_losses + loss},
+        )
 
     def apply_waterfall_result(self, result: WaterfallResult) -> "DealState":
         """Apply a period's waterfall distribution to the (closing) state.
@@ -489,42 +831,38 @@ class DealState(BaseModel):
         DealState
             New (closing) state with tranche balances, PDLs and reserve updated.
         """
-        updates: dict[str, float] = {}
-
-        # Tranche principal redemption (floored at 0).
-        updates["class_a_balance"] = _clamp_non_negative(
-            self.class_a_balance - result.class_a_principal
-        )
-        updates["class_b_balance"] = _clamp_non_negative(
-            self.class_b_balance - result.class_b_principal
-        )
-        updates["class_c_balance"] = _clamp_non_negative(
-            self.class_c_balance - result.class_c_principal
-        )
-
-        # PDL replenishment (capped at outstanding debit).
-        updates["class_a_pdl"] = _clamp_non_negative(
-            self.class_a_pdl - min(result.class_a_pdl_replenishment, self.class_a_pdl)
-        )
-        updates["class_b_pdl"] = _clamp_non_negative(
-            self.class_b_pdl - min(result.class_b_pdl_replenishment, self.class_b_pdl)
-        )
-        updates["class_c_pdl"] = _clamp_non_negative(
-            self.class_c_pdl - min(result.class_c_pdl_replenishment, self.class_c_pdl)
-        )
+        # Per-tranche principal redemption (floored at 0) and PDL replenishment
+        # (capped at the outstanding debit), keyed by tranche name so the result
+        # lands on whatever structure the state carries.
+        balance_deltas: dict[str, float] = {}
+        pdl_values: dict[str, float] = {}
+        for payment in result.tranches:
+            tranche = self._tranche(payment.name)
+            if tranche is None:
+                continue
+            balance_deltas[payment.name] = _clamp_non_negative(
+                tranche.balance - payment.principal
+            )
+            pdl_values[payment.name] = _clamp_non_negative(
+                tranche.pdl_balance
+                - min(payment.pdl_replenishment, tranche.pdl_balance)
+            )
 
         # Reserve: top up (the *payment* is capped so it doesn't carry the
         # balance above target — but an already-over-target balance is never
         # clawed back), then draw (floored at 0).
-        payment = _clamp_non_negative(result.reserve_payment)
+        payment_amt = _clamp_non_negative(result.reserve_payment)
         if self.reserve_target > 0.0:
             headroom = _clamp_non_negative(self.reserve_target - self.reserve_balance)
-            payment = min(payment, headroom)
-        topped = self.reserve_balance + payment
+            payment_amt = min(payment_amt, headroom)
+        topped = self.reserve_balance + payment_amt
         drawn = _clamp_non_negative(topped - _clamp_non_negative(result.reserve_draw))
-        updates["reserve_balance"] = drawn
 
-        return self.model_copy(update=updates)
+        return self._with_tranche_updates(
+            balance_deltas=balance_deltas,
+            pdl_values=pdl_values,
+            extra={"reserve_balance": drawn},
+        )
 
     def transition(
         self,
@@ -592,3 +930,44 @@ class DealState(BaseModel):
         if rollover:
             closing = closing.model_copy(update=rollover)
         return closing
+
+
+# ---------------------------------------------------------------------------
+# Deferred forward-ref resolution
+# ---------------------------------------------------------------------------
+#
+# ``DealState.tranches`` is annotated ``list[TrancheState]`` with ``TrancheState``
+# imported only under ``TYPE_CHECKING`` (see ``_tranche_state_cls`` for why — it
+# breaks a pre-existing ``domain`` ↔ ``primitives`` import cycle). The Pydantic
+# core schema therefore cannot be built at class-definition time; it is rebuilt
+# the first time the model is actually used. ``model_rebuild`` is idempotent and
+# cheap after the first successful call.
+
+_deal_state_built = False
+
+
+def _ensure_deal_state_built() -> None:
+    """Resolve ``DealState``'s deferred ``TrancheState`` ref (idempotent).
+
+    Called at the start of every ``DealState`` construction path in this module
+    (the ``seed_from_prospectus`` classmethod) and re-exported for the engine
+    entry points. By first-use the ``primitives`` ↔ ``domain`` import cascade has
+    settled, so ``domain.state`` imports cleanly.
+    """
+    global _deal_state_built
+    if _deal_state_built:
+        return
+    DealState.model_rebuild(
+        _types_namespace={"TrancheState": _tranche_state_cls()}
+    )
+    _deal_state_built = True
+
+
+try:  # Best-effort eager rebuild — succeeds when this module is imported after
+    # the cascade has settled (the common case: anything importing a primitives
+    # symbol first). When it runs mid-cascade (domain imported first) it raises an
+    # ImportError, which is swallowed; ``_ensure_deal_state_built`` then performs
+    # the rebuild lazily on first construction.
+    _ensure_deal_state_built()
+except ImportError:
+    pass
