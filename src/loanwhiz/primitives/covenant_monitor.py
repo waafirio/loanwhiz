@@ -21,6 +21,7 @@ from typing import Any
 from pydantic import BaseModel, Field
 
 from loanwhiz.domain.esma_annex2 import locator_for
+from loanwhiz.extraction.taxonomy import normalize_threshold_unit
 from loanwhiz.primitives.base import (
     AuditEntry,
     BaseInput,
@@ -127,6 +128,89 @@ def _canonical_metric(metric: str) -> str:
     sentinels pass straight through.
     """
     return _METRIC_ALIASES.get(metric.strip().lower(), metric)
+
+
+# ---------------------------------------------------------------------------
+# threshold_unit consumption guard — the C8 100x guard's monitor-side half
+# ---------------------------------------------------------------------------
+#
+# A trigger's ``threshold_unit`` is normalised *once at extraction* (see
+# ``domain.rules.TriggerRule.threshold_unit`` and
+# ``extraction.taxonomy.normalize_threshold_unit``). But the monitor evaluates
+# its ratio metrics in **percent** — ``cumulative_loss_rate_pct``,
+# ``default_pct``, ``reserve_fund_ratio`` (= balance/target*100),
+# ``pool_balance_pct`` (= factor*100), ``wtd_ltv`` and the arrears ``_pct``
+# buckets are all percent-scaled, and the hardcoded ``DEFAULT_TRIGGERS``
+# thresholds (1.5, 100.0, 10.0, 5.0, 3.0, 80.0) are percentages. Before this
+# guard, the consumption seam (``api.main._map_extracted_trigger``) dropped the
+# unit silently and fed the raw threshold straight to the monitor — so a
+# ``fraction`` (0.015) or ``bps`` (150) threshold was compared against a
+# percent-scaled metric, the latent 100x / 10000x misread.
+#
+# ``to_canonical_threshold`` converts a ``(threshold, threshold_unit)`` pair onto
+# the monitor's percent canonical, asserting (rather than silently coercing) a
+# unit that cannot be compared against a ratio metric. It is the single place the
+# unit contract is enforced on the consumption side — call it at the mapping
+# seam, don't re-implement the factors elsewhere.
+
+# Canonical evaluation scale for the monitor's ratio metrics. Exposed as a
+# module constant so callers/tests can reference the contract by name.
+CANONICAL_THRESHOLD_UNIT = "percent"
+
+
+def to_canonical_threshold(
+    threshold: float | None,
+    threshold_unit: str | None,
+    *,
+    trigger_name: str | None = None,
+) -> float | None:
+    """Convert an extracted threshold onto the monitor's canonical (percent) scale.
+
+    The monitor evaluates ratio thresholds in **percent** (see the module note
+    above). This is the consumption-side half of the C8 ``100x`` guard: the
+    extraction side locks ``threshold_unit`` to ``percent | fraction | bps | eur``
+    once, and this function applies that unit before the threshold ever reaches
+    the numeric evaluation core — so a unit mistake fails loudly here rather than
+    silently misreading by 100x downstream.
+
+    Conversions (after aliasing the raw unit via
+    :func:`~loanwhiz.extraction.taxonomy.normalize_threshold_unit`, so
+    ``"percentage"`` / ``"%"`` / ``"ratio"`` / ``"basis_points"`` all canonicalise
+    first):
+
+    - ``percent``  → returned unchanged (already canonical).
+    - ``fraction`` → ``* 100.0`` (0.05 → 5.0). **This is the real 100x fix** — a
+      ratio expressed as a fraction would otherwise read 100x low against a
+      percent-scaled metric.
+    - ``bps``      → ``/ 100.0`` (250 bps → 2.5). The 10000x form of the same fix.
+    - ``eur``      → returned **unchanged** (absolute-currency passthrough). An
+      EUR threshold is an absolute balance, not a ratio, so there is no
+      percent-scale conversion to apply: the monitor compares it directly
+      against an absolute EUR balance metric (PDL / reserve / expense-account
+      balances). EUR is the one canonical unit that is *not* on the percent
+      ratio scale, and seeded prospectus deals legitimately carry EUR-unit
+      balance triggers (often with a sentinel threshold the extractor couldn't
+      quantify), so coercing or rejecting them here would regress a real,
+      working evaluation path. The guard's job is to stop a *ratio* unit being
+      misread by 100x — not to second-guess an absolute-balance threshold.
+
+    ``threshold is None`` (qualitative / PDL-style "any positive balance fires"
+    triggers) passes straight through as ``None`` — the converter is a no-op.
+
+    ``trigger_name`` is accepted for symmetry / future diagnostics; it is not
+    currently used (no branch raises).
+    """
+    if threshold is None:
+        return None
+
+    unit = normalize_threshold_unit(threshold_unit)
+    if unit == "fraction":
+        return threshold * 100.0
+    if unit == "bps":
+        return threshold / 100.0
+    # "percent" is already canonical; "eur" is an absolute balance the monitor
+    # compares directly — both pass through unchanged.
+    return threshold
 
 
 # ---------------------------------------------------------------------------

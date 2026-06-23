@@ -69,6 +69,7 @@ from loanwhiz.primitives.covenant_monitor import (
     CovenantInput,
     CovenantMonitor,
     TriggerDefinition,
+    to_canonical_threshold,
 )
 from loanwhiz.domain.state import DealState as DomainDealState
 from loanwhiz.primitives.deal_state import DealState as PrimitivesDealState
@@ -611,8 +612,16 @@ def _map_extracted_trigger(raw: dict) -> TriggerDefinition:
       the convention ``covenant_monitor`` already uses (``threshold is None`` →
       any positive value triggers). ``"above"`` / ``"below"`` pass through.
     - ``threshold_unit`` has no slot on ``TriggerDefinition`` (the monitor
-      reasons numerically from metric + threshold + direction only); it is
-      intentionally not forwarded.
+      reasons numerically from metric + threshold + direction only), but it is
+      **not** silently dropped: the threshold is converted onto the monitor's
+      canonical percent scale via
+      :func:`~loanwhiz.primitives.covenant_monitor.to_canonical_threshold`
+      before the definition is built. This is the consumption-side half of the
+      C8 ``100x`` guard — a ``fraction`` / ``bps`` threshold is rescaled to
+      percent so it can't be misread against a percent-scaled ratio metric, and
+      a stray ``eur`` unit on a real numeric threshold raises rather than
+      coercing. (``non_zero`` / EUR-balance triggers carry ``threshold=None``,
+      which the converter passes through unchanged.)
     - ``citation`` is a free-form dict in the extracted schema; rebuild a
       :class:`Citation`, falling back to the trigger's ``section_reference`` /
       ``display_name`` when individual keys are absent.
@@ -622,6 +631,13 @@ def _map_extracted_trigger(raw: dict) -> TriggerDefinition:
     if direction == "non_zero":
         direction = "above"
         threshold = None  # any positive (debit) balance fires the trigger
+
+    # Consumption-side unit guard: convert the extracted threshold onto the
+    # monitor's canonical percent scale (the C8 100x guard's monitor-side half).
+    # A None threshold (non_zero / PDL-style) passes straight through.
+    threshold = to_canonical_threshold(
+        threshold, raw.get("threshold_unit"), trigger_name=raw.get("name")
+    )
 
     citation_raw = raw.get("citation") or {}
     citation = Citation(
