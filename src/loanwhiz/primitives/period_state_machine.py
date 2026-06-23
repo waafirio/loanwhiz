@@ -62,9 +62,10 @@ conventions of the surrounding primitives.
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 from pydantic import BaseModel, Field
 
-from loanwhiz.domain.inputs import PeriodInputs as CanonicalPeriodInputs
 from loanwhiz.primitives.covenant_monitor import (
     TriggerDefinition,
     TriggerEvaluation,
@@ -78,12 +79,25 @@ from loanwhiz.primitives.deal_state import (
 from loanwhiz.primitives.waterfall_interpreter import (
     ConditionEvaluator,
     StepSpec,
+    TrancheFunds,
     WaterfallExecution,
     WaterfallFunds,
     allocate_principal,
     interpret,
     to_waterfall_result,
 )
+
+if TYPE_CHECKING:
+    # Imported under TYPE_CHECKING only: ``CanonicalPeriodInputs`` is used solely
+    # in (string) type annotations — never at runtime (the sole isinstance check
+    # is against the local ``PeriodInput``). A runtime import here would close a
+    # pre-existing import cycle (``domain`` → ``domain.inputs`` → ``provenance``
+    # → ``primitives.base`` → ``primitives`` → ``period_state_machine`` →
+    # ``domain.inputs`` mid-init), making ``import loanwhiz.domain`` fail when it
+    # is the first package imported. Now that ``deal_state`` imports
+    # ``domain.state`` (#363), that latent cycle would otherwise bite, so the
+    # back-edge is deferred.
+    from loanwhiz.domain.inputs import PeriodInputs as CanonicalPeriodInputs
 
 # The canonical Green-Lion priority-of-payments step lists, expressed as *data*
 # (an ordered ``StepSpec`` list the generic interpreter executes — the same shape
@@ -371,20 +385,26 @@ def _funds_from_state(
             + collections.prepayment
             + collections.recovery
         )
+    # Build the per-tranche funds context by name from the opening state's
+    # tranche list (no hardcoded A/B/C). Coupon rates come from the caller's
+    # capital structure (``{<name>_rate_pct: float}``) — rates are not tracked on
+    # ``DealState`` — defaulting to 0 (no interest need) for a tranche with no
+    # rate supplied.
+    tranches = [
+        TrancheFunds(
+            name=t.name,
+            balance=t.balance,
+            rate_pct=rates.get(f"{t.name}_rate_pct", 0.0),
+            pdl_balance=t.pdl_balance,
+        )
+        for t in state.tranches
+    ]
     return WaterfallFunds(
         available_revenue_funds=available_revenue,
         available_principal_funds=available_principal,
         senior_fees=senior_fees,
         swap_payment=swap_payment,
-        class_a_balance=state.class_a_balance,
-        class_b_balance=state.class_b_balance,
-        class_c_balance=state.class_c_balance,
-        class_a_rate_pct=rates.get("class_a_rate_pct", 0.0),
-        class_b_rate_pct=rates.get("class_b_rate_pct", 0.0),
-        class_c_rate_pct=rates.get("class_c_rate_pct", 0.0),
-        class_a_pdl_balance=state.class_a_pdl,
-        class_b_pdl_balance=state.class_b_pdl,
-        class_c_pdl_balance=state.class_c_pdl,
+        tranches=tranches,
         reserve_balance=state.reserve_balance,
         reserve_target=state.reserve_target,
         days_in_period=days_in_period,

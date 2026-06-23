@@ -22,6 +22,7 @@ from loanwhiz.primitives.waterfall_interpreter import (
     ConditionEvaluator,
     DefaultConditionEvaluator,
     StepSpec,
+    TrancheFunds,
     WaterfallFunds,
     allocate_principal,
     compute_need,
@@ -429,10 +430,80 @@ class TestWaterfallResultSeam:
             reporting_date="2026-04-30",
         )
         # Seed a PDL so replenishment has something to cure.
-        state = state.model_copy(update={"class_a_pdl": 100_000.0})
+        state = state.model_copy(
+            update={
+                "tranches": [
+                    t.model_copy(update={"pdl_balance": 100_000.0})
+                    if t.name == "class_a"
+                    else t
+                    for t in state.tranches
+                ]
+            }
+        )
+        assert state.class_a_pdl == 100_000.0  # tamper landed on the tranche list
         closing = state.apply_waterfall_result(result)
 
         # Class A principal of €2M (sequential) reduced its balance.
         assert closing.class_a_balance == pytest.approx(8_000_000.0)
         # PDL replenishment cured the €100k debit.
         assert closing.class_a_pdl == pytest.approx(0.0)
+
+
+# ---------------------------------------------------------------------------
+# Engine generality: WaterfallFunds round-trips by tranche name (#363)
+# ---------------------------------------------------------------------------
+
+
+class TestWaterfallFundsGenerality:
+    def test_class_accessors_equal_tranche_list_values(self):
+        funds = WaterfallFunds(
+            tranches=[
+                TrancheFunds(name="class_a", balance=100.0, rate_pct=3.0, pdl_balance=1.0),
+                TrancheFunds(name="class_b", balance=50.0, rate_pct=4.0, pdl_balance=2.0),
+            ]
+        )
+        assert funds.class_a_balance == 100.0
+        assert funds.class_a_rate_pct == 3.0
+        assert funds.class_a_pdl_balance == 1.0
+        assert funds.class_b_balance == 50.0
+        assert funds.class_c_balance == 0.0  # absent tranche → 0
+
+    def test_legacy_class_kwargs_fold_into_tranches(self):
+        funds = WaterfallFunds(
+            class_a_balance=100.0,
+            class_a_rate_pct=3.0,
+            class_a_pdl_balance=1.0,
+            class_b_balance=50.0,
+        )
+        assert {t.name for t in funds.tranches} >= {"class_a", "class_b"}
+        assert funds.tranche("class_a").balance == 100.0
+        assert funds.tranche("class_a").rate_pct == 3.0
+        # The accessors read the same folded values.
+        assert funds.class_a_pdl_balance == 1.0
+
+    def test_allocate_principal_by_name_non_abc(self):
+        """``allocate_principal`` allocates across custom tranche names sequentially."""
+        funds = WaterfallFunds(
+            tranches=[
+                TrancheFunds(name="senior", balance=1_000.0),
+                TrancheFunds(name="junior", balance=500.0),
+            ],
+            sequential_pay=True,
+        )
+        alloc = allocate_principal(
+            funds, available=1_200.0, classes=("senior", "junior")
+        )
+        # Sequential: senior paid to its balance first, residual to junior.
+        assert alloc["senior"] == pytest.approx(1_000.0)
+        assert alloc["junior"] == pytest.approx(200.0)
+
+    def test_to_waterfall_result_keys_by_name_non_abc(self):
+        """``to_waterfall_result`` carries non-A/B/C principal by name."""
+        result = to_waterfall_result(
+            principal_allocation={"senior": 1_000.0, "junior": 200.0}
+        )
+        by = {t.name: t for t in result.tranches}
+        # Canonical A/B/C entries always present (byte-stable), plus the custom ones.
+        assert by["senior"].principal == pytest.approx(1_000.0)
+        assert by["junior"].principal == pytest.approx(200.0)
+        assert by["class_a"].principal == 0.0
