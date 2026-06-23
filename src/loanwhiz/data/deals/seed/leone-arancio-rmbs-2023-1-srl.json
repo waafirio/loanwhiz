@@ -14,7 +14,7 @@
       "eligibility_criteria",
       "available_funds"
     ],
-    "completeness_score": 1.0,
+    "completeness_score": 0.75,
     "cache_path": "data/deals/leone-arancio-rmbs-2023-1-srl.json"
   },
   "definitions": {},
@@ -33,7 +33,7 @@
           "citation": {
             "excerpt": "First , to pay (i) pari passu and pro rata according to the respective amounts thereof, any Expenses (to the extent that amounts standing to the credit o",
             "page_or_row": "7.1.1(i)",
-            "document": "Green Lion 2026-1 Prospectus"
+            "document": "Leone Arancio RMBS 2023-1 Prospectus"
           }
         },
         {
@@ -46,7 +46,7 @@
           "citation": {
             "excerpt": "Second , to pay the remuneration due to the Representative of the Noteholders and to pay any indemnity amounts properly due and any proper costs and expe",
             "page_or_row": "7.1.1(ii)",
-            "document": "Green Lion 2026-1 Prospectus"
+            "document": "Leone Arancio RMBS 2023-1 Prospectus"
           }
         },
         {
@@ -57,7 +57,7 @@
           "condition": null,
           "is_pari_passu": true,
           "citation": {
-            "document": "Green Lion 2026-1 Prospectus",
+            "document": "Leone Arancio RMBS 2023-1 Prospectus",
             "excerpt": "Third , to pay, pari passu and pro rata according to the respective amounts thereof, any amount due and payable on account of remuneration, indemnities or",
             "page_or_row": "7.1.1(iii)"
           }
@@ -70,7 +70,7 @@
           "condition": null,
           "is_pari_passu": true,
           "citation": {
-            "document": "Green Lion 2026-1 Prospectus",
+            "document": "Leone Arancio RMBS 2023-1 Prospectus",
             "excerpt": "Fourth , to pay to the Liquidity Facility Provider pari passu and pro rata : (i) all amounts due and payable in respect of any commitment fee; (ii) all a",
             "page_or_row": "7.1.1(iv)"
           }
@@ -85,7 +85,7 @@
           "citation": {
             "page_or_row": "7.1.1(v)",
             "excerpt": "Fifth , to pay to the Swap Counterparty any amount due and payable under the Swap Agreement, including any hedging termination payments upon early terminat",
-            "document": "Green Lion 2026-1 Prospectus"
+            "document": "Leone Arancio RMBS 2023-1 Prospectus"
           }
         },
         {
@@ -98,7 +98,7 @@
           "citation": {
             "page_or_row": "7.1.1(vi)",
             "excerpt": "Sixth , to pay, pari passu and pro rata , all amounts of interest due and payable on the Class A1 Notes and on the Class A2 Notes on such Payment Date;",
-            "document": "Green Lion 2026-1 Prospectus"
+            "document": "Leone Arancio RMBS 2023-1 Prospectus"
           }
         },
         {
@@ -109,7 +109,7 @@
           "condition": null,
           "is_pari_passu": false,
           "citation": {
-            "document": "Green Lion 2026-1 Prospectus",
+            "document": "Leone Arancio RMBS 2023-1 Prospectus",
             "excerpt": "Seventh , in or towards making good any shortfall reflected in the Principal Deficiency Ledger until the debit balance, if any, of the Principal Deficien",
             "page_or_row": "7.1.1(vii)"
           }
@@ -122,7 +122,7 @@
           "condition": null,
           "is_pari_passu": false,
           "citation": {
-            "document": "Green Lion 2026-1 Prospectus",
+            "document": "Leone Arancio RMBS 2023-1 Prospectus",
             "excerpt": "Eighth , to transfer to the Principal Available Funds an amount equal to the amounts, if any, allocated on the immediately preceding Payment Date and on a",
             "page_or_row": "7.1.1(viii)"
           }
@@ -137,7 +137,7 @@
           "citation": {
             "page_or_row": "7.1.1(ix)",
             "excerpt": "Ninth , to pay to the Liquidity Facility Provider all amounts of interest due and payable in respect of any Reserve Advances and not already paid under i",
-            "document": "Green Lion 2026-1 Prospectus"
+            "document": "Leone Arancio RMBS 2023-1 Prospectus"
           }
         },
         {
@@ -148,7 +148,7 @@
           "condition": null,
           "is_pari_passu": false,
           "citation": {
-            "document": "Green Lion 2026-1 Prospectus",
+            "document": "Leone Arancio RMBS 2023-1 Prospectus",
             "excerpt": "Tenth , to pay to the Originator in respect of each Portfolio transferred to the Issuer in accordance with the Master Receivables Purchase Agreement, the ",
             "page_or_row": "7.1.1(x)"
           }
@@ -161,7 +161,7 @@
           "condition": "in addition to the amounts paid under item Third and Fifth above",
           "is_pari_passu": false,
           "citation": {
-            "document": "Green Lion 2026-1 Prospectus",
+            "document": "Leone Arancio RMBS 2023-1 Prospectus",
             "excerpt": "Eleventh , to pay any amounts due and payable to the Swap Counterparty under the Swap Agreement, in addition to the amounts paid under item Third and Fif",
             "page_or_row": "7.1.1(xi)"
           }
@@ -174,7 +174,7 @@
           "condition": "other than any amount paid under item Fourth and Ninth above",
           "is_pari_passu": false,
           "citation": {
-            "document": "Green Lion 2026-1 Prospectus",
+            "document": "Leone Arancio RMBS 2023-1 Prospectus",
             "page_or_row": "7.1.1(xii)",
             "excerpt": "Twelfth , to pay all amounts of principal due and payable to the Liquidity Facility Provider under the Liquidity Facility Agreement (other than any amoun"
           }
@@ -187,7 +187,7 @@
           "condition": null,
           "is_pari_passu": true,
           "citation": {
-            "document": "Green Lion 2026-1 Prospectus",
+            "document": "Leone Arancio RMBS 2023-1 Prospectus",
             "excerpt": "Thirteenth , to pay, pari passu and pro rata , the Premium on the Junior Notes.",
             "page_or_row": "7.1.1(xiii)"
           }
@@ -200,7 +200,7 @@
           "condition": "to the extent that the Interest Available Funds are not sufficient",
           "is_pari_passu": false,
           "citation": {
-            "document": "Green Lion 2026-1 Prospectus",
+            "document": "Leone Arancio RMBS 2023-1 Prospectus",
             "excerpt": "First , to pay any amount payable as Interest Shortfall Amount, to the extent that the Interest Available Funds (following application of the amounts dr",
             "page_or_row": "7.1.2(i)"
           }
@@ -215,7 +215,7 @@
           "citation": {
             "excerpt": "Second , to pay to the Originator - or to reserve such amount in satisfaction of -, in respect of each Subsequent Portfolio transferred to the Issuer in",
             "page_or_row": "7.1.2(ii)",
-            "document": "Green Lion 2026-1 Prospectus"
+            "document": "Leone Arancio RMBS 2023-1 Prospectus"
           }
         },
         {
@@ -228,7 +228,7 @@
           "citation": {
             "page_or_row": "7.1.2(iii)",
             "excerpt": "Third , to pay, pari passu and pro rata , all amounts outstanding in respect of principal on the Class A1 Notes until the Class A1 Notes are redeemed i",
-            "document": "Green Lion 2026-1 Prospectus"
+            "document": "Leone Arancio RMBS 2023-1 Prospectus"
           }
         },
         {
@@ -239,7 +239,7 @@
           "condition": "until the Class A2 Notes are redeemed in full",
           "is_pari_passu": false,
           "citation": {
-            "document": "Green Lion 2026-1 Prospectus",
+            "document": "Leone Arancio RMBS 2023-1 Prospectus",
             "excerpt": "Fourth , all amounts outstanding in respect of principal on the Class A2 Notes until the Class A2 Notes are redeemed in full;",
             "page_or_row": "7.1.2(iv)"
           }
@@ -254,7 +254,7 @@
           "citation": {
             "page_or_row": "7.1.2(v)",
             "excerpt": "Fifth , to pay to the Liquidity Facility Provider any other amounts due under the Liquidity Facility Agreement (other than those already paid under the P",
-            "document": "Green Lion 2026-1 Prospectus"
+            "document": "Leone Arancio RMBS 2023-1 Prospectus"
           }
         },
         {
@@ -267,7 +267,7 @@
           "citation": {
             "page_or_row": "7.1.2(vi)",
             "excerpt": "Sixth , to pay to the Swap Counterparty any other amounts due under the Swap Agreement (other than those already paid under the Pre-Trigger Notice Intere",
-            "document": "Green Lion 2026-1 Prospectus"
+            "document": "Leone Arancio RMBS 2023-1 Prospectus"
           }
         },
         {
@@ -280,7 +280,7 @@
           "citation": {
             "excerpt": "Seventh , to pay, pari passu and pro rata , all amounts outstanding in respect of principal on the Junior Notes;",
             "page_or_row": "7.1.2(vii)",
-            "document": "Green Lion 2026-1 Prospectus"
+            "document": "Leone Arancio RMBS 2023-1 Prospectus"
           }
         },
         {
@@ -291,7 +291,7 @@
           "condition": null,
           "is_pari_passu": false,
           "citation": {
-            "document": "Green Lion 2026-1 Prospectus",
+            "document": "Leone Arancio RMBS 2023-1 Prospectus",
             "excerpt": "Eighth , to pay to the Originator any Adjusted Purchase Price pursuant to clause 5 of the Master Receivables Purchase Agreement;",
             "page_or_row": "7.1.2(viii)"
           }
@@ -306,7 +306,7 @@
           "citation": {
             "excerpt": "Ninth , to pay any amount due and payable under the Transaction Documents, to the extent not already paid or payable under other items of this Priority ",
             "page_or_row": "7.1.2(ix)",
-            "document": "Green Lion 2026-1 Prospectus"
+            "document": "Leone Arancio RMBS 2023-1 Prospectus"
           }
         },
         {
@@ -319,12 +319,12 @@
           "citation": {
             "page_or_row": "7.1.2(x)",
             "excerpt": "Tenth , to transfer, to the Interest Available Funds any remaining amount after all the other payments under this Principal Priority of Payments have be",
-            "document": "Green Lion 2026-1 Prospectus"
+            "document": "Leone Arancio RMBS 2023-1 Prospectus"
           }
         }
       ],
       "source_section": "7.1",
-      "extraction_confidence": 1.0
+      "extraction_confidence": 0.8
     },
     "redemption": {
       "deal_name": "Leone Arancio RMBS 2023-1 S.r.l.",
@@ -339,7 +339,7 @@
           "is_pari_passu": false,
           "citation": {
             "excerpt": "First , to pay any amount payable as Interest Shortfall Amount, to the extent that the Interest Available Funds (following application of the amounts d",
-            "document": "Green Lion 2026-1 Prospectus",
+            "document": "Leone Arancio RMBS 2023-1 Prospectus",
             "page_or_row": "Pre-Trigger Notice Principal Priority of Payments (i)"
           }
         },
@@ -352,7 +352,7 @@
           "is_pari_passu": false,
           "citation": {
             "page_or_row": "Pre-Trigger Notice Principal Priority of Payments (ii)",
-            "document": "Green Lion 2026-1 Prospectus",
+            "document": "Leone Arancio RMBS 2023-1 Prospectus",
             "excerpt": "Second, to pay to the Originator - or to reserve such amount in satisfaction of -, in respect of each Subsequent Portfolio transferred to the Issuer in"
           }
         },
@@ -365,7 +365,7 @@
           "is_pari_passu": true,
           "citation": {
             "page_or_row": "Pre-Trigger Notice Principal Priority of Payments (iii)",
-            "document": "Green Lion 2026-1 Prospectus",
+            "document": "Leone Arancio RMBS 2023-1 Prospectus",
             "excerpt": "Third, to pay , pari passu and pro rata, all amounts outstanding in respect of principal on the Class A1 Notes until the Class A1 Notes are redeemed i"
           }
         },
@@ -378,7 +378,7 @@
           "is_pari_passu": false,
           "citation": {
             "excerpt": "Fourth , all amounts outstanding in respect of principal on the Class A2 Notes until the Class A2 Notes are redeemed in full;",
-            "document": "Green Lion 2026-1 Prospectus",
+            "document": "Leone Arancio RMBS 2023-1 Prospectus",
             "page_or_row": "Pre-Trigger Notice Principal Priority of Payments (iv)"
           }
         },
@@ -390,14 +390,14 @@
           "condition": "other than those already paid under the Pre-Trigger Notice Interest Priority of Payments",
           "is_pari_passu": false,
           "citation": {
-            "document": "Green Lion 2026-1 Prospectus",
+            "document": "Leone Arancio RMBS 2023-1 Prospectus",
             "page_or_row": "Pre-Trigger Notice Principal Priority of Payments (v)",
             "excerpt": "Fifth , to pay to the Liquidity Facility Provider any other amounts due under the Liquidity Facility Agreement (other than those already paid under the"
           }
         }
       ],
       "source_section": "Pre-Trigger Notice Principal Priority of Payments",
-      "extraction_confidence": 1.0
+      "extraction_confidence": 0.8
     },
     "post_enforcement": {
       "deal_name": "Leone Arancio RMBS 2023-1 S.r.l.",
@@ -412,20 +412,20 @@
           "is_pari_passu": true,
           "citation": {
             "page_or_row": "Section 7.2(i)",
-            "document": "Green Lion 2026-1 Prospectus",
+            "document": "Leone Arancio RMBS 2023-1 Prospectus",
             "excerpt": "First ,  to  pay, pari  passu and pro  rata according  to  the  respective amounts thereof, any Expenses (to the extent that amounts standing to the credit of t"
           }
         },
         {
           "priority": "(ii)",
           "recipient": "noteholder_representative_and_receiver_fees",
-          "description": "to pay, pari passu and pro rata, according to the respective amounts thereof, (a) the remuneration due to the Representative of the Noteholders and to pay any indemnity amounts properly due under and any proper costs and expenses incurred by the Representative of the Noteholders under the provisions of, or in connection with, any of the Transaction Documents; and (b) the remuneration and any indemnity amount due to any receiver and any proper costs and expenses incurred by it in connection with the Security Assignment and the Dutch Deed of Pledge",
+          "description": "to pay, pari passu and pro rata, according to the respective amounts thereof, (a) the remuneration due to the Representative of the Noteholders and to pay any indemnity amounts properly due under and any proper costs and expenses incurred by the Representative of the Noteholders under the provisions of, or in connection with, any of the Transaction Documents; and (b) the remuneration and any indemnity amount due to any receiver and any proper costs and expenses incurred by it in connection with the security for the Notes",
           "amount_formula": "remuneration, indemnity amounts, proper costs and expenses",
           "condition": null,
           "is_pari_passu": true,
           "citation": {
             "excerpt": "Second ,  to  pay, pari  passu and pro  rata ,  according  to  the  respective amounts thereof, (a) the remuneration due to the Representative of the Noteholder",
-            "document": "Green Lion 2026-1 Prospectus",
+            "document": "Leone Arancio RMBS 2023-1 Prospectus",
             "page_or_row": "Section 7.2(ii)"
           }
         },
@@ -438,7 +438,7 @@
           "is_pari_passu": true,
           "citation": {
             "page_or_row": "Section 7.2(iii)",
-            "document": "Green Lion 2026-1 Prospectus",
+            "document": "Leone Arancio RMBS 2023-1 Prospectus",
             "excerpt": "Third ,  to  pay, pari  passu and pro  rata according  to  the  respective amounts thereof, any amount due and payable on account of remuneration, indemnities o"
           }
         },
@@ -451,7 +451,7 @@
           "is_pari_passu": false,
           "citation": {
             "page_or_row": "Section 7.2(iv)",
-            "document": "Green Lion 2026-1 Prospectus",
+            "document": "Leone Arancio RMBS 2023-1 Prospectus",
             "excerpt": "Fourth , to pay to the Swap Counterparty any amount due and payable under the Swap Agreement, including any swap termination payments upon early terminat"
           }
         },
@@ -464,7 +464,7 @@
           "is_pari_passu": false,
           "citation": {
             "page_or_row": "Section 7.2(v)",
-            "document": "Green Lion 2026-1 Prospectus",
+            "document": "Leone Arancio RMBS 2023-1 Prospectus",
             "excerpt": "Fifth , to pay to the Liquidity Facility Provider any amounts due under the Liquidity Facility Agreement;"
           }
         },
@@ -476,7 +476,7 @@
           "condition": null,
           "is_pari_passu": true,
           "citation": {
-            "document": "Green Lion 2026-1 Prospectus",
+            "document": "Leone Arancio RMBS 2023-1 Prospectus",
             "page_or_row": "Section 7.2(vi)",
             "excerpt": "Sixth , to pay, pari passu and pro rata , all amounts of interest due and payable  on  the  Class  A1  Notes  and  on  the  Class  A2  Notes  on  such Payment Date;"
           }
@@ -489,7 +489,7 @@
           "condition": null,
           "is_pari_passu": true,
           "citation": {
-            "document": "Green Lion 2026-1 Prospectus",
+            "document": "Leone Arancio RMBS 2023-1 Prospectus",
             "page_or_row": "Section 7.2(vii)",
             "excerpt": "Seventh ,  to  pay, pari  passu and pro  rata ,  all  amounts  in  respect  of principal outstanding on the Class A1 Notes and on the Class A2 Notes;"
           }
@@ -503,7 +503,7 @@
           "is_pari_passu": false,
           "citation": {
             "page_or_row": "Section 7.2(viii)",
-            "document": "Green Lion 2026-1 Prospectus",
+            "document": "Leone Arancio RMBS 2023-1 Prospectus",
             "excerpt": "Eighth , to pay any amounts due and payable to the Swap Counterparty under the Swap Agreement, in addition to the amounts paid under item Third and Fourt"
           }
         },
@@ -516,7 +516,7 @@
           "is_pari_passu": false,
           "citation": {
             "excerpt": "Ninth , to pay to the Originator any Adjusted Purchase Price pursuant to clause 5 of the Master Receivables Purchase Agreement;",
-            "document": "Green Lion 2026-1 Prospectus",
+            "document": "Leone Arancio RMBS 2023-1 Prospectus",
             "page_or_row": "Section 7.2(ix)"
           }
         },
@@ -529,7 +529,7 @@
           "is_pari_passu": false,
           "citation": {
             "excerpt": "Tenth , to pay to the Originator any amount due and payable under the Transaction Documents, to the extent not already paid or payable under other items",
-            "document": "Green Lion 2026-1 Prospectus",
+            "document": "Leone Arancio RMBS 2023-1 Prospectus",
             "page_or_row": "Section 7.2(x)"
           }
         },
@@ -542,7 +542,7 @@
           "is_pari_passu": true,
           "citation": {
             "page_or_row": "Section 7.2(xi)",
-            "document": "Green Lion 2026-1 Prospectus",
+            "document": "Leone Arancio RMBS 2023-1 Prospectus",
             "excerpt": "Eleventh ,  to  pay, pari passu and pro rata ,  all  amounts outstanding in respect of principal due and payable on the Junior Notes; and"
           }
         },
@@ -556,12 +556,12 @@
           "citation": {
             "excerpt": "Twelfth ,  to  pay, pari  passu and pro rata, the  Premium  on  the  Junior Notes.",
             "page_or_row": "Section 7.2(xii)",
-            "document": "Green Lion 2026-1 Prospectus"
+            "document": "Leone Arancio RMBS 2023-1 Prospectus"
           }
         }
       ],
       "source_section": "7.2 Post Trigger Notice Priority of Payments",
-      "extraction_confidence": 1.0
+      "extraction_confidence": 0.8
     }
   },
   "covenants": {

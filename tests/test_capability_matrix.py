@@ -163,9 +163,19 @@ def test_leone_arancio_italian_covenant_and_waterfall_run_tape_na() -> None:
 def test_sol_lion_spanish_is_mostly_not_applicable() -> None:
     matrix = _real_matrix()
     deal_id = "sol-lion-ii"
-    states = [c.state for c in matrix.cells if c.deal_id == deal_id]
-    # Minimal Spanish extraction (0 triggers, no waterfall, no tapes) → all N/A.
-    assert all(s == STATE_NOT_APPLICABLE for s in states), states
+    cells = {c.capability_key: c.state for c in matrix.cells if c.deal_id == deal_id}
+    # After the #368 re-extraction the Spanish seed carries a real extracted
+    # trigger and an executable redemption/post-enforcement waterfall cascade, so
+    # covenant_monitoring + waterfall_execution run. The tape-driven capabilities
+    # stay not-applicable (no published loan tapes), so the deal is still *mostly*
+    # not-applicable — but no longer a uniform wall of N/A.
+    assert cells["covenant_monitoring"] == STATE_RAN
+    assert cells["waterfall_execution"] == STATE_RAN
+    assert cells["tape_analytics"] == STATE_NOT_APPLICABLE
+    assert cells["collateral_reconciliation"] == STATE_NOT_APPLICABLE
+    assert cells["engine_validation"] == STATE_NOT_APPLICABLE
+    na = sum(1 for s in cells.values() if s == STATE_NOT_APPLICABLE)
+    assert na > len(cells) - na, cells  # still mostly N/A (3 of 5)
 
 
 def test_jurisdictions_are_resolved_across_de_it_es() -> None:

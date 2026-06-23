@@ -2,24 +2,263 @@
   "metadata": {
     "deal_name": "Sol-Lion II RMBS Fondo de Titulización",
     "prospectus_url": "https://ing.com/binaries/content/assets/documents/files/sol-lion-ii-rmbs-fondo-de-titulizacion-prospectus-dated-25-november-2020.pdf",
-    "extracted_at": "2026-06-06T11:09:42.973356+00:00",
-    "extraction_duration_sec": 19.22323203086853,
+    "extracted_at": "2026-06-23T13:39:34.060930+00:00",
+    "extraction_duration_sec": 806.4991099834442,
     "sections_found": [
       "definitions",
+      "revenue_priority_of_payments",
+      "redemption_priority_of_payments",
+      "post_enforcement_priority",
       "credit_enhancement",
       "eligibility_criteria",
       "available_funds"
     ],
-    "completeness_score": 0.3,
+    "completeness_score": 0.725,
     "cache_path": "data/deals/sol-lion-ii-rmbs-fondo-de-titulización.json"
   },
   "definitions": {},
-  "waterfalls": {},
+  "waterfalls": {
+    "revenue": {
+      "deal_name": "Sol-Lion II RMBS Fondo de Titulización",
+      "waterfall_type": "revenue",
+      "steps": [],
+      "source_section": "3.4.7.4",
+      "extraction_confidence": 0.0
+    },
+    "redemption": {
+      "deal_name": "Sol-Lion II RMBS Fondo de Titulización",
+      "waterfall_type": "redemption",
+      "steps": [
+        {
+          "priority": "(a)",
+          "recipient": "series_a1_notes_redemption",
+          "description": "to the redemption pro rata and pari passu of the Series A1 Notes",
+          "amount_formula": "pro rata and pari passu",
+          "condition": null,
+          "is_pari_passu": true,
+          "citation": {
+            "page_or_row": "(ii)(a)",
+            "excerpt": "firstly , to the redemption pro rata and pari passu of the Series A1 Notes;",
+            "document": "prospectus"
+          }
+        },
+        {
+          "priority": "(b)",
+          "recipient": "series_a2_notes_redemption",
+          "description": "once all Series A1 Notes have been fully redeemed, to the redemption pro rata and pari passu of Series A2 Notes",
+          "amount_formula": "pro rata and pari passu",
+          "condition": "once all Series A1 Notes have been fully redeemed",
+          "is_pari_passu": true,
+          "citation": {
+            "page_or_row": "(ii)(b)",
+            "excerpt": "secondly ,  once all Series A1 Notes have been fully redeemed, to the redemption  pro rata and pari passu of Series A2 Notes;",
+            "document": "prospectus"
+          }
+        },
+        {
+          "priority": "(c)",
+          "recipient": "series_a3_notes_redemption",
+          "description": "once all Series A2 Notes have been fully redeemed, to the redemption pro rata and pari passu of Series A3 Notes",
+          "amount_formula": "pro rata and pari passu",
+          "condition": "once all Series A2 Notes have been fully redeemed",
+          "is_pari_passu": true,
+          "citation": {
+            "document": "prospectus",
+            "excerpt": "thirdly , once all Series A2 Notes have been fully redeemed, to the redemption pro rata and pari passu of Series A3 Notes;",
+            "page_or_row": "(ii)(c)"
+          }
+        },
+        {
+          "priority": "(d)",
+          "recipient": "series_a4_notes_redemption",
+          "description": "once all Series A3 Notes have been fully redeemed, to the redemption pro rata and pari passu of Series A4 Notes",
+          "amount_formula": "pro rata and pari passu",
+          "condition": "once all Series A3 Notes have been fully redeemed",
+          "is_pari_passu": true,
+          "citation": {
+            "document": "prospectus",
+            "excerpt": "fourthly ,  once all  Series A3 Notes have been fully redeemed, to the redemption  pro rata and pari passu of Series A4 Notes;",
+            "page_or_row": "(ii)(d)"
+          }
+        },
+        {
+          "priority": "(e)",
+          "recipient": "series_a5_notes_redemption",
+          "description": "once all Series A4 Notes have been fully redeemed, to the redemption pro rata and pari passu of Series A5 Notes",
+          "amount_formula": "pro rata and pari passu",
+          "condition": "once all Series A4 Notes have been fully redeemed",
+          "is_pari_passu": true,
+          "citation": {
+            "page_or_row": "(ii)(e)",
+            "excerpt": "fifthly , once all Series A4 Notes have been fully redeemed, to the redemption pro rata and pari passu of Series A5 Notes;",
+            "document": "prospectus"
+          }
+        },
+        {
+          "priority": "(f)",
+          "recipient": "series_a6_notes_redemption",
+          "description": "once all Series A5 Notes have been fully redeemed, to the redemption pro rata and pari passu of Series A6 Notes",
+          "amount_formula": "pro rata and pari passu",
+          "condition": "once all Series A5 Notes have been fully redeemed",
+          "is_pari_passu": true,
+          "citation": {
+            "page_or_row": "(ii)(f)",
+            "document": "prospectus",
+            "excerpt": "sixthly , once all Series A5 Notes have been fully redeemed, to the redemption pro rata and pari passu of Series A6 Notes;"
+          }
+        },
+        {
+          "priority": "(g)",
+          "recipient": "class_b_notes_redemption",
+          "description": "once all Series A6 Notes have been fully redeemed, to the redemption pro rata and pari passu of Class B Notes",
+          "amount_formula": "pro rata and pari passu",
+          "condition": "once all Series A6 Notes have been fully redeemed",
+          "is_pari_passu": true,
+          "citation": {
+            "document": "prospectus",
+            "excerpt": "seventhly , once all Series A6 Notes have been fully redeemed, to the redemption pro rata and pari passu of Class B Notes; and",
+            "page_or_row": "(ii)(g)"
+          }
+        },
+        {
+          "priority": "(h)",
+          "recipient": "class_c_notes_redemption",
+          "description": "once Class B Notes have been fully redeemed, to the redemption pro rata and pari passu of Class C Notes",
+          "amount_formula": "pro rata and pari passu",
+          "condition": "once Class B Notes have been fully redeemed",
+          "is_pari_passu": true,
+          "citation": {
+            "document": "prospectus",
+            "excerpt": "eighthly , once Class B Notes have been fully redeemed, to the redemption pro rata and pari passu of Class C Notes.",
+            "page_or_row": "(ii)(h)"
+          }
+        }
+      ],
+      "source_section": "(ii) Once the Revolving Period has ended or has been terminated",
+      "extraction_confidence": 1.0
+    },
+    "post_enforcement": {
+      "deal_name": "Sol-Lion II RMBS Fondo de Titulización",
+      "waterfall_type": "post_enforcement",
+      "steps": [
+        {
+          "priority": "(a)",
+          "recipient": "amendment_expenses",
+          "description": "Expenses, if any, derived from preparation and execution of the amendment of the Deed of Incorporation and/or the Transaction Documents and/or any additional agreements;",
+          "amount_formula": "Expenses, if any",
+          "condition": null,
+          "is_pari_passu": false,
+          "citation": {
+            "excerpt": "Expenses, if any, derived from preparation and execution of the amendment of the Deed of Incorporation and/or the Transaction Documents and/or any add",
+            "page_or_row": "3.4.7.6.(a)",
+            "document": "prospectus"
+          }
+        },
+        {
+          "priority": "(b)",
+          "recipient": "extraordinary_audit_and_legal_expenses",
+          "description": "The extraordinary expenses of audits and legal advice;",
+          "amount_formula": "Extraordinary expenses",
+          "condition": null,
+          "is_pari_passu": false,
+          "citation": {
+            "document": "prospectus",
+            "page_or_row": "3.4.7.6.(b)",
+            "excerpt": "The extraordinary expenses of audits and legal advice;"
+          }
+        },
+        {
+          "priority": "(c)",
+          "recipient": "asset_sale_and_liquidation_expenses",
+          "description": "All expenses that may arise from the sale of the Receivables and the remaining assets of the Fund upon liquidation thereof;",
+          "amount_formula": "All expenses",
+          "condition": null,
+          "is_pari_passu": false,
+          "citation": {
+            "document": "prospectus",
+            "excerpt": "All expenses that may arise from the sale of the Receivables and the remaining assets of the Fund upon liquidation thereof;",
+            "page_or_row": "3.4.7.6.(c)"
+          }
+        },
+        {
+          "priority": "(d)",
+          "recipient": "creditor_meeting_costs",
+          "description": "All costs related to convening a Meeting of Creditors;",
+          "amount_formula": "All costs",
+          "condition": null,
+          "is_pari_passu": false,
+          "citation": {
+            "document": "prospectus",
+            "page_or_row": "3.4.7.6.(d)",
+            "excerpt": "All costs related to convening a Meeting of Creditors;"
+          }
+        },
+        {
+          "priority": "(e)",
+          "recipient": "mortgage_loan_enforcement_and_recovery_costs",
+          "description": "Those necessary to commence enforcement of the Mortgage Loans and those arising from the required actions for recovery;",
+          "amount_formula": "Necessary costs",
+          "condition": null,
+          "is_pari_passu": false,
+          "citation": {
+            "document": "prospectus",
+            "page_or_row": "3.4.7.6.(e)",
+            "excerpt": "Those necessary to commence enforcement of the Mortgage Loans and those arising from the required actions for recovery;"
+          }
+        },
+        {
+          "priority": "(f)",
+          "recipient": "borrower_and_guarantor_notification_costs",
+          "description": "Notification to Borrowers and, when applicable, the guarantors, insurance companies regulated under section 3.7.1.13 of the Additional Information; and",
+          "amount_formula": "Not specified",
+          "condition": null,
+          "is_pari_passu": false,
+          "citation": {
+            "excerpt": "Notification to Borrowers and, when applicable, the guarantors, insurance companies regulated under section 3.7.1.13 of the Additional Information; and",
+            "page_or_row": "3.4.7.6.(f)",
+            "document": "prospectus"
+          }
+        },
+        {
+          "priority": "(g)",
+          "recipient": "general_extraordinary_expenses",
+          "description": "Generally, all other extraordinary expenses borne by the Fund or by the Management Company in representation or on behalf thereof.",
+          "amount_formula": "All other extraordinary expenses",
+          "condition": null,
+          "is_pari_passu": false,
+          "citation": {
+            "document": "prospectus",
+            "page_or_row": "3.4.7.6.(g)",
+            "excerpt": "Generally, all other extraordinary expenses borne by the Fund or by the Management Company in representation or on behalf thereof."
+          }
+        }
+      ],
+      "source_section": "3.4.7.6. Extraordinary Expenses",
+      "extraction_confidence": 1.0
+    }
+  },
   "covenants": {
     "deal_name": "FONDO DE TITULIZACIÓN",
-    "triggers": [],
+    "triggers": [
+      {
+        "name": "early_liquidation_trigger",
+        "display_name": "Early Liquidation Trigger",
+        "description": "An event that, upon occurring, changes the redemption priority of the Class A notes from sequential by series to pro-rata.",
+        "metric": "unspecified_event",
+        "threshold": null,
+        "threshold_unit": "boolean",
+        "direction": "non_zero",
+        "consequence": "Redemption of Class A notes switches from sequential by series (A1 to A6) to pro-rata and pari passu across all Class A series.",
+        "section_reference": "(ii) Once the Revolving Period has ended or has been terminated",
+        "citation": {
+          "excerpt": "Upon an Early Liquidation of the Fund, the Available Funds will be applied... to the redemption pro rata and pari passu of all Series of Class A Notes",
+          "page_or_row": "(ii) Once the Revolving Period has ended or has been terminated",
+          "document": "prospectus"
+        }
+      }
+    ],
     "issuer_covenants": [],
-    "extraction_confidence": 0.0
+    "extraction_confidence": 0.2
   },
   "tranche_structure": [
     {
@@ -30,5 +269,7 @@
       "seniority": 14
     }
   ],
-  "trigger_names": []
+  "trigger_names": [
+    "early_liquidation_trigger"
+  ]
 }
