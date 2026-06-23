@@ -119,6 +119,21 @@ _METRIC_ALIASES: dict[str, str] = {
 }
 
 
+def _tranche_pdl(state: DealState, name: str) -> float:
+    """Read a named tranche's PDL debit from the state's canonical tranche list.
+
+    The ``pdl_class_a`` / ``pdl_class_b`` sentinels map onto the ``DealState``
+    tranche of that name (``state.tranches[*].pdl_balance``) rather than a
+    hardcoded ``state.class_a_pdl`` field — so the monitor reads per-tranche PDL
+    by name and is no longer hardcoded to A/B/C. A tranche absent from the state
+    contributes 0.0 (no deficiency for a class the deal does not carry).
+    """
+    for tranche in state.tranches:
+        if tranche.name == name:
+            return tranche.pdl_balance
+    return 0.0
+
+
 def _canonical_metric(metric: str) -> str:
     """Resolve an extracted/synonym metric name to its canonical sentinel.
 
@@ -484,11 +499,11 @@ def _extract_metric(
 
     if canonical == "pdl_class_a":
         if state is not None:
-            return float(state.class_a_pdl)
+            return float(_tranche_pdl(state, "class_a"))
         return float(input.class_a_pdl_balance)
     if canonical == "pdl_class_b":
         if state is not None:
-            return float(state.class_b_pdl)
+            return float(_tranche_pdl(state, "class_b"))
         return float(input.class_b_pdl_balance)
     if canonical == "reserve_fund_ratio":
         if state is not None:

@@ -2870,18 +2870,29 @@ def test_waterfall_self_configured_non_gl_deal_does_not_consult_green_lion(tmp_p
         # A minimal real series so the endpoint renders without a tape fetch.
         return _small_reconstructed_series(original_pool_balance=original_pool_balance)
 
-    from loanwhiz.primitives.deal_state import PeriodCollections
+    from loanwhiz.primitives.collections_aggregator import CollectionsOutput
 
-    # The mocked aggregator's ``execute(...).output.to_period_collections()`` must
-    # return a real ``PeriodCollections`` so the (real) ``_reconstruct_series``
-    # period loop validates before the spied engine call.
-    agg_output = MagicMock()
-    agg_output.to_period_collections.return_value = PeriodCollections(
-        interest=1_000.0,
+    # The mocked aggregator's ``execute(...).output`` must be a real
+    # ``CollectionsOutput`` so the (real) ``_reconstruct_series`` period loop —
+    # which now builds a canonical ``PeriodInputs`` via the tape adapter from the
+    # collection legs — validates before the spied engine call. (The tape
+    # analytics fetch degrades to ``None`` here, so risk_signals is simply
+    # omitted; the legs drive the fold.)
+    agg_output = CollectionsOutput(
+        reporting_period="2026-02-28",
+        interest_collected=1_000.0,
+        swap_receipts=0.0,
+        available_revenue_funds=1_000.0,
         scheduled_principal=1_000.0,
-        prepayment=0.0,
-        recovery=0.0,
-        realized_loss=0.0,
+        unscheduled_principal=0.0,
+        recoveries=0.0,
+        realized_losses=0.0,
+        available_principal_funds=1_000.0,
+        pool_balance_eur=500_000_000.0,
+        loan_count=1000,
+        class_a_interest_due=1_000.0,
+        senior_fees=50_000.0,
+        summary="mock period",
     )
     mock_aggregator = MagicMock()
     mock_aggregator.execute.return_value.output = agg_output
@@ -2943,6 +2954,111 @@ def test_reconstruct_series_selects_tape_path_for_tape_deal():
     assert result is sentinel
     tapes.assert_called_once()
     reports.assert_not_called()
+
+
+def test_tape_path_folds_canonical_period_inputs_with_risk_signals(tmp_path):
+    """The tape path now folds canonical ``source="tape"`` ``PeriodInputs`` (#364).
+
+    Captures what the (real) ``_reconstruct_series_from_tapes`` loop hands to
+    ``reconstruct_period_series`` and asserts:
+
+    - each period is a canonical ``domain.PeriodInputs`` with ``source=="tape"``;
+    - it carries a populated ``RiskSignals`` derived from the period's tape
+      analytics (no more ``risk_signals=None`` on the tape path);
+    - its collection ``legs`` reduce, via ``_normalize_period``, to the EXACT
+      same ``PeriodCollections`` the legacy ``PeriodInput.to_period_collections``
+      path produced — the byte-for-byte safety property that keeps GL's
+      reconstructed series unchanged by the migration.
+    """
+    from loanwhiz.primitives.collections_aggregator import CollectionsOutput
+    from loanwhiz.primitives.period_state_machine import _normalize_period
+
+    collections = CollectionsOutput(
+        reporting_period="2026-03-31",
+        interest_collected=9_050_000.0,
+        swap_receipts=0.0,
+        available_revenue_funds=9_050_000.0,
+        scheduled_principal=5_000_000.0,
+        unscheduled_principal=1_200_000.0,
+        recoveries=300_000.0,
+        realized_losses=150_000.0,
+        available_principal_funds=6_500_000.0,
+        pool_balance_eur=1_000_000_000.0,
+        loan_count=1000,
+        class_a_interest_due=9_050_000.0,
+        senior_fees=50_000.0,
+        summary="mock period",
+    )
+    mock_aggregator = MagicMock()
+    mock_aggregator.execute.return_value.output = collections
+
+    tape_dump = {
+        "reporting_date": "2026-03-31",
+        "asset_class": "RMBS",
+        "transaction_name": "Green Lion 2026-1 B.V.",
+        "loan_count": 1000,
+        "pool_balance_eur": 1_000_000_000.0,
+        "pool_stats": {"wtd_ltv": 71.0},
+        "arrears_breakdown": {
+            "current_pct": 96.0,
+            "arrears_1_2m_pct": 1.0,
+            "arrears_180d_plus_pct": 2.0,
+            "default_pct": 1.0,
+        },
+        "epc_breakdown": None,
+        "rate_type_breakdown": None,
+        "property_type_breakdown": None,
+        "geographic_breakdown": None,
+        "annex_detected": "Annex 2 (RMBS)",
+        "data_source": "direct",
+    }
+
+    deal = {
+        "tape_urls": [
+            {"url": "https://example/t0.csv", "date": "2026-02-28"},
+            {"url": "https://example/t1.csv", "date": "2026-03-31"},
+        ]
+    }
+
+    captured = {}
+
+    def _spy_reconstruct(*, periods, **kw):
+        captured["periods"] = periods
+        return _small_reconstructed_series()
+
+    api_main._RECONSTRUCTION_MEMO.clear()
+    with patch("loanwhiz.api.main.RECONSTRUCTION_CACHE_DIR", str(tmp_path)), patch(
+        "loanwhiz.api.main.CollectionsAggregator", return_value=mock_aggregator
+    ), patch(
+        "loanwhiz.api.main._normalised_tape_output", return_value=tape_dump
+    ), patch(
+        "loanwhiz.api.main.reconstruct_period_series", side_effect=_spy_reconstruct
+    ):
+        api_main._reconstruct_series(api_main._GREEN_LION_DEAL_ID, deal)
+
+    api_main._RECONSTRUCTION_MEMO.clear()
+
+    periods = captured["periods"]
+    # 2 tapes → 1 transition → 1 canonical PeriodInputs.
+    assert len(periods) == 1
+    pi = periods[0]
+    assert isinstance(pi, api_main.CanonicalPeriodInputs)
+    assert pi.source == "tape"
+
+    # RiskSignals is populated from the tape analytics (no risk_signals=None).
+    assert pi.risk_signals is not None
+    assert pi.risk_signals.pool_balance == 1_000_000_000.0
+    assert pi.risk_signals.wa_ltv == 71.0
+    # default_pct is the defaulted fraction (1% → 0.01); arrears are balances:
+    # 2% 180d+ of €1bn = €20m; arrears_90d = ≥180d ∪ defaulted balance = €30m.
+    assert pi.risk_signals.default_pct == pytest.approx(0.01)
+    assert pi.risk_signals.arrears_180d == pytest.approx(20_000_000.0)
+    assert pi.risk_signals.arrears_90d == pytest.approx(30_000_000.0)
+
+    # Byte-for-byte: the canonical legs reduce to the same collections the legacy
+    # PeriodInput path produced.
+    legacy_collections = collections.to_period_collections()
+    assert _normalize_period(pi).collections == legacy_collections
 
 
 def test_reconstruct_series_selects_report_path_for_report_only_deal():

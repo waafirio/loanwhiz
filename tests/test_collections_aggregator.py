@@ -189,11 +189,27 @@ class TestCollectionsAggregatorUnit:
     # Principal — without prev_pool_balance (estimation)
     # ------------------------------------------------------------------
 
-    def test_scheduled_principal_estimated_from_payments(self) -> None:
-        """Without prev_balance, scheduled = sum(monthly_payment) * days/30."""
+    def test_scheduled_principal_estimated_loan_level(self) -> None:
+        """Without prev tape/balance, scheduled is loan-level-amortised (#365).
+
+        The Regime-3 estimate now amortises each performing loan one period via
+        ``pool_scheduled_principal_schedule`` (the same per-loan engine the
+        projector uses) instead of the old raw ``sum(scheduled_monthly_payment)``
+        proxy. With a stated instalment of 500/mo on a 100k @ 3% loan the period
+        interest is 100k×3%/360×30 = 250, so the scheduled *principal* portion is
+        250/loan/month — the new method correctly subtracts interest where the
+        old proxy did not. 10 loans × 250 × (days/30).
+        """
         loan_count = 10
         payment = 500.0
-        csv_str = _make_synthetic_tape(loan_count=loan_count, payment_per_loan=payment)
+        balance = 100_000.0
+        rate = 3.0
+        csv_str = _make_synthetic_tape(
+            loan_count=loan_count,
+            balance_per_loan=balance,
+            rate_pct=rate,
+            payment_per_loan=payment,
+        )
         tape_path = _tape_url_from_string(csv_str)
         agg = CollectionsAggregator()
         inp = CollectionsInput(
@@ -203,8 +219,43 @@ class TestCollectionsAggregatorUnit:
             days_in_period=DAYS_IN_PERIOD,
         )
         result = agg.execute(inp)
-        expected = loan_count * payment * (DAYS_IN_PERIOD / 30.0)
+        interest_per_loan = balance * rate / 100.0 / 360.0 * 30.0  # 250
+        sched_principal_per_loan = payment - interest_per_loan  # 250
+        expected = loan_count * sched_principal_per_loan * (DAYS_IN_PERIOD / 30.0)
         assert math.isclose(result.output.scheduled_principal, expected, rel_tol=1e-6)
+        assert result.output.derivation == "estimate"
+
+    def test_scheduled_principal_estimate_annuity_without_stated_payment(self) -> None:
+        """Cold-start estimate uses the level-payment annuity when no instalment.
+
+        A tape with no ``scheduled_monthly_payment`` column would have produced
+        scheduled principal 0 under the old payment-sum proxy; under loan-level
+        amortisation (#365) it computes the annuity instalment from balance, rate
+        and remaining term and returns the real scheduled-principal portion.
+        """
+        from loanwhiz.primitives.loan_level_amortisation import (
+            pool_scheduled_principal_schedule,
+        )
+
+        rows = [
+            {
+                "loan_id": "A",
+                "current_balance": 100_000.0,
+                "current_interest_rate_pct": 6.0,
+                "remaining_term_months": 60,
+                "default_crr_flag": "N",
+            }
+        ]
+        df = pd.DataFrame(rows)
+        tape_path = _tape_url_from_string(df.to_csv(index=False))
+        result = CollectionsAggregator().execute(
+            CollectionsInput(
+                tape_file_url=tape_path, reporting_period="Test", days_in_period=30
+            )
+        )
+        expected = pool_scheduled_principal_schedule(df, 1)[0]
+        assert expected > 0.0  # the annuity yields real scheduled principal
+        assert math.isclose(result.output.scheduled_principal, expected, rel_tol=1e-9)
 
     # ------------------------------------------------------------------
     # Principal — with prev_pool_balance (balance delta)
@@ -428,7 +479,85 @@ class TestPerLoanDerivation:
         assert out.recoveries == 0.0
         assert out.realized_losses == 0.0
 
-    def test_scheduled_capped_at_actual_reduction(self) -> None:
+    def test_scheduled_split_is_loan_level_annuity(self) -> None:
+        """The performing-survivor scheduled split uses loan-level amortisation (#365).
+
+        With no stated ``scheduled_monthly_payment`` (payment=0) the old proxy
+        produced *zero* scheduled principal (instalment − interest < 0), so the
+        whole net reduction was misclassified as prepayment. Loan-level
+        amortisation instead computes the level-payment annuity from rate +
+        remaining term and reports a real scheduled-principal portion. The
+        scheduled leg matches the prior tape's one-period loan-level schedule
+        (capped at the cohort net reduction).
+        """
+        from loanwhiz.primitives.loan_level_amortisation import (
+            pool_scheduled_principal_schedule,
+        )
+
+        prev_rows = [
+            {
+                "loan_id": "A",
+                "current_balance": 100_000.0,
+                "current_interest_rate_pct": 6.0,
+                "remaining_term_months": 60,
+                "scheduled_monthly_payment": 0.0,
+                "arrears_bucket": "Performing",
+                "default_crr_flag": "N",
+            }
+        ]
+        # Balance falls by 5_000 — well above the ~1_433 annuity scheduled
+        # principal, so scheduled is the full annuity figure and the residual is
+        # prepayment.
+        cur_rows = [dict(prev_rows[0], current_balance=95_000.0)]
+        prev_df = pd.DataFrame(prev_rows)
+        expected_sched = pool_scheduled_principal_schedule(prev_df, 1)[0]
+        out = self._run(prev_rows, cur_rows, days_in_period=30).output
+        assert expected_sched > 0.0
+        assert math.isclose(out.scheduled_principal, expected_sched, rel_tol=1e-6)
+        # Reconcile-to-pool invariant: scheduled + prepay == net reduction (5_000).
+        assert math.isclose(
+            out.scheduled_principal + out.unscheduled_principal, 5_000.0, abs_tol=1.0
+        )
+        assert out.scheduled_principal <= 5_000.0 + 1e-6
+
+    def test_total_principal_reconciles_to_pool_movement(self) -> None:
+        """Regression: total principal == actual pool movement (GL-to-the-cent).
+
+        The #365 change refines the scheduled/prepayment *split* but must leave
+        the *total* principal (scheduled + prepayment + recoveries) equal to the
+        observed pool movement, so a deal reconciled to the cent (GL-2024-1)
+        stays numerically stable. Multi-loan two-period tape with scheduled
+        paydown, a prepayment, a full redemption and a recovery.
+        """
+        prev_rows = [
+            _loan("P1", 200_000.0, rate=4.0, payment=1_500.0),
+            _loan("P2", 150_000.0, rate=5.0, payment=1_200.0),
+            _loan("R", 80_000.0, payment=0.0, default="Y"),  # surviving defaulted
+            _loan("X", 60_000.0, payment=900.0),  # performing, redeems in full
+        ]
+        cur_rows = [
+            _loan("P1", 197_000.0, rate=4.0, payment=1_500.0),  # −3_000
+            _loan("P2", 148_000.0, rate=5.0, payment=1_200.0),  # −2_000
+            _loan("R", 75_000.0, payment=0.0, default="Y"),  # −5_000 recovery
+            # X gone → 60_000 prepayment
+        ]
+        out = self._run(prev_rows, cur_rows, days_in_period=30).output
+        # Performing-survivor net movement: P1 + P2 = 5_000 (scheduled + prepay);
+        # X full redemption = 60_000 prepayment; R recovery = 5_000.
+        perf_surv_movement = 5_000.0
+        full_redemption = 60_000.0
+        recovery = 5_000.0
+        assert math.isclose(
+            out.scheduled_principal + out.unscheduled_principal,
+            perf_surv_movement + full_redemption,
+            abs_tol=1.0,
+        )
+        assert math.isclose(out.recoveries, recovery, abs_tol=1.0)
+        # Scheduled is loan-level (annuity/stated-instalment), never above the
+        # performing-survivor net movement it is split out of.
+        assert 0.0 < out.scheduled_principal <= perf_surv_movement + 1e-6
+
+    def test_capped_at_actual_reduction(self) -> None:
         """Scheduled never exceeds the actual (net) balance reduction."""
         # Huge instalment but the balance only fell by 100 → scheduled ≤ 100.
         prev = [_loan("A", 100_000.0, rate=3.0, payment=50_000.0)]
