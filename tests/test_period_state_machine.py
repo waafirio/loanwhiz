@@ -650,3 +650,124 @@ def test_run_period_tape_path_keeps_condition_gating() -> None:
     # the step IS gated (suppressed) on the tape path.
     assert step.gated is True
     assert step.amount_distributed == 0.0
+
+
+# ===========================================================================
+# Engine generality: run_period over a non-A/B/C tranche structure (#363)
+# ===========================================================================
+
+
+def test_run_period_drives_non_abc_tranche_structure_end_to_end() -> None:
+    """The engine runs a 4-tranche, non-A/B/C-named structure through run_period.
+
+    Proves the active engine is no longer hardcoded to three Class A/B/C fields:
+    the opening state carries a custom tranche set, the interpreter computes
+    per-tranche interest + principal by name, and the closing state's tranches
+    amortise — none of which is possible with the old scalar triplet.
+    """
+    from loanwhiz.domain.state import TrancheState
+
+    opening = DealState(
+        reporting_date="2026-01-31",
+        tranches=[
+            TrancheState(name="senior", balance=8_000_000.0, pdl_balance=0.0),
+            TrancheState(name="mezz_1", balance=1_000_000.0, pdl_balance=0.0),
+            TrancheState(name="mezz_2", balance=600_000.0, pdl_balance=0.0),
+            TrancheState(name="junior", balance=400_000.0, pdl_balance=0.0),
+        ],
+        reserve_balance=200_000.0,
+        reserve_target=200_000.0,
+        cumulative_losses=0.0,
+        pool_balance=10_000_000.0,
+        pool_factor=1.0,
+        original_pool_balance=10_000_000.0,
+    )
+
+    rates = {
+        "senior_rate_pct": 3.0,
+        "mezz_1_rate_pct": 5.0,
+        "mezz_2_rate_pct": 6.0,
+        "junior_rate_pct": 8.0,
+    }
+    # Interest steps for every tranche + principal steps for the two senior-most.
+    revenue_steps = [
+        StepSpec(priority="(a)", recipient="senior_interest"),
+        StepSpec(priority="(b)", recipient="mezz_1_interest"),
+        StepSpec(priority="(c)", recipient="mezz_2_interest"),
+        StepSpec(priority="(d)", recipient="junior_interest"),
+    ]
+    redemption_steps = [
+        StepSpec(priority="(a)", recipient="senior_principal"),
+        StepSpec(priority="(b)", recipient="mezz_1_principal"),
+    ]
+
+    # The interpreter's need-registry only knows the canonical class_* interest
+    # recipients, so the custom-named interest steps are recorded not_evaluable
+    # (need 0) — that is the deal-agnostic degradation, and it does not crash.
+    period = PeriodInput(
+        reporting_date="2026-02-28",
+        collections=PeriodCollections(
+            interest=300_000.0,
+            scheduled_principal=500_000.0,
+            prepayment=0.0,
+            recovery=0.0,
+            realized_loss=0.0,
+        ),
+        days_in_period=28,
+    )
+
+    result = run_period(
+        opening,
+        period,
+        rates=rates,
+        revenue_steps=revenue_steps,
+        redemption_steps=redemption_steps,
+        principal_classes=("senior", "mezz_1"),
+    )
+
+    closing = result.closing_state
+    by = {t.name: t for t in closing.tranches}
+    # The custom tranche set is preserved end-to-end (no A/B/C coercion lost it).
+    assert set(by) == {"senior", "mezz_1", "mezz_2", "junior"}
+    # Clean opening state (loss rate 0% < 1.5%) → the sequential-pay trigger is
+    # NOT in effect → principal is split PRO-RATA across the two principal-eligible
+    # tranches by outstanding balance: senior 8M / mezz_1 1M of the 9M total, so
+    # €500k splits 8/9 : 1/9. This per-name allocation is exactly what the old
+    # hardcoded-A/B/C engine could not express.
+    assert result.trigger_evaluation.is_triggered("cumulative_loss_trigger") is False
+    assert by["senior"].balance == pytest.approx(8_000_000.0 - 500_000.0 * 8 / 9)
+    assert by["mezz_1"].balance == pytest.approx(1_000_000.0 - 500_000.0 * 1 / 9)
+    # The two tranches with no principal step are untouched.
+    assert by["mezz_2"].balance == pytest.approx(600_000.0)
+    assert by["junior"].balance == pytest.approx(400_000.0)
+
+
+def test_run_period_non_abc_funds_view_is_name_keyed() -> None:
+    """``_funds_from_state`` exposes every tranche by name (no A/B/C hardcode)."""
+    from loanwhiz.domain.state import TrancheState
+    from loanwhiz.primitives.period_state_machine import _funds_from_state
+
+    state = DealState(
+        reporting_date="2026-01-31",
+        tranches=[
+            TrancheState(name="senior", balance=8_000_000.0, pdl_balance=0.0),
+            TrancheState(name="junior", balance=2_000_000.0, pdl_balance=500.0),
+        ],
+        reserve_balance=0.0,
+        reserve_target=0.0,
+        cumulative_losses=0.0,
+        pool_balance=10_000_000.0,
+        original_pool_balance=10_000_000.0,
+    )
+    funds = _funds_from_state(
+        state,
+        PeriodCollections(interest=1.0, scheduled_principal=2.0),
+        rates={"senior_rate_pct": 3.0, "junior_rate_pct": 8.0},
+        days_in_period=30,
+        senior_fees=0.0,
+    )
+    assert {t.name for t in funds.tranches} == {"senior", "junior"}
+    senior = funds.tranche("senior")
+    junior = funds.tranche("junior")
+    assert senior is not None and senior.balance == 8_000_000.0 and senior.rate_pct == 3.0
+    assert junior is not None and junior.pdl_balance == 500.0

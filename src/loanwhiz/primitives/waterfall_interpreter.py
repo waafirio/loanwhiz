@@ -56,12 +56,18 @@ from __future__ import annotations
 
 from typing import Callable, Protocol, runtime_checkable
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, computed_field, model_validator
 
-from loanwhiz.primitives.deal_state import WaterfallResult
+from loanwhiz.primitives.deal_state import TranchePayment, WaterfallResult
 
 # Small tolerance for floating-point comparisons (EUR amounts).
 _EPS = 1e-6
+
+# Canonical A/B/C tranche names, senior→junior — the layout the legacy
+# ``class_{a,b,c}_*`` accessors map onto and the default ``allocate_principal``
+# order. The interpreter itself never requires these names; a deal supplies its
+# own tranche set as data.
+_CANONICAL_TRANCHE_NAMES: tuple[str, ...] = ("class_a", "class_b", "class_c")
 
 
 # ---------------------------------------------------------------------------
@@ -141,6 +147,34 @@ class StepSpec(BaseModel):
 # ---------------------------------------------------------------------------
 
 
+class TrancheFunds(BaseModel):
+    """One tranche's funds-context for a period's waterfall run, keyed by name.
+
+    The generalised, deal-agnostic carrier of the three per-tranche inputs the
+    need-calculators and the principal allocation read — outstanding ``balance``,
+    annual coupon ``rate_pct``, and outstanding ``pdl_balance``. ``WaterfallFunds``
+    stores a list of these by ``name``; the legacy ``class_{a,b,c}_*`` names
+    remain available as accessors over that list.
+
+    Attributes
+    ----------
+    name:
+        Tranche name (matches the ``DealState`` tranche and the recipient
+        prefixes like ``class_a_interest`` / ``class_a_principal``).
+    balance:
+        Outstanding tranche balance (drives interest + principal needs).
+    rate_pct:
+        Annual coupon rate in percent.
+    pdl_balance:
+        Outstanding PDL debit balance (the replenishment need).
+    """
+
+    name: str = Field(..., description="Tranche name.")
+    balance: float = Field(default=0.0, ge=0.0)
+    rate_pct: float = Field(default=0.0, ge=0.0)
+    pdl_balance: float = Field(default=0.0, ge=0.0)
+
+
 class WaterfallFunds(BaseModel):
     """Available funds and deal context for one period's waterfall run.
 
@@ -186,17 +220,11 @@ class WaterfallFunds(BaseModel):
     senior_fees: float = Field(default=0.0, ge=0.0)
     swap_payment: float = Field(default=0.0, ge=0.0)
 
-    class_a_balance: float = Field(default=0.0, ge=0.0)
-    class_b_balance: float = Field(default=0.0, ge=0.0)
-    class_c_balance: float = Field(default=0.0, ge=0.0)
-
-    class_a_rate_pct: float = Field(default=0.0, ge=0.0)
-    class_b_rate_pct: float = Field(default=0.0, ge=0.0)
-    class_c_rate_pct: float = Field(default=0.0, ge=0.0)
-
-    class_a_pdl_balance: float = Field(default=0.0, ge=0.0)
-    class_b_pdl_balance: float = Field(default=0.0, ge=0.0)
-    class_c_pdl_balance: float = Field(default=0.0, ge=0.0)
+    # Canonical per-tranche funds context, keyed by name. The legacy
+    # ``class_{a,b,c}_balance|_rate_pct|_pdl_balance`` names remain available as
+    # accessors (and accepted as construction kwargs) over this list — see
+    # ``_coerce_class_kwargs`` and the computed fields below.
+    tranches: list[TrancheFunds] = Field(default_factory=list)
 
     reserve_balance: float = Field(default=0.0, ge=0.0)
     reserve_target: float = Field(default=0.0, ge=0.0)
@@ -205,6 +233,115 @@ class WaterfallFunds(BaseModel):
 
     sequential_pay: bool | None = None
     flags: dict[str, bool] = Field(default_factory=dict)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _coerce_class_kwargs(cls, data: object) -> object:
+        """Accept legacy ``class_<x>_balance|_rate_pct|_pdl_balance`` kwargs.
+
+        Folds any such kwargs into the ``tranches`` list (canonical A/B/C order
+        first, then any other names) when ``tranches`` is not supplied directly,
+        so existing construction sites and tests are unbroken.
+        """
+        if not isinstance(data, dict):
+            return data
+        if data.get("tranches"):
+            return data
+        balances: dict[str, float] = {}
+        rates: dict[str, float] = {}
+        pdls: dict[str, float] = {}
+        for key in list(data.keys()):
+            if not key.startswith("class_"):
+                continue
+            if key.endswith("_pdl_balance"):
+                pdls[key[: -len("_pdl_balance")]] = data.pop(key)
+            elif key.endswith("_rate_pct"):
+                rates[key[: -len("_rate_pct")]] = data.pop(key)
+            elif key.endswith("_balance"):
+                balances[key[: -len("_balance")]] = data.pop(key)
+        if not balances and not rates and not pdls:
+            return data
+        all_names = list(balances) + list(rates) + list(pdls)
+        names = list(_CANONICAL_TRANCHE_NAMES) + [
+            n for n in all_names if n not in _CANONICAL_TRANCHE_NAMES
+        ]
+        seen: set[str] = set()
+        tranches: list[dict[str, float | str]] = []
+        for name in names:
+            if name in seen or name not in all_names:
+                continue
+            seen.add(name)
+            tranches.append(
+                {
+                    "name": name,
+                    "balance": balances.get(name, 0.0),
+                    "rate_pct": rates.get(name, 0.0),
+                    "pdl_balance": pdls.get(name, 0.0),
+                }
+            )
+        data["tranches"] = tranches
+        return data
+
+    def tranche(self, name: str) -> TrancheFunds | None:
+        """The :class:`TrancheFunds` named ``name``, or ``None`` if absent."""
+        for t in self.tranches:
+            if t.name == name:
+                return t
+        return None
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def class_a_balance(self) -> float:
+        t = self.tranche("class_a")
+        return t.balance if t is not None else 0.0
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def class_b_balance(self) -> float:
+        t = self.tranche("class_b")
+        return t.balance if t is not None else 0.0
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def class_c_balance(self) -> float:
+        t = self.tranche("class_c")
+        return t.balance if t is not None else 0.0
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def class_a_rate_pct(self) -> float:
+        t = self.tranche("class_a")
+        return t.rate_pct if t is not None else 0.0
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def class_b_rate_pct(self) -> float:
+        t = self.tranche("class_b")
+        return t.rate_pct if t is not None else 0.0
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def class_c_rate_pct(self) -> float:
+        t = self.tranche("class_c")
+        return t.rate_pct if t is not None else 0.0
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def class_a_pdl_balance(self) -> float:
+        t = self.tranche("class_a")
+        return t.pdl_balance if t is not None else 0.0
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def class_b_pdl_balance(self) -> float:
+        t = self.tranche("class_b")
+        return t.pdl_balance if t is not None else 0.0
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def class_c_pdl_balance(self) -> float:
+        t = self.tranche("class_c")
+        return t.pdl_balance if t is not None else 0.0
 
 
 # ---------------------------------------------------------------------------
@@ -673,10 +810,11 @@ def allocate_principal(
         ``classes``).
     """
     ev = evaluator if evaluator is not None else DefaultConditionEvaluator()
+    # Per-tranche outstanding balances, read by name from the funds' tranche list
+    # (no hardcoded A/B/C) — a class with no matching tranche contributes 0.
     balances = {
-        "class_a": funds.class_a_balance,
-        "class_b": funds.class_b_balance,
-        "class_c": funds.class_c_balance,
+        c: (funds.tranche(c).balance if funds.tranche(c) is not None else 0.0)
+        for c in classes
     }
     alloc = {c: 0.0 for c in classes}
     pot = max(0.0, available)
@@ -733,19 +871,25 @@ def to_waterfall_result(
     Folds the distributions the interpreter recorded into the shape
     ``DealState.apply_waterfall_result`` (S1, ``deal_state.py``) consumes:
 
-    - **Principal** per class — taken from ``principal_allocation`` when given
-      (the :func:`allocate_principal` output), else summed from the redemption
-      execution's ``class_{a,b,c}_principal`` recipient distributions.
-    - **PDL replenishment** per class — summed from the revenue execution's
-      ``class_{a,b,c}_pdl_replenishment`` recipient distributions.
+    - **Principal** per tranche — taken from ``principal_allocation`` when given
+      (the :func:`allocate_principal` output, ``{tranche_name: amount}``), else
+      summed from the redemption execution's ``<tranche>_principal`` recipient
+      distributions.
+    - **PDL replenishment** per tranche — summed from the revenue execution's
+      ``<tranche>_pdl_replenishment`` recipient distributions.
     - **Reserve payment** — summed from the revenue execution's
       ``reserve_replenishment`` / ``reserve_account_replenishment`` distributions.
       (``reserve_draw`` is left 0 here — a draw is sourced by the caller when it
       tops up ``available_revenue_funds`` from the reserve, not by the
       distribution trace.)
 
-    Any field with no corresponding recipient defaults to 0.0, so the result is
-    always a valid ``WaterfallResult``.
+    Deal-agnostic: the per-tranche outcomes are keyed by tranche *name* rather
+    than hardcoded to A/B/C. Tranche names are discovered from
+    ``principal_allocation`` (when given) and from the executions' recipient
+    lines (``<name>_principal`` / ``<name>_notes_principal`` /
+    ``<name>_pdl_replenishment``), ordered canonical-A/B/C-first then any other
+    names in discovery order — so Green Lion's A/B/C result is byte-stable while
+    a non-A/B/C structure round-trips.
     """
     rev = revenue or WaterfallExecution(
         steps=[], remaining=0.0, total_distributed=0.0, total_shortfall=0.0
@@ -754,36 +898,65 @@ def to_waterfall_result(
         steps=[], remaining=0.0, total_distributed=0.0, total_shortfall=0.0
     )
 
-    if principal_allocation is not None:
-        class_a_principal = principal_allocation.get("class_a", 0.0)
-        class_b_principal = principal_allocation.get("class_b", 0.0)
-        class_c_principal = principal_allocation.get("class_c", 0.0)
-    else:
-        # Sum the redemption execution's per-class principal lines. Extracted deal
-        # models spell the recipient either ``class_x_principal`` (the builtin /
-        # tape spelling) or ``class_x_notes_principal`` (Green Lion 2024-1's
-        # extracted redemption PoP, #270) — accept both so the report path's
-        # tranche redemption is read from whatever the extracted model named it.
-        def _principal_for(cls: str) -> float:
-            return red.distributed_to(f"{cls}_principal") + red.distributed_to(
-                f"{cls}_notes_principal"
-            )
+    def _principal_from_exec(name: str) -> float:
+        # Extracted deal models spell the recipient either ``<name>_principal``
+        # (the builtin / tape spelling) or ``<name>_notes_principal`` (Green Lion
+        # 2024-1's extracted redemption PoP, #270) — accept both.
+        return red.distributed_to(f"{name}_principal") + red.distributed_to(
+            f"{name}_notes_principal"
+        )
 
-        class_a_principal = _principal_for("class_a")
-        class_b_principal = _principal_for("class_b")
-        class_c_principal = _principal_for("class_c")
+    # Discover tranche names from the principal source and the revenue PDL lines.
+    pdl_names = {
+        s.recipient[: -len("_pdl_replenishment")]
+        for s in rev.steps
+        if s.recipient.endswith("_pdl_replenishment")
+    }
+    if principal_allocation is not None:
+        principal_names: set[str] = set(principal_allocation)
+    else:
+        principal_names = {
+            s.recipient[: -len("_principal")]
+            for s in red.steps
+            if s.recipient.endswith("_principal")
+        } | {
+            s.recipient[: -len("_notes_principal")]
+            for s in red.steps
+            if s.recipient.endswith("_notes_principal")
+        }
+    discovered = principal_names | pdl_names
+    ordered_names = list(_CANONICAL_TRANCHE_NAMES) + sorted(
+        n for n in discovered if n not in _CANONICAL_TRANCHE_NAMES
+    )
+
+    tranches: list[TranchePayment] = []
+    for name in ordered_names:
+        if principal_allocation is not None:
+            principal = principal_allocation.get(name, 0.0)
+        else:
+            principal = _principal_from_exec(name)
+        replenishment = rev.distributed_to(f"{name}_pdl_replenishment")
+        # Canonical A/B/C tranches always get an entry (byte-stable result);
+        # other discovered names only when they carry a non-zero outcome.
+        if (
+            name in _CANONICAL_TRANCHE_NAMES
+            or principal > 0.0
+            or replenishment > 0.0
+        ):
+            tranches.append(
+                TranchePayment(
+                    name=name,
+                    principal=max(0.0, principal),
+                    pdl_replenishment=replenishment,
+                )
+            )
 
     reserve_payment = rev.distributed_to("reserve_replenishment") + rev.distributed_to(
         "reserve_account_replenishment"
     )
 
     return WaterfallResult(
-        class_a_principal=max(0.0, class_a_principal),
-        class_b_principal=max(0.0, class_b_principal),
-        class_c_principal=max(0.0, class_c_principal),
-        class_a_pdl_replenishment=rev.distributed_to("class_a_pdl_replenishment"),
-        class_b_pdl_replenishment=rev.distributed_to("class_b_pdl_replenishment"),
-        class_c_pdl_replenishment=rev.distributed_to("class_c_pdl_replenishment"),
+        tranches=tranches,
         reserve_payment=reserve_payment,
         reserve_draw=0.0,
     )

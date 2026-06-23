@@ -30,8 +30,10 @@ from pydantic import ValidationError
 from loanwhiz.primitives.deal_state import (
     DealState,
     PeriodCollections,
+    TranchePayment,
     WaterfallResult,
 )
+from loanwhiz.domain.state import TrancheState
 
 # ---------------------------------------------------------------------------
 # Concrete deal figures (Green Lion 2026-1) — supplied as data to the seed.
@@ -110,11 +112,14 @@ def test_waterfall_result_defaults_to_zero() -> None:
 
 
 def test_derived_quantities() -> None:
-    state = _seed().model_copy(
+    seed = _seed()
+    pdls = {"class_a": 100.0, "class_b": 50.0, "class_c": 25.0}
+    state = seed.model_copy(
         update={
-            "class_a_pdl": 100.0,
-            "class_b_pdl": 50.0,
-            "class_c_pdl": 25.0,
+            "tranches": [
+                t.model_copy(update={"pdl_balance": pdls[t.name]})
+                for t in seed.tranches
+            ],
             "cumulative_losses": 1_063_600.0,  # exactly 0.1% of original pool
         }
     )
@@ -334,7 +339,18 @@ def test_apply_waterfall_tranche_redemption_floored() -> None:
 
 
 def test_apply_waterfall_replenishes_pdl_capped() -> None:
-    state = _seed().model_copy(update={"class_b_pdl": 1_000_000.0})
+    seed = _seed()
+    state = seed.model_copy(
+        update={
+            "tranches": [
+                t.model_copy(update={"pdl_balance": 1_000_000.0})
+                if t.name == "class_b"
+                else t
+                for t in seed.tranches
+            ]
+        }
+    )
+    assert state.class_b_pdl == 1_000_000.0  # tamper landed on the tranche list
     # Offer more than owed — replenishment caps at the outstanding PDL.
     r = WaterfallResult(class_b_pdl_replenishment=5_000_000.0)
     new = state.apply_waterfall_result(r)
@@ -494,3 +510,113 @@ def test_non_negativity_holds_across_extreme_transition() -> None:
     ):
         assert field >= 0.0
     assert not math.isnan(closing.pool_factor)
+
+
+# ===========================================================================
+# 4. Canonical tranche-list storage + backward-compatible accessors (#363)
+# ===========================================================================
+
+
+def test_tranches_is_canonical_store_in_seniority_order() -> None:
+    """The seed lays liabilities out as a tranches list in A/B/C order."""
+    state = _seed()
+    assert [t.name for t in state.tranches] == ["class_a", "class_b", "class_c"]
+    assert state.tranches[0].balance == _CAP_STRUCTURE["class_a_balance"]
+    assert state.tranches[1].balance == _CAP_STRUCTURE["class_b_balance"]
+    assert state.tranches[2].balance == _CAP_STRUCTURE["class_c_balance"]
+    assert all(t.pdl_balance == 0.0 for t in state.tranches)
+
+
+def test_class_accessors_equal_tranche_list_values() -> None:
+    """``.class_{a,b,c}_balance|_pdl`` return the matching tranche-list values."""
+    seed = _seed()
+    # Put a distinct PDL on each tranche so the accessor mapping is unambiguous.
+    pdls = {"class_a": 11.0, "class_b": 22.0, "class_c": 33.0}
+    state = seed.model_copy(
+        update={
+            "tranches": [
+                t.model_copy(update={"pdl_balance": pdls[t.name]})
+                for t in seed.tranches
+            ]
+        }
+    )
+    by_name = {t.name: t for t in state.tranches}
+    assert state.class_a_balance == by_name["class_a"].balance
+    assert state.class_b_balance == by_name["class_b"].balance
+    assert state.class_c_balance == by_name["class_c"].balance
+    assert state.class_a_pdl == by_name["class_a"].pdl_balance == 11.0
+    assert state.class_b_pdl == by_name["class_b"].pdl_balance == 22.0
+    assert state.class_c_pdl == by_name["class_c"].pdl_balance == 33.0
+    # getattr (the path series_invariants uses) resolves the accessors too.
+    assert getattr(state, "class_b_pdl") == 22.0
+
+
+def test_class_kwargs_construction_folds_into_tranches() -> None:
+    """Building with legacy ``class_*`` kwargs populates the tranche list."""
+    state = DealState(
+        reporting_date="2026-02-28",
+        class_a_balance=100.0,
+        class_b_balance=50.0,
+        class_c_balance=10.0,
+        class_a_pdl=5.0,
+        pool_balance=160.0,
+        original_pool_balance=160.0,
+    )
+    assert [t.name for t in state.tranches] == ["class_a", "class_b", "class_c"]
+    assert state.class_a_balance == 100.0
+    assert state.class_a_pdl == 5.0
+    assert state.total_liabilities == 160.0
+
+
+def test_non_abc_tranche_structure_accessors_and_loss_allocation() -> None:
+    """A non-A/B/C structure stores + amortises losses across its own tranches."""
+    state = DealState(
+        reporting_date="2026-02-28",
+        tranches=[
+            TrancheState(name="senior", balance=1000.0, pdl_balance=0.0),
+            TrancheState(name="mezz", balance=400.0, pdl_balance=0.0),
+            TrancheState(name="junior", balance=100.0, pdl_balance=0.0),
+        ],
+        reserve_balance=0.0,
+        reserve_target=0.0,
+        cumulative_losses=0.0,
+        pool_balance=1500.0,
+        original_pool_balance=1500.0,
+    )
+    # No A/B/C tranches → the legacy accessors fall back to 0 cleanly.
+    assert state.class_a_balance == 0.0
+    assert state.total_liabilities == 1500.0
+    # A 150 loss with an explicit junior→senior order absorbs junior-first.
+    after = state.apply_losses(150.0, allocation=("junior", "mezz", "senior"))
+    by = {t.name: t for t in after.tranches}
+    assert by["junior"].pdl_balance == 100.0  # junior fully absorbs to its balance
+    assert by["mezz"].pdl_balance == 50.0  # residual cascades up to mezz
+    assert by["senior"].pdl_balance == 0.0
+    assert after.cumulative_losses == 150.0
+
+
+def test_waterfall_result_round_trips_by_name() -> None:
+    """``WaterfallResult`` carries per-tranche outcomes by name with accessors."""
+    # Built from the generalised tranche list.
+    result = WaterfallResult(
+        tranches=[
+            TranchePayment(name="class_a", principal=10.0, pdl_replenishment=1.0),
+            TranchePayment(name="class_b", principal=5.0, pdl_replenishment=2.0),
+        ],
+        reserve_payment=3.0,
+    )
+    assert result.class_a_principal == 10.0
+    assert result.class_b_pdl_replenishment == 2.0
+    assert result.class_c_principal == 0.0  # absent tranche → 0
+
+    # Built from legacy class_* kwargs → same tranche list + accessor values.
+    legacy = WaterfallResult(
+        class_a_principal=10.0,
+        class_a_pdl_replenishment=1.0,
+        class_b_principal=5.0,
+        class_b_pdl_replenishment=2.0,
+        reserve_payment=3.0,
+    )
+    assert {t.name for t in legacy.tranches} >= {"class_a", "class_b"}
+    assert legacy.class_a_principal == 10.0
+    assert legacy.class_b_pdl_replenishment == 2.0
