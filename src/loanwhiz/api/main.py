@@ -50,6 +50,7 @@ from loanwhiz.extraction.assembler import (
     build_deal_rules,
 )
 from loanwhiz.api import compare as _compare
+from loanwhiz.domain.inputs import PeriodInputs as CanonicalPeriodInputs
 from loanwhiz.domain.rules import DealRules
 from loanwhiz.governance import EvidencePackLogger, finos_conformance_summary
 from loanwhiz.primitives.collections_aggregator import (
@@ -80,6 +81,7 @@ from loanwhiz.primitives.reconciler import (
 from loanwhiz.primitives.esma_tape_normaliser import (
     EsmaTapeInput,
     EsmaTapeNormaliser,
+    EsmaTapeOutput,
     _load_tape,
 )
 from loanwhiz.primitives.loan_level_amortisation import (
@@ -97,6 +99,7 @@ from loanwhiz.primitives.scenario_generator import (
     ScenarioAssumptions,
     ScenarioGenerator,
 )
+from loanwhiz.primitives.tape_adapter import TapeAdapter
 from loanwhiz.primitives.waterfall_interpreter import StepSpec
 from loanwhiz.primitives.registry import PRIMITIVE_REGISTRY
 
@@ -1347,7 +1350,15 @@ def _reconstruct_series_from_tapes(deal_id: str, deal: dict) -> DealStateSeries:
 
 
     aggregator = CollectionsAggregator()
-    periods: list[PeriodInput] = []
+    tape_adapter = TapeAdapter()
+    # Canonical ``source="tape"`` inputs (#364): each period carries the
+    # collection legs AND a populated RiskSignals, so the tape path folds through
+    # the SAME ``run_period`` kernel + canonical schema the report path uses (no
+    # more legacy ``PeriodInput`` / ``risk_signals=None`` on the tape path). A
+    # tape ``PeriodInputs`` with ``legs`` present + empty step-overrides reduces
+    # in ``_normalize_period`` to the identical ``_NormalizedPeriod`` the legacy
+    # ``PeriodInput`` produced, so GL-2024-1's reconstructed series is unchanged.
+    periods: list[CanonicalPeriodInputs] = []
     for idx in range(1, len(tapes)):
         prev_tape = tapes[idx - 1]
         cur_tape = tapes[idx]
@@ -1365,10 +1376,23 @@ def _reconstruct_series_from_tapes(deal_id: str, deal: dict) -> DealStateSeries:
         collections_result = aggregator.execute(collections_input)
         _audit(aggregator, collections_input, collections_result)
         collections = collections_result.output
+        # The normalised pool analytics for this period feed the RiskSignals. The
+        # cached helper returns the ``EsmaTapeOutput.model_dump()`` shape; rebuild
+        # the typed model so the adapter reads it via attribute access. If the
+        # analytics can't be resolved/parsed (no seed, no network, partial dump),
+        # degrade honestly to ``None`` — the numeric fold is driven by the
+        # collection legs, so risk_signals enrichment never breaks reconstruction.
+        try:
+            tape_output: EsmaTapeOutput | None = EsmaTapeOutput(
+                **_normalised_tape_output(cur_tape["url"])
+            )
+        except Exception:
+            tape_output = None
         periods.append(
-            PeriodInput(
+            tape_adapter.period_inputs(
+                collections,
+                tape_output,
                 reporting_date=cur_tape["date"],
-                collections=collections.to_period_collections(),
                 days_in_period=days,
             )
         )
