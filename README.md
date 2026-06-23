@@ -205,6 +205,26 @@ Green Lion itself carries none of these optional keys and uses the defaults unch
 
 See `GREEN_LION` and `DEAL_REGISTRY` in `config.py` for a fully worked example using the publicly available Green Lion 2024–2026 dataset.
 
+### On-demand extraction (onboarding via the API)
+
+Extraction is a long, credential-gated run (Docling + Vertex, ~20–37 min). Historically it was an *offline* step: a human ran `scripts/extract_c2_deals.py` / `scripts/seed_deal_models.py` with GCP creds set. `GET /deal/{id}/model` deliberately never cold-extracts inline — it reads the cache read-only and returns `extraction_status="not_cached"` on a miss rather than blocking the request for half an hour.
+
+For live onboarding without leaving the API, two endpoints wrap the **same** governed `extract_deal_model` primitive on a background thread:
+
+```bash
+# Enqueue a background extraction — returns 202 immediately (never blocks).
+curl -X POST 'http://localhost:8000/deal/green-lion-2026-1/extract'
+#   add ?force=true to re-run (busts the Docling + sub-extractor caches)
+
+# Poll until the job finishes.
+curl 'http://localhost:8000/deal/green-lion-2026-1/extract/status'
+#   -> {"status": "queued" | "running" | "succeeded" | "failed", ...}
+#      succeeded: carries a governed completeness/trigger/citation summary
+#      failed:    carries the reason (e.g. missing GCP creds, OCR/LLM error)
+```
+
+On success the model is materialised into the **same** runtime cache the cold-start `GET /deal/{id}/model` reader serves (`DEAL_MODEL_CACHE_DIR`/`{slug}.json`) — one source of truth — so the deal becomes cold-startable exactly as a script-extracted one. The job store is in-process (single-worker demo deployment) and resets on restart; the durable output is the materialised cache, not the store. Credential/pipeline failures surface as a `failed` status, never a hung request. The offline scripts still wrap the identical primitive — one extraction path, not a fork.
+
 ---
 
 ## How to Contribute a New Primitive

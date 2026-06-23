@@ -50,6 +50,7 @@ from loanwhiz.extraction.assembler import (
     build_deal_rules,
 )
 from loanwhiz.api import compare as _compare
+from loanwhiz.api import extraction_jobs as _extraction_jobs
 from loanwhiz.domain.inputs import PeriodInputs as CanonicalPeriodInputs
 from loanwhiz.domain.rules import DealRules
 from loanwhiz.governance import EvidencePackLogger, finos_conformance_summary
@@ -598,6 +599,103 @@ def deal_model(deal_id: str) -> DealModelResponse:
     base.trigger_names = model.trigger_names
     base.deal_model = model.model_dump()
     return base
+
+
+# --- on-demand extraction job (#384) -----------------------------------------
+# Live onboarding path: enqueue a background extraction wrapping the SAME
+# governed ``extract_deal_model`` primitive the offline scripts call, then poll
+# its status. The request never blocks on the ~20–37 min run (``POST`` returns
+# 202 immediately); on success the job materialises into the SAME
+# ``DEAL_MODEL_CACHE_DIR`` the cold-start ``/deal/{id}/model`` reader serves, so
+# the deal becomes cold-startable with no second source of truth. The job
+# subsystem lives in ``loanwhiz.api.extraction_jobs``; this module owns only the
+# routes and passes ``DEAL_MODEL_CACHE_DIR`` in (so a test's monkeypatch of that
+# constant is honoured and there is no import cycle).
+
+
+class ExtractionJobResponse(BaseModel):
+    """Status of an on-demand extraction job for a deal.
+
+    Returned by ``POST /deal/{deal_id}/extract`` (the enqueued/in-flight job) and
+    ``GET /deal/{deal_id}/extract/status`` (the current job, or ``status="none"``
+    when nothing was ever submitted). On ``succeeded`` the ``summary`` carries the
+    governed completeness/trigger/citation signal; on ``failed`` the ``error``
+    carries the reason (e.g. missing GCP creds, OCR/LLM failure).
+    """
+
+    deal_id: str
+    status: str   # "none" | "queued" | "running" | "succeeded" | "failed"
+    force: bool = False
+    submitted_at: str | None = None
+    started_at: str | None = None
+    finished_at: str | None = None
+    error: str | None = None
+    summary: dict | None = None
+
+
+@app.post(
+    "/deal/{deal_id}/extract",
+    response_model=ExtractionJobResponse,
+    status_code=202,
+)
+def extract_deal(deal_id: str, force: bool = Query(False)) -> ExtractionJobResponse:
+    """Enqueue a background extraction of the deal's prospectus model.
+
+    Wraps the governed :func:`~loanwhiz.extraction.assembler.extract_deal_model`
+    primitive on a background thread and returns ``202 Accepted`` immediately with
+    the job state — it **never** blocks the request on the ~20–37 min Docling+Vertex
+    run. Poll :func:`extract_status` for completion.
+
+    ``?force=true`` re-runs the extraction (busts the Docling + sub-extractor
+    caches via ``force_refresh=True``); without it an already-cached model
+    completes ``succeeded`` immediately (idempotent no-op, mirroring the
+    assembler's own cache-hit behaviour). A re-``POST`` while a job is already
+    running for this deal (and ``force`` is not set) returns the in-flight job
+    rather than starting a second run.
+
+    On success the model is materialised into ``DEAL_MODEL_CACHE_DIR`` — the same
+    cache the cold-start ``GET /deal/{id}/model`` reader serves — so the deal
+    becomes cold-startable with no second source of truth.
+    """
+    deal = _require_deal(deal_id)
+    prospectus_url = deal.get("prospectus_url")
+    if not prospectus_url:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Deal {deal_id} has no prospectus_url to extract",
+        )
+
+    job, _future = _extraction_jobs.submit_extraction(
+        deal_id,
+        prospectus_url=prospectus_url,
+        deal_name=deal["deal_name"],
+        cache_dir=DEAL_MODEL_CACHE_DIR,
+        force=force,
+    )
+    return ExtractionJobResponse(**job.to_response())
+
+
+@app.get(
+    "/deal/{deal_id}/extract/status",
+    response_model=ExtractionJobResponse,
+)
+def extract_status(deal_id: str) -> ExtractionJobResponse:
+    """Poll the on-demand extraction job for a deal.
+
+    Reports ``queued|running|succeeded|failed`` for the most recent submit, with
+    the governed confidence/citation ``summary`` on ``succeeded`` and the reason
+    in ``error`` on ``failed``. When no job was ever submitted for the deal,
+    returns ``200`` with ``status="none"`` (a non-hanging, uniform body the
+    frontend can poll without special-casing a 404).
+    """
+    _require_deal(deal_id)
+    job = _extraction_jobs.get_job(deal_id)
+    if job is None:
+        return ExtractionJobResponse(deal_id=deal_id, status="none")
+    return ExtractionJobResponse(**job.to_response())
+
+
+# --- end on-demand extraction job (#384) -------------------------------------
 
 
 def _map_extracted_trigger(raw: dict) -> TriggerDefinition:
