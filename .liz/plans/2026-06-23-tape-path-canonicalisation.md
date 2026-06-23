@@ -1,10 +1,10 @@
 ---
 id: 2026-06-23-tape-path-canonicalisation
 title: Tape-path canonicalisation & residual-gap closure (post-2026-06-22 audit)
-status: decomposed
+status: filed
 created: 2026-06-23
 updated: 2026-06-23
-epics: []
+epics: [360, 361, 362]
 ---
 
 # Tape-path canonicalisation & residual-gap closure (post-2026-06-22 audit)
@@ -110,7 +110,7 @@ coherent epics** by what they share:
 - **Epic 2's extraction fixes** (Leone repair, Sol-Lion #316) are
   independent of Epic 1 and run in parallel; only the **cross-jurisdiction
   cold-start validation** child depends on Epic 1's engine generality +
-  tape adapter, so it carries an explicit `After #<Epic-1 umbrella>`.
+  tape adapter, so it carries an explicit `After #360`.
 
 ```
 Epic 1 (tape canonicalisation) ──┐
@@ -125,7 +125,7 @@ parallel; Epic 2's extraction fixes run in parallel too, with only child
 **2c** gated `After` the Epic-1 umbrella (it needs the generalised engine
 + tape adapter to validate end-to-end).
 
-### Epic 1: Tape-path canonicalisation & engine generality   (umbrella #<N>)
+### Epic 1: Tape-path canonicalisation & engine generality   (umbrella #360)
 
 The root-cause fix: bring the tape path onto the canonical schema the
 report path already uses, and generalise the engine off its hardcoded
@@ -147,13 +147,13 @@ wrong-reconstruction risk, and closes the synthetic-isolation test gap.
   (collection legs **and** a populated `RiskSignals` — arrears_90d/180d,
   wa_ltv, default_pct, pool_balance) from the normalised tape, so the tape
   path folds through the same kernel and schema as the report path (no
-  more `risk_signals=None`). Sequencing: sequential. After #<1a>. Paths:
+  more `risk_signals=None`). Sequencing: sequential. After #363. Paths:
   `src/loanwhiz/primitives/**`, `src/loanwhiz/domain/**`,
   `src/loanwhiz/api/main.py`.
 - **Loan-level amortisation in historical reconstruction** — use
   `loan_level_amortisation` in the tape-driven collections/period path
   (today it is wired into projection only), replacing the pool-level
-  proxy for history. Sequencing: parallel. After #<1b>. Paths:
+  proxy for history. Sequencing: parallel. After #364. Paths:
   `src/loanwhiz/primitives/collections_aggregator.py`,
   `src/loanwhiz/primitives/loan_level_amortisation.py`,
   `src/loanwhiz/primitives/period_state_machine.py`.
@@ -162,10 +162,10 @@ wrong-reconstruction risk, and closes the synthetic-isolation test gap.
   through collections → period state → waterfall → covenant evaluation,
   proving the tape-native arrears/LTV covenants (#280) actually fire;
   closes the "primitives tested only in synthetic isolation" gap.
-  Sequencing: sequential. After #<1b>. Paths: `tests/**`,
+  Sequencing: sequential. After #364. Paths: `tests/**`,
   `src/loanwhiz/api/main.py`.
 
-### Epic 2: IT/ES extraction reality   (umbrella #<N>)
+### Epic 2: IT/ES extraction reality   (umbrella #361)
 
 Make "many deals, many jurisdictions" actually true for the two
 non-English deals. The corrupted Leone seed is also a standalone
@@ -186,10 +186,10 @@ integrity bug worth fixing immediately.
 - **Cross-jurisdiction cold-start validation (IT+ES)** — once extraction
   is honest, validate Leone + Sol-Lion cold-start end-to-end through the
   generalised engine (depends on Epic 1). Sequencing: sequential.
-  After #<2a>. Also After #<Epic-1 umbrella>. Paths: `tests/**`,
+  After #367. Also After #360. Paths: `tests/**`,
   `src/loanwhiz/api/main.py`.
 
-### Epic 3: Seam hardening — gate wiring, governance uniformity, unit guard   (umbrella #<N>)
+### Epic 3: Seam hardening — gate wiring, governance uniformity, unit guard   (umbrella #362)
 
 The independent built-but-unwired loose ends. All three children touch
 disjoint seams and run in parallel.
@@ -216,4 +216,16 @@ disjoint seams and run in parallel.
 
 ## Filed issues
 
-<filled in Phase 4>
+- Epic "Tape-path canonicalisation & engine generality" → umbrella #360
+  - #363 Generalise the engine tranche schema (class_a/b/c → tranches: list[TrancheState])
+  - #364 Tape→canonical PeriodInputs adapter (collection legs + RiskSignals)  [After #363]
+  - #365 Loan-level amortisation in historical reconstruction  [After #364]
+  - #366 Integrated tape→waterfall→covenant E2E on real non-GL data  [After #364]
+- Epic "IT/ES extraction reality" → umbrella #361
+  - #367 Repair the corrupted Leone Arancio (IT) seed
+  - #368 Resolve Sol-Lion II (ES) empty-waterfall section-routing (#316)
+  - #369 Cross-jurisdiction cold-start validation (IT + ES)  [After #360; also needs #367, #368]
+- Epic "Seam hardening — gate wiring, governance uniformity, unit guard" → umbrella #362
+  - #370 Wire reconciliation-as-gate (#272) into the report path
+  - #371 Governance envelope uniformity (check_covenants audit + MCP persistence + model card)
+  - #372 Runtime threshold_unit guard
