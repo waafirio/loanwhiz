@@ -39,7 +39,7 @@
           "citation": {
             "page_or_row": "(ii)(a)",
             "excerpt": "firstly , to the redemption pro rata and pari passu of the Series A1 Notes;",
-            "document": "Green Lion 2026-1 Prospectus"
+            "document": "prospectus"
           }
         },
         {
@@ -52,7 +52,7 @@
           "citation": {
             "page_or_row": "(ii)(b)",
             "excerpt": "secondly ,  once all Series A1 Notes have been fully redeemed, to the redemption  pro rata and pari passu of Series A2 Notes;",
-            "document": "Green Lion 2026-1 Prospectus"
+            "document": "prospectus"
           }
         },
         {
@@ -63,7 +63,7 @@
           "condition": "once all Series A2 Notes have been fully redeemed",
           "is_pari_passu": true,
           "citation": {
-            "document": "Green Lion 2026-1 Prospectus",
+            "document": "prospectus",
             "excerpt": "thirdly , once all Series A2 Notes have been fully redeemed, to the redemption pro rata and pari passu of Series A3 Notes;",
             "page_or_row": "(ii)(c)"
           }
@@ -76,7 +76,7 @@
           "condition": "once all Series A3 Notes have been fully redeemed",
           "is_pari_passu": true,
           "citation": {
-            "document": "Green Lion 2026-1 Prospectus",
+            "document": "prospectus",
             "excerpt": "fourthly ,  once all  Series A3 Notes have been fully redeemed, to the redemption  pro rata and pari passu of Series A4 Notes;",
             "page_or_row": "(ii)(d)"
           }
@@ -91,7 +91,7 @@
           "citation": {
             "page_or_row": "(ii)(e)",
             "excerpt": "fifthly , once all Series A4 Notes have been fully redeemed, to the redemption pro rata and pari passu of Series A5 Notes;",
-            "document": "Green Lion 2026-1 Prospectus"
+            "document": "prospectus"
           }
         },
         {
@@ -103,7 +103,7 @@
           "is_pari_passu": true,
           "citation": {
             "page_or_row": "(ii)(f)",
-            "document": "Green Lion 2026-1 Prospectus",
+            "document": "prospectus",
             "excerpt": "sixthly , once all Series A5 Notes have been fully redeemed, to the redemption pro rata and pari passu of Series A6 Notes;"
           }
         },
@@ -115,7 +115,7 @@
           "condition": "once all Series A6 Notes have been fully redeemed",
           "is_pari_passu": true,
           "citation": {
-            "document": "Green Lion 2026-1 Prospectus",
+            "document": "prospectus",
             "excerpt": "seventhly , once all Series A6 Notes have been fully redeemed, to the redemption pro rata and pari passu of Class B Notes; and",
             "page_or_row": "(ii)(g)"
           }
@@ -128,7 +128,7 @@
           "condition": "once Class B Notes have been fully redeemed",
           "is_pari_passu": true,
           "citation": {
-            "document": "Green Lion 2026-1 Prospectus",
+            "document": "prospectus",
             "excerpt": "eighthly , once Class B Notes have been fully redeemed, to the redemption pro rata and pari passu of Class C Notes.",
             "page_or_row": "(ii)(h)"
           }
@@ -151,7 +151,7 @@
           "citation": {
             "excerpt": "Expenses, if any, derived from preparation and execution of the amendment of the Deed of Incorporation and/or the Transaction Documents and/or any add",
             "page_or_row": "3.4.7.6.(a)",
-            "document": "Green Lion 2026-1 Prospectus"
+            "document": "prospectus"
           }
         },
         {
@@ -162,7 +162,7 @@
           "condition": null,
           "is_pari_passu": false,
           "citation": {
-            "document": "Green Lion 2026-1 Prospectus",
+            "document": "prospectus",
             "page_or_row": "3.4.7.6.(b)",
             "excerpt": "The extraordinary expenses of audits and legal advice;"
           }
@@ -175,7 +175,7 @@
           "condition": null,
           "is_pari_passu": false,
           "citation": {
-            "document": "Green Lion 2026-1 Prospectus",
+            "document": "prospectus",
             "excerpt": "All expenses that may arise from the sale of the Receivables and the remaining assets of the Fund upon liquidation thereof;",
             "page_or_row": "3.4.7.6.(c)"
           }
@@ -188,7 +188,7 @@
           "condition": null,
           "is_pari_passu": false,
           "citation": {
-            "document": "Green Lion 2026-1 Prospectus",
+            "document": "prospectus",
             "page_or_row": "3.4.7.6.(d)",
             "excerpt": "All costs related to convening a Meeting of Creditors;"
           }
@@ -201,7 +201,7 @@
           "condition": null,
           "is_pari_passu": false,
           "citation": {
-            "document": "Green Lion 2026-1 Prospectus",
+            "document": "prospectus",
             "page_or_row": "3.4.7.6.(e)",
             "excerpt": "Those necessary to commence enforcement of the Mortgage Loans and those arising from the required actions for recovery;"
           }
@@ -216,7 +216,7 @@
           "citation": {
             "excerpt": "Notification to Borrowers and, when applicable, the guarantors, insurance companies regulated under section 3.7.1.13 of the Additional Information; and",
             "page_or_row": "3.4.7.6.(f)",
-            "document": "Green Lion 2026-1 Prospectus"
+            "document": "prospectus"
           }
         },
         {
@@ -227,7 +227,7 @@
           "condition": null,
           "is_pari_passu": false,
           "citation": {
-            "document": "Green Lion 2026-1 Prospectus",
+            "document": "prospectus",
             "page_or_row": "3.4.7.6.(g)",
             "excerpt": "Generally, all other extraordinary expenses borne by the Fund or by the Management Company in representation or on behalf thereof."
           }
