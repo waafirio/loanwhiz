@@ -1,7 +1,7 @@
 ---
 id: 2026-06-24-productionising-loanwhiz
 title: Productionising LoanWhiz — extraction generality, self-service ingestion, analytical depth, governed seams
-status: draft
+status: decomposed
 created: 2026-06-24
 updated: 2026-06-24
 epics: []
@@ -97,7 +97,89 @@ audit surfaced and the operator confirmed ("all 4 are important and relevant").
 
 ## Decomposition
 
-<filled in Phase 2>
+Four epics, 13 children. Epics A, B, C, D all file in parallel; cross-epic
+dependencies are narrative (C's data quality benefits from A/B; none are hard
+blockers). Within Epic B the two children are sequential.
+
+### Epic A: Extraction generality   (umbrella #<N>)
+
+Raise the realistic extraction success rate for an arbitrary EDW prospectus
+(unseen issuer/language/layout) from ~40–50% toward broad coverage, on the
+existing sound, honestly-degrading base. All children are independent.
+
+- **Broaden the canonical recipient/metric taxonomy** — expand the closed
+  `RecipientType`/`MetricType` enums + alias table + LLM-classify coverage
+  beyond Green-Lion vocabulary for the global ABS universe; add missing
+  metrics (e.g. `pool_balance_fraction`, extracted but not in the enum → an
+  unfireable trigger). Sequencing: parallel. Paths: `src/loanwhiz/domain/rules.py`, `src/loanwhiz/extraction/taxonomy.py`, `src/loanwhiz/primitives/covenant_monitor.py`.
+- **Fix and link the definitions graph** — `definitions_graph.py` is wired but
+  always emits `{}`; populate term→definition and link defined terms into step
+  conditions + trigger metrics so conditional waterfall prose resolves.
+  Sequencing: parallel. Paths: `src/loanwhiz/extraction/definitions_graph.py`, `src/loanwhiz/extraction/assembler.py`, `src/loanwhiz/primitives/waterfall_interpreter.py`.
+- **Harden non-standard waterfall section routing** — fix the nested-layout
+  failure (Sol-Lion ES revenue PoP = 0 steps: real steps under a generic
+  parent section); improve LLM routing / payment-list detection /
+  descendant-text handling. Sequencing: parallel. Paths: `src/loanwhiz/extraction/section_router.py`, `src/loanwhiz/extraction/assembler.py`.
+- **Structure-agnostic tranche parsing** — handle exotic stacks (A1–A6
+  multi-series, single-class, non-A/B/C naming) that currently mis-parse
+  (Sol-Lion Class O = 42 EUR artifact). Sequencing: parallel. Paths: `src/loanwhiz/extraction/waterfall_extractor.py`, `src/loanwhiz/extraction/**`.
+
+### Epic B: Self-service ingestion   (umbrella #<N>)
+
+Make onboarding a deal's full data set a product action, not per-deal dev work.
+
+- **General report ingestion** — replace the hand-written per-deal
+  `_REPORT_LOADERS` requirement (a new deal's report path 422s without a
+  committed parser) with a general Notes & Cash report extractor → canonical
+  `ParsedReport`, reconciliation-gated, so a new deal cold-starts the report
+  path zero-touch. Sequencing: sequential. Paths: `src/loanwhiz/primitives/report_extractor.py`, `src/loanwhiz/primitives/report_adapter.py`, `src/loanwhiz/api/main.py`.
+- **Tape & report ingest API** — runtime endpoints to register + ingest a
+  tape or report for a deal (today registration is a `deals.json` edit and
+  `/extract` does only the prospectus model), materialising into the same
+  registry/cache the cold-start reads. Sequencing: sequential. After the
+  general report ingestion child. Paths: `src/loanwhiz/api/main.py`, `src/loanwhiz/api/extraction_jobs.py`, `src/loanwhiz/config.py`.
+
+### Epic C: Analytical depth — comparison + chat   (umbrella #<N>)
+
+Turn comparison from display into analysis, and give chat real cross-source /
+cross-deal reach. All children are independent.
+
+- **Wire scoring + reasoning into `/compare`** — integrate the existing
+  relative-value scorecard (`relative_value_screener`) into `/compare` and add
+  a reasoned comparative narrative (credit enhancement, trigger headroom, WAL,
+  loss performance) with honest available/unavailable flags — the "why A is
+  better" the endpoint lacks today. Sequencing: parallel. Paths: `src/loanwhiz/api/compare.py`, `src/loanwhiz/primitives/relative_value_screener.py`, `src/loanwhiz/api/main.py`.
+- **Expose deal comparison to chat** — add a `compare_deals` agent tool
+  (the `/compare` endpoint exists but isn't wired to the agent) and remove the
+  hardcoded single-deal default so chat can reason cross-deal. Sequencing:
+  parallel. Paths: `src/loanwhiz/agent/tools.py`, `src/loanwhiz/agent/planner.py`.
+- **General investor-report reader tool for chat** — today only
+  `verify_report` (diff) reads reports; add a tool to read/explore
+  investor-report contents so the agent can answer "what does the report say
+  about X?". Sequencing: parallel. Paths: `src/loanwhiz/agent/tools.py`, `src/loanwhiz/api/main.py`.
+- **Cross-source synthesis in chat** — add system-prompt guidance (and/or a
+  synthesis tool) so the agent deliberately combines prospectus + report + tape
+  in one grounded answer instead of single-tool routing (which risks
+  hallucinated synthesis). Sequencing: parallel. Paths: `src/loanwhiz/agent/planner.py`, `src/loanwhiz/agent/tools.py`.
+
+### Epic D: Governance at the seams   (umbrella #<N>)
+
+Close governance exactly where it is thinnest — the extraction pipeline, the
+newest `/extract` endpoint, and review enforcement. All children independent.
+
+- **Govern the on-demand `/extract` endpoint** — wrap the `extract_deal_model`
+  call in `audit_result()` + a `PrimitiveResult`-style envelope; surface
+  confidence + a failure audit trail, not just metadata counts (it is the
+  least-governed, newest, user-facing seam). Sequencing: parallel. Paths: `src/loanwhiz/api/extraction_jobs.py`, `src/loanwhiz/primitives/audit_logger.py`.
+- **Surface per-field extraction confidence** — `waterfall_extractor`/
+  `covenant_extractor` compute `extraction_confidence` per step/trigger but it
+  is not threaded into the emitted `DealModel` (only aggregate completeness);
+  surface per-step/per-trigger confidence so users can tell reliable
+  extractions from noise. Sequencing: parallel. Paths: `src/loanwhiz/extraction/waterfall_extractor.py`, `src/loanwhiz/extraction/covenant_extractor.py`, `src/loanwhiz/extraction/assembler.py`.
+- **Enforce human-review-required** — the flag is computed in evidence packs /
+  executor but not acted on (no gating/routing); make a low-confidence answer
+  actually gate or route, or formalise + document the API contract. Sequencing:
+  parallel. Paths: `src/loanwhiz/agent/executor.py`, `src/loanwhiz/governance/evidence_pack.py`, `src/loanwhiz/api/main.py`.
 
 ## Filed issues
 
