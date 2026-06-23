@@ -396,7 +396,9 @@ def check_covenants(deal_id: str = DEFAULT_DEAL_ID) -> dict:
         periods=periods if periods else None,
         triggers=triggers,
     )
-    result = CovenantMonitor().execute(covenant_input)
+    monitor = CovenantMonitor()
+    result = monitor.execute(covenant_input)
+    audit_result(monitor, covenant_input, result, log_dir=AGENT_AUDIT_LOG_DIR)
     return _bound_covenant_output(result.output.model_dump()) | {
         "confidence": result.confidence,
         "citations": [c.model_dump() for c in result.citations],
