@@ -27,6 +27,7 @@ import mcp.types as types
 from mcp.server import Server
 from mcp.server.lowlevel.helper_types import ReadResourceContents
 
+from loanwhiz.primitives.audit_logger import audit_result
 from loanwhiz_primitives_mcp.catalogue import (
     build_catalogue,
     ensure_primitives_registered,
@@ -36,6 +37,16 @@ from loanwhiz_primitives_mcp.reachability import LIVE, reachability_of
 
 SERVER_NAME = "loanwhiz-primitives"
 CATALOGUE_URI = "primitives://catalogue"
+
+# Audit log dir for primitive calls reached through the MCP server. Mirrors the
+# REST API's ``API_AUDIT_LOG_DIR`` and the agent tools' ``AGENT_AUDIT_LOG_DIR``
+# (all default to ``/tmp/loanwhiz_audit``) so the MCP path is governed like the
+# endpoint + agent paths: every tool call appends one ``AuditLogEntry`` to the
+# per-primitive JSONL store. ``call_tool`` already returns the ``audit_entry`` in
+# the result envelope; persisting it here makes the trust story durable, not just
+# in-flight. Patchable (like the REST/agent constants) so tests can point it at a
+# tmp dir and assert an entry was written without polluting ``/tmp``.
+MCP_AUDIT_LOG_DIR = "/tmp/loanwhiz_audit"
 
 
 def _live_registrations() -> list[Any]:
@@ -113,6 +124,14 @@ def build_server() -> Server:
         primitive_input = input_type(**arguments)
         primitive = reg.primitive_class()
         result = primitive.execute(primitive_input)
+
+        # Persist one AuditLogEntry to disk — mirroring the REST path's
+        # ``_audit(...)`` so a primitive call reached through MCP leaves the same
+        # durable provenance record, not just the in-flight ``audit_entry`` in
+        # the response envelope. ``audit_result`` is best-effort and
+        # failure-isolated (a non-real result or an unwritable dir is swallowed),
+        # so the audit side-channel never takes down the tool call.
+        audit_result(primitive, primitive_input, result, log_dir=MCP_AUDIT_LOG_DIR)
 
         # Serialise the full PrimitiveResult — output AND governance evidence
         # (confidence, citations, audit_entry) — so the trust story travels with
