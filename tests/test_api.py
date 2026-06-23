@@ -331,6 +331,78 @@ def test_deal_model_unknown_returns_404():
 
 
 # ---------------------------------------------------------------------------
+# On-demand extraction endpoint (#384) — enqueue/poll, no real extraction.
+# Full subsystem coverage lives in tests/test_extraction_jobs.py; these assert
+# the routes are wired into the app and degrade honestly. The extraction is
+# always stubbed via the ``extract_fn`` seam — never a real long run.
+# ---------------------------------------------------------------------------
+
+
+def test_extract_enqueue_returns_202_and_status_polls_succeeded(tmp_path):
+    """POST /deal/{id}/extract enqueues (202) and the status route reaches
+    succeeded once the stubbed job drains — proving the routes are wired."""
+    from loanwhiz.api import extraction_jobs
+
+    def _fast_extract(*, prospectus_url, deal_name, cache_dir, force_refresh):
+        from loanwhiz.extraction.assembler import DealModel, _slug
+
+        model = DealModel.model_validate(
+            {
+                "metadata": {
+                    "deal_name": deal_name,
+                    "prospectus_url": prospectus_url,
+                    "extracted_at": "2026-06-23T00:00:00+00:00",
+                    "extraction_duration_sec": 0.01,
+                    "sections_found": ["definitions"],
+                    "completeness_score": 0.5,
+                    "cache_path": "",
+                },
+                "definitions": {},
+                "waterfalls": {},
+                "covenants": {
+                    "deal_name": deal_name,
+                    "triggers": [],
+                    "issuer_covenants": [],
+                    "extraction_confidence": 0.5,
+                },
+                "tranche_structure": [],
+                "trigger_names": [],
+            }
+        )
+        path = Path(cache_dir) / f"{_slug(deal_name)}.json"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(model.model_dump_json(), encoding="utf-8")
+        return model
+
+    extraction_jobs.reset_jobs()
+    try:
+        with patch("loanwhiz.api.main.DEAL_MODEL_CACHE_DIR", str(tmp_path)), patch(
+            "loanwhiz.api.extraction_jobs.extract_deal_model", _fast_extract
+        ):
+            resp = client.post("/deal/green-lion-2026-1/extract")
+            assert resp.status_code == 202
+            extraction_jobs._EXECUTOR.submit(lambda: None).result(timeout=10)
+            status = client.get("/deal/green-lion-2026-1/extract/status").json()
+            assert status["status"] == "succeeded"
+    finally:
+        extraction_jobs.reset_jobs()
+
+
+def test_extract_unknown_deal_404():
+    resp = client.post("/deal/unknown/extract")
+    assert resp.status_code == 404
+
+
+def test_extract_status_none_when_no_job():
+    from loanwhiz.api import extraction_jobs
+
+    extraction_jobs.reset_jobs()
+    resp = client.get("/deal/green-lion-2024-1/extract/status")
+    assert resp.status_code == 200
+    assert resp.json()["status"] == "none"
+
+
+# ---------------------------------------------------------------------------
 # Committed deal-model seed fallback (#196 — Overview cold-cache)
 # ---------------------------------------------------------------------------
 
