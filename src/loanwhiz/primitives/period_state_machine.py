@@ -794,7 +794,7 @@ def reconstruct_period_series(
     original_pool_balance: float,
     opening_pool_balance: float | None = None,
     seed_reporting_date: str,
-    periods: list[PeriodInput],
+    periods: "list[PeriodInput] | list[CanonicalPeriodInputs]",
     triggers: list[TriggerDefinition] | None = None,
     revenue_steps: list[StepSpec] = DEFAULT_REVENUE_STEPS,
     redemption_steps: list[StepSpec] = DEFAULT_REDEMPTION_STEPS,
@@ -829,9 +829,12 @@ def reconstruct_period_series(
     seed_reporting_date:
         ISO reporting date for the seeded period-0 opening state.
     periods:
-        Ordered :class:`PeriodInput` list — one per *transition* after period 0.
-        Each carries the collections and the reporting date for that period's
-        closing state.
+        Ordered period-inputs list — one per *transition* after period 0. May be
+        either legacy :class:`PeriodInput` (tape-only collections) or canonical
+        ``domain.PeriodInputs`` (the tape adapter's ``source="tape"`` inputs,
+        carrying legs + risk_signals); ``run_period`` accepts both, and a tape
+        ``PeriodInputs`` with ``legs`` present reduces to the same normalized
+        period the legacy ``PeriodInput`` would, so the fold is unchanged.
     triggers / revenue_steps / redemption_steps / principal_classes / senior_fees:
         Forwarded to :func:`run_period` (see its docstring).
     seed_revolving:
