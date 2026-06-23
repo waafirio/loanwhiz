@@ -176,7 +176,12 @@ class TriggerRule(BaseModel):
 
     ``threshold_unit`` is normalised **once, here** — the single locked place
     units are fixed, so a dropped or mismatched unit (the C8 ``100x`` bug) cannot
-    re-enter at a boundary downstream.
+    re-enter at a boundary downstream. The *consumption* side enforces the same
+    contract at the covenant-monitor seam:
+    :func:`loanwhiz.primitives.covenant_monitor.to_canonical_threshold` (called
+    from ``api.main._map_extracted_trigger``) converts the threshold onto the
+    monitor's canonical percent scale before evaluation, so a unit mistake fails
+    loudly at the monitor rather than silently misreading by 100x.
 
     Attributes:
         name:           Unique name; referenced by :class:`ConditionRef`.

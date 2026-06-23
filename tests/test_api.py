@@ -794,6 +794,51 @@ def test_deal_compliance_uses_extracted_triggers(tmp_path):
     assert pdl.citation.excerpt == "Custom PDL Trigger"
 
 
+def test_deal_compliance_converts_fraction_unit_threshold_to_percent(tmp_path):
+    """A fraction-unit extracted threshold reaches the monitor on the percent
+    scale — the consumption-side C8 100x guard, exercised end-to-end through the
+    /compliance route."""
+    extracted = [
+        {
+            "name": "frac_loss_trigger",
+            "display_name": "Fractional Loss Trigger",
+            "description": "Fires above a 1.5% loss rate, expressed as a fraction.",
+            "metric": "default_pct",
+            "threshold": 0.015,
+            "threshold_unit": "fraction",
+            "direction": "above",
+            "consequence": "Principal switches to sequential.",
+            "section_reference": "Section 6.1",
+            "citation": {},
+        },
+    ]
+    _seed_cached_deal_model_with_triggers(str(tmp_path), extracted)
+
+    captured: dict = {}
+
+    class _SpyMonitor:
+        DEFAULT_TRIGGERS = CovenantMonitor.DEFAULT_TRIGGERS
+
+        def execute(self, input):  # noqa: A002
+            captured["triggers"] = input.triggers
+            return _FakeResult({"summary": "ok"})
+
+    series = _small_reconstructed_series()
+    with patch("loanwhiz.api.main.DEAL_MODEL_CACHE_DIR", str(tmp_path)), patch(
+        "loanwhiz.api.main.EsmaTapeNormaliser"
+    ) as MockNorm, patch(
+        "loanwhiz.api.main._reconstruct_series", return_value=series
+    ), patch("loanwhiz.api.main.CovenantMonitor", _SpyMonitor):
+        MockNorm.return_value.execute.return_value = _FakeResult({"row_count": 1})
+        resp = client.get("/deal/green-lion-2026-1/compliance")
+
+    assert resp.status_code == 200
+    (fed,) = captured["triggers"]
+    # 0.015 fraction → 1.5 percent; without the guard it would reach the
+    # percent-scaled metric 100x low and never fire.
+    assert fed.threshold == 1.5
+
+
 def test_deal_compliance_falls_back_when_no_extracted_triggers(tmp_path):
     """Empty covenants.triggers (and cache miss) → fall back to DEFAULT_TRIGGERS."""
     # Seeded model exists but carries an empty triggers list.
