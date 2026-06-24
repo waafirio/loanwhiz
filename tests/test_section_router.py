@@ -25,6 +25,7 @@ from loanwhiz.extraction import section_router
 from loanwhiz.extraction.section_router import (
     _LOAD_BEARING_ROLES,
     _has_payment_list,
+    _widen_to_payment_list,
     classify_segments_llm,
     extract_key_sf_sections,
     resolve_sections,
@@ -661,6 +662,174 @@ def test_classify_prefers_payment_list_over_summary_title() -> None:
     # Combined-cascade tolerance: revenue and redemption may resolve to one span.
     red = result["redemption_priority_of_payments"]
     assert red is not None and red.start_char == rev.start_char
+
+
+# ---------------------------------------------------------------------------
+# Path-agnostic descendant-span widening at the resolve_sections chokepoint
+# (#396 — Sol-Lion ES revenue 0-step fix completed for the KEYWORD path)
+# ---------------------------------------------------------------------------
+
+# An ENGLISH generic-parent layout the keyword router *does* match by title
+# ("Revenue Priority of Payments") but whose enumerated steps live one level
+# deeper in a child sub-section.  This is the exact Sol-Lion (ES) failure mode
+# generalised to a title the keyword router hits: the keyword router locates the
+# parent, returns its heading-only narrow `.text`, and the waterfall extractor
+# sees 0 steps — unless resolve_sections widens it to the descendant span (#396).
+_GENERIC_PARENT_KEYWORD_MD = textwrap.dedent("""\
+    # Prospectus
+
+    ## 5.2 Revenue Priority of Payments
+
+    This section governs the application of revenue funds.
+
+    ### 5.2.1 Order of Application
+
+    On each Payment Date the Available Funds will be applied:
+
+    - (a) first, fees of the Management Company;
+    - (b) second, interest on the Class A Notes;
+    - (c) third, principal of the Class A Notes;
+
+    ## 6 Other Provisions
+
+    Unrelated text that must NOT be pulled into the revenue span.
+""")
+
+# A FLAT English layout: the keyword-matched section already holds its own
+# enumerated steps in its narrow `.text`.  The widening must be a strict no-op
+# here — the Green Lion / English path stays byte-identical.
+_FLAT_KEYWORD_MD = textwrap.dedent("""\
+    # Prospectus
+
+    ## Revenue Priority of Payments
+
+    On each Payment Date the Available Funds will be applied:
+
+    - (a) first, fees;
+    - (b) second, interest;
+    - (c) third, principal;
+
+    ## Next Section
+
+    Other text.
+""")
+
+
+def test_resolve_sections_widens_keyword_generic_parent() -> None:
+    """resolve_sections(use_llm=False) widens a keyword-located generic parent to
+    its descendant span so the cascade in the child sub-section reaches the
+    waterfall extractor — the Sol-Lion (ES) revenue 0-step fix on the keyword
+    path (#396)."""
+    sm = route_sections(_GENERIC_PARENT_KEYWORD_MD)
+
+    # Precondition: the keyword router matches the generic parent but its narrow
+    # .text is a heading-only stub with no payment list.
+    kw = extract_key_sf_sections(sm)["revenue_priority_of_payments"]
+    assert kw is not None and kw.title.startswith("5.2 Revenue Priority")
+    assert not _has_payment_list(kw.text), (
+        "precondition: narrow keyword .text must be a stub with no cascade"
+    )
+
+    # resolve_sections widens it — the returned section carries the child steps.
+    rev = resolve_sections(sm, use_llm=False)["revenue_priority_of_payments"]
+    assert rev is not None
+    step_letters = re.findall(r"^- \(([a-z])\)", rev.text, re.MULTILINE)
+    assert step_letters == list("abc"), (
+        f"widened revenue section did not carry the child cascade: {step_letters}"
+    )
+    # And it must STOP at the next sibling-or-shallower header (## 6).
+    assert "Other Provisions" not in rev.text, (
+        "descendant span leaked into the next ## section"
+    )
+
+
+def test_resolve_sections_flat_english_path_byte_identical() -> None:
+    """The widening is a strict no-op for a flat English layout whose matched
+    section already holds its own steps — the keyword hit is returned verbatim
+    (Green Lion / English path stays byte-identical, #396)."""
+    sm = route_sections(_FLAT_KEYWORD_MD)
+    kw = extract_key_sf_sections(sm)["revenue_priority_of_payments"]
+    resolved = resolve_sections(sm, use_llm=False)["revenue_priority_of_payments"]
+
+    assert kw is not None and resolved is not None
+    # Same span, same text — not re-widened past its own boundary.
+    assert resolved.text == kw.text
+    assert resolved.start_char == kw.start_char
+    assert resolved.end_char == kw.end_char
+
+
+def test_widen_to_payment_list_idempotent_on_already_widened() -> None:
+    """_widen_to_payment_list does not double-widen an already-widened section
+    (the LLM path returns sections whose .text is already the descendant span)."""
+    sm = route_sections(_GENERIC_PARENT_KEYWORD_MD)
+    parent = next(
+        s for s in sm.sections if s.title.startswith("5.2 Revenue Priority")
+    )
+    widened_once = sm.with_descendant_text(parent)
+    assert _has_payment_list(widened_once.text)  # already carries the list
+
+    widened_twice = _widen_to_payment_list(sm, widened_once)
+    # Idempotent: a section already holding its list is returned unchanged.
+    assert widened_twice.text == widened_once.text
+    assert widened_twice.start_char == widened_once.start_char
+    assert widened_twice.end_char == widened_once.end_char
+
+
+def test_widen_to_payment_list_noop_when_no_list_anywhere() -> None:
+    """_widen_to_payment_list leaves a genuinely list-free section unchanged —
+    no spurious widening that could pull unrelated sibling text in (#396)."""
+    md = textwrap.dedent("""\
+        # Prospectus
+
+        ## 7.1 Governing Law
+
+        These notes are governed by the laws of Spain.
+
+        ### 7.1.1 Jurisdiction
+
+        The courts of Madrid have exclusive jurisdiction.
+
+        ## 8 Other
+        x
+    """)
+    sm = route_sections(md)
+    sec = next(s for s in sm.sections if s.title.startswith("7.1 Governing Law"))
+    out = _widen_to_payment_list(sm, sec)
+    assert out.text == sec.text  # no list anywhere → unchanged
+
+
+def test_has_payment_list_ordinal_word_and_nested_markers() -> None:
+    """_has_payment_list recognises the real Sol-Lion (ES) marker shapes: an
+    ordinal-word cascade ("firstly, … secondly, …") and nested ``(ii)(a)``
+    bracket markers — while the stray-prose / summary-rank guards still hold
+    (#396)."""
+    # Ordinal-word cascade (the real Sol-Lion redemption citations' shape).
+    ordinal = (
+        "firstly , to the redemption pro rata of the Series A1 Notes;\n"
+        "secondly , once all A1 redeemed, to the Series A2 Notes;\n"
+        "thirdly , once all A2 redeemed, to the Series A3 Notes;"
+    )
+    assert _has_payment_list(ordinal) is True
+
+    # Spanish and Italian ordinal cascades.
+    assert _has_payment_list("primero, a comisiones;\nsegundo, a intereses;\ntercero, a capital;") is True
+    assert _has_payment_list("primo, alle commissioni;\nsecondo, agli interessi;\nterzo, al capitale;") is True
+
+    # Nested (ii)(a) / (ii)(b) bracket markers under an outer order label.
+    nested = "(ii)(a) first to A1;\n(ii)(b) second to A2;\n(ii)(c) third to A3;"
+    assert _has_payment_list(nested) is True
+
+    # Guards still hold: ordinal adverbs scattered inline in a paragraph (not at
+    # line starts) must NOT flip the signal.
+    inline = (
+        "The party firstly agreed, then secondly considered, and thirdly "
+        "resolved the matter all within a single sentence."
+    )
+    assert _has_payment_list(inline) is False
+    # A single ordinal adverb in prose stays False (below the floor anyway).
+    assert _has_payment_list("He firstly noted the issue and moved on.") is False
+    # Summary rank table still False.
+    assert _has_payment_list("Rank 1, Rank 2, Rank 3 — see body for detail.") is False
 
 
 # ---------------------------------------------------------------------------
