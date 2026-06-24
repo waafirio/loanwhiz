@@ -6,11 +6,14 @@ from langchain_core.tools import tool
 from langgraph.prebuilt import ToolNode
 
 from loanwhiz.config import DEAL_REGISTRY
+from loanwhiz.extraction import collateral_ledger as _collateral_ledger
 from loanwhiz.extraction.assembler import (
     DEFAULT_DEAL_CACHE_DIR,
     DealModel,
     _slug,
 )
+from loanwhiz.extraction.collateral_ledger import CollateralLedger
+from loanwhiz.primitives import notes_cash_parser as _notes_cash_parser
 from loanwhiz.primitives.audit_logger import audit_result
 from loanwhiz.primitives.base import PrimitiveResult
 from loanwhiz.primitives.collections_aggregator import CollectionsAggregator, CollectionsInput
@@ -690,6 +693,204 @@ def get_deal_model(deal_id: str = DEFAULT_DEAL_ID) -> dict:
     }
 
 
+# ---------------------------------------------------------------------------
+# Investor-report reader — the durable report cache (#402)
+# ---------------------------------------------------------------------------
+
+
+def _read_cached_notes_cash(deal: dict) -> "_notes_cash_parser.NotesCashReport | None":
+    """Read the deal's cached Notes & Cash (liability) report set, or ``None``.
+
+    Reads the durable on-disk cache the ingestion layer (#398/#399) writes at
+    ``{DEFAULT_EXTRACTION_CACHE_DIR}/notes-cash-{slug(deal_name)}.json`` via the
+    same private seam ``parse_notes_cash_report`` uses on a cache hit. **Never
+    triggers a cold extraction** — a cache miss (no file) returns ``None`` rather
+    than fetching/parsing PDFs over the network. The cache dir is gitignored and
+    warmed out-of-band, so a fresh checkout legitimately has no report — hence
+    the graceful ``None``. This is the patch point the agent-tool tests stub.
+    """
+    path = _notes_cash_parser._cache_path(
+        deal["deal_name"], _notes_cash_parser.DEFAULT_EXTRACTION_CACHE_DIR
+    )
+    return _notes_cash_parser._load_durable_cache(path)
+
+
+def _read_cached_collateral_ledger(deal: dict) -> CollateralLedger | None:
+    """Read the deal's cached collateral ledger (monthly investor report), or ``None``.
+
+    Mirrors :func:`_read_cached_notes_cash` for the collateral side: reads the
+    durable cache ``{DEFAULT_EXTRACTION_CACHE_DIR}/collateral-ledger-{slug}.json``
+    via ``collateral_ledger``'s own private cache seam. **Never triggers a cold
+    extraction** (which would fetch each report PDF and call Gemini) — a cache
+    miss returns ``None``. Patch point for the tests.
+    """
+    path = _collateral_ledger._cache_path(
+        deal["deal_name"], _collateral_ledger.DEFAULT_EXTRACTION_CACHE_DIR
+    )
+    return _collateral_ledger._load_durable_cache(path)
+
+
+def _period_matches(period: str, *candidates: str | None) -> bool:
+    """Whether the ``period`` substring matches any of the candidate labels.
+
+    Matched case-insensitively against the ISO reporting date and the
+    human-readable period label (e.g. ``"2026-04"`` or ``"april 2026"``),
+    mirroring the ``period`` semantics of ``list_deal_tapes`` /
+    ``aggregate_collections``.
+    """
+    needle = period.lower()
+    return any(needle in c.lower() for c in candidates if c)
+
+
+@tool
+def read_investor_report(deal_id: str = DEFAULT_DEAL_ID, period: str | None = None) -> dict:
+    """Read what a deal's investor / notes-cash reports actually SAID for a period.
+
+    Use this for ANY question about the *contents* of a deal's published reports —
+    "what did the investor report say about arrears in Jan 2025?", "what was the
+    reserve balance the report published?", "what PDL did the bond report show?",
+    "what did the report distribute at each waterfall step?", "what triggers did
+    the report mark breached?". This is the *read* companion to ``verify_report``
+    (which only *diffs* the report against the engine); use ``read_investor_report``
+    when the analyst wants the reported figures themselves, grounded with
+    citations to the source report.
+
+    It reads the deal's durable report cache directly and surfaces, per reporting
+    period, whichever report families are cached:
+
+    - **Notes & Cash report** (liability ground truth): per-class note/PDL
+      balances, the reserve account target/balance, the revenue & redemption
+      priority-of-payments steps actually distributed, and trigger states.
+    - **Collateral ledger** (the monthly investor report): pool roll-forward
+      (begin/end balances, repayments/prepayments), arrears/default amount, life
+      CPR/PPR, CDR, payment ratio, and weighted-average coupon.
+
+    Parameters
+    ----------
+    deal_id:
+        Registry deal id (defaults to the Green Lion demo deal).
+    period:
+        Optional substring matched against each period's ISO reporting date AND
+        its human-readable label — ``"2026-04"``, ``"april 2026"``, or ``"2026"``
+        all work. Omit to return every reported period.
+
+    Returns one entry per matching reporting period (each with the cached figures
+    above + a ``Citation`` to the source report), the deal's ``available_periods``,
+    and the governance envelope (``confidence``/``citations``). This tool NEVER
+    triggers a live extraction, so it always returns promptly: when no report is
+    cached in this environment it returns ``reports_status="not_cached"`` with a
+    note (the deal's document URLs remain reachable via ``list_deal_tapes``); when
+    a ``period`` filter matches nothing it returns ``available_periods`` and a note
+    rather than fabricating data. An unknown ``deal_id`` returns an ``error`` plus
+    the list of ``available_deals``.
+    """
+    deal = DEAL_REGISTRY.get(deal_id)
+    if deal is None:
+        # Do NOT silently fall back to the default deal — reading the wrong deal's
+        # report is worse than an explicit miss (mirrors get_deal_model et al.).
+        return {
+            "error": f"deal {deal_id!r} not found",
+            "available_deals": list(DEAL_REGISTRY),
+            "confidence": 0.0,
+            "citations": [],
+        }
+
+    notes_cash = _read_cached_notes_cash(deal)
+    ledger = _read_cached_collateral_ledger(deal)
+
+    if notes_cash is None and ledger is None:
+        return {
+            "deal_id": deal_id,
+            "deal_name": deal["deal_name"],
+            "reports_status": "not_cached",
+            "note": (
+                "No investor report has been extracted for this deal in this "
+                "environment, so the reported figures (arrears, PDL, reserve, "
+                "priority-of-payments distributions, trigger states, pool "
+                "roll-forward) are unavailable. The deal's document URLs "
+                "(prospectus, tapes, investor reports) are still available via "
+                "list_deal_tapes."
+            ),
+            "confidence": 0.0,
+            "citations": [],
+        }
+
+    # Merge whichever report families are cached, keyed by ISO reporting date so
+    # the liability (Notes & Cash) and collateral (ledger) sides of the same
+    # period land in one entry.
+    by_date: dict[str, dict] = {}
+
+    if notes_cash is not None:
+        for p in notes_cash.periods:
+            by_date.setdefault(
+                p.reporting_date,
+                {"reporting_date": p.reporting_date, "period_label": p.period_label},
+            )["notes_cash"] = p.model_dump()
+
+    if ledger is not None:
+        for p in ledger.periods:
+            entry = by_date.setdefault(
+                p.reporting_date,
+                {"reporting_date": p.reporting_date, "period_label": p.period_label},
+            )
+            entry.setdefault("period_label", p.period_label)
+            entry["collateral_ledger"] = p.model_dump()
+
+    all_periods = [by_date[d] for d in sorted(by_date)]
+    available_periods = [
+        {"reporting_date": e["reporting_date"], "period_label": e.get("period_label")}
+        for e in all_periods
+    ]
+
+    selected = all_periods
+    if period is not None:
+        selected = [
+            e
+            for e in all_periods
+            if _period_matches(period, e["reporting_date"], e.get("period_label"))
+        ]
+        if not selected:
+            return {
+                "deal_id": deal_id,
+                "deal_name": deal["deal_name"],
+                "reports_status": "cached",
+                "period_filter": period,
+                "available_periods": available_periods,
+                "note": (
+                    f"No reported period matches {period!r}. See available_periods "
+                    "for the reporting dates that ARE cached for this deal."
+                ),
+                "confidence": 1.0,
+                "citations": [],
+            }
+
+    # One citation per surfaced period — the parse is deterministic (pypdf/regex),
+    # so the governance confidence is 1.0 (the framework's rule-based convention).
+    citations = [
+        {
+            "document": f"{deal['deal_name']} — investor report ({e.get('period_label') or e['reporting_date']})",
+            "page_or_row": e["reporting_date"],
+            "excerpt": (
+                "Reported figures read from the deal's durable investor-report "
+                "cache (deterministic extraction; no live re-extraction)."
+            ),
+        }
+        for e in selected
+    ]
+
+    return {
+        "deal_id": deal_id,
+        "deal_name": deal["deal_name"],
+        "reports_status": "cached",
+        "period_filter": period,
+        "available_periods": available_periods,
+        "periods": selected,
+        "confidence": 1.0,
+        "citations": citations,
+        "duration_ms": 0,
+    }
+
+
 @tool
 def list_deal_tapes(deal_id: str = DEFAULT_DEAL_ID, period: str | None = None) -> dict:
     """List (and optionally select) the deal's loan-level tapes and documents.
@@ -1076,6 +1277,7 @@ SF_TOOLS = [
     list_deal_tapes,
     stress_matrix,  # #323 — appended (additive; keeps existing ordering stable)
     monitor_portfolio,  # #326 — appended (additive; keeps existing ordering stable)
+    read_investor_report,  # #402 — appended (additive; keeps existing ordering stable)
     compare_deals,  # #401 — appended (additive; keeps existing ordering stable)
     synthesise_cross_source,  # #403 — appended (additive; keeps existing ordering stable)
 ]
