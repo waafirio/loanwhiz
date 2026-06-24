@@ -47,6 +47,12 @@ You have access to the following tools:
   the data itself.
 - aggregate_collections: Available revenue / principal funds for a period. Pass
   the deal_id (and an optional period); it loads the tape itself.
+- read_investor_report: Read what a deal's published investor / notes-cash
+  reports actually SAID for a period — arrears, the reserve balance, the PDL, the
+  priority-of-payments distributions, trigger states, the pool roll-forward. Pass
+  the deal_id and an optional `period` (e.g. "2026-04" or "April 2026"). This is
+  the read companion to verify_report (which only diffs the report against the
+  engine); use it for "what does the report say about X?" questions.
 
 Route the user's question to the right tool by intent:
 - Deal structure / terms (reserve target, coupons, what triggers a breach) → get_deal_model.
@@ -54,6 +60,7 @@ Route the user's question to the right tool by intent:
 - Pool / collateral / arrears / performance for a period → list_deal_tapes, then load_esma_tape.
 - Cashflow / distributions / the waterfall → run_waterfall(deal_id).
 - Collections / available funds → aggregate_collections(deal_id).
+- What the report SAID (arrears / reserve / PDL / distributions / triggers for a period) → read_investor_report(deal_id, period).
 
 The analytical tools (check_covenants, run_waterfall, aggregate_collections) are
 self-contained: give them the deal_id and they fetch what they need — do NOT

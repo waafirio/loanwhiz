@@ -20,6 +20,7 @@ from loanwhiz.agent.tools import (
     list_deal_tapes,
     load_esma_tape,
     project_cashflows,
+    read_investor_report,
     run_waterfall,
     stress_matrix,
     verify_report,
@@ -1016,11 +1017,12 @@ def test_sf_tools_has_expected_tools():
         "list_deal_tapes",
         "stress_matrix",
         "monitor_portfolio",
+        "read_investor_report",
     ]
 
 
-def test_sf_tools_has_exactly_eleven_tools():
-    assert len(SF_TOOLS) == 11
+def test_sf_tools_has_exactly_twelve_tools():
+    assert len(SF_TOOLS) == 12
 
 
 def test_sf_tool_node_is_tool_node_instance():
@@ -1048,7 +1050,7 @@ def test_sf_tools_all_have_invoke_method():
 def test_list_available_tools_returns_list_of_dicts():
     result = list_available_tools()
     assert isinstance(result, list)
-    assert len(result) == 11
+    assert len(result) == 12
 
 
 def test_list_available_tools_has_name_and_description():
@@ -1098,6 +1100,177 @@ def test_agent_init_exports():
     assert SF_TOOLS is not None
     assert SF_TOOL_NODE is not None
     assert callable(list_available_tools)
+
+
+# ---------------------------------------------------------------------------
+# read_investor_report — general report reader over the durable cache (#402)
+# ---------------------------------------------------------------------------
+
+
+def _make_notes_cash_report():
+    """A tiny two-period NotesCashReport fixture (liability side)."""
+    from loanwhiz.primitives.notes_cash_parser import (
+        IssuerAccount,
+        NoteClassBalance,
+        NotesCashPeriod,
+        NotesCashReport,
+        PoPStep,
+        TriggerState,
+    )
+
+    jan = NotesCashPeriod(
+        reporting_date="2025-01-23",
+        period_label="January 2025",
+        deal_name="Green Lion 2023-1 B.V.",
+        note_balances=[
+            NoteClassBalance(
+                note_class="class_a",
+                principal_balance_after_payment=900_000_000.0,
+                pdl_balance_after_payment=0.0,
+            )
+        ],
+        revenue_pop=[PoPStep(priority="(a)", recipient="Senior fees", amount=125_000.0)],
+        redemption_pop=[PoPStep(priority="(a)", recipient="Class A principal", amount=10_000_000.0)],
+        issuer_accounts=[
+            IssuerAccount(name="reserve_account", balance_end=15_000_000.0, target=15_000_000.0)
+        ],
+        triggers=[
+            TriggerState(label="(a)", description="Cumulative loss trigger", breached=False, status="OK")
+        ],
+    )
+    apr = NotesCashPeriod(
+        reporting_date="2025-04-23",
+        period_label="April 2025",
+        deal_name="Green Lion 2023-1 B.V.",
+        note_balances=[
+            NoteClassBalance(
+                note_class="class_a",
+                principal_balance_after_payment=850_000_000.0,
+                pdl_balance_after_payment=250_000.0,
+            )
+        ],
+    )
+    return NotesCashReport(deal_name="Green Lion 2023-1 B.V.", periods=[jan, apr])
+
+
+def _make_collateral_ledger():
+    """A tiny one-period CollateralLedger fixture (collateral side, arrears)."""
+    from loanwhiz.extraction.collateral_ledger import CollateralLedger, CollateralPeriod
+
+    jan = CollateralPeriod(
+        reporting_date="2025-01-23",
+        period_label="January 2025",
+        pool_balance_begin=1_000_000_000.0,
+        pool_balance_end=980_000_000.0,
+        repayments=20_000_000.0,
+        default_amount=1_500_000.0,
+        cdr_pct=0.5,
+        payment_ratio_pct=99.1,
+    )
+    return CollateralLedger(deal_name="Green Lion 2023-1 B.V.", periods=[jan])
+
+
+_SEASONED_DEAL_ID = "green-lion-2023-1"
+
+
+def test_read_investor_report_merges_both_report_families_with_citations():
+    """A cache hit surfaces both liability + collateral figures per period, cited."""
+    from loanwhiz.agent import tools as tools_mod
+
+    with patch.object(tools_mod, "_read_cached_notes_cash", return_value=_make_notes_cash_report()), \
+         patch.object(tools_mod, "_read_cached_collateral_ledger", return_value=_make_collateral_ledger()):
+        result = read_investor_report.invoke({"deal_id": _SEASONED_DEAL_ID})
+
+    assert result["reports_status"] == "cached"
+    # Two distinct reporting dates across the two report sets.
+    dates = [p["reporting_date"] for p in result["periods"]]
+    assert dates == ["2025-01-23", "2025-04-23"]
+    jan = result["periods"][0]
+    # Liability side (Notes & Cash) present.
+    assert jan["notes_cash"]["issuer_accounts"][0]["balance_end"] == 15_000_000.0
+    assert jan["notes_cash"]["note_balances"][0]["note_class"] == "class_a"
+    # Collateral side (arrears / default) merged into the SAME period entry.
+    assert jan["collateral_ledger"]["default_amount"] == 1_500_000.0
+    assert jan["collateral_ledger"]["cdr_pct"] == 0.5
+    # One citation per surfaced period.
+    assert len(result["citations"]) == 2
+    assert result["citations"][0]["page_or_row"] == "2025-01-23"
+    assert result["confidence"] == 1.0
+
+
+def test_read_investor_report_period_filter_selects_one_period():
+    """The period substring selects the matching reporting period (label or ISO)."""
+    from loanwhiz.agent import tools as tools_mod
+
+    with patch.object(tools_mod, "_read_cached_notes_cash", return_value=_make_notes_cash_report()), \
+         patch.object(tools_mod, "_read_cached_collateral_ledger", return_value=None):
+        # Human label match.
+        by_label = read_investor_report.invoke({"deal_id": _SEASONED_DEAL_ID, "period": "April 2025"})
+        # ISO date match.
+        by_iso = read_investor_report.invoke({"deal_id": _SEASONED_DEAL_ID, "period": "2025-04"})
+
+    for result in (by_label, by_iso):
+        assert len(result["periods"]) == 1
+        assert result["periods"][0]["reporting_date"] == "2025-04-23"
+        # available_periods still lists every cached period.
+        assert {p["reporting_date"] for p in result["available_periods"]} == {
+            "2025-01-23",
+            "2025-04-23",
+        }
+
+
+def test_read_investor_report_unmatched_period_returns_available_periods():
+    """An unmatched period returns available_periods + a note, never fabricated data."""
+    from loanwhiz.agent import tools as tools_mod
+
+    with patch.object(tools_mod, "_read_cached_notes_cash", return_value=_make_notes_cash_report()), \
+         patch.object(tools_mod, "_read_cached_collateral_ledger", return_value=None):
+        result = read_investor_report.invoke({"deal_id": _SEASONED_DEAL_ID, "period": "2099-12"})
+
+    assert result["reports_status"] == "cached"
+    assert "periods" not in result  # no fabricated period data
+    assert result["period_filter"] == "2099-12"
+    assert {p["reporting_date"] for p in result["available_periods"]} == {
+        "2025-01-23",
+        "2025-04-23",
+    }
+    assert "note" in result
+
+
+def test_read_investor_report_cache_miss_degrades_without_extraction():
+    """A cache miss returns not_cached and NEVER triggers a live extraction."""
+    from loanwhiz.agent import tools as tools_mod
+
+    with patch.object(tools_mod, "_read_cached_notes_cash", return_value=None) as mock_nc, \
+         patch.object(tools_mod, "_read_cached_collateral_ledger", return_value=None) as mock_cl, \
+         patch("loanwhiz.primitives.notes_cash_parser.parse_notes_cash_report") as mock_parse, \
+         patch("loanwhiz.extraction.collateral_ledger.extract_collateral_ledger") as mock_extract:
+        result = read_investor_report.invoke({"deal_id": _SEASONED_DEAL_ID})
+
+    mock_nc.assert_called_once()
+    mock_cl.assert_called_once()
+    mock_parse.assert_not_called()  # cold notes-cash extraction must never run
+    mock_extract.assert_not_called()  # cold collateral extraction must never run
+    assert result["reports_status"] == "not_cached"
+    assert result["deal_id"] == _SEASONED_DEAL_ID
+    assert "list_deal_tapes" in result["note"]
+    assert result["confidence"] == 0.0
+
+
+def test_read_investor_report_unknown_deal_returns_error():
+    result = read_investor_report.invoke({"deal_id": "no-such-deal"})
+    assert "error" in result
+    assert set(result["available_deals"]) == set(DEAL_REGISTRY)
+
+
+def test_read_investor_report_defaults_to_green_lion():
+    """Called with no deal_id, the tool resolves the default deal."""
+    from loanwhiz.agent import tools as tools_mod
+
+    with patch.object(tools_mod, "_read_cached_notes_cash", return_value=None), \
+         patch.object(tools_mod, "_read_cached_collateral_ledger", return_value=None):
+        result = read_investor_report.invoke({})
+    assert result["deal_id"] == DEFAULT_DEAL_ID
 
 
 def test_grounding_tools_importable_from_tools_module():
