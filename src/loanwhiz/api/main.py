@@ -42,6 +42,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from pydantic import BaseModel, Field, field_validator
 
 from loanwhiz.agent.executor import execute_query
+from loanwhiz import config as _config
 from loanwhiz.config import DEAL_REGISTRY
 from loanwhiz.extraction.assembler import (
     DEFAULT_DEAL_CACHE_DIR,
@@ -77,7 +78,6 @@ from loanwhiz.domain.state import DealState as DomainDealState
 from loanwhiz.primitives.deal_state import DealState as PrimitivesDealState
 from loanwhiz.primitives.reconciler import (
     ReconciliationReport,
-    load_green_lion_2024_1_report,
     validate_green_lion_2024_1,
 )
 from loanwhiz.primitives.esma_tape_normaliser import (
@@ -386,6 +386,17 @@ DEAL_MODEL_CACHE_DIR = str(DEFAULT_DEAL_CACHE_DIR)
 # ``scripts/seed_deal_models.py``.
 DEAL_MODEL_SEED_DIR = str(Path(__file__).resolve().parents[1] / "data" / "deals" / "seed")
 
+# Durable report-extraction cache directory. ``report_extractor.resolve_parsed_report``
+# reads (committed fixtures → durable cache → opt-in live extraction) and writes its
+# durable cache here. Sourced from the resolver's own default so the report-ingest job
+# writer (#399) and the offline ``/report-gate`` / ``/waterfall`` readers never diverge
+# — one source of truth. Patchable in tests (like ``DEAL_MODEL_CACHE_DIR``) so the
+# ingest job's durable write and the GET readers can be pointed at the same tmp dir.
+# Computed inline (not imported) to keep ``report_extractor``'s heavy chain out of
+# this module's import path — the resolver itself is deferred-imported in the routes.
+# Mirrors ``report_extractor.DEFAULT_EXTRACTION_CACHE_DIR`` (repo-root/data/extraction_cache).
+REPORT_EXTRACTION_CACHE_DIR = str(Path(__file__).resolve().parents[3] / "data" / "extraction_cache")
+
 
 def _load_cached_deal_model(deal: dict) -> DealModel | None:
     """Read the cached extracted :class:`DealModel` for a deal, or ``None``.
@@ -411,6 +422,44 @@ def _load_cached_deal_model(deal: dict) -> DealModel | None:
         if path.exists():
             return DealModel.model_validate_json(path.read_text(encoding="utf-8"))
     return None
+
+
+#: The package-committed deal-model seed dir, resolved from the package layout
+#: rather than the ``DEAL_MODEL_SEED_DIR`` *module global*. The two normally
+#: point at the same directory, but ``DEAL_MODEL_SEED_DIR`` is a patchable seam
+#: the cold-path API tests blank to a tmp dir (so a runtime-cache miss reads as
+#: "no model"). The offline proof endpoints (``/validation``, ``/report-gate``)
+#: must resolve a committed deal's model *independently of that cache-state seam*
+#: — exactly as ``reconciler._SEED_PATH`` does for ``/validation`` — so they stay
+#: reproducible regardless of cache state. This constant is that fixed source.
+_COMMITTED_DEAL_SEED_DIR = Path(__file__).resolve().parents[1] / "data" / "deals" / "seed"
+
+
+def _load_gate_deal_model(deal: dict) -> DealModel | None:
+    """Resolve a deal's extracted :class:`DealModel` for the offline report gate.
+
+    Deterministic-/committed-first, mirroring how the report itself is resolved
+    (committed source → runtime cache) and how ``/validation`` reads GL-2024-1's
+    model straight from the committed seed (``reconciler._SEED_PATH``):
+
+    1. the **package-committed** seed at
+       ``src/loanwhiz/data/deals/seed/{slug}.json`` — the fixed
+       ``_COMMITTED_DEAL_SEED_DIR``, *not* the patchable ``DEAL_MODEL_SEED_DIR``
+       global — so a committed deal's gate is reproducible regardless of runtime
+       cache state (and so the cold-path tests' empty-seed-dir patch can't flip
+       the offline gate proof to ``available=false``);
+    2. otherwise fall back to the general runtime path (``_load_cached_deal_model``
+       — runtime cache → patchable seed) so a newly-ingested deal whose model was
+       cold-extracted into the runtime cache (#399) still runs the gate zero-touch.
+
+    Returns ``None`` (caller degrades to ``available=false``) only when neither a
+    committed seed nor a runtime-cached model exists. Never triggers extraction.
+    """
+    slug = _slug(deal["deal_name"])
+    committed = _COMMITTED_DEAL_SEED_DIR / f"{slug}.json"
+    if committed.exists():
+        return DealModel.model_validate_json(committed.read_text(encoding="utf-8"))
+    return _load_cached_deal_model(deal)
 
 
 class DealModelResponse(BaseModel):
@@ -696,6 +745,240 @@ def extract_status(deal_id: str) -> ExtractionJobResponse:
 
 
 # --- end on-demand extraction job (#384) -------------------------------------
+
+
+# --- self-service ingest API (#399) ------------------------------------------
+# Runtime surface that turns deal onboarding into a product action instead of a
+# committed-file edit + restart. Three routes mutate the config-driven registry and
+# trigger the EXISTING materialisation paths — no new engine, no second source of
+# truth:
+#
+#   * ``POST /deals``                       — register a deal (sync).
+#   * ``POST /deal/{id}/ingest/tape``       — append a tape, validate-load it (sync).
+#   * ``POST /deal/{id}/ingest/report``     — add a report URL + enqueue the live
+#     report extraction job (async, 202 + poll ``GET .../ingest/report/status``).
+#
+# Persistence lands in the RUNTIME overlay ``data/deals.runtime.json`` via
+# ``config.register_deal`` (the committed, human-curated ``data/deals.json`` is never
+# mutated at runtime; ``config._load_deal_registry`` merges committed then runtime on
+# cold start). Each route also mutates the live ``DEALS`` dict in place so
+# already-loaded routes see the change within the same process.
+
+
+def _persist_and_update_live(deal_id: str, context: dict) -> dict:
+    """Persist a deal context to the runtime overlay and update the live registry.
+
+    Writes ``context`` to ``data/deals.runtime.json`` (committed file untouched) and
+    sets ``DEALS[deal_id]`` in place so routes already holding the shared ``DEALS``
+    alias observe the new/updated deal. Returns the persisted context.
+    """
+    _config.register_deal(deal_id, context)
+    DEALS[deal_id] = context
+    return context
+
+
+class RegisterDealRequest(BaseModel):
+    """Body for ``POST /deals`` — register (or, with ``?force``, overwrite) a deal.
+
+    ``deal_id``, ``deal_name`` and ``prospectus_url`` are the required minimum; the
+    remaining keys mirror the deal-context shape (``loanwhiz.config.GREEN_LION``) and
+    are optional. Omitted list keys default to empty lists so the persisted context
+    is always shape-complete for the downstream readers.
+    """
+
+    deal_id: str = Field(min_length=1)
+    deal_name: str = Field(min_length=1)
+    prospectus_url: str = Field(min_length=1)
+    tape_urls: list[dict] = Field(default_factory=list)
+    investor_report_urls: list[dict] = Field(default_factory=list)
+    notes_cash_report_urls: list[dict] = Field(default_factory=list)
+    # Optional per-deal structural config (resolved by the engine; see config.py).
+    jurisdiction: str | None = None
+    capital_structure: dict | None = None
+    reserve_account_target: float | None = None
+    original_pool_balance: float | None = None
+    projection_base: dict | None = None
+
+    def to_context(self) -> dict:
+        """Build the deal-context dict persisted into the registry (drops unset keys)."""
+        context: dict = {
+            "deal_name": self.deal_name,
+            "prospectus_url": self.prospectus_url,
+            "tape_urls": self.tape_urls,
+            "investor_report_urls": self.investor_report_urls,
+        }
+        if self.notes_cash_report_urls:
+            context["notes_cash_report_urls"] = self.notes_cash_report_urls
+        for key in (
+            "jurisdiction",
+            "capital_structure",
+            "reserve_account_target",
+            "original_pool_balance",
+            "projection_base",
+        ):
+            value = getattr(self, key)
+            if value is not None:
+                context[key] = value
+        return context
+
+
+class RegisterDealResponse(BaseModel):
+    """Response for ``POST /deals`` — the registered id + its persisted context."""
+
+    deal_id: str
+    deal: dict
+
+
+@app.post("/deals", response_model=RegisterDealResponse, status_code=201)
+def register_deal(
+    body: RegisterDealRequest, force: bool = Query(False)
+) -> RegisterDealResponse:
+    """Register a deal at runtime, persisting it to the runtime overlay.
+
+    Returns ``201`` with the persisted context; the deal then surfaces in
+    ``GET /deals`` and the ``/deal/{id}/...`` routes within the same process. A
+    duplicate ``deal_id`` returns ``409`` unless ``?force=true`` (which overwrites
+    the existing entry). Pydantic rejects a missing required field (``deal_id`` /
+    ``deal_name`` / ``prospectus_url``) with ``422``.
+
+    Persistence target is the RUNTIME overlay ``data/deals.runtime.json`` (#399's
+    approved file-split): the committed, human-curated ``data/deals.json`` is never
+    mutated at runtime. ``config._load_deal_registry`` overlays the runtime file on
+    cold start, so a runtime-registered deal survives a restart.
+    """
+    if not force and body.deal_id in DEALS:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                f"Deal {body.deal_id} already exists; pass ?force=true to overwrite "
+                f"its registration."
+            ),
+        )
+    context = _persist_and_update_live(body.deal_id, body.to_context())
+    return RegisterDealResponse(deal_id=body.deal_id, deal=context)
+
+
+class IngestTapeRequest(BaseModel):
+    """Body for ``POST /deal/{deal_id}/ingest/tape`` — one ESMA tape to append."""
+
+    date: str = Field(min_length=1)
+    url: str = Field(min_length=1)
+
+
+class IngestTapeResponse(BaseModel):
+    """Response for the tape-ingest route — the deal's updated ``tape_urls``."""
+
+    deal_id: str
+    tape_urls: list[dict]
+
+
+@app.post("/deal/{deal_id}/ingest/tape", response_model=IngestTapeResponse)
+def ingest_tape(deal_id: str, body: IngestTapeRequest) -> IngestTapeResponse:
+    """Append an ESMA tape ``{date, url}`` to a deal and validate-load it inline.
+
+    Validates the tape by loading it through the existing ESMA tape loader
+    (:func:`~loanwhiz.primitives.esma_tape_normaliser._load_tape`) — a bad URL / parse
+    fails loudly with ``422`` rather than persisting an unusable entry. An unknown
+    deal id returns ``404``. The append is idempotent on an identical ``{date, url}``
+    (no duplicate). On success the entry is persisted to the runtime overlay, the live
+    registry is updated in place, and the updated ``tape_urls`` is returned; the tape
+    itself is loaded lazily by the analytics/waterfall paths on the next call.
+    """
+    deal = _require_deal(deal_id)
+    entry = {"date": body.date, "url": body.url}
+
+    existing = deal.get("tape_urls") or []
+    if entry in existing:
+        # Idempotent: identical entry already present — no re-validate, no re-write.
+        return IngestTapeResponse(deal_id=deal_id, tape_urls=existing)
+
+    # Validate-load the tape (loud 422 on a bad URL/parse) before persisting it.
+    try:
+        _load_tape(body.url, None)
+    except Exception as exc:  # noqa: BLE001 — surface any loader failure as a 422
+        raise HTTPException(
+            status_code=422,
+            detail=f"Tape at {body.url} could not be loaded: {type(exc).__name__}: {exc}",
+        ) from exc
+
+    # Copy the context so we mutate a fresh dict (the live default may be a module
+    # constant like GREEN_LION we must not mutate in place).
+    context = dict(deal)
+    context["tape_urls"] = [*existing, entry]
+    _persist_and_update_live(deal_id, context)
+    return IngestTapeResponse(deal_id=deal_id, tape_urls=context["tape_urls"])
+
+
+class IngestReportRequest(BaseModel):
+    """Body for ``POST /deal/{deal_id}/ingest/report`` — one Notes & Cash report."""
+
+    url: str = Field(min_length=1)
+    period: str | None = None
+
+
+@app.post(
+    "/deal/{deal_id}/ingest/report",
+    response_model=ExtractionJobResponse,
+    status_code=202,
+)
+def ingest_report(
+    deal_id: str, body: IngestReportRequest, force: bool = Query(False)
+) -> ExtractionJobResponse:
+    """Add a Notes & Cash report URL to a deal and enqueue its live extraction.
+
+    Adds ``{url[, period]}`` to the deal's ``notes_cash_report_urls`` (persisted to the
+    runtime overlay, live registry updated), then enqueues a background job that runs
+    #398's ``resolve_parsed_report(..., allow_live=True)`` and returns ``202`` — the
+    request **never** blocks on the minutes-long network+LLM extraction (the #384
+    no-hang guarantee). The job populates the durable report cache so the offline
+    ``GET /deal/{id}/report-gate`` / ``/waterfall`` paths then resolve the report with
+    no second source of truth. Poll :func:`ingest_report_status` for completion. An
+    unknown deal id returns ``404``; a re-``POST`` while a job is running (without
+    ``?force``) returns the in-flight job.
+    """
+    deal = _require_deal(deal_id)
+    entry: dict = {"url": body.url}
+    if body.period is not None:
+        entry["period"] = body.period
+
+    existing = deal.get("notes_cash_report_urls") or []
+    context = dict(deal)
+    if entry not in existing:
+        context["notes_cash_report_urls"] = [*existing, entry]
+    else:
+        context["notes_cash_report_urls"] = existing
+    _persist_and_update_live(deal_id, context)
+
+    job, _future = _extraction_jobs.submit_report_ingest(
+        deal_id,
+        deal=context,
+        cache_dir=REPORT_EXTRACTION_CACHE_DIR,
+        allow_live=True,
+        force=force,
+    )
+    return ExtractionJobResponse(**job.to_response())
+
+
+@app.get(
+    "/deal/{deal_id}/ingest/report/status",
+    response_model=ExtractionJobResponse,
+)
+def ingest_report_status(deal_id: str) -> ExtractionJobResponse:
+    """Poll the report-ingest job for a deal.
+
+    Reports ``queued|running|succeeded|failed`` for the most recent report ingest,
+    with the failure reason in ``error`` on ``failed``. When no report ingest was ever
+    submitted for the deal, returns ``200`` with ``status="none"`` (a uniform,
+    non-hanging body the frontend can poll without special-casing a 404).
+    """
+    _require_deal(deal_id)
+    job = _extraction_jobs.get_report_job(deal_id)
+    if job is None:
+        return ExtractionJobResponse(deal_id=deal_id, status="none")
+    return ExtractionJobResponse(**job.to_response())
+
+
+# --- end self-service ingest API (#399) --------------------------------------
 
 
 def _map_extracted_trigger(raw: dict) -> TriggerDefinition:
@@ -1549,22 +1832,6 @@ def _reconstruct_series_from_tapes(deal_id: str, deal: dict) -> DealStateSeries:
 # wires the cold-start.
 # ---------------------------------------------------------------------------
 
-# Per-deal OFFLINE parsed-report loaders. Each returns the deal's
-# ``NotesCashReport`` from committed fixtures (no network, no LLM, no PDF fetch),
-# so the report path is deterministic in the request path and in CI — mirroring
-# ``_VALIDATION_BUILDERS``. A deal absent from this map (and with no durable
-# report cache) cannot cold-start offline yet → ``_not_modelable_deal``. Patchable
-# in tests, like the other module-level seams. As deals gain committed report
-# fixtures (or a durable report cache lands), they are added here as data.
-#
-# Green Lion 2024-1 loads all 3 committed quarterly Notes & Cash fixtures via the
-# Reconciler's loader, so the live cold-start folds the full quarterly history
-# (the same report the Reconciler proves to the cent — one loader, no drift).
-_REPORT_LOADERS: dict[str, Callable[[], NotesCashReport]] = {
-    "green-lion-2024-1": load_green_lion_2024_1_report,
-}
-
-
 def _primitives_seed_from_report_seed(seed: DomainDealState) -> PrimitivesDealState:
     """Bridge a ``ReportAdapter`` (domain) seed onto the fold's ``DealState``.
 
@@ -1637,30 +1904,49 @@ def _reconstruct_series_from_reports(deal_id: str, deal: dict) -> DealStateSerie
     """Build the deal's ``DealStateSeries`` from its published reports (report path).
 
     The no-tape cold-start (#269). Resolves the deal's extracted ``DealModel`` and
-    its parsed Notes & Cash report (offline), runs ``ReportAdapter`` to get the
-    period-0 seed + per-period ``PeriodInputs``, and folds ``run_period`` over them
-    using the deal's *extracted* waterfall steps. Seeds from the report (B5), so
-    no Green-Lion-2026-1 constant is consulted for a report-driven deal.
+    its parsed Notes & Cash report **generally** (#398: the deal-agnostic
+    ``report_extractor.resolve_parsed_report`` — committed fixtures / durable cache
+    / live extraction — NOT a hand-written per-deal loader), runs ``ReportAdapter``
+    to get the period-0 seed + per-period ``PeriodInputs``, and folds ``run_period``
+    over them using the deal's *extracted* waterfall steps. Seeds from the report
+    (B5), so no Green-Lion-2026-1 constant is consulted for a report-driven deal.
+
+    Because the report is resolved generally, a NEW report-driven deal cold-starts
+    zero-touch: drop a registry entry (and an extracted/seeded model) and the path
+    works with no committed parser. Green Lion 2024-1 stays deterministic + offline
+    — its committed fixtures short-circuit the resolver, so the to-the-cent proof
+    is unchanged.
 
     Raises a labelled 422 (``_not_modelable_deal``) when the deal has reports
-    listed but no committed extracted model or no offline-parseable report — it
-    cannot be cold-started yet, and that is surfaced honestly rather than as an
-    empty series.
+    listed but no committed extracted model, or no resolvable report source — it
+    cannot be cold-started, and that is surfaced honestly rather than as an empty
+    series.
     """
+    from loanwhiz.primitives.report_extractor import (
+        ReportUnavailable,
+        resolve_parsed_report,
+    )
+
     memo_key = tuple(r["url"] for r in deal["notes_cash_report_urls"])
     cached = _RECONSTRUCTION_MEMO.get(memo_key)
     if cached is not None:
         return cached
 
     model = _load_cached_deal_model(deal)
-    loader = _REPORT_LOADERS.get(deal_id)
-    if model is None or loader is None:
-        # Reports are listed, but we have no extracted model and/or no offline
-        # parsed report for this deal — it cannot be modelled in the request path
-        # (we never fetch/parse a PDF live here). Honest, not an empty cascade.
+    if model is None:
+        # Reports are listed, but no extracted model exists for this deal — it
+        # cannot be modelled (the fold needs the deal's waterfall step lists).
         raise _not_modelable_deal(deal_id)
 
-    report = loader()
+    try:
+        report = resolve_parsed_report(
+            deal_id, deal, cache_dir=REPORT_EXTRACTION_CACHE_DIR
+        ).to_notes_cash_report()
+    except ReportUnavailable as exc:
+        # No committed fixture, durable cache, or live report source resolved —
+        # honest 422, not an empty cascade.
+        raise _not_modelable_deal(deal_id) from exc
+
     adapter = ReportAdapter.from_deal_model(model)
     series = fold_report_series(model, report, adapter)
     _RECONSTRUCTION_MEMO[memo_key] = series
@@ -2853,87 +3139,24 @@ def deal_validation(deal_id: str) -> ValidationResponse:
 # engine confirmed **to the cent** is auto-trusted (``reconciled=True``), and ONLY
 # the unreconciled + low-confidence fields are routed to human review.
 #
-# Offline + deterministic (like /validation): both inputs come from committed
-# fixtures — the ``ParsedReport`` is extracted from the deal's Notes & Cash ``.txt``
-# fixtures via the deterministic format registry (no network/LLM/PDF), and the
-# extracted ``DealModel`` is loaded from the deal's committed seed (the same source
-# ``/validation``'s offline proof reads, ``reconciler.load_green_lion_2024_1_model``)
-# — NOT the runtime ``_load_cached_deal_model`` cache, so the gate is reproducible
-# regardless of cache state. A deal absent from the gate registry degrades honestly
-# to HTTP 200 ``available=false`` with a note, never a 500. ``_REPORT_GATE_BUILDERS``
-# is patchable in tests, mirroring the other module-level seams (``_REPORT_LOADERS``
-# / ``_VALIDATION_BUILDERS``).
+# Offline + deterministic in the request path (like /validation), but **general**
+# (#398): the ``ParsedReport`` comes from the deal-agnostic
+# ``report_extractor.resolve_parsed_report`` (committed fixtures / durable cache,
+# offline — live extraction is never triggered synchronously by this GET), and the
+# extracted ``DealModel`` from ``_load_cached_deal_model`` (runtime cache → committed
+# seed). Green Lion 2024-1 routes through its committed fixtures, so the gate folds
+# identically to the offline proof — but no per-deal builder is hard-wired: a new
+# report-driven deal with committed fixtures (or a populated durable cache) runs the
+# gate zero-touch. A deal whose report is not offline-resolvable, or whose model is
+# uncached, degrades honestly to HTTP 200 ``available=false`` with a note, never a
+# 500 (and never a live network/LLM call).
 
-
-def _build_green_lion_2024_1_parsed_report() -> "ParsedReport":  # noqa: F821
-    """Deterministically extract GL-2024-1's committed reports into one ``ParsedReport``.
-
-    Each committed Notes & Cash fixture is one quarterly period; the deterministic
-    extractor returns one period per call, so the three are spliced into one report
-    (oldest-first — the fold + reconciler read them positionally). No network, no
-    LLM: the deterministic format registry short-circuits the LLM path. Mirrors the
-    ``tests/test_reconciliation_gate.py::gl_parsed_report`` fixture so the live gate
-    folds identically to the offline proof.
-    """
-    # Deferred imports (mirrors the file's report_verifier / reconciler-fold
-    # discipline): keep the API module from pulling the extractor in at load.
-    from loanwhiz.primitives import reconciler as _reconciler
-    from loanwhiz.primitives.report_extractor import (
-        ParsedReport,
-        ParsedReportPeriod,
-        ReportExtractInput,
-        extract_report,
-    )
-
-    deal_name = "Green Lion 2024-1 B.V."
-    periods: list[ParsedReportPeriod] = []
-    for fixture, _label in _reconciler._GREEN_LION_2024_1_FIXTURES:
-        text = (_reconciler._FIXTURE_DIR / fixture).read_text(encoding="utf-8")
-        parsed = extract_report(
-            ReportExtractInput(deal_name=deal_name, text=text)
-        ).output
-        periods.extend(parsed.periods)
-    return ParsedReport(
-        deal_name=deal_name,
-        report_type="notes_and_cash",
-        periods=periods,
-        extraction_method="deterministic",
-    )
-
-
-def _load_green_lion_2024_1_gate_model() -> Any:
-    """Load GL-2024-1's committed extracted ``DealModel`` for the gate (offline).
-
-    Reads the committed seed directly via the reconciler's loader — the same source
-    ``/validation`` uses — so the gate's model resolution is independent of the
-    runtime ``_load_cached_deal_model`` cache (which tests may blank out). The model
-    is duck-typed by ``ReportAdapter.from_deal_model`` (only ``.waterfalls`` is read).
-    """
-    from loanwhiz.primitives.reconciler import load_green_lion_2024_1_model
-
-    return load_green_lion_2024_1_model()
-
-
-#: Per-deal OFFLINE reconciliation-as-gate builders, keyed by the canonical deal id
-#: used in the /deal/{deal_id}/... routes. Each entry pairs a ``ParsedReport``
-#: builder (typed, per-field provenance, extracted from committed fixtures —
-#: no network/LLM/PDF) with the deal's extracted ``DealModel`` loader (committed
-#: seed). A deal absent from this map cannot run the gate offline →
-#: ``available=false``. Patchable in tests.
-_REPORT_GATE_BUILDERS: dict[
-    str, tuple[Callable[[], "ParsedReport"], Callable[[], Any]]  # noqa: F821
-] = {
-    "green-lion-2024-1": (
-        _build_green_lion_2024_1_parsed_report,
-        _load_green_lion_2024_1_gate_model,
-    ),
-}
 
 _REPORT_GATE_UNAVAILABLE_NOTE = (
     "No reconciliation-as-gate available for this deal. The gate requires a "
-    "committed extracted model and an offline-parseable Notes & Cash report "
-    "fixture, which this deal does not yet have. See Green Lion 2024-1 for the "
-    "headline gate."
+    "committed extracted model and an offline-resolvable Notes & Cash report "
+    "(committed fixtures or a durable extraction cache), which this deal does not "
+    "yet have. See Green Lion 2024-1 for the headline gate."
 )
 
 
@@ -3000,20 +3223,37 @@ def deal_report_gate(
     confidence floor below which an *unreconciled* field is routed to a human;
     reconciled fields are auto-trusted regardless of confidence.
 
-    A registered deal with no offline gate inputs (committed report fixture +
-    extracted model — i.e. absent from ``_REPORT_GATE_BUILDERS``) returns HTTP 200
+    A registered deal with no offline gate inputs (an offline-resolvable report —
+    committed fixtures or a durable cache — plus an extracted model) returns HTTP 200
     ``available=false`` with an honest note (like ``/validation``); an unknown deal
-    id 404s.
+    id 404s. The gate is now **general** (#398): GL-2024-1 routes through its
+    committed fixtures, but any report-driven deal with offline inputs runs the gate
+    with no per-deal builder.
     """
-    # Deferred import: keep the API module from pulling the gate (and its extractor
+    # Deferred imports: keep the API module from pulling the gate (and its extractor
     # chain) in at load — mirrors the gate module's own deferred-import discipline.
     from loanwhiz.primitives.reconciliation_gate import reconcile_as_gate
+    from loanwhiz.primitives.report_extractor import (
+        ReportUnavailable,
+        resolve_parsed_report,
+    )
 
     deal = _require_deal(deal_id)
-    builders = _REPORT_GATE_BUILDERS.get(deal_id)
-    if builders is None:
-        # No offline gate inputs (report fixture + committed model) for this deal —
-        # it cannot run the gate in the request path. Degrade honestly, not a 500.
+    # Resolve the gate's two inputs generally + offline (no live extraction in this
+    # GET): the canonical ParsedReport (committed fixtures / durable cache) and the
+    # deal's extracted DealModel. The model is resolved committed-first via
+    # `_load_gate_deal_model` (package seed → runtime cache), NOT the cache-state-
+    # dependent `_load_cached_deal_model`, so the offline gate proof is reproducible
+    # regardless of runtime cache state — the same cache-independence `/validation`
+    # has. Either input missing → honest available=false, not a 500.
+    model = _load_gate_deal_model(deal)
+    try:
+        parsed_report = resolve_parsed_report(
+            deal_id, deal, cache_dir=REPORT_EXTRACTION_CACHE_DIR
+        )
+    except ReportUnavailable:
+        parsed_report = None
+    if model is None or parsed_report is None:
         return ReportGateResponse(
             deal_id=deal_id,
             deal_name=deal["deal_name"],
@@ -3021,9 +3261,6 @@ def deal_report_gate(
             note=_REPORT_GATE_UNAVAILABLE_NOTE,
         )
 
-    report_builder, model_loader = builders
-    parsed_report = report_builder()
-    model = model_loader()
     result = reconcile_as_gate(
         parsed_report, model, confidence_threshold=confidence_threshold
     )

@@ -25,10 +25,12 @@ DEAL_ID = "green-lion-2026-1"
 
 @pytest.fixture(autouse=True)
 def _reset_jobs():
-    """Clear the process-local job store between tests (it is module state)."""
+    """Clear the process-local job stores between tests (they are module state)."""
     extraction_jobs.reset_jobs()
+    extraction_jobs.reset_report_jobs()
     yield
     extraction_jobs.reset_jobs()
+    extraction_jobs.reset_report_jobs()
 
 
 def _fake_model(deal_name: str, prospectus_url: str, cache_path: str) -> DealModel:
@@ -361,3 +363,121 @@ def test_offline_scripts_and_job_share_the_same_primitive():
 
     assert extraction_jobs.extract_deal_model is assembler.extract_deal_model
     assert driver.extract_deal_model is assembler.extract_deal_model
+
+
+# --- report-ingest job subsystem (#399) --------------------------------------
+# Mirrors the prospectus-extraction job tests: the report resolver is ALWAYS
+# stubbed via the ``resolve_fn`` injection seam — no real network/LLM extraction.
+
+
+_DEAL = {
+    "deal_name": "Green Lion 2026-1 B.V.",
+    "notes_cash_report_urls": [{"url": "http://example/report.pdf"}],
+}
+
+
+def _make_resolve_stub(cache_dir_holder=None, *, fail: bool = False):
+    """Build a fast resolve_fn stub recording its calls (and optionally raising)."""
+    calls: list[dict] = []
+
+    def _resolve(deal_id, deal, *, cache_dir, allow_live):
+        calls.append(
+            {"deal_id": deal_id, "deal": deal, "cache_dir": cache_dir, "allow_live": allow_live}
+        )
+        if fail:
+            raise RuntimeError("live extraction unavailable")
+        # Simulate the durable-cache population the real resolver does.
+        if cache_dir_holder is not None:
+            Path(cache_dir).mkdir(parents=True, exist_ok=True)
+            (Path(cache_dir) / "report-ingest-marker.json").write_text("{}", encoding="utf-8")
+        return object()
+
+    _resolve.calls = calls
+    return _resolve
+
+
+def test_report_ingest_transitions_to_succeeded(tmp_path):
+    """submit_report_ingest → queued → running → succeeded against a stubbed resolver,
+    with allow_live=True and the patched cache_dir forwarded to the resolver."""
+    resolve = _make_resolve_stub(cache_dir_holder=True)
+    job, future = extraction_jobs.submit_report_ingest(
+        DEAL_ID,
+        deal=_DEAL,
+        cache_dir=str(tmp_path),
+        allow_live=True,
+        resolve_fn=resolve,
+    )
+    assert job.status in ("queued", "running")
+    assert future is not None
+    future.result(timeout=10)
+
+    done = extraction_jobs.get_report_job(DEAL_ID)
+    assert done.status == "succeeded"
+    assert done.started_at is not None and done.finished_at is not None
+    assert done.error is None
+    # The resolver was invoked with allow_live=True and the forwarded cache_dir.
+    assert resolve.calls[-1]["allow_live"] is True
+    assert resolve.calls[-1]["cache_dir"] == str(tmp_path)
+    # The durable cache was populated by the (stubbed) resolver.
+    assert (tmp_path / "report-ingest-marker.json").exists()
+
+
+def test_report_ingest_failure_surfaces_reason(tmp_path):
+    """A raising resolve_fn → failed status with the reason; pool never crashes."""
+    resolve = _make_resolve_stub(fail=True)
+    _, future = extraction_jobs.submit_report_ingest(
+        DEAL_ID, deal=_DEAL, cache_dir=str(tmp_path), resolve_fn=resolve
+    )
+    future.result(timeout=10)
+    done = extraction_jobs.get_report_job(DEAL_ID)
+    assert done.status == "failed"
+    assert "live extraction unavailable" in done.error
+
+
+def test_report_ingest_job_store_is_separate_from_extraction(tmp_path):
+    """Report-ingest jobs are keyed separately from prospectus-extraction jobs —
+    one deal can have both tracked independently."""
+    extraction_jobs.submit_extraction(
+        DEAL_ID,
+        prospectus_url="http://example/p.pdf",
+        deal_name="Green Lion 2026-1 B.V.",
+        cache_dir=str(tmp_path),
+        extract_fn=_materialising_extract_fn,
+    )[1].result(timeout=10)
+    extraction_jobs.submit_report_ingest(
+        DEAL_ID, deal=_DEAL, cache_dir=str(tmp_path), resolve_fn=_make_resolve_stub()
+    )[1].result(timeout=10)
+
+    assert extraction_jobs.get_job(DEAL_ID) is not extraction_jobs.get_report_job(DEAL_ID)
+    assert extraction_jobs.get_job(DEAL_ID).status == "succeeded"
+    assert extraction_jobs.get_report_job(DEAL_ID).status == "succeeded"
+
+
+def test_report_ingest_idempotent_while_running(tmp_path):
+    """A re-submit while running (no force) returns the in-flight job, no second run."""
+    # A resolver that blocks until released, so the first job stays 'running'.
+    import threading
+
+    release = threading.Event()
+
+    def _blocking(deal_id, deal, *, cache_dir, allow_live):
+        release.wait(timeout=10)
+        return object()
+
+    job1, fut1 = extraction_jobs.submit_report_ingest(
+        DEAL_ID, deal=_DEAL, cache_dir=str(tmp_path), resolve_fn=_blocking
+    )
+    job2, fut2 = extraction_jobs.submit_report_ingest(
+        DEAL_ID, deal=_DEAL, cache_dir=str(tmp_path), resolve_fn=_blocking
+    )
+    try:
+        assert job2 is job1  # same in-flight job returned
+        assert fut2 is None  # idempotent enqueue — no second future
+    finally:
+        release.set()
+        if fut1 is not None:
+            fut1.result(timeout=10)
+
+
+def test_get_report_job_none_when_never_submitted():
+    assert extraction_jobs.get_report_job("never-submitted") is None

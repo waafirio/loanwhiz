@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import json
 import logging
+import os
+import tempfile
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
@@ -113,48 +115,132 @@ GREEN_LION = {
 # and they are merged into the registry at import time — no code edit required.
 # A ``deals.json`` entry that reuses an existing deal_id overrides the default.
 
-# Optional data file holding extra deals. ``data/deals.json`` lives next to this
-# module's ``data`` package. Absent by default; present it to add deals.
+# Two-tier deal data files, both living next to this module's ``data`` package:
+#
+#   * ``data/deals.json`` — the **committed, human-curated** registry. Tracked in
+#     git, edited by hand (or a seed-refresh script), and NEVER mutated at runtime.
+#   * ``data/deals.runtime.json`` — **runtime state** written by the self-service
+#     ingest API (``register_deal`` and the tape/report ingest routes, #399). It is
+#     gitignored and process-durable; it overlays the committed file on load so a
+#     runtime-registered deal (or a runtime mutation of one) survives within the
+#     running container without ever touching the curated source of truth.
+#
+# Both are absent by default; either may be present to add/override deals.
 DEALS_DATA_FILE = Path(__file__).resolve().parent / "data" / "deals.json"
+DEALS_RUNTIME_FILE = Path(__file__).resolve().parent / "data" / "deals.runtime.json"
 
 
-def _load_deal_registry(data_file: Path = DEALS_DATA_FILE) -> dict[str, dict]:
-    """Build the deal registry: in-code defaults merged with ``data_file``.
+def _merge_data_file(registry: dict[str, dict], data_file: Path, *, kind: str) -> None:
+    """Overlay one ``deal_id -> context`` JSON ``data_file`` onto ``registry`` in place.
 
-    Starts from the in-code default (Green Lion) so the registry is never empty,
-    then merges every entry from the optional JSON ``data_file`` (a mapping of
-    ``deal_id -> deal-context dict``) over it. A malformed or absent file is
-    tolerated — the in-code defaults still load — so a bad data file can never
-    take the API down; it is logged and skipped.
+    A malformed or absent file is tolerated — it is logged and skipped — so a bad
+    data file (committed OR runtime) can never take the API down. ``kind`` is a
+    short label ("committed" / "runtime") used only in the log line.
     """
-    registry: dict[str, dict] = {"green-lion-2026-1": GREEN_LION}
-
     if not data_file.exists():
-        return registry
+        return
 
     try:
         extra = json.loads(data_file.read_text(encoding="utf-8"))
     except (OSError, ValueError) as exc:  # unreadable / invalid JSON
-        logger.warning("Ignoring unreadable deals data file %s: %s", data_file, exc)
-        return registry
+        logger.warning("Ignoring unreadable %s deals data file %s: %s", kind, data_file, exc)
+        return
 
     if not isinstance(extra, dict):
         logger.warning(
-            "deals data file %s must be a JSON object (deal_id -> context); got %s",
+            "%s deals data file %s must be a JSON object (deal_id -> context); got %s",
+            kind,
             data_file,
             type(extra).__name__,
         )
-        return registry
+        return
 
     for deal_id, context in extra.items():
         if not isinstance(context, dict):
-            logger.warning("Skipping deal %r: context is not an object", deal_id)
+            logger.warning("Skipping deal %r in %s file: context is not an object", deal_id, kind)
             continue
         registry[deal_id] = context
 
+
+def _load_deal_registry(
+    data_file: Path = DEALS_DATA_FILE,
+    runtime_file: Path = DEALS_RUNTIME_FILE,
+) -> dict[str, dict]:
+    """Build the deal registry: in-code defaults, then committed, then runtime.
+
+    Resolution order (later overrides earlier by ``deal_id``):
+
+      1. the in-code default (Green Lion) so the registry is never empty;
+      2. the committed, human-curated ``data_file`` (``data/deals.json``);
+      3. the runtime ``runtime_file`` (``data/deals.runtime.json``), the
+         self-service ingest API's write target — runtime entries add to / override
+         the committed ones.
+
+    Both files are merged with :func:`_merge_data_file`, which tolerates an absent
+    or malformed file (logged and skipped). Cold-start therefore always serves the
+    committed deals even if the runtime file is missing or corrupt.
+    """
+    registry: dict[str, dict] = {"green-lion-2026-1": GREEN_LION}
+    _merge_data_file(registry, data_file, kind="committed")
+    _merge_data_file(registry, runtime_file, kind="runtime")
     return registry
 
 
-# The canonical registry. Built once at import; the API sources its ``DEALS``
-# from here. Adding a deal is editing ``data/deals.json``, not this code.
+def _load_runtime_registry(runtime_file: Path = DEALS_RUNTIME_FILE) -> dict[str, dict]:
+    """Return the runtime overlay's current ``deal_id -> context`` map (or ``{}``).
+
+    Reads ONLY the runtime file — never the committed one — so a runtime write
+    preserves exactly the runtime overlay (the curated ``data/deals.json`` is never
+    folded into it). An absent or malformed runtime file yields an empty map.
+    """
+    overlay: dict[str, dict] = {}
+    _merge_data_file(overlay, runtime_file, kind="runtime")
+    return overlay
+
+
+def _atomic_write_json(path: Path, payload: dict) -> None:
+    """Write ``payload`` to ``path`` atomically (temp file in the same dir + replace)."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd, tmp = tempfile.mkstemp(dir=str(path.parent), prefix=path.name, suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as fh:
+            json.dump(payload, fh, indent=2, ensure_ascii=False)
+        os.replace(tmp, path)
+    except BaseException:
+        # Best-effort cleanup of the temp file on any failure before the replace.
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        raise
+
+
+def register_deal(
+    deal_id: str,
+    context: dict,
+    *,
+    runtime_file: Path | None = None,
+) -> dict[str, dict]:
+    """Persist a deal's context into the RUNTIME overlay (``data/deals.runtime.json``).
+
+    Loads the current runtime overlay (NOT the committed file — see the file-split
+    note above), sets/overwrites ``deal_id``'s entry, and writes the overlay back
+    atomically. The committed ``data/deals.json`` is never read or mutated here, so
+    it stays the human-curated source of truth. Returns the updated runtime overlay
+    map (committed deals are merged in only at :func:`_load_deal_registry` load).
+
+    ``runtime_file`` defaults to the module-level :data:`DEALS_RUNTIME_FILE` resolved
+    **at call time** (not bind time) so a test's ``patch("loanwhiz.config.DEALS_RUNTIME_FILE", ...)``
+    is honoured.
+    """
+    if runtime_file is None:
+        runtime_file = DEALS_RUNTIME_FILE
+    overlay = _load_runtime_registry(runtime_file)
+    overlay[deal_id] = context
+    _atomic_write_json(runtime_file, overlay)
+    return overlay
+
+
+# The canonical registry. Built once at import; the API sources its ``DEALS`` from
+# here (committed ``data/deals.json`` overlaid by runtime ``data/deals.runtime.json``).
 DEAL_REGISTRY: dict[str, dict] = _load_deal_registry()
