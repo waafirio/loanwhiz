@@ -1048,6 +1048,16 @@ def compare_deals(
         triggers = _extracted_triggers_to_definitions(contexts[deal_id])
         risk_summary.append(_deal_risk_summary(deal_id, states, triggers))
 
+    # Score the comparison set with the relative-value screener (#324) over the
+    # requested SUBSET (not the whole registry) so the sub-scores are normalised
+    # relative to *this* comp set, then reason a grounded "why one is better"
+    # verdict over the scorecard + the risk summaries (#400). Offline,
+    # deterministic, reusing `_load_cached_deal_model` — no cold extraction, no
+    # LLM in the request path.
+    scorecard = build_relative_value_scorecard(
+        {deal_id: contexts[deal_id] for deal_id in order},
+        seed_loader=_load_cached_deal_model,
+    )
     response = _compare.CompareResponse(
         deals=deal_refs,
         target_deal_id=target,
@@ -1055,6 +1065,10 @@ def compare_deals(
         performance_series=performance_series,
         risk_summary=risk_summary,
         common_periods=common_periods,
+        relative_value=scorecard,
+        comparative_verdict=_compare.build_comparative_verdict(
+            scorecard, deal_refs, risk_summary, target_deal_id=target
+        ),
         notes=notes,
     )
 

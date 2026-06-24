@@ -53,6 +53,14 @@ You have access to the following tools:
   the deal_id and an optional `period` (e.g. "2026-04" or "April 2026"). This is
   the read companion to verify_report (which only diffs the report against the
   engine); use it for "what does the report say about X?" questions.
+- synthesise_cross_source: Gather prospectus deal-model + loan-tape pool facts +
+  investor-report tie-out into ONE source-tagged, cited bundle. Use this for any
+  question that spans more than one source — structure AND performance together
+  (e.g. "does the pool's actual performance still justify the prospectus's
+  reserve target?", "reconcile the latest investor report against the deal's own
+  collections"). Pass only the deal_id (and an optional period). Each block in
+  the bundle carries a `source` label, `citations`, and an `available` flag, plus
+  top-level `sources_available` / `sources_missing` lists.
 
 Route the user's question to the right tool by intent:
 - Deal structure / terms (reserve target, coupons, what triggers a breach) → get_deal_model.
@@ -61,11 +69,25 @@ Route the user's question to the right tool by intent:
 - Cashflow / distributions / the waterfall → run_waterfall(deal_id).
 - Collections / available funds → aggregate_collections(deal_id).
 - What the report SAID (arrears / reserve / PDL / distributions / triggers for a period) → read_investor_report(deal_id, period).
+- A question spanning MORE THAN ONE source — prospectus terms vs. actual pool
+  performance, report vs. computed collections, "given the arrears trend, are the
+  triggers still appropriate?" → synthesise_cross_source(deal_id). Prefer a
+  single-source tool when one source answers the question; reach for synthesis
+  only when the answer genuinely needs structure AND performance woven together.
 
 The analytical tools (check_covenants, run_waterfall, aggregate_collections) are
 self-contained: give them the deal_id and they fetch what they need — do NOT
 load_esma_tape first for those. Always call tools for live data (never memorise
-URLs), cite specific numbers and periods, and explain them in plain English."""
+URLs), cite specific numbers and periods, and explain them in plain English.
+
+When you answer from MULTIPLE sources (whether via synthesise_cross_source or by
+calling several tools yourself), you MUST attribute each claim to the source it
+came from — say which figure is from the prospectus deal-model, which from the
+loan tape, which from the investor report. If a source is unavailable (a
+`sources_missing` entry, an `available: False` block, an `error`, or a
+`not_cached` deal-model), state that plainly and do NOT infer its content from
+the other sources. Report the gap honestly — never fabricate a cross-source
+conclusion to paper over a missing source."""
 
 
 # ---------------------------------------------------------------------------
