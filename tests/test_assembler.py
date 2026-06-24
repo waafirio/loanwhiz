@@ -216,6 +216,75 @@ def _waterfall_with_class_recipients() -> dict:
     return {"post_enforcement": wf}
 
 
+# A Sol-Lion-shaped multi-series tranche table (Series A1–A6 + Class B + Class C
+# as columns). Exercises the structure-agnostic parse (#397): the old
+# single-letter regex collapsed all six A-series onto one "Class A".
+_SOL_LION_TRANCHE_TABLE_MD = """\
+# Sol-Lion II RMBS Fondo de Titulización — Notes
+
+|                  | Series A1   | Series A2   | Series A3   | Series A4   | Series A5   | Series A6   | Class B     | Class C   |
+|------------------|-------------|-------------|-------------|-------------|-------------|-------------|-------------|-----------|
+| Principal Amount | €200,000,000| €180,000,000| €160,000,000| €140,000,000| €120,000,000| €100,000,000| €53,100,000 | €10,500,000|
+| Expected Ratings | AAA         | AAA         | AAA         | AAA         | AA          | AA          | A           | NR        |
+
+## Conditions of the Notes
+Some following text.
+"""
+
+
+# A single-class deal (one Class A note only), laid out class-per-row so the
+# parse does not depend on a multi-column header.
+_SINGLE_CLASS_TRANCHE_TABLE_MD = """\
+# Single-Class Deal — Notes
+
+| Class   | Principal Amount | Rating |
+|---------|------------------|--------|
+| Class A | €500,000,000     | AAA    |
+
+## Conditions of the Notes
+Some following text.
+"""
+
+
+# A row-per-class table containing a junk "Class O" cell (the artifact source):
+# a non-tranche label with a stray "42" nearby. The real classes A/B carry real
+# sizes; "Class O" must be dropped (#397).
+_CLASS_O_ARTIFACT_TABLE_MD = """\
+# Deal With Junk Row — Notes
+
+| Class   | Amount        |
+|---------|---------------|
+| Class A | €1,000,000,000|
+| Class B | €53,100,000   |
+| Class O | 42            |
+
+## Conditions of the Notes
+Some following text.
+"""
+
+
+def _waterfall_with_series_recipients() -> dict:
+    """A waterfall referencing series_a1…a6 + class_b/class_c recipients."""
+    steps = [
+        _make_step(priority="(a)", recipient="series_a1_notes_redemption"),
+        _make_step(priority="(b)", recipient="series_a2_notes_redemption"),
+        _make_step(priority="(c)", recipient="series_a3_notes_redemption"),
+        _make_step(priority="(d)", recipient="series_a4_notes_redemption"),
+        _make_step(priority="(e)", recipient="series_a5_notes_redemption"),
+        _make_step(priority="(f)", recipient="series_a6_notes_redemption"),
+        _make_step(priority="(g)", recipient="class_b_notes_redemption"),
+        _make_step(priority="(h)", recipient="class_c_notes_redemption"),
+    ]
+    wf = ExtractedWaterfall(
+        deal_name=_DEAL_NAME,
+        waterfall_type="post_enforcement",
+        steps=steps,
+        source_section="Post-Enforcement Priority of Payments",
+        extraction_confidence=1.0,
+    )
+    return {"post_enforcement": wf}
+
+
 class TestExtractTranches:
     def test_no_sources_returns_empty_list(self) -> None:
         assert _extract_tranches(None, None) == []
@@ -275,6 +344,55 @@ class TestExtractTranches:
     def test_waterfall_only_fallback(self) -> None:
         result = _extract_tranches(None, _waterfall_with_class_recipients())
         assert [t["name"] for t in result] == ["Class A", "Class B", "Class C"]
+
+    # --- #397: structure-agnostic / exotic-stack parsing ------------------
+
+    def test_multi_series_columns_stay_distinct(self) -> None:
+        """Series A1–A6 + B + C parse as 8 distinct tranches, senior→junior."""
+        section_map = route_sections(_SOL_LION_TRANCHE_TABLE_MD)
+        result = _extract_tranches(section_map)
+        names = [t["name"] for t in result]
+        assert names == [
+            "Class A1", "Class A2", "Class A3", "Class A4",
+            "Class A5", "Class A6", "Class B", "Class C",
+        ]
+        # Series digit is the sub-order: A1 < A2 < … < A6 < B < C.
+        seniorities = [t["seniority"] for t in result]
+        assert seniorities == sorted(seniorities)
+        by_name = {t["name"]: t for t in result}
+        assert by_name["Class A1"]["size_eur"] == 200_000_000.0
+        assert by_name["Class A6"]["size_eur"] == 100_000_000.0
+        assert by_name["Class B"]["size_eur"] == 53_100_000.0
+        assert by_name["Class C"]["size_eur"] == 10_500_000.0
+
+    def test_single_class_deal(self) -> None:
+        """A one-class (Class A only) deal yields exactly that tranche."""
+        section_map = route_sections(_SINGLE_CLASS_TRANCHE_TABLE_MD)
+        result = _extract_tranches(section_map)
+        assert [t["name"] for t in result] == ["Class A"]
+        assert result[0]["size_eur"] == 500_000_000.0
+
+    def test_class_o_artifact_dropped(self) -> None:
+        """A stray non-tranche 'Class O' row never becomes a phantom tranche."""
+        section_map = route_sections(_CLASS_O_ARTIFACT_TABLE_MD)
+        result = _extract_tranches(section_map)
+        names = [t["name"] for t in result]
+        assert "Class O" not in names
+        # The real classes survive.
+        assert names == ["Class A", "Class B"]
+        # And specifically no phantom 42-EUR tranche.
+        assert all(t["size_eur"] != 42.0 for t in result)
+
+    def test_waterfall_fallback_multi_series(self) -> None:
+        """series_a1…a6 + class_b/class_c recipients map to the full stack."""
+        result = _extract_tranches(None, _waterfall_with_series_recipients())
+        names = [t["name"] for t in result]
+        assert names == [
+            "Class A1", "Class A2", "Class A3", "Class A4",
+            "Class A5", "Class A6", "Class B", "Class C",
+        ]
+        # Fallback supplies no sizes.
+        assert all(t["size_eur"] is None for t in result)
 
 
 # ---------------------------------------------------------------------------
@@ -641,6 +759,156 @@ class TestExtractDealModelMocked:
 
 
 # ---------------------------------------------------------------------------
+# Unit tests — definitions linking into the assembled model (#395)
+# ---------------------------------------------------------------------------
+
+
+class TestDefinitionsLinking:
+    """The #395 link: extract_deal_model attaches the resolved defined terms onto
+    each serialised waterfall step's condition (``condition_terms``) and each
+    trigger's metric/display-name (``metric_terms``).
+
+    Exercises the real assembly + serialisation path (extract_deal_model →
+    _apply_definitions_links); only the three sub-extractors and the
+    download/convert boundary are stubbed.
+    """
+
+    @staticmethod
+    def _run(cache_dir: str) -> DealModel:
+        mock_markdown = "# Definitions\nx\n## Revenue Priority of Payments\ny"
+
+        # Two defined terms; only the trigger one is referenced by the step
+        # condition below.
+        seq_term = MagicMock()
+        seq_term.definition = "Sequential Pay Trigger switches to sequential."
+        seq_term.page_or_section = "Section 9.1"
+        pdl_term = MagicMock()
+        pdl_term.definition = "PDL Debit Balance is the principal deficiency."
+        pdl_term.page_or_section = "Section 9.1"
+
+        fake_defs_graph = MagicMock()
+        fake_defs_graph.terms = {
+            "Sequential Pay Trigger": seq_term,
+            "PDL Debit Balance": pdl_term,
+        }
+
+        # A waterfall whose step condition references the defined trigger by name.
+        conditional_step = _make_step(priority="(g)", recipient="class_b_interest")
+        conditional_step = conditional_step.model_copy(
+            update={"condition": "while the Sequential Pay Trigger is in effect"}
+        )
+        unconditional_step = _make_step(priority="(a)", recipient="senior_fees")
+        fake_waterfall = ExtractedWaterfall(
+            deal_name=_DEAL_NAME,
+            waterfall_type="revenue",
+            steps=[unconditional_step, conditional_step],
+            source_section="Section 5.2",
+            extraction_confidence=1.0,
+        )
+
+        fake_trigger = MagicMock()
+        fake_trigger.name = "sequential_pay_trigger"
+
+        fake_covenants = MagicMock()
+        fake_covenants.model_dump.return_value = {
+            "deal_name": _DEAL_NAME,
+            "triggers": [
+                {
+                    "name": "sequential_pay_trigger",
+                    # snake_case slug metric that won't lexically match a
+                    # capitalised term — the display_name fallback must catch it.
+                    "metric": "pdl_debit_balance",
+                    "display_name": "PDL Debit Balance",
+                }
+            ],
+            "issuer_covenants": [],
+            "extraction_confidence": 0.8,
+        }
+        fake_covenants.triggers = [fake_trigger]
+
+        with patch(
+            "loanwhiz.extraction.assembler._download_and_convert",
+            return_value=mock_markdown,
+        ), patch(
+            "loanwhiz.extraction.assembler.extract_definitions",
+            return_value=fake_defs_graph,
+        ), patch(
+            "loanwhiz.extraction.assembler.extract_all_waterfalls",
+            return_value={"revenue": fake_waterfall},
+        ), patch(
+            "loanwhiz.extraction.assembler.extract_covenants",
+            return_value=fake_covenants,
+        ):
+            return extract_deal_model(
+                prospectus_url=_PROSPECTUS_URL,
+                deal_name=_DEAL_NAME,
+                cache_dir=cache_dir,
+            )
+
+    def test_step_condition_links_to_defined_term(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            model = self._run(tmpdir)
+            steps = model.waterfalls["revenue"]["steps"]
+            # Unconditional step → empty link.
+            assert steps[0]["condition_terms"] == []
+            # Conditional step → linked to the Sequential Pay Trigger.
+            assert steps[1]["condition_terms"] == ["Sequential Pay Trigger"]
+
+    def test_trigger_metric_links_via_display_name(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            model = self._run(tmpdir)
+            trig = model.covenants["triggers"][0]
+            # The snake_case metric won't match, but the display name resolves.
+            assert trig["metric_terms"] == ["PDL Debit Balance"]
+
+    def test_empty_graph_links_to_empty_lists(self) -> None:
+        """With no defined terms, every link is an empty list (serialise unchanged
+        apart from the new keys)."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            mock_markdown = "# Definitions\nx\n## Revenue Priority of Payments\ny"
+            empty_graph = MagicMock()
+            empty_graph.terms = {}
+            step = _make_step(priority="(g)", recipient="class_b_interest").model_copy(
+                update={"condition": "while the Sequential Pay Trigger is in effect"}
+            )
+            wf = ExtractedWaterfall(
+                deal_name=_DEAL_NAME,
+                waterfall_type="revenue",
+                steps=[step],
+                source_section="Section 5.2",
+                extraction_confidence=1.0,
+            )
+            cov = MagicMock()
+            cov.model_dump.return_value = {
+                "deal_name": _DEAL_NAME,
+                "triggers": [{"name": "t", "metric": "m", "display_name": "M"}],
+                "issuer_covenants": [],
+                "extraction_confidence": 0.0,
+            }
+            cov.triggers = []
+            with patch(
+                "loanwhiz.extraction.assembler._download_and_convert",
+                return_value=mock_markdown,
+            ), patch(
+                "loanwhiz.extraction.assembler.extract_definitions",
+                return_value=empty_graph,
+            ), patch(
+                "loanwhiz.extraction.assembler.extract_all_waterfalls",
+                return_value={"revenue": wf},
+            ), patch(
+                "loanwhiz.extraction.assembler.extract_covenants",
+                return_value=cov,
+            ):
+                model = extract_deal_model(
+                    prospectus_url=_PROSPECTUS_URL,
+                    deal_name=_DEAL_NAME,
+                    cache_dir=tmpdir,
+                )
+            assert model.waterfalls["revenue"]["steps"][0]["condition_terms"] == []
+            assert model.covenants["triggers"][0]["metric_terms"] == []
+
+
+# ---------------------------------------------------------------------------
 # Unit tests — language-agnostic section wiring (#274)
 # ---------------------------------------------------------------------------
 
@@ -753,22 +1021,53 @@ class TestExtractDealModelLanguageAgnostic:
 
 
 class TestDurableCacheLocation:
-    """The default cache dirs must be the repo's durable data/ tree, not /tmp."""
+    """The default cache dirs must be the repo's durable data/ tree.
+
+    The invariant is *location-relative-to-the-module*, NOT an absolute-path
+    predicate: the cache dirs are derived from the assembler module's own
+    location (``Path(__file__).resolve().parents[3] / "data" / ...``), so they
+    must resolve under the repo's committed ``data/`` tree wherever the repo is
+    checked out — including a checkout rooted under ``/tmp`` (the promotion
+    build-verify path). The old assertions ``not str(...).startswith("/tmp/")``
+    conflated "is not the retired ``/tmp/loanwhiz_cache`` literal" with "the
+    absolute path must not begin with ``/tmp/``", so they false-failed on any
+    ``/tmp``-rooted checkout even though the code was correct (#389). These
+    tests assert the real, location-independent invariant instead.
+    """
+
+    @staticmethod
+    def _expected_repo_data_root() -> Path:
+        """The repo ``data/`` dir derived from the assembler module's location.
+
+        Mirrors how :mod:`loanwhiz.extraction.assembler` derives ``_REPO_ROOT``
+        (``src/loanwhiz/extraction/assembler.py`` → ``parents[3]`` is the repo
+        root), so the assertion tracks the code regardless of checkout path.
+        """
+        from loanwhiz.extraction import assembler
+
+        return Path(assembler.__file__).resolve().parents[3] / "data"
 
     def test_deal_cache_default_is_data_deals(self) -> None:
         assert DEFAULT_DEAL_CACHE_DIR.parts[-2:] == ("data", "deals")
-        # Must NOT be the old ephemeral /tmp/loanwhiz_cache location.
+        # Resolves under the repo's own committed data/ tree (module-relative),
+        # independent of where the repo is checked out.
+        assert DEFAULT_DEAL_CACHE_DIR == self._expected_repo_data_root() / "deals"
+        # Must NOT be the old ephemeral /tmp/loanwhiz_cache location (the literal
+        # that was retired in #132) — a *substring* check, not an absolute prefix.
         assert "loanwhiz_cache" not in str(DEFAULT_DEAL_CACHE_DIR)
-        assert not str(DEFAULT_DEAL_CACHE_DIR).startswith("/tmp/")
 
     def test_docling_cache_default_is_data_docling_cache(self) -> None:
         assert DEFAULT_DOCLING_CACHE_DIR.parts[-2:] == ("data", "docling_cache")
+        assert (
+            DEFAULT_DOCLING_CACHE_DIR
+            == self._expected_repo_data_root() / "docling_cache"
+        )
         assert "loanwhiz_cache" not in str(DEFAULT_DOCLING_CACHE_DIR)
-        assert not str(DEFAULT_DOCLING_CACHE_DIR).startswith("/tmp/")
 
     def test_deal_and_docling_caches_share_repo_data_root(self) -> None:
         # Both resolve under the same committed repo data/ directory.
         assert DEFAULT_DEAL_CACHE_DIR.parent == DEFAULT_DOCLING_CACHE_DIR.parent
+        assert DEFAULT_DEAL_CACHE_DIR.parent == self._expected_repo_data_root()
         assert DEFAULT_DEAL_CACHE_DIR.parent.name == "data"
 
     def test_default_cache_dir_signature_uses_constant(self) -> None:
@@ -776,9 +1075,10 @@ class TestDurableCacheLocation:
         import inspect
 
         sig = inspect.signature(extract_deal_model)
+        # The signature default is the constant verbatim — so it tracks the
+        # module-relative invariant above and never hardcodes an absolute path.
         assert sig.parameters["cache_dir"].default == str(DEFAULT_DEAL_CACHE_DIR)
         assert "loanwhiz_cache" not in sig.parameters["cache_dir"].default
-        assert not sig.parameters["cache_dir"].default.startswith("/tmp/")
 
 
 # ---------------------------------------------------------------------------

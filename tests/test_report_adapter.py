@@ -225,6 +225,35 @@ def test_revenue_pop_folding_collapses_b_subitems(period: NotesCashPeriod) -> No
 
 
 # ---------------------------------------------------------------------------
+# from_deal_model — cold-start with a thin / missing-waterfall model
+# ---------------------------------------------------------------------------
+
+
+def test_from_deal_model_requires_both_waterfalls() -> None:
+    """``from_deal_model`` pulls ``waterfalls["revenue"]`` and
+    ``waterfalls["redemption"]`` step lists; a model missing one (the thin
+    extraction case — e.g. an ES deal whose redemption PoP did not extract)
+    raises ``KeyError`` at construction rather than silently building an
+    adapter with an empty waterfall that would then fabricate nothing/garbage
+    downstream. Fail loud at the seam, not silent in the fold."""
+
+    class _RevenueOnlyModel:
+        waterfalls = {"revenue": {"steps": [{"priority": "(a)", "recipient": "x"}]}}
+
+    with pytest.raises(KeyError):
+        ReportAdapter.from_deal_model(_RevenueOnlyModel())
+
+
+def test_to_inputs_empty_report_message_names_the_deal() -> None:
+    """The empty-report ValueError names the deal so a cold-start failure is
+    actionable (which deal had no report periods to seed from)."""
+    adapter = ReportAdapter(revenue_steps=[], redemption_steps=[])
+    empty = NotesCashReport(deal_name="Sol-Lion II RMBS", periods=[])
+    with pytest.raises(ValueError, match="Sol-Lion II RMBS"):
+        adapter.to_inputs(empty)
+
+
+# ---------------------------------------------------------------------------
 # Integration: the adapter's output folds through the real run_period (#265)
 # ---------------------------------------------------------------------------
 

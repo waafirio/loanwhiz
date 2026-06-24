@@ -34,6 +34,7 @@ from __future__ import annotations
 
 import json
 import re
+import unicodedata
 from dataclasses import dataclass
 
 # Import from the leaf module (not the ``loanwhiz.domain`` package __init__) to
@@ -76,10 +77,15 @@ class TaxonomyMapping:
 # not be enumerated exhaustively.
 
 _RECIPIENT_ALIASES: dict[str, RecipientType] = {
-    # Senior expenses / issuer costs / trustee / agents.
+    # Senior expenses / issuer costs / trustee / agents / tax. The wider global-
+    # ABS senior-cost vocabulary (paying agent, cash manager, account bank,
+    # registrar, corporate services, tax / withholding gross-up) collapses here:
+    # all are senior admin costs the engine has no formula for (report_supplied),
+    # so they are alias rows onto an existing value, not new enum members (#394).
     "security_trustee_fees": RecipientType.senior_expenses,
     "security_trustee": RecipientType.senior_expenses,
     "trustee_fees": RecipientType.senior_expenses,
+    "note_trustee_fees": RecipientType.senior_expenses,
     "various_fees_and_expenses": RecipientType.senior_expenses,
     "various_agents_and_creditors": RecipientType.senior_expenses,
     "issuer_expenses": RecipientType.senior_expenses,
@@ -87,28 +93,75 @@ _RECIPIENT_ALIASES: dict[str, RecipientType] = {
     "senior_expenses": RecipientType.senior_expenses,
     "senior_fees": RecipientType.senior_expenses,
     "agents_fees": RecipientType.senior_expenses,
+    "paying_agent_fees": RecipientType.senior_expenses,
+    "cash_manager_fees": RecipientType.senior_expenses,
+    "account_bank_fees": RecipientType.senior_expenses,
+    "registrar_fees": RecipientType.senior_expenses,
+    "corporate_services_fees": RecipientType.senior_expenses,
+    "administration_fees": RecipientType.senior_expenses,
+    "issuer_tax": RecipientType.senior_expenses,
+    "tax_and_withholding": RecipientType.senior_expenses,
+    "withholding_tax_gross_up": RecipientType.senior_expenses,
+    # IT/ES/FR/DE/NL senior-cost / trustee terms (diacritic-folded form).
+    "spese": RecipientType.senior_expenses,
+    "commissioni_e_spese": RecipientType.senior_expenses,
+    "gastos": RecipientType.senior_expenses,
+    "comisiones_y_gastos": RecipientType.senior_expenses,
+    "frais": RecipientType.senior_expenses,
+    "frais_et_commissions": RecipientType.senior_expenses,
+    "kosten": RecipientType.senior_expenses,
+    "gebuhren_und_auslagen": RecipientType.senior_expenses,
+    "treuhander": RecipientType.senior_expenses,
+    "vergoedingen_en_kosten": RecipientType.senior_expenses,
     # Servicing.
     "servicing_fee": RecipientType.servicing_fee,
     "servicer_fee": RecipientType.servicing_fee,
     "servicing_fees": RecipientType.servicing_fee,
-    # Swap (non-subordinated).
+    "commissioni_di_servicing": RecipientType.servicing_fee,
+    "comision_de_administracion": RecipientType.servicing_fee,
+    "commission_de_gestion": RecipientType.servicing_fee,
+    "servicegebuhr": RecipientType.servicing_fee,
+    "servicingvergoeding": RecipientType.servicing_fee,
+    # Swap (non-subordinated). Cap / floor / basis-swap counterparties collapse
+    # onto the swap calculator (same report_supplied treatment) — alias, not a
+    # new enum value (#394).
     "swap_counterparty_payments": RecipientType.swap_payment,
     "swap_counterparty": RecipientType.swap_payment,
     "swap_payment": RecipientType.swap_payment,
     "interest_rate_swap": RecipientType.swap_payment,
+    "cap_counterparty": RecipientType.swap_payment,
+    "floor_counterparty": RecipientType.swap_payment,
+    "basis_swap_counterparty": RecipientType.swap_payment,
+    "hedge_counterparty": RecipientType.swap_payment,
     # Interest.
     "class_a_interest": RecipientType.class_a_interest,
     "class_b_interest": RecipientType.class_b_interest,
     "class_c_interest": RecipientType.class_c_interest,
+    "class_d_interest": RecipientType.class_d_interest,
+    "class_e_interest": RecipientType.class_e_interest,
+    "class_f_interest": RecipientType.class_f_interest,
     # PDL cure / replenishment.
     "class_a_pdl_replenishment": RecipientType.class_a_pdl_cure,
     "class_a_pdl_cure": RecipientType.class_a_pdl_cure,
     "class_b_pdl_replenishment": RecipientType.class_b_pdl_cure,
     "class_b_pdl_cure": RecipientType.class_b_pdl_cure,
-    # Reserve replenishment.
+    "class_c_pdl_replenishment": RecipientType.class_c_pdl_cure,
+    "class_c_pdl_cure": RecipientType.class_c_pdl_cure,
+    # Reserve replenishment. The general reserve fund keeps ``reserve_
+    # replenishment``; liquidity / commingling / set-off reserve top-ups (same
+    # target-shortfall mechanic) map onto ``liquidity_reserve_replenishment``.
     "reserve_account_replenishment": RecipientType.reserve_replenishment,
     "reserve_fund_replenishment": RecipientType.reserve_replenishment,
     "reserve_replenishment": RecipientType.reserve_replenishment,
+    "fondo_di_riserva": RecipientType.reserve_replenishment,
+    "fondo_de_reserva": RecipientType.reserve_replenishment,
+    "fonds_de_reserve": RecipientType.reserve_replenishment,
+    "reservefonds": RecipientType.reserve_replenishment,
+    "liquidity_reserve_replenishment": RecipientType.liquidity_reserve_replenishment,
+    "liquidity_reserve_fund_replenishment": RecipientType.liquidity_reserve_replenishment,
+    "liquidity_facility_repayment": RecipientType.liquidity_reserve_replenishment,
+    "commingling_reserve_replenishment": RecipientType.liquidity_reserve_replenishment,
+    "set_off_reserve_replenishment": RecipientType.liquidity_reserve_replenishment,
     # Principal.
     "class_a_notes_principal": RecipientType.class_a_principal,
     "class_a_principal": RecipientType.class_a_principal,
@@ -116,19 +169,29 @@ _RECIPIENT_ALIASES: dict[str, RecipientType] = {
     "class_b_principal": RecipientType.class_b_principal,
     "class_c_notes_principal": RecipientType.class_c_principal,
     "class_c_principal": RecipientType.class_c_principal,
+    "class_d_notes_principal": RecipientType.class_d_principal,
+    "class_d_principal": RecipientType.class_d_principal,
+    "class_e_notes_principal": RecipientType.class_e_principal,
+    "class_e_principal": RecipientType.class_e_principal,
+    "class_f_notes_principal": RecipientType.class_f_principal,
+    "class_f_principal": RecipientType.class_f_principal,
     # Combined principal+interest (post-enforcement) — map to principal of the
     # most-senior class named; the senior interest is paid in the same step.
     "class_a_notes_principal_and_interest": RecipientType.class_a_principal,
     "class_b_notes_principal_and_interest": RecipientType.class_b_principal,
-    # Subordinated amounts.
+    # Subordinated amounts. Subordinated / defaulting-hedge termination payments
+    # rank junior and collapse here (#394).
     "subordinated_swap_payments": RecipientType.subordinated_amounts,
     "subordinated_swap": RecipientType.subordinated_amounts,
     "subordinated_amounts": RecipientType.subordinated_amounts,
+    "subordinated_hedge_termination": RecipientType.subordinated_amounts,
     "deferred_fees": RecipientType.subordinated_amounts,
-    # Residual / deferred purchase price.
+    # Residual / deferred purchase price / seller deferred consideration.
     "deferred_purchase_price_instalment": RecipientType.residual_certificate,
     "deferred_purchase_price_instalment_to_seller": RecipientType.residual_certificate,
     "deferred_purchase_price": RecipientType.residual_certificate,
+    "deferred_consideration": RecipientType.residual_certificate,
+    "seller_deferred_consideration": RecipientType.residual_certificate,
     "residual_certificate": RecipientType.residual_certificate,
     "residual": RecipientType.residual_certificate,
 }
@@ -152,17 +215,38 @@ _RECIPIENT_SUBSTRINGS: list[tuple[str, RecipientType]] = [
 # ---------------------------------------------------------------------------
 
 _METRIC_ALIASES: dict[str, MetricType] = {
+    # Cumulative realised loss (net of recoveries).
     "cumulative_loss_rate": MetricType.cumulative_loss_rate,
     "cumulative_loss_rate_pct": MetricType.cumulative_loss_rate,
     "cumulative_net_loss_ratio": MetricType.cumulative_loss_rate,
     "loss_rate": MetricType.cumulative_loss_rate,
+    "perdite_cumulate": MetricType.cumulative_loss_rate,
+    "perdidas_acumuladas": MetricType.cumulative_loss_rate,
+    "pertes_cumulees": MetricType.cumulative_loss_rate,
+    # Cumulative gross default — kept DISTINCT from realised loss (#394). Many
+    # ABS triggers test cumulative *default* (gross), not *loss* (net of
+    # recoveries); collapsing the two would be the silent wrong-sentinel bug.
+    "cumulative_default_rate": MetricType.cumulative_default_rate,
+    "cumulative_default_ratio": MetricType.cumulative_default_rate,
+    "cumulative_gross_default_rate": MetricType.cumulative_default_rate,
+    "default_rate_cumulative": MetricType.cumulative_default_rate,
+    "tasso_di_insolvenza_cumulato": MetricType.cumulative_default_rate,
+    "tasa_de_morosidad_acumulada": MetricType.cumulative_default_rate,
+    "taux_de_defaut_cumule": MetricType.cumulative_default_rate,
     "class_a_pdl": MetricType.class_a_pdl,
     "class_b_pdl": MetricType.class_b_pdl,
+    "class_c_pdl": MetricType.class_c_pdl,
     "reserve_fund_ratio": MetricType.reserve_fund_ratio,
     "reserve_fund_balance": MetricType.reserve_fund_ratio,
     "reserve_fund_shortfall": MetricType.reserve_fund_ratio,
     "pool_factor": MetricType.pool_factor,
     "pool_balance_fraction": MetricType.pool_factor,
+    "clean_up_call": MetricType.pool_factor,
+    "clean_up_call_threshold": MetricType.pool_factor,
+    "arrears_30d_ratio": MetricType.arrears_30d_ratio,
+    "arrears_30_ratio": MetricType.arrears_30d_ratio,
+    "arrears_60d_ratio": MetricType.arrears_60d_ratio,
+    "arrears_60_ratio": MetricType.arrears_60d_ratio,
     "arrears_90d_ratio": MetricType.arrears_90d_ratio,
     "arrears_90_ratio": MetricType.arrears_90d_ratio,
     "arrears_180d_ratio": MetricType.arrears_180d_ratio,
@@ -171,14 +255,21 @@ _METRIC_ALIASES: dict[str, MetricType] = {
 }
 
 _METRIC_SUBSTRINGS: list[tuple[str, MetricType]] = [
+    # Order: most-specific first. Default must precede loss so a
+    # "cumulative_default" string isn't swallowed by the "cumulative_loss"
+    # pattern, and the day-bucketed arrears patterns precede the bare "arrears".
+    ("cumulative_default", MetricType.cumulative_default_rate),
     ("cumulative_loss", MetricType.cumulative_loss_rate),
     ("class_a_pdl", MetricType.class_a_pdl),
     ("class_b_pdl", MetricType.class_b_pdl),
+    ("class_c_pdl", MetricType.class_c_pdl),
     ("reserve_fund", MetricType.reserve_fund_ratio),
     ("pool_factor", MetricType.pool_factor),
     ("pool_balance", MetricType.pool_factor),
     ("arrears_180", MetricType.arrears_180d_ratio),
     ("arrears_90", MetricType.arrears_90d_ratio),
+    ("arrears_60", MetricType.arrears_60d_ratio),
+    ("arrears_30", MetricType.arrears_30d_ratio),
     ("ltv", MetricType.wa_ltv),
 ]
 
@@ -194,12 +285,20 @@ _BASIS_FOR_RECIPIENT: dict[RecipientType, str] = {
     RecipientType.class_a_interest: "interest_accrual",
     RecipientType.class_b_interest: "interest_accrual",
     RecipientType.class_c_interest: "interest_accrual",
+    RecipientType.class_d_interest: "interest_accrual",
+    RecipientType.class_e_interest: "interest_accrual",
+    RecipientType.class_f_interest: "interest_accrual",
     RecipientType.class_a_pdl_cure: "pdl_balance",
     RecipientType.class_b_pdl_cure: "pdl_balance",
+    RecipientType.class_c_pdl_cure: "pdl_balance",
+    RecipientType.liquidity_reserve_replenishment: "target_shortfall",
     RecipientType.reserve_replenishment: "target_shortfall",
     RecipientType.class_a_principal: "principal_due",
     RecipientType.class_b_principal: "principal_due",
     RecipientType.class_c_principal: "principal_due",
+    RecipientType.class_d_principal: "principal_due",
+    RecipientType.class_e_principal: "principal_due",
+    RecipientType.class_f_principal: "principal_due",
     RecipientType.subordinated_amounts: "report_supplied",
     RecipientType.residual_certificate: "residual",
     RecipientType.unmapped: "report_supplied",
@@ -225,17 +324,83 @@ def basis_for_recipient(recipient: RecipientType) -> str:
 
 
 def _normalise(raw: str) -> str:
-    """Lowercase, collapse non-alphanumerics to single underscores, strip ends."""
+    """Lowercase, fold diacritics, collapse non-alphanumerics to underscores.
+
+    The diacritic fold (Unicode NFKD decomposition + drop of combining marks,
+    applied before the ASCII-only collapse) is what makes the non-English alias
+    keys hit deterministically (#394): without it ``"fonds de réserve"`` would
+    normalise to ``"fonds_de_r_serve"`` (the ``é`` lost to the collapse) and
+    never match a stored alias. With the fold it becomes ``"fonds_de_reserve"``.
+
+    The fold is a strict no-op for pure-ASCII input — NFKD leaves ASCII
+    code points unchanged and there are no combining marks to drop — so every
+    existing English alias key and its tests are unaffected.
+    """
     s = (raw or "").strip().lower()
+    # Fold diacritics: decompose (é → e + ◌́) then drop combining marks.
+    s = "".join(
+        ch for ch in unicodedata.normalize("NFKD", s) if not unicodedata.combining(ch)
+    )
     s = re.sub(r"[^a-z0-9]+", "_", s)
     return s.strip("_")
 
 
 def _refine_pdl_class(normalised: str) -> RecipientType:
-    """Pick the right PDL-cure class from a normalised string mentioning PDL."""
+    """Pick the right PDL-cure class from a normalised string mentioning PDL.
+
+    Recognises the Class A/B/C ledgers; an unspecified class defaults to A (the
+    senior PDL the sequential/PDL trigger keys on).
+    """
+    if "class_c" in normalised or "_c_" in normalised or normalised.endswith("_c"):
+        return RecipientType.class_c_pdl_cure
     if "class_b" in normalised or "_b_" in normalised or normalised.endswith("_b"):
         return RecipientType.class_b_pdl_cure
     return RecipientType.class_a_pdl_cure
+
+
+# Generic deeper-class recipient parse: ``class_<letter>_<...interest|principal>``.
+# Lets a deal name a class beyond the exact-alias rows (e.g. an unusual
+# ``class_e_notes_redemption``) resolve to the right interest/principal recipient
+# without exhaustively enumerating every phrasing. PDL is handled by
+# ``_refine_pdl_class`` (more specific, checked first in ``map_recipient``).
+_CLASS_INTEREST_BY_LETTER: dict[str, RecipientType] = {
+    "a": RecipientType.class_a_interest,
+    "b": RecipientType.class_b_interest,
+    "c": RecipientType.class_c_interest,
+    "d": RecipientType.class_d_interest,
+    "e": RecipientType.class_e_interest,
+    "f": RecipientType.class_f_interest,
+}
+_CLASS_PRINCIPAL_BY_LETTER: dict[str, RecipientType] = {
+    "a": RecipientType.class_a_principal,
+    "b": RecipientType.class_b_principal,
+    "c": RecipientType.class_c_principal,
+    "d": RecipientType.class_d_principal,
+    "e": RecipientType.class_e_principal,
+    "f": RecipientType.class_f_principal,
+}
+_CLASS_LETTER_RE = re.compile(r"class_([a-f])(?![a-z])")
+
+
+def _refine_class_recipient(normalised: str) -> RecipientType | None:
+    """Resolve a generic ``class_<letter>_...`` interest/principal recipient.
+
+    Returns ``None`` when the string does not carry a recognisable class letter
+    (a-f) plus an interest/principal/redemption cue, so the caller can fall
+    through to the LLM / ``unmapped`` path. ``principal`` / ``redemption`` /
+    ``amortisation`` cues win over ``interest`` when both appear, matching the
+    "principal and interest" post-enforcement convention (map to principal of
+    the named class; the senior interest is paid in the same step).
+    """
+    m = _CLASS_LETTER_RE.search(normalised)
+    if m is None:
+        return None
+    letter = m.group(1)
+    if re.search(r"principal|redempt|amortis|amortiz", normalised):
+        return _CLASS_PRINCIPAL_BY_LETTER.get(letter)
+    if "interest" in normalised or "coupon" in normalised:
+        return _CLASS_INTEREST_BY_LETTER.get(letter)
+    return None
 
 
 # ---------------------------------------------------------------------------
@@ -275,12 +440,19 @@ def map_recipient(
     if hit is not None:
         return TaxonomyMapping(hit, 1.0, "deterministic")
 
-    # Substring rules.
+    # Substring rules. PDL is most-specific (checked here via its own pattern);
+    # the generic class_<letter>_<interest|principal> refine runs next so a
+    # deeper-stack class that escaped the exact-alias rows still resolves before
+    # the broader fee/reserve substrings or the LLM fallback.
     for pattern, value in _RECIPIENT_SUBSTRINGS:
         if pattern in normalised:
             if pattern == "pdl":
                 value = _refine_pdl_class(normalised)
             return TaxonomyMapping(value, 0.9, "deterministic")
+
+    class_hit = _refine_class_recipient(normalised)
+    if class_hit is not None:
+        return TaxonomyMapping(class_hit, 0.9, "deterministic")
 
     # LLM fallback for a genuinely-novel string.
     if use_llm:

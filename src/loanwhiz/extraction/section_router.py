@@ -133,9 +133,34 @@ _HEADER_RE = re.compile(r"^(#{1,6})\s+(.+)$", re.MULTILINE)
 # in any language.  Used as a deterministic "this segment holds the real step
 # list" signal so the LLM router can prefer the section that *contains* the
 # cascade over a generically-titled summary table or a stub parent (#316).
+#
+# The leading marker also tolerates a deeper order-label prefix — e.g. the real
+# Sol-Lion (ES) combined cascade nests its lettered steps under an outer ``(i)``
+# / ``(ii)`` order, so the steps surface in the Docling markdown as ``(ii)(a)``,
+# ``(ii)(b)`` …  Without the optional ``(?:\([ivxlcdm]+\)\s*)?`` prefix those
+# nested markers would not be counted and the section would score ``False``,
+# re-creating the 0-step revenue failure (#396).
 _PAYMENT_LIST_RE = re.compile(
-    r"^\s*(?:[-*]\s*)?(?:\(\s*[a-zA-Z]+\s*\)|\(\s*[ivxlcdm]+\s*\)|\d{1,2}[.)])\s+",
+    r"^\s*(?:[-*]\s*)?(?:\(\s*[ivxlcdm]+\s*\)\s*)?"
+    r"(?:\(\s*[a-zA-Z]+\s*\)|\(\s*[ivxlcdm]+\s*\)|\d{1,2}[.)])\s+",
     re.MULTILINE,
+)
+
+# Secondary, language-aware signal: an ordinal-word cascade ("firstly, …;
+# secondly, …; thirdly, …").  Some prospectuses (Sol-Lion's redemption order
+# among them — its real citations read "firstly , to the redemption …",
+# "secondly , once all Series A1 Notes …") spell the order out in words rather
+# than (or alongside) bracketed letters, so a combined ``(i)…(ii)…`` block whose
+# bracket markers are sparse still reads as a genuine cascade.  English plus the
+# common IT/ES forms; matched at a (rough) line start and immediately followed
+# by a comma — the discriminating shape of an enumerated step, not a stray
+# adverb mid-sentence.
+_ORDINAL_WORD_RE = re.compile(
+    r"^\s*(?:[-*]\s*)?"
+    r"(?:first|second|third|fourth|fifth|sixth|seventh|eighth|ninth|tenth)ly\b"
+    r"|^\s*(?:[-*]\s*)?(?:primero|segundo|tercero|cuarto|quinto|sexto)\b"
+    r"|^\s*(?:[-*]\s*)?(?:primo|secondo|terzo|quarto|quinto|sesto)\b",
+    re.MULTILINE | re.IGNORECASE,
 )
 
 # A segment needs at least this many enumerated markers to count as carrying a
@@ -145,14 +170,21 @@ _PAYMENT_LIST_MIN_MARKERS = 3
 
 
 def _has_payment_list(text: str) -> bool:
-    """True if ``text`` contains an enumerated payment-step list (#316).
+    """True if ``text`` contains an enumerated payment-step list (#316, #396).
 
     Deterministic, language-neutral signal: counts ``(a)``/``(b)`` (or roman /
-    numbered) list markers; ``True`` once at least :data:`_PAYMENT_LIST_MIN_MARKERS`
-    distinct ordered markers appear.  A summary pointer-table (rank numbers only)
-    or a stub parent heading scores ``False``; the real cascade scores ``True``.
+    nested ``(ii)(a)`` / numbered) list markers; ``True`` once at least
+    :data:`_PAYMENT_LIST_MIN_MARKERS` distinct ordered markers appear.  A summary
+    pointer-table (rank numbers only) or a stub parent heading scores ``False``;
+    the real cascade scores ``True``.
+
+    Falls back to an ordinal-word cascade ("firstly, … secondly, …") so a
+    combined order whose steps are spelled out in words rather than bracketed
+    letters — the real Sol-Lion (ES) shape — still scores ``True`` (#396).
     """
-    return len(_PAYMENT_LIST_RE.findall(text)) >= _PAYMENT_LIST_MIN_MARKERS
+    if len(_PAYMENT_LIST_RE.findall(text)) >= _PAYMENT_LIST_MIN_MARKERS:
+        return True
+    return len(_ORDINAL_WORD_RE.findall(text)) >= _PAYMENT_LIST_MIN_MARKERS
 
 
 def route_sections(markdown_text: str) -> SectionMap:
@@ -398,6 +430,54 @@ _LOAD_BEARING_ROLES: tuple[str, ...] = (
     "post_enforcement_priority",
 )
 
+# The load-bearing roles whose downstream extractor needs the *enumerated step
+# list*, not just the heading.  These are the roles the descendant-span widening
+# below applies to — ``definitions`` is excluded (it is not a payment cascade and
+# its own resolution path is unaffected).
+_WATERFALL_ROLES: tuple[str, ...] = (
+    "revenue_priority_of_payments",
+    "redemption_priority_of_payments",
+    "post_enforcement_priority",
+)
+
+
+def _widen_to_payment_list(
+    section_map: SectionMap, section: Section
+) -> Section:
+    """Widen ``section`` to its descendant span iff that recovers the step list.
+
+    The Sol-Lion (ES) failure mode: a router (keyword *or* LLM) locates a
+    waterfall role on a generically-titled **parent** heading whose own body is a
+    heading-plus-prose stub, while the enumerated cascade lives one level deeper
+    in a child sub-section.  ``route_sections`` ends each :class:`Section`'s
+    ``.text`` at the *next header of any level*, so the parent's narrow ``.text``
+    carries no steps and the downstream waterfall extractor sees ~0 (#396).
+
+    This is the path-agnostic completion of the #316 descendant-span rescue,
+    which was wired only into the LLM fallback (:func:`classify_segments_llm`
+    already returns its routed sections widened).  Applied at the
+    :func:`resolve_sections` chokepoint, it rescues the **keyword** fast path too
+    — the actual Sol-Lion trigger, reproduced live as a 0-step revenue stub.
+
+    Guard rails keep it a strict no-op for the cases that don't need it:
+
+    - **Only widen when it helps.** If the narrow ``.text`` *already* contains a
+      payment list, the section holds its own steps and is returned unchanged —
+      so the English flat-section path (Green Lion) is byte-identical.
+    - **Only widen when the descendant span recovers a list.** If neither the
+      narrow text nor the descendant span has a payment list, widening would not
+      help and could pull unrelated sibling text in, so the section is returned
+      unchanged.
+    - **Idempotent.** An already-widened section (the LLM path's output) whose
+      ``.text`` is the descendant span already has the list, so it is returned
+      unchanged — never double-widened.
+    """
+    if _has_payment_list(section.text):
+        return section
+    if _has_payment_list(section_map.descendant_text(section)):
+        return section_map.with_descendant_text(section)
+    return section
+
 
 def resolve_sections(
     section_map: SectionMap,
@@ -426,6 +506,16 @@ def resolve_sections(
       the LLM fills the gap by *meaning*, so the downstream waterfall /
       definitions extractors receive a real section to extract from instead of
       raising.
+    - **Generic-parent layouts are rescued on either path.** After resolution,
+      each located waterfall role is widened to its descendant span when (and
+      only when) its narrow ``.text`` is a heading-only stub but the cascade
+      lives in a child sub-section (:func:`_widen_to_payment_list`).  This is the
+      keyword-path completion of the #316 descendant-span rescue and is the
+      actual Sol-Lion (ES) fix: the deterministic keyword router lands on the
+      generic ``Application of Available Funds`` parent, whose narrow text holds
+      no steps, so revenue extracted 0 (#396).  The widening is a strict no-op
+      for the flat-section English path and idempotent for the already-widened
+      LLM output.
 
     Parameters
     ----------
@@ -453,5 +543,15 @@ def resolve_sections(
         for role in missing:
             if llm.get(role) is not None:
                 keyword[role] = llm[role]
+
+    # Path-agnostic descendant-span rescue (#396): widen any located waterfall
+    # role whose narrow ``.text`` is a heading-only stub but whose child
+    # sub-section carries the cascade.  This fires for keyword-located roles (the
+    # Sol-Lion trigger) as well as LLM-located ones (idempotent there), and is a
+    # strict no-op for flat-section English layouts.
+    for role in _WATERFALL_ROLES:
+        sec = keyword.get(role)
+        if sec is not None:
+            keyword[role] = _widen_to_payment_list(section_map, sec)
 
     return keyword
