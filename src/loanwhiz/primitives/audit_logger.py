@@ -632,6 +632,114 @@ def audit_result(
 
 
 # ---------------------------------------------------------------------------
+# audit_extraction_result — govern a non-Primitive (module-function) call
+# ---------------------------------------------------------------------------
+
+
+def audit_extraction_result(
+    *,
+    primitive_name: str,
+    primitive_version: str,
+    input: Any,
+    output: Any,
+    confidence: float,
+    citations: list[Citation] | None = None,
+    model_version: str | None = None,
+    duration_ms: float = 0.0,
+    module_path: str | None = None,
+    log_dir: str = "/tmp/loanwhiz_audit",
+    threshold: float = 0.7,
+) -> AuditLogEntry | None:
+    """Append one ``AuditLogEntry`` for an already-executed call that is **not** a
+    :class:`Primitive` subclass — e.g. the module-level ``extract_deal_model``
+    primitive the on-demand ``/extract`` job (#384) wraps.
+
+    :func:`audit_result` / :func:`wrap_primitive` both require a ``Primitive``
+    instance (for ``name`` / ``version`` and the replay-command module path). The
+    on-demand extraction path runs a plain module function and produces a
+    :class:`~loanwhiz.extraction.assembler.DealModel`, not a ``PrimitiveResult``,
+    so this helper records the *same* FINOS-aligned provenance record from
+    explicit fields instead: who/what (``primitive_name`` / ``primitive_version``
+    / ``model_version``), when (the current UTC clock + ``duration_ms``), the input
+    and output hashes, the **real** ``confidence`` and ``citations`` the extraction
+    primitives produced, and the ``human_review_required`` flag derived from
+    ``threshold``. The persisted entry is byte-identical in shape to the ones
+    :func:`audit_result` writes — one JSONL line under
+    ``{log_dir}/{primitive_name}/{date}.jsonl`` — so the existing
+    :class:`AuditLogger` summariser and ``/governance`` surfaces read it unchanged.
+
+    It is deliberately **best-effort**, exactly like :func:`audit_result`: any
+    failure (an unhashable input/output, an unwritable ``log_dir``) is swallowed
+    and ``None`` is returned. The audit trail is a side-channel that must never
+    take down the call it observes — a creds-less extraction failure must still
+    surface as a ``failed`` job, never as an audit-induced crash.
+
+    Parameters
+    ----------
+    primitive_name / primitive_version:
+        Identity recorded in the entry (e.g. ``"deal_extraction"`` / ``"0.1.0"``).
+    input:
+        The logical input — hashed into ``input_hash`` (any JSON-serialisable
+        object; a Pydantic model uses its canonical ``model_dump_json``).
+    output:
+        The produced output — hashed into ``output_hash``.
+    confidence:
+        The **real** confidence in ``[0.0, 1.0]`` (clamped defensively). Never a
+        hardcoded placeholder — the caller threads the extraction primitives'
+        own completeness / per-section confidence here.
+    citations:
+        The real source citations grounding the output (default ``[]``).
+    model_version:
+        LLM model identifier, or ``None`` for the rule-based path.
+    duration_ms:
+        Wall-clock duration of the observed call in milliseconds.
+    module_path:
+        Dotted module path of the audited callable, recorded in the
+        ``replay_command`` documentation string (default ``primitive_name``).
+    log_dir / threshold:
+        As in :func:`audit_result`.
+
+    Returns
+    -------
+    AuditLogEntry | None
+        The persisted entry, or ``None`` when the audit was skipped (best-effort
+        failure).
+    """
+    try:
+        clamped = min(1.0, max(0.0, float(confidence)))
+        resolved_citations = list(citations) if citations is not None else []
+        replay_command = (
+            f'# replay {module_path or primitive_name} '
+            f'input_hash={_sha256_of(input)}'
+        )
+
+        entry = AuditLogEntry(
+            entry_id=str(uuid.uuid4()),
+            primitive_name=primitive_name,
+            primitive_version=primitive_version,
+            executed_at=datetime.now(timezone.utc).isoformat(),
+            duration_ms=max(0.0, float(duration_ms)),
+            input_hash=_sha256_of(input),
+            output_hash=_sha256_of(output),
+            confidence=clamped,
+            citations=resolved_citations,
+            human_review_required=clamped < threshold,
+            model_version=model_version,
+            replay_command=replay_command,
+            llm_calls=[],
+            is_deterministic=model_version is None,
+        )
+
+        log_path = _jsonl_path(log_dir, primitive_name)
+        with log_path.open("a", encoding="utf-8") as fh:
+            fh.write(entry.model_dump_json() + "\n")
+        return entry
+    except Exception:
+        # Audit is a side-channel — never propagate into the observed call.
+        return None
+
+
+# ---------------------------------------------------------------------------
 # replay — determinism check
 # ---------------------------------------------------------------------------
 
