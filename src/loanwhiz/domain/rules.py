@@ -46,20 +46,37 @@ class RecipientType(str, Enum):
     recipient the engine cannot evaluate: it degrades honestly to
     "report-supplied / not-evaluable" rather than mis-mapping to a wrong
     calculator.
+
+    The set is broadened beyond the original English Green-Lion RMBS coverage
+    for the global ABS universe (#394): deeper capital stacks reach Class F
+    interest/principal and Class C PDL cure, and a ``liquidity_reserve_
+    replenishment`` covers liquidity / commingling / set-off reserve top-ups.
+    Each addition binds to an **existing** engine basis key (see
+    :func:`~loanwhiz.extraction.taxonomy.basis_for_recipient`) — no new engine
+    formula is introduced; a payee the engine has no calculator for stays
+    ``unmapped`` (honest degradation), never a wrong-calculator mis-map.
     """
 
-    senior_expenses = "senior_expenses"  # issuer costs, admin, trustee
+    senior_expenses = "senior_expenses"  # issuer costs, admin, trustee, agents, tax
     servicing_fee = "servicing_fee"
     swap_payment = "swap_payment"
     class_a_interest = "class_a_interest"
     class_b_interest = "class_b_interest"
     class_c_interest = "class_c_interest"
+    class_d_interest = "class_d_interest"  # deeper-stack interest (auto/consumer/CLO)
+    class_e_interest = "class_e_interest"
+    class_f_interest = "class_f_interest"
     class_a_pdl_cure = "class_a_pdl_cure"  # PDL replenishment, senior
     class_b_pdl_cure = "class_b_pdl_cure"
+    class_c_pdl_cure = "class_c_pdl_cure"  # deeper PDL ledger
+    liquidity_reserve_replenishment = "liquidity_reserve_replenishment"  # liquidity/commingling/set-off reserve top-up
     reserve_replenishment = "reserve_replenishment"
     class_a_principal = "class_a_principal"
     class_b_principal = "class_b_principal"
     class_c_principal = "class_c_principal"
+    class_d_principal = "class_d_principal"  # deeper-stack principal
+    class_e_principal = "class_e_principal"
+    class_f_principal = "class_f_principal"
     subordinated_amounts = "subordinated_amounts"  # subordinated swap, deferred fees
     residual_certificate = "residual_certificate"  # deferred purchase price / residual
     unmapped = "unmapped"  # explicit escape -> report-supplied / not-evaluable
@@ -77,13 +94,27 @@ class MetricType(str, Enum):
     does not compute; like :class:`RecipientType.unmapped`, it makes the schema
     additive (new values can land as deals are onboarded) without ever silently
     mis-mapping an unknown metric onto a known sentinel.
+
+    Broadened for the global ABS universe (#394): finer arrears buckets
+    (30d/60d alongside 90d/180d), a ``cumulative_default_rate`` kept **distinct**
+    from ``cumulative_loss_rate`` (gross default ≠ net realised loss — collapsing
+    the two onto one sentinel is exactly the silent-mis-map bug the closed enum
+    exists to prevent), and a deeper ``class_c_pdl`` ledger. Metrics the engine
+    holds no inputs to compute (CLO OC/IC tests, card-ABS payment-rate /
+    portfolio-yield, excess-spread, DSCR) are deliberately left to ``unmapped`` —
+    honest degradation, not a gap; adding an enum value that can only ever
+    report-supply buys nothing over the escape.
     """
 
     cumulative_loss_rate = "cumulative_loss_rate"
+    cumulative_default_rate = "cumulative_default_rate"  # gross default ≠ net loss
     class_a_pdl = "class_a_pdl"
     class_b_pdl = "class_b_pdl"
+    class_c_pdl = "class_c_pdl"  # deeper PDL ledger
     reserve_fund_ratio = "reserve_fund_ratio"
     pool_factor = "pool_factor"
+    arrears_30d_ratio = "arrears_30d_ratio"
+    arrears_60d_ratio = "arrears_60d_ratio"
     arrears_90d_ratio = "arrears_90d_ratio"
     arrears_180d_ratio = "arrears_180d_ratio"
     wa_ltv = "wa_ltv"
