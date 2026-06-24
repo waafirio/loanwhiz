@@ -641,6 +641,156 @@ class TestExtractDealModelMocked:
 
 
 # ---------------------------------------------------------------------------
+# Unit tests — definitions linking into the assembled model (#395)
+# ---------------------------------------------------------------------------
+
+
+class TestDefinitionsLinking:
+    """The #395 link: extract_deal_model attaches the resolved defined terms onto
+    each serialised waterfall step's condition (``condition_terms``) and each
+    trigger's metric/display-name (``metric_terms``).
+
+    Exercises the real assembly + serialisation path (extract_deal_model →
+    _apply_definitions_links); only the three sub-extractors and the
+    download/convert boundary are stubbed.
+    """
+
+    @staticmethod
+    def _run(cache_dir: str) -> DealModel:
+        mock_markdown = "# Definitions\nx\n## Revenue Priority of Payments\ny"
+
+        # Two defined terms; only the trigger one is referenced by the step
+        # condition below.
+        seq_term = MagicMock()
+        seq_term.definition = "Sequential Pay Trigger switches to sequential."
+        seq_term.page_or_section = "Section 9.1"
+        pdl_term = MagicMock()
+        pdl_term.definition = "PDL Debit Balance is the principal deficiency."
+        pdl_term.page_or_section = "Section 9.1"
+
+        fake_defs_graph = MagicMock()
+        fake_defs_graph.terms = {
+            "Sequential Pay Trigger": seq_term,
+            "PDL Debit Balance": pdl_term,
+        }
+
+        # A waterfall whose step condition references the defined trigger by name.
+        conditional_step = _make_step(priority="(g)", recipient="class_b_interest")
+        conditional_step = conditional_step.model_copy(
+            update={"condition": "while the Sequential Pay Trigger is in effect"}
+        )
+        unconditional_step = _make_step(priority="(a)", recipient="senior_fees")
+        fake_waterfall = ExtractedWaterfall(
+            deal_name=_DEAL_NAME,
+            waterfall_type="revenue",
+            steps=[unconditional_step, conditional_step],
+            source_section="Section 5.2",
+            extraction_confidence=1.0,
+        )
+
+        fake_trigger = MagicMock()
+        fake_trigger.name = "sequential_pay_trigger"
+
+        fake_covenants = MagicMock()
+        fake_covenants.model_dump.return_value = {
+            "deal_name": _DEAL_NAME,
+            "triggers": [
+                {
+                    "name": "sequential_pay_trigger",
+                    # snake_case slug metric that won't lexically match a
+                    # capitalised term — the display_name fallback must catch it.
+                    "metric": "pdl_debit_balance",
+                    "display_name": "PDL Debit Balance",
+                }
+            ],
+            "issuer_covenants": [],
+            "extraction_confidence": 0.8,
+        }
+        fake_covenants.triggers = [fake_trigger]
+
+        with patch(
+            "loanwhiz.extraction.assembler._download_and_convert",
+            return_value=mock_markdown,
+        ), patch(
+            "loanwhiz.extraction.assembler.extract_definitions",
+            return_value=fake_defs_graph,
+        ), patch(
+            "loanwhiz.extraction.assembler.extract_all_waterfalls",
+            return_value={"revenue": fake_waterfall},
+        ), patch(
+            "loanwhiz.extraction.assembler.extract_covenants",
+            return_value=fake_covenants,
+        ):
+            return extract_deal_model(
+                prospectus_url=_PROSPECTUS_URL,
+                deal_name=_DEAL_NAME,
+                cache_dir=cache_dir,
+            )
+
+    def test_step_condition_links_to_defined_term(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            model = self._run(tmpdir)
+            steps = model.waterfalls["revenue"]["steps"]
+            # Unconditional step → empty link.
+            assert steps[0]["condition_terms"] == []
+            # Conditional step → linked to the Sequential Pay Trigger.
+            assert steps[1]["condition_terms"] == ["Sequential Pay Trigger"]
+
+    def test_trigger_metric_links_via_display_name(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            model = self._run(tmpdir)
+            trig = model.covenants["triggers"][0]
+            # The snake_case metric won't match, but the display name resolves.
+            assert trig["metric_terms"] == ["PDL Debit Balance"]
+
+    def test_empty_graph_links_to_empty_lists(self) -> None:
+        """With no defined terms, every link is an empty list (serialise unchanged
+        apart from the new keys)."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            mock_markdown = "# Definitions\nx\n## Revenue Priority of Payments\ny"
+            empty_graph = MagicMock()
+            empty_graph.terms = {}
+            step = _make_step(priority="(g)", recipient="class_b_interest").model_copy(
+                update={"condition": "while the Sequential Pay Trigger is in effect"}
+            )
+            wf = ExtractedWaterfall(
+                deal_name=_DEAL_NAME,
+                waterfall_type="revenue",
+                steps=[step],
+                source_section="Section 5.2",
+                extraction_confidence=1.0,
+            )
+            cov = MagicMock()
+            cov.model_dump.return_value = {
+                "deal_name": _DEAL_NAME,
+                "triggers": [{"name": "t", "metric": "m", "display_name": "M"}],
+                "issuer_covenants": [],
+                "extraction_confidence": 0.0,
+            }
+            cov.triggers = []
+            with patch(
+                "loanwhiz.extraction.assembler._download_and_convert",
+                return_value=mock_markdown,
+            ), patch(
+                "loanwhiz.extraction.assembler.extract_definitions",
+                return_value=empty_graph,
+            ), patch(
+                "loanwhiz.extraction.assembler.extract_all_waterfalls",
+                return_value={"revenue": wf},
+            ), patch(
+                "loanwhiz.extraction.assembler.extract_covenants",
+                return_value=cov,
+            ):
+                model = extract_deal_model(
+                    prospectus_url=_PROSPECTUS_URL,
+                    deal_name=_DEAL_NAME,
+                    cache_dir=tmpdir,
+                )
+            assert model.waterfalls["revenue"]["steps"][0]["condition_terms"] == []
+            assert model.covenants["triggers"][0]["metric_terms"] == []
+
+
+# ---------------------------------------------------------------------------
 # Unit tests — language-agnostic section wiring (#274)
 # ---------------------------------------------------------------------------
 

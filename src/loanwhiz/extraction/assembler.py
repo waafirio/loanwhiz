@@ -70,6 +70,97 @@ DEFAULT_DOCLING_CACHE_DIR = _REPO_ROOT / "data" / "docling_cache"
 
 
 # ---------------------------------------------------------------------------
+# Definitions linking (#395)
+# ---------------------------------------------------------------------------
+#
+# The definitions graph was previously passed to the sub-extractors only as
+# throwaway LLM prompt context — the resolved terms were discarded and never
+# attached to the structured model, so a waterfall step's ``condition`` and a
+# trigger's ``metric`` stayed bare strings disconnected from their definitions.
+# The interpreter's condition evaluator then fell through to its "unknown
+# condition → pay the step" default whenever the prose didn't lexically match,
+# so conditional waterfall prose never resolved against the trigger it named.
+#
+# These helpers close that gap: at assembly time they link each step condition
+# and each trigger metric/display-name to the defined terms it references and
+# attach the canonical term names onto the serialised structures, so the model
+# carries the resolution and the interpreter can gate on the linked term.
+
+
+def _link_terms_in(text: str | None, term_keys: list[str]) -> list[str]:
+    """Return the canonical defined-term names referenced in ``text``.
+
+    Operates on the graph's term *keys* (the canonical names) directly — the
+    same case-insensitive, first-appearance-ordered, de-duplicated scan as
+    :meth:`DefinitionsGraph.link`, but driven by the names the assembler already
+    holds so it never depends on a ``DefinedTerm`` object's shape. Blank text or
+    no match yields ``[]``.
+    """
+    if not text or not str(text).strip():
+        return []
+    lower_text = str(text).lower()
+    hits: list[tuple[int, str]] = []
+    for key in term_keys:
+        if not key:
+            continue
+        idx = lower_text.find(key.lower())
+        if idx >= 0:
+            hits.append((idx, key))
+    hits.sort(key=lambda h: (h[0], h[1]))
+    seen: set[str] = set()
+    ordered: list[str] = []
+    for _idx, key in hits:
+        if key in seen:
+            continue
+        seen.add(key)
+        ordered.append(key)
+    return ordered
+
+
+def _apply_definitions_links(
+    *,
+    waterfalls: dict,
+    covenants: dict,
+    term_keys: list[str],
+) -> None:
+    """Attach defined-term links onto serialised waterfall steps + triggers.
+
+    Mutates the serialised ``waterfalls`` and ``covenants`` dicts in place:
+
+    - Each waterfall step gains a ``condition_terms`` list — the defined terms
+      its ``condition`` references (empty for an unconditional step). The
+      interpreter's :meth:`StepSpec.from_extracted` reads this so a linked
+      conditional step gates on its resolved trigger instead of the
+      "unknown → pay" default.
+    - Each trigger gains a ``metric_terms`` list — the defined terms its
+      ``metric`` / ``display_name`` references — so the trigger's measurable
+      quantity is linked to its definition in the structured model.
+
+    No-op (every link an empty list) when no terms are defined, so a deal with
+    an empty definitions graph serialises unchanged apart from the new keys.
+    """
+    for wf in (waterfalls or {}).values():
+        if not isinstance(wf, dict):
+            continue
+        for step in wf.get("steps", []) or []:
+            if isinstance(step, dict):
+                step["condition_terms"] = _link_terms_in(
+                    step.get("condition"), term_keys
+                )
+
+    for trig in (covenants or {}).get("triggers", []) or []:
+        if isinstance(trig, dict):
+            linked = _link_terms_in(trig.get("metric"), term_keys)
+            # Fall back to the human-readable display name (the metric is often
+            # a snake_case slug like ``pdl_debit_balance`` that won't match a
+            # capitalised defined term, but the display name "PDL Debit Balance"
+            # will).
+            if not linked:
+                linked = _link_terms_in(trig.get("display_name"), term_keys)
+            trig["metric_terms"] = linked
+
+
+# ---------------------------------------------------------------------------
 # Data models
 # ---------------------------------------------------------------------------
 
@@ -377,6 +468,19 @@ def extract_deal_model(
     )
 
     # 8. Assemble.
+    #    Serialise the waterfalls + covenants, then LINK the definitions graph
+    #    into the structured model (#395): attach ``condition_terms`` onto each
+    #    step's condition and ``metric_terms`` onto each trigger's metric so the
+    #    interpreter can resolve conditional waterfall prose against its defined
+    #    term instead of falling through to the "unknown → pay" default.
+    serialised_waterfalls = {k: v.model_dump() for k, v in waterfalls.items()}
+    serialised_covenants = covenants.model_dump()
+    term_keys = list(definitions_graph.terms.keys())
+    _apply_definitions_links(
+        waterfalls=serialised_waterfalls,
+        covenants=serialised_covenants,
+        term_keys=term_keys,
+    )
     model = DealModel(
         metadata=DealModelMetadata(
             deal_name=deal_name,
@@ -394,8 +498,8 @@ def extract_deal_model(
             }
             for t, d in definitions_graph.terms.items()
         },
-        waterfalls={k: v.model_dump() for k, v in waterfalls.items()},
-        covenants=covenants.model_dump(),
+        waterfalls=serialised_waterfalls,
+        covenants=serialised_covenants,
         tranche_structure=tranche_structure,
         trigger_names=[t.name for t in covenants.triggers],
     )
