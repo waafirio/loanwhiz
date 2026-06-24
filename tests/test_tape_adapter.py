@@ -214,6 +214,45 @@ class TestPeriodInputs:
         assert "risk_signals.pool_balance" in pi.provenance
         assert pi.provenance["risk_signals.wa_ltv"].citation.page_or_row == "RREL40"
 
+    def test_period_inputs_without_tape_degrades_honestly(self) -> None:
+        """``tape=None`` (pool analytics unresolved): ``risk_signals`` is left
+        ``None`` and the provenance map is empty, but the numeric fold is
+        unaffected — ``legs`` + the available-funds aggregates still come from
+        the ``CollectionsOutput`` so the reconstruction is unbroken, it just
+        omits that period's risk signals. The documented honest-degradation
+        branch of ``period_inputs`` (the ``if tape is not None`` guard)."""
+        pi = TapeAdapter().period_inputs(
+            _collections(),
+            None,
+            reporting_date="2026-03-31",
+            days_in_period=90,
+        )
+        assert pi.source == "tape"
+        # Risk enrichment omitted — not fabricated.
+        assert pi.risk_signals is None
+        assert pi.provenance == {}
+        # The numeric fold is intact: legs + aggregates still present.
+        assert pi.legs is not None
+        assert pi.legs.realized_loss == 1_500.0
+        assert pi.available_revenue == 30_000.0
+        assert pi.available_principal == 65_000.0
+        assert pi.realized_loss == 1_500.0
+
+    def test_period_inputs_negative_realized_loss_floored(self) -> None:
+        """A negative ``realized_losses`` (e.g. a net write-back artefact) is
+        floored at 0 in ``PeriodInputs.realized_loss`` — the engine never sees a
+        negative loss. The ``max(0.0, ...)`` guard in ``period_inputs``."""
+        pi = TapeAdapter().period_inputs(
+            _collections(realized_loss=-2_000.0),
+            _tape(),
+            reporting_date="2026-03-31",
+            days_in_period=90,
+        )
+        assert pi.realized_loss == 0.0
+        # The leg preserves the raw signed figure (it is the aggregator's output);
+        # only the engine-facing scalar is floored.
+        assert pi.legs.realized_loss == -2_000.0
+
 
 # ---------------------------------------------------------------------------
 # Byte-for-byte safety: tape PeriodInputs ↔ legacy PeriodInput equivalence.
