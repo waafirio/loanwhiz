@@ -15,6 +15,7 @@ from loanwhiz.agent.tools import (
     DEFAULT_DEAL_ID,
     aggregate_collections,
     check_covenants,
+    compare_deals,
     forecast_trigger_breaches,
     get_deal_model,
     list_deal_tapes,
@@ -390,6 +391,126 @@ def test_stress_matrix_oversized_grid_errors_gracefully():
     )
     assert result["confidence"] == 0.0
     assert "error" in result
+
+
+# ---------------------------------------------------------------------------
+# compare_deals (#401 — expose deal comparison to chat)
+#
+# These exercise the REAL /compare alignment path offline against the committed
+# seed models (integration-level per the plan's load-bearing contract — no mock
+# of the unit under test); the bounding helper is pinned by a focused unit test.
+# ---------------------------------------------------------------------------
+
+# Two seeded deals that both carry a committed DealModel (so the structural diff
+# renders offline); green-lion-2024-1 also reconstructs a real performance series
+# via the offline report loader. Mirrors tests/test_compare.py.
+_SEED_A = "green-lion-2024-1"
+_SEED_B = "green-lion-2023-1"
+
+
+def test_compare_deals_returns_aligned_comparison():
+    """Two seeded deals return an aligned structural diff + risk summary, with
+    full confidence on the deterministic assembly and no error."""
+    result = compare_deals.invoke({"deal_a": _SEED_A, "deal_b": _SEED_B})
+    assert result["confidence"] == 1.0
+    assert "error" not in result
+    # Columns are the requested deals, in order.
+    assert [d["deal_id"] for d in result["deals"]] == [_SEED_A, _SEED_B]
+    # Both seeded deals got a structural diff (cached models present).
+    assert all(d["has_structural"] for d in result["deals"])
+    # Structural rows span the canonical sections, one risk row per deal.
+    sections = {row["section"] for row in result["structural_rows"]}
+    assert {"tranche", "waterfall:revenue", "trigger", "reserve"} <= sections
+    assert [rs["deal_id"] for rs in result["risk_summary"]] == [_SEED_A, _SEED_B]
+
+
+def test_compare_deals_target_sets_benchmark_deviation():
+    """With a ``target`` in the set, the benchmark lens annotates the target's
+    comparable structural cells with a comp-set median + signed deviation."""
+    result = compare_deals.invoke(
+        {"deal_a": _SEED_A, "deal_b": _SEED_B, "target": _SEED_A}
+    )
+    assert "error" not in result
+    assert result["target_deal_id"] == _SEED_A
+    assert next(d for d in result["deals"] if d["deal_id"] == _SEED_A)["is_target"]
+    target_deviations = [
+        cell["deviation"]
+        for row in result["structural_rows"]
+        for cell in row["cells"]
+        if cell["deal_id"] == _SEED_A and cell.get("deviation") is not None
+    ]
+    assert target_deviations, "target should carry benchmark deviations"
+
+
+def test_compare_deals_n_way_with_extra_deals():
+    """``extra_deals`` extends the comparison to an N-way set."""
+    result = compare_deals.invoke(
+        {"deal_a": _SEED_A, "deal_b": _SEED_B, "extra_deals": ["leone-arancio-2023-1"]}
+    )
+    assert "error" not in result
+    assert [d["deal_id"] for d in result["deals"]] == [
+        _SEED_A,
+        _SEED_B,
+        "leone-arancio-2023-1",
+    ]
+
+
+def test_compare_deals_unknown_deal_errors_gracefully():
+    """An unknown deal id returns a graceful tool error listing available deals,
+    never a crash and never a silent fallback to a default deal."""
+    result = compare_deals.invoke({"deal_a": _SEED_A, "deal_b": "no-such-deal"})
+    assert result["confidence"] == 0.0
+    assert "error" in result
+    assert "available_deals" in result
+
+
+def test_compare_deals_needs_two_distinct_deals():
+    """The same deal twice is a degenerate comparison → graceful error."""
+    result = compare_deals.invoke({"deal_a": _SEED_A, "deal_b": _SEED_A})
+    assert "error" in result
+    assert result["confidence"] == 0.0
+
+
+def test_compare_deals_target_not_in_set_errors():
+    """A ``target`` not among the compared deals returns a graceful error."""
+    result = compare_deals.invoke(
+        {"deal_a": _SEED_A, "deal_b": _SEED_B, "target": "leone-arancio-2023-1"}
+    )
+    assert "error" in result
+
+
+def test_bound_compare_output_collapses_long_series():
+    """A performance series beyond MAX_VERBATIM_PERIODS collapses to first/last
+    with a ``periods_summarised`` note; structural/risk fields are untouched."""
+    from loanwhiz.agent.tools import MAX_VERBATIM_PERIODS, _bound_compare_output
+
+    n = MAX_VERBATIM_PERIODS + 3
+    points = [{"reporting_date": f"2026-{m:02d}-28", "pool_factor": 1.0} for m in range(n)]
+    payload = {
+        "performance_series": [{"deal_id": "d1", "points": points}],
+        "structural_rows": [{"key": "tranche_rank_0"}],
+        "risk_summary": [{"deal_id": "d1"}],
+    }
+    bounded = _bound_compare_output(payload)
+    series = bounded["performance_series"][0]
+    assert len(series["points"]) == 2  # first + last only
+    assert series["points"][0] == points[0]
+    assert series["points"][-1] == points[-1]
+    assert "periods_summarised" in series
+    # Non-series fields are passed through verbatim.
+    assert bounded["structural_rows"] == payload["structural_rows"]
+    assert bounded["risk_summary"] == payload["risk_summary"]
+
+
+def test_bound_compare_output_short_series_verbatim():
+    """At/under the bound the series is returned unchanged (no summarisation)."""
+    from loanwhiz.agent.tools import _bound_compare_output
+
+    points = [{"reporting_date": "2026-01-31", "pool_factor": 1.0}]
+    payload = {"performance_series": [{"deal_id": "d1", "points": points}]}
+    bounded = _bound_compare_output(payload)
+    assert bounded["performance_series"][0]["points"] == points
+    assert "periods_summarised" not in bounded["performance_series"][0]
 
 
 # ---------------------------------------------------------------------------
@@ -1019,12 +1140,13 @@ def test_sf_tools_has_expected_tools():
         "stress_matrix",
         "monitor_portfolio",
         "read_investor_report",
+        "compare_deals",
         "synthesise_cross_source",
     ]
 
 
-def test_sf_tools_has_exactly_thirteen_tools():
-    assert len(SF_TOOLS) == 13
+def test_sf_tools_has_exactly_fourteen_tools():
+    assert len(SF_TOOLS) == 14
 
 
 def test_sf_tool_node_is_tool_node_instance():
@@ -1052,7 +1174,7 @@ def test_sf_tools_all_have_invoke_method():
 def test_list_available_tools_returns_list_of_dicts():
     result = list_available_tools()
     assert isinstance(result, list)
-    assert len(result) == 13
+    assert len(result) == 14
 
 
 def test_list_available_tools_has_name_and_description():
@@ -1070,6 +1192,29 @@ def test_list_available_tools_names_match_sf_tools():
     tool_names = [t.name for t in SF_TOOLS]
     listed_names = [e["name"] for e in list_available_tools()]
     assert listed_names == tool_names
+
+
+# ---------------------------------------------------------------------------
+# Planner system prompt — cross-deal framing + compare routing (#401)
+# ---------------------------------------------------------------------------
+
+
+def test_system_prompt_is_not_single_deal_framed():
+    """The prompt no longer asserts the agent only analyses one deal, and tells
+    it an explicit deal_id targets any registered deal (cross-deal reasoning)."""
+    from loanwhiz.agent.planner import SYSTEM_PROMPT
+
+    assert "You analyse the Green Lion 2026-1 Dutch RMBS deal" not in SYSTEM_PROMPT
+    assert "not limited to one deal" in SYSTEM_PROMPT.lower()
+
+
+def test_system_prompt_documents_compare_deals_routing():
+    """The prompt documents compare_deals and routes 'A vs B' / relative-value /
+    benchmark questions to it, so the agent reaches the comparison path."""
+    from loanwhiz.agent.planner import SYSTEM_PROMPT
+
+    assert "compare_deals" in SYSTEM_PROMPT
+    assert "relative value" in SYSTEM_PROMPT.lower()
 
 
 # ---------------------------------------------------------------------------
