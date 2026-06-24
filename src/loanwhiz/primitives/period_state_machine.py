@@ -143,7 +143,8 @@ DEFAULT_REVENUE_STEPS: list[StepSpec] = [
 # Redemption (principal) steps. Steps (b)/(c) carry the principal allocation,
 # which ``run_period`` computes via the sequential-pay branch
 # (``allocate_principal``) and feeds back through ``need_overrides`` — so the
-# pro-rata ↔ sequential choice (MODELING-GAPS.md A3) actually gates Class B's
+# pro-rata ↔ sequential choice (a since-closed modelling gap; see
+# SYSTEM-STATUS.md) actually gates Class B's
 # principal instead of Class A always taking 100%.
 DEFAULT_REDEMPTION_STEPS: list[StepSpec] = [
     StepSpec(

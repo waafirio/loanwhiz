@@ -4,6 +4,8 @@ Structured finance agent framework — SF-native primitives, deal model extracti
 
 The same governed primitives run **end-to-end across 5 deals in 3 jurisdictions** — Dutch (Green Lion 2023-1 / 2024-1 / 2026-1), Italian (Leone Arancio RMBS 2023-1), and Spanish (Sol-Lion II RMBS) — and the model-driven waterfall engine has been **validated to the cent against a real published deal** (Green Lion 2024-1's own Notes & Cash Priority of Payments). What is *validated* vs merely *ran* vs *not-applicable* is tracked honestly in a per-cell capability matrix (`GET /capability-matrix` and the **Showcase** view) — the source of truth is **1 validated / 9 ran / 15 not-applicable**, never a blanket "validated everywhere". Extraction on the non-English prospectuses is honestly **partial** (see the data/model cards). The 8 primitives are also packaged as a governed **MCP server** (`mcp/`) for third-party consumption.
 
+> **Honest boundaries.** For the current capability picture and the real limitations — e.g. "Projection" is a single-period stress sensitivity (not a forward CPR/CDR projection); deal comparison is aligned-display + median-deviation (not an automated "which deal is better" verdict — the relative-value screener is deferred, #307); IT/ES extraction is partial (Sol-Lion II's revenue waterfall is empty); the on-demand `/extract` job store is in-process/single-instance; a brand-new deal still needs a seed or a (long) extraction run before its Overview is populated — see [SYSTEM-STATUS.md](SYSTEM-STATUS.md).
+
 ---
 
 ## Architecture
@@ -21,16 +23,18 @@ CLIENTS
             v                         v
     SF PRIMITIVES            DEAL MODEL (JSON, per deal)
       esma_tape_normaliser     definitions{}
-      waterfall_runner         waterfall[]  <- prospectus section 5.2
-      covenant_monitor         triggers[]
-      report_verifier          tranches[]
-      cashflow_projector       pool_eligibility{}
-      audit_logger
+      run_period (waterfall    waterfall[]  <- prospectus section 5.2
+        kernel; one engine)    triggers[]
+      covenant_monitor         tranches[]
+      report_verifier          pool_eligibility{}
+      audit_logger           (build_deal_rules -> canonical DealRules)
       collections_aggregator
             |                         ^
             +-------- DATA LAYER -----+
       direct-read ESMA tape ingestion (HuggingFace CSV/parquet, multi-annex; the canonical tape path)
       Docling extraction pipeline (prospectus -> deal model JSON)
+        - offline: scripts/seed_deal_models.py
+        - on-demand: POST /deal/{id}/extract  (background job, in-process store)
       HuggingFace: 5 deals across 3 jurisdictions (NL / IT / ES RMBS)
 
 CROSS-DEAL / FRAMEWORK SURFACE

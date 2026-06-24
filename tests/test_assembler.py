@@ -1021,22 +1021,53 @@ class TestExtractDealModelLanguageAgnostic:
 
 
 class TestDurableCacheLocation:
-    """The default cache dirs must be the repo's durable data/ tree, not /tmp."""
+    """The default cache dirs must be the repo's durable data/ tree.
+
+    The invariant is *location-relative-to-the-module*, NOT an absolute-path
+    predicate: the cache dirs are derived from the assembler module's own
+    location (``Path(__file__).resolve().parents[3] / "data" / ...``), so they
+    must resolve under the repo's committed ``data/`` tree wherever the repo is
+    checked out — including a checkout rooted under ``/tmp`` (the promotion
+    build-verify path). The old assertions ``not str(...).startswith("/tmp/")``
+    conflated "is not the retired ``/tmp/loanwhiz_cache`` literal" with "the
+    absolute path must not begin with ``/tmp/``", so they false-failed on any
+    ``/tmp``-rooted checkout even though the code was correct (#389). These
+    tests assert the real, location-independent invariant instead.
+    """
+
+    @staticmethod
+    def _expected_repo_data_root() -> Path:
+        """The repo ``data/`` dir derived from the assembler module's location.
+
+        Mirrors how :mod:`loanwhiz.extraction.assembler` derives ``_REPO_ROOT``
+        (``src/loanwhiz/extraction/assembler.py`` → ``parents[3]`` is the repo
+        root), so the assertion tracks the code regardless of checkout path.
+        """
+        from loanwhiz.extraction import assembler
+
+        return Path(assembler.__file__).resolve().parents[3] / "data"
 
     def test_deal_cache_default_is_data_deals(self) -> None:
         assert DEFAULT_DEAL_CACHE_DIR.parts[-2:] == ("data", "deals")
-        # Must NOT be the old ephemeral /tmp/loanwhiz_cache location.
+        # Resolves under the repo's own committed data/ tree (module-relative),
+        # independent of where the repo is checked out.
+        assert DEFAULT_DEAL_CACHE_DIR == self._expected_repo_data_root() / "deals"
+        # Must NOT be the old ephemeral /tmp/loanwhiz_cache location (the literal
+        # that was retired in #132) — a *substring* check, not an absolute prefix.
         assert "loanwhiz_cache" not in str(DEFAULT_DEAL_CACHE_DIR)
-        assert not str(DEFAULT_DEAL_CACHE_DIR).startswith("/tmp/")
 
     def test_docling_cache_default_is_data_docling_cache(self) -> None:
         assert DEFAULT_DOCLING_CACHE_DIR.parts[-2:] == ("data", "docling_cache")
+        assert (
+            DEFAULT_DOCLING_CACHE_DIR
+            == self._expected_repo_data_root() / "docling_cache"
+        )
         assert "loanwhiz_cache" not in str(DEFAULT_DOCLING_CACHE_DIR)
-        assert not str(DEFAULT_DOCLING_CACHE_DIR).startswith("/tmp/")
 
     def test_deal_and_docling_caches_share_repo_data_root(self) -> None:
         # Both resolve under the same committed repo data/ directory.
         assert DEFAULT_DEAL_CACHE_DIR.parent == DEFAULT_DOCLING_CACHE_DIR.parent
+        assert DEFAULT_DEAL_CACHE_DIR.parent == self._expected_repo_data_root()
         assert DEFAULT_DEAL_CACHE_DIR.parent.name == "data"
 
     def test_default_cache_dir_signature_uses_constant(self) -> None:
@@ -1044,9 +1075,10 @@ class TestDurableCacheLocation:
         import inspect
 
         sig = inspect.signature(extract_deal_model)
+        # The signature default is the constant verbatim — so it tracks the
+        # module-relative invariant above and never hardcodes an absolute path.
         assert sig.parameters["cache_dir"].default == str(DEFAULT_DEAL_CACHE_DIR)
         assert "loanwhiz_cache" not in sig.parameters["cache_dir"].default
-        assert not sig.parameters["cache_dir"].default.startswith("/tmp/")
 
 
 # ---------------------------------------------------------------------------
