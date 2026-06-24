@@ -37,21 +37,44 @@ from __future__ import annotations
 
 import logging
 import threading
+import time
 from concurrent.futures import Future, ThreadPoolExecutor
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Callable, Literal, Optional
 
 from loanwhiz.extraction.assembler import DealModel, extract_deal_model
+from loanwhiz.primitives.audit_logger import audit_extraction_result
+from loanwhiz.primitives.base import Citation
 
 logger = logging.getLogger(__name__)
 
 JobStatus = Literal["queued", "running", "succeeded", "failed"]
 
+# Governance identity recorded on every extraction-job audit entry (#404). The
+# on-demand /extract job runs the module-level ``extract_deal_model`` primitive
+# under governance: each run (success OR failure) emits one FINOS-aligned audit
+# record carrying the deal's REAL confidence + citations (never a hardcoded
+# placeholder). The audit JSONL lands under ``{audit_log_dir}/{name}/{date}.jsonl``.
+_EXTRACTION_PRIMITIVE_NAME = "deal_extraction"
+_EXTRACTION_PRIMITIVE_VERSION = "0.1.0"
+_EXTRACTION_MODULE_PATH = "loanwhiz.extraction.assembler.extract_deal_model"
+
+# Default audit log dir — patchable in tests (mirrors ``main.API_AUDIT_LOG_DIR``)
+# so a test can point it at a tmp_path and assert the governance record was
+# written without polluting /tmp.
+AUDIT_LOG_DIR = "/tmp/loanwhiz_audit"
+
 # Type of the wrapped extraction primitive — the injection seam. The real
 # implementation is ``loanwhiz.extraction.assembler.extract_deal_model``; tests
 # pass a fast stub with the same signature so no real extraction runs.
 ExtractFn = Callable[..., DealModel]
+
+# Injection seam for the governance audit sink (#404). The real implementation is
+# ``loanwhiz.primitives.audit_logger.audit_extraction_result``; tests pass a fast
+# in-memory recorder with a compatible signature so the governance wiring is
+# asserted without touching the JSONL store.
+AuditFn = Callable[..., object]
 
 
 def _now_iso() -> str:
@@ -81,6 +104,75 @@ def _summarise(model: DealModel) -> dict:
         "citation_count": citation_count,
         "sections_found": model.metadata.sections_found,
     }
+
+
+def _extraction_confidence(model: DealModel) -> float:
+    """Honest governance confidence for an extracted :class:`DealModel`.
+
+    The on-demand /extract job runs UNDER governance (#404), so its audit record
+    must carry the **real** confidence the extraction primitives produced — never
+    the hollow hardcoded ``0.9`` an older audit flagged. We take the conservative
+    ``min`` over the genuine quality signals the model already carries:
+
+    - ``metadata.completeness_score`` — the real extraction-coverage metric.
+    - each waterfall's ``extraction_confidence`` — per-section step-usability.
+    - the covenants' ``extraction_confidence`` — trigger-extraction certainty.
+
+    ``min`` mirrors the evidence-pack convention (aggregate = min of per-tool
+    confidences): one weak section drags the whole-model confidence down, which
+    is the honest signal for routing to human review. With no per-section signal
+    present, the completeness score stands alone.
+    """
+    signals: list[float] = [float(model.metadata.completeness_score)]
+    for waterfall in model.waterfalls.values():
+        conf = waterfall.get("extraction_confidence")
+        if conf is not None:
+            signals.append(float(conf))
+    covenant_conf = model.covenants.get("extraction_confidence")
+    if covenant_conf is not None:
+        signals.append(float(covenant_conf))
+    return min(1.0, max(0.0, min(signals)))
+
+
+def _extraction_citations(model: DealModel) -> list[Citation]:
+    """Real source citations grounding an extracted :class:`DealModel`.
+
+    Surfaces the per-step (waterfall) and per-trigger (covenant) ``citation``
+    objects the model already carries as governed :class:`Citation`s — the same
+    provenance ``_summarise`` only *counts*. Each citation's ``document`` /
+    ``page_or_section`` becomes a real ``Citation`` so the audit record's
+    citation trail is the actual grounded sources, not an empty list.
+    """
+    citations: list[Citation] = []
+
+    def _as_citation(raw: dict, fallback_excerpt: str) -> Citation | None:
+        if not isinstance(raw, dict):
+            return None
+        document = raw.get("document")
+        if not document:
+            return None
+        return Citation(
+            document=str(document),
+            page_or_row=raw.get("page_or_section") or raw.get("page_or_row"),
+            excerpt=str(raw.get("excerpt") or fallback_excerpt),
+        )
+
+    for waterfall in model.waterfalls.values():
+        for step in waterfall.get("steps", []) or []:
+            raw = step.get("citation")
+            if raw:
+                cit = _as_citation(
+                    raw, str(step.get("description") or step.get("recipient") or "")
+                )
+                if cit is not None:
+                    citations.append(cit)
+    for trigger in model.covenants.get("triggers", []) or []:
+        raw = trigger.get("citation")
+        if raw:
+            cit = _as_citation(raw, str(trigger.get("name") or ""))
+            if cit is not None:
+                citations.append(cit)
+    return citations
 
 
 @dataclass
@@ -141,6 +233,8 @@ def _run_extraction(
     cache_dir: str,
     force: bool,
     extract_fn: ExtractFn,
+    audit_fn: AuditFn = audit_extraction_result,
+    audit_log_dir: Optional[str] = None,
 ) -> ExtractionJob:
     """Run the wrapped extraction on the worker thread; record terminal state.
 
@@ -148,9 +242,27 @@ def _run_extraction(
     at ``{cache_dir}/{slug(deal_name)}.json``, which is the single source of truth
     the cold-start ``/deal/{id}/model`` reader serves. No second write here.
 
+    Governance (#404): the job runs UNDER governance — both the success and the
+    failure path emit one FINOS-aligned audit record via ``audit_fn`` (default
+    :func:`~loanwhiz.primitives.audit_logger.audit_extraction_result`). The record
+    carries who/what/when (the ``deal_extraction`` primitive identity + UTC clock +
+    duration), the input hash (over prospectus_url / deal_name / force), the
+    extracted output, and the **real** confidence + citations the extraction
+    primitives produced — never a hardcoded placeholder. The audit call is
+    best-effort and additionally guarded here, so a governance side-channel
+    failure can never change the job's success/failure outcome.
+
     Any exception is caught and recorded as ``failed`` with the reason — the
     worker thread never crashes the pool and the poll never 500s.
     """
+    started = time.perf_counter()
+    log_dir = audit_log_dir if audit_log_dir is not None else AUDIT_LOG_DIR
+    audit_input = {
+        "prospectus_url": prospectus_url,
+        "deal_name": deal_name,
+        "force_refresh": force,
+    }
+
     with _LOCK:
         job.status = "running"
         job.started_at = _now_iso()
@@ -163,17 +275,88 @@ def _run_extraction(
             force_refresh=force,
         )
         summary = _summarise(model)
+        confidence = _extraction_confidence(model)
+        citations = _extraction_citations(model)
+
+        entry = _safe_audit(
+            audit_fn,
+            primitive_name=_EXTRACTION_PRIMITIVE_NAME,
+            primitive_version=_EXTRACTION_PRIMITIVE_VERSION,
+            input=audit_input,
+            output=model,
+            confidence=confidence,
+            citations=citations,
+            duration_ms=(time.perf_counter() - started) * 1000.0,
+            module_path=_EXTRACTION_MODULE_PATH,
+            log_dir=log_dir,
+        )
+        # Surface the governed confidence + the human-review flag + the audit id
+        # alongside the existing count summary (additive — existing keys unchanged).
+        summary["confidence"] = confidence
+        summary["human_review_required"] = _human_review_required(entry, confidence)
+        summary["audit_entry_id"] = _entry_id(entry)
+
         with _LOCK:
             job.status = "succeeded"
             job.finished_at = _now_iso()
             job.summary = summary
     except Exception as exc:  # noqa: BLE001 — honest failure surfacing is the point
         logger.exception("Extraction job for deal %s failed", job.deal_id)
+        reason = f"{type(exc).__name__}: {exc}"
+        # A failed extraction also runs under governance: emit a failure audit
+        # trail (confidence 0.0, no citations, the error as output) so a
+        # creds-less / pipeline failure is recorded, not silently un-governed.
+        entry = _safe_audit(
+            audit_fn,
+            primitive_name=_EXTRACTION_PRIMITIVE_NAME,
+            primitive_version=_EXTRACTION_PRIMITIVE_VERSION,
+            input=audit_input,
+            output={"error": reason},
+            confidence=0.0,
+            citations=[],
+            duration_ms=(time.perf_counter() - started) * 1000.0,
+            module_path=_EXTRACTION_MODULE_PATH,
+            log_dir=log_dir,
+        )
         with _LOCK:
             job.status = "failed"
             job.finished_at = _now_iso()
-            job.error = f"{type(exc).__name__}: {exc}"
+            job.error = reason
+            job.summary = {"audit_entry_id": _entry_id(entry)}
     return job
+
+
+def _safe_audit(audit_fn: AuditFn, **kwargs) -> object:
+    """Call ``audit_fn`` with the governance side-channel fully isolated.
+
+    ``audit_extraction_result`` is already best-effort, but the injection seam
+    accepts arbitrary callables (incl. test recorders), so this extra guard
+    guarantees the governance call can never change the job's outcome — the
+    contract from ``main._audit``.
+    """
+    try:
+        return audit_fn(**kwargs)
+    except Exception:  # noqa: BLE001 — audit is a side-channel; never fail the job
+        logger.exception("Governance audit for an extraction job failed (ignored)")
+        return None
+
+
+def _entry_id(entry: object) -> Optional[str]:
+    """Best-effort read of an audit entry's ``entry_id`` (``None`` when unaudited)."""
+    return getattr(entry, "entry_id", None)
+
+
+def _human_review_required(entry: object, confidence: float) -> bool:
+    """The human-review flag — from the audit entry when present, else the rule.
+
+    Prefers the persisted entry's flag (so the surfaced signal matches the
+    governance record's threshold), falling back to the default-threshold rule
+    when the audit was skipped (best-effort failure).
+    """
+    flag = getattr(entry, "human_review_required", None)
+    if flag is not None:
+        return bool(flag)
+    return confidence < 0.7
 
 
 # ---------------------------------------------------------------------------
@@ -312,6 +495,8 @@ def submit_extraction(
     cache_dir: str,
     force: bool = False,
     extract_fn: Optional[ExtractFn] = None,
+    audit_fn: Optional[AuditFn] = None,
+    audit_log_dir: Optional[str] = None,
 ) -> tuple[ExtractionJob, Optional[Future]]:
     """Enqueue a background extraction for ``deal_id`` and return immediately.
 
@@ -332,6 +517,8 @@ def submit_extraction(
     """
     if extract_fn is None:
         extract_fn = extract_deal_model
+    if audit_fn is None:
+        audit_fn = audit_extraction_result
 
     with _LOCK:
         existing = _JOBS.get(deal_id)
@@ -358,5 +545,7 @@ def submit_extraction(
         cache_dir=cache_dir,
         force=force,
         extract_fn=extract_fn,
+        audit_fn=audit_fn,
+        audit_log_dir=audit_log_dir,
     )
     return job, future

@@ -134,12 +134,18 @@ def test_submit_transitions_to_succeeded_and_materialises_cache(tmp_path):
     assert done.status == "succeeded"
     assert done.started_at is not None and done.finished_at is not None
     assert done.error is None
-    assert done.summary == {
-        "completeness_score": 0.85,
-        "trigger_count": 1,
-        "citation_count": 2,
-        "sections_found": ["definitions", "revenue_priority_of_payments"],
-    }
+    # The count summary is unchanged; the governance signals (#404) are surfaced
+    # additively (confidence / human_review_required / audit_entry_id).
+    assert done.summary["completeness_score"] == 0.85
+    assert done.summary["trigger_count"] == 1
+    assert done.summary["citation_count"] == 2
+    assert done.summary["sections_found"] == [
+        "definitions",
+        "revenue_priority_of_payments",
+    ]
+    assert "confidence" in done.summary
+    assert "human_review_required" in done.summary
+    assert "audit_entry_id" in done.summary
     # Materialised into the same cache the cold-start reader serves.
     cache_file = tmp_path / f"{_slug('Green Lion 2026-1 B.V.')}.json"
     assert cache_file.exists()
@@ -159,7 +165,10 @@ def test_failure_surfaces_as_failed_with_reason(tmp_path):
     done = extraction_jobs.get_job(DEAL_ID)
     assert done.status == "failed"
     assert "missing GCP credentials" in done.error
-    assert done.summary is None
+    # No count summary on failure (no model), but the failure governance record's
+    # id is surfaced (#404) — the failed run is governed, not silently dropped.
+    assert done.summary == {"audit_entry_id": done.summary["audit_entry_id"]}
+    assert "completeness_score" not in done.summary
 
 
 def test_force_propagates_force_refresh(tmp_path):
@@ -179,6 +188,228 @@ def test_force_propagates_force_refresh(tmp_path):
 
 def test_get_job_none_when_never_submitted():
     assert extraction_jobs.get_job("never-submitted") is None
+
+
+# --- governance: the /extract job runs UNDER governance (#404) -----------------
+# The on-demand extraction job must emit a real FINOS-aligned audit record with
+# the deal's REAL confidence + citations — never the hollow hardcoded 0.9 / empty
+# citations an older audit flagged. The audit sink is injected (``audit_fn``) so
+# these assert the governance wiring without touching the JSONL store, and the
+# real ``audit_extraction_result`` is exercised against a tmp log dir below.
+
+
+def _recording_audit_fn():
+    """A fast in-memory audit recorder matching ``audit_extraction_result``'s
+    keyword signature; returns a stand-in entry so the job can surface its id."""
+    calls: list[dict] = []
+
+    class _Entry:
+        def __init__(self, confidence, threshold=0.7):
+            self.entry_id = f"entry-{len(calls)}"
+            self.human_review_required = confidence < threshold
+
+    def _audit(*, confidence, **kwargs):
+        calls.append({"confidence": confidence, **kwargs})
+        return _Entry(confidence)
+
+    _audit.calls = calls
+    return _audit
+
+
+def _low_completeness_model(deal_name, prospectus_url, cache_path):
+    """A schema-valid model with a low completeness score and a low-confidence
+    waterfall — its governed confidence must come out below the high-quality one."""
+    return DealModel.model_validate(
+        {
+            "metadata": {
+                "deal_name": deal_name,
+                "prospectus_url": prospectus_url,
+                "extracted_at": "2026-06-23T00:00:00+00:00",
+                "extraction_duration_sec": 0.01,
+                "sections_found": ["definitions"],
+                "completeness_score": 0.30,
+                "cache_path": cache_path,
+            },
+            "definitions": {},
+            "waterfalls": {
+                "revenue": {
+                    "waterfall_type": "revenue",
+                    "deal_name": deal_name,
+                    "steps": [],
+                    "extraction_confidence": 0.20,
+                }
+            },
+            "covenants": {
+                "deal_name": deal_name,
+                "triggers": [],
+                "issuer_covenants": [],
+                "extraction_confidence": 0.40,
+            },
+            "tranche_structure": [],
+            "trigger_names": [],
+        }
+    )
+
+
+def test_succeeded_job_emits_governance_record_with_real_confidence(tmp_path):
+    """A succeeded extraction emits one audit record carrying the model's REAL
+    min-of-signals confidence and its REAL citations, and surfaces the governed
+    confidence / human-review flag / audit id on the job summary."""
+    audit = _recording_audit_fn()
+    _, future = extraction_jobs.submit_extraction(
+        DEAL_ID,
+        prospectus_url="http://example/p.pdf",
+        deal_name="Green Lion 2026-1 B.V.",
+        cache_dir=str(tmp_path),
+        extract_fn=_materialising_extract_fn,
+        audit_fn=audit,
+    )
+    future.result(timeout=10)
+
+    # Exactly one governance record was emitted for the successful run.
+    assert len(audit.calls) == 1
+    call = audit.calls[0]
+    assert call["primitive_name"] == "deal_extraction"
+    # The _fake_model has completeness 0.85 and covenant extraction_confidence 0.70
+    # → honest confidence is min(0.85, 0.70) = 0.70, NOT a hardcoded 0.9.
+    assert call["confidence"] == pytest.approx(0.70)
+    assert call["confidence"] != 0.9
+    # Real citations were threaded (one waterfall step + one trigger citation).
+    assert len(call["citations"]) == 2
+    assert all(c.document == "Prospectus" for c in call["citations"])
+    # Input provenance hashes the actual job inputs.
+    assert call["input"]["deal_name"] == "Green Lion 2026-1 B.V."
+    assert call["output"] is not None
+
+    done = extraction_jobs.get_job(DEAL_ID)
+    assert done.status == "succeeded"
+    # Governed signals surfaced additively; existing count keys untouched.
+    assert done.summary["confidence"] == pytest.approx(0.70)
+    assert done.summary["human_review_required"] is False  # 0.70 >= 0.7
+    assert done.summary["audit_entry_id"] is not None
+    assert done.summary["completeness_score"] == 0.85
+    assert done.summary["citation_count"] == 2
+
+
+def test_failed_job_emits_failure_governance_record(tmp_path):
+    """A failed extraction still runs under governance: a failure audit record
+    (confidence 0.0, no citations, the error captured) is emitted and its id
+    surfaced — the failure is recorded, not silently un-governed."""
+    audit = _recording_audit_fn()
+    _, future = extraction_jobs.submit_extraction(
+        DEAL_ID,
+        prospectus_url="http://example/p.pdf",
+        deal_name="Green Lion 2026-1 B.V.",
+        cache_dir=str(tmp_path),
+        extract_fn=_raising_extract_fn,
+        audit_fn=audit,
+    )
+    future.result(timeout=10)
+
+    assert len(audit.calls) == 1
+    call = audit.calls[0]
+    assert call["confidence"] == 0.0
+    assert call["citations"] == []
+    assert "missing GCP credentials" in call["output"]["error"]
+
+    done = extraction_jobs.get_job(DEAL_ID)
+    assert done.status == "failed"
+    assert "missing GCP credentials" in done.error
+    assert done.summary["audit_entry_id"] is not None
+
+
+def test_governance_confidence_is_not_hardcoded(tmp_path):
+    """The governed confidence varies with extraction quality — a low-completeness,
+    low-per-section model yields a strictly lower confidence (and a human-review
+    flag) than the high-quality model. Proves confidence is honest, not a constant."""
+    high_audit = _recording_audit_fn()
+    extraction_jobs.submit_extraction(
+        "deal-high",
+        prospectus_url="http://example/p.pdf",
+        deal_name="High Quality Deal",
+        cache_dir=str(tmp_path),
+        extract_fn=_materialising_extract_fn,
+        audit_fn=high_audit,
+    )[1].result(timeout=10)
+
+    low_audit = _recording_audit_fn()
+
+    def _low_extract_fn(*, prospectus_url, deal_name, cache_dir, force_refresh):
+        return _low_completeness_model(
+            deal_name, prospectus_url, str(Path(cache_dir) / "m.json")
+        )
+
+    extraction_jobs.submit_extraction(
+        "deal-low",
+        prospectus_url="http://example/p.pdf",
+        deal_name="Low Quality Deal",
+        cache_dir=str(tmp_path),
+        extract_fn=_low_extract_fn,
+        audit_fn=low_audit,
+    )[1].result(timeout=10)
+
+    high_conf = high_audit.calls[0]["confidence"]
+    low_conf = low_audit.calls[0]["confidence"]
+    # min(0.30, 0.20, 0.40) == 0.20 for the low model; 0.85 for the high one.
+    assert low_conf == pytest.approx(0.20)
+    assert low_conf < high_conf
+    # Low confidence flags the run for human review on the job summary.
+    assert extraction_jobs.get_job("deal-low").summary["human_review_required"] is True
+
+
+def test_audit_side_channel_failure_never_fails_the_job(tmp_path):
+    """A raising audit sink must not change the job's success outcome — governance
+    is a side-channel (the main._audit contract). The job still succeeds; the
+    surfaced audit id is None and the review flag falls back to the threshold rule."""
+    def _raising_audit(**kwargs):
+        raise RuntimeError("audit store unwritable")
+
+    _, future = extraction_jobs.submit_extraction(
+        DEAL_ID,
+        prospectus_url="http://example/p.pdf",
+        deal_name="Green Lion 2026-1 B.V.",
+        cache_dir=str(tmp_path),
+        extract_fn=_materialising_extract_fn,
+        audit_fn=_raising_audit,
+    )
+    future.result(timeout=10)
+
+    done = extraction_jobs.get_job(DEAL_ID)
+    assert done.status == "succeeded"  # audit failure did NOT break the job
+    assert done.summary["audit_entry_id"] is None
+    assert done.summary["confidence"] == pytest.approx(0.70)
+    assert done.summary["human_review_required"] is False  # fallback rule, 0.70>=0.7
+
+
+def test_real_audit_extraction_result_writes_jsonl(tmp_path):
+    """End-to-end with the REAL ``audit_extraction_result`` sink (default), pointed
+    at a tmp audit dir: one governed JSONL record lands with the honest confidence
+    and the model's real citations — the catalogue claim made true for /extract."""
+    audit_dir = tmp_path / "audit"
+    _, future = extraction_jobs.submit_extraction(
+        DEAL_ID,
+        prospectus_url="http://example/p.pdf",
+        deal_name="Green Lion 2026-1 B.V.",
+        cache_dir=str(tmp_path / "cache"),
+        extract_fn=_materialising_extract_fn,
+        audit_log_dir=str(audit_dir),
+    )
+    future.result(timeout=10)
+
+    from loanwhiz.primitives.audit_logger import AuditLog
+
+    jsonl_files = list((audit_dir / "deal_extraction").glob("*.jsonl"))
+    assert len(jsonl_files) == 1
+    log = AuditLog.from_jsonl(jsonl_files[0].read_text(encoding="utf-8"))
+    assert len(log.entries) == 1
+    entry = log.entries[0]
+    assert entry.primitive_name == "deal_extraction"
+    assert entry.confidence == pytest.approx(0.70)
+    assert entry.confidence != 0.9
+    assert len(entry.citations) == 2
+    assert entry.human_review_required is False
+    # The job surfaced the persisted entry's id.
+    assert extraction_jobs.get_job(DEAL_ID).summary["audit_entry_id"] == entry.entry_id
 
 
 # --- re-submit semantics + store isolation (#384 docstring contract) ----------
