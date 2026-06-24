@@ -74,6 +74,17 @@ _METRIC_ALIASES: dict[str, str] = {
     "cumulative_loss_rate": "cumulative_loss_rate_pct",
     "net_loss_rate_pct": "cumulative_loss_rate_pct",
     "loss_rate_pct": "cumulative_loss_rate_pct",
+    # Cumulative GROSS default rate — deliberately NOT aliased onto the realised
+    # loss sentinel (#394). Gross default ≠ net loss, and the monitor holds no
+    # cumulative-default series, so a ``cumulative_default_rate`` metric passes
+    # through ``_canonical_metric`` unchanged and resolves only if the period
+    # dict / tape carries that key, otherwise degrading to an honest
+    # not-evaluable status. The domain ``MetricType.cumulative_default_rate``
+    # keeps the distinction at the canonical-schema layer; collapsing it onto the
+    # loss sentinel here would re-introduce the silent wrong-sentinel mis-read
+    # the closed enum exists to prevent. The tape's *current* default-flag share
+    # (``default_pct``, distinct from cumulative) is already handled by
+    # ``tape_default_pct`` → ``default_pct`` below.
     # PDL debit balance. The generic extractor name maps to the Class A ledger
     # (the senior PDL the sequential/PDL trigger keys on); explicit per-class
     # names map to their own sentinel.
@@ -86,6 +97,13 @@ _METRIC_ALIASES: dict[str, str] = {
     "class_b_pdl": "pdl_class_b",
     "class_b_pdl_balance": "pdl_class_b",
     "class_b_pdl_debit_balance": "pdl_class_b",
+    # Class C PDL has no dedicated monitor sentinel/branch (the monitor reads
+    # per-tranche PDL by name in ``_tranche_pdl``, but the structural sentinels
+    # are A/B-only). A ``class_c_pdl`` metric therefore passes through unchanged
+    # and resolves only if the period dict / tape carries that key — otherwise it
+    # degrades to an honest not-evaluable status rather than a fake 0. Adding a
+    # ``pdl_class_c`` sentinel + evaluation branch would be new engine capability
+    # (out of scope for the taxonomy-breadth work, #394), so no row is added here.
     # Reserve fund → the funded-ratio sentinel.
     "reserve_fund_balance": "reserve_fund_ratio",
     "reserve_account_balance": "reserve_fund_ratio",
