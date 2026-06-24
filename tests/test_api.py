@@ -403,6 +403,231 @@ def test_extract_status_none_when_no_job():
 
 
 # ---------------------------------------------------------------------------
+# Self-service ingest API (#399) — register + tape + report ingest.
+#
+# The approved runtime-file split: registrations/mutations persist to a SEPARATE
+# data/deals.runtime.json (the committed data/deals.json is NEVER touched). The
+# fixture below points config.DEALS_RUNTIME_FILE at a tmp file, snapshots the live
+# DEALS dict and restores it (it is a shared module global aliased into the running
+# app), and asserts the committed file is byte-identical before/after. All async
+# report paths use the resolve_fn injection seam — never a real network/LLM run.
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def ingest_env(tmp_path):
+    """Isolate the runtime file + live DEALS registry for an ingest test.
+
+    Yields the tmp runtime-file path. Restores the live ``DEALS`` dict (snapshot of
+    keys/values) and resets both job stores afterwards, and asserts the committed
+    ``data/deals.json`` was not mutated.
+    """
+    from loanwhiz import config
+    from loanwhiz.api import extraction_jobs, main
+
+    committed_before = Path(config.DEALS_DATA_FILE).read_bytes()
+    runtime_file = tmp_path / "deals.runtime.json"
+    deals_snapshot = dict(main.DEALS)
+
+    extraction_jobs.reset_jobs()
+    extraction_jobs.reset_report_jobs()
+    with patch("loanwhiz.config.DEALS_RUNTIME_FILE", runtime_file):
+        try:
+            yield runtime_file
+        finally:
+            # Restore the shared live registry to its pre-test contents.
+            main.DEALS.clear()
+            main.DEALS.update(deals_snapshot)
+            extraction_jobs.reset_jobs()
+            extraction_jobs.reset_report_jobs()
+
+    # The committed, human-curated registry must never be touched at runtime.
+    assert Path(config.DEALS_DATA_FILE).read_bytes() == committed_before
+
+
+def _register_body(deal_id: str = "ingest-test-2026-1") -> dict:
+    return {
+        "deal_id": deal_id,
+        "deal_name": "Ingest Test 2026-1 B.V.",
+        "prospectus_url": "http://example/ingest-test-prospectus.pdf",
+    }
+
+
+def test_register_deal_201_appears_in_list_and_persists_runtime(ingest_env):
+    """POST /deals registers (201), the deal surfaces in GET /deals, and it is
+    persisted to the runtime overlay file (NOT the committed deals.json)."""
+    runtime_file = ingest_env
+    body = _register_body()
+
+    resp = client.post("/deals", json=body)
+    assert resp.status_code == 201
+    assert resp.json()["deal_id"] == body["deal_id"]
+    assert resp.json()["deal"]["deal_name"] == body["deal_name"]
+
+    # Surfaces in the live listing.
+    ids = [d["id"] for d in client.get("/deals").json()]
+    assert body["deal_id"] in ids
+
+    # Persisted to the runtime overlay file.
+    assert runtime_file.exists()
+    on_disk = json.loads(runtime_file.read_text(encoding="utf-8"))
+    assert body["deal_id"] in on_disk
+    assert on_disk[body["deal_id"]]["deal_name"] == body["deal_name"]
+
+
+def test_register_duplicate_409_and_force_overrides(ingest_env):
+    """A duplicate deal_id → 409; ?force=true overwrites the existing entry."""
+    body = _register_body()
+    assert client.post("/deals", json=body).status_code == 201
+
+    dup = client.post("/deals", json=body)
+    assert dup.status_code == 409
+
+    changed = {**body, "deal_name": "Renamed 2026-1 B.V."}
+    forced = client.post("/deals?force=true", json=changed)
+    assert forced.status_code == 201
+    assert forced.json()["deal"]["deal_name"] == "Renamed 2026-1 B.V."
+
+
+def test_register_existing_committed_deal_409_without_force(ingest_env):
+    """Registering over a pre-existing (committed) deal id is a 409 without force —
+    protecting the curated registry from a silent overwrite."""
+    resp = client.post("/deals", json=_register_body("green-lion-2026-1"))
+    assert resp.status_code == 409
+
+
+def test_register_missing_required_field_422(ingest_env):
+    """A missing required field (deal_name) → 422 (Pydantic validation)."""
+    body = _register_body()
+    del body["deal_name"]
+    resp = client.post("/deals", json=body)
+    assert resp.status_code == 422
+
+
+def test_ingest_tape_appends_and_reflected_live(ingest_env):
+    """POST /ingest/tape validate-loads + appends a tape; reflected in the live
+    registry + the runtime file. The loader is stubbed (no real download)."""
+    runtime_file = ingest_env
+    client.post("/deals", json=_register_body())
+
+    entry = {"date": "2026-05-31", "url": "http://example/tape.csv"}
+    with patch("loanwhiz.api.main._load_tape", return_value=(MagicMock(), "csv")):
+        resp = client.post("/deal/ingest-test-2026-1/ingest/tape", json=entry)
+    assert resp.status_code == 200
+    assert entry in resp.json()["tape_urls"]
+
+    # Reflected in the live registry and persisted.
+    from loanwhiz.api import main
+
+    assert entry in main.DEALS["ingest-test-2026-1"]["tape_urls"]
+    on_disk = json.loads(runtime_file.read_text(encoding="utf-8"))
+    assert entry in on_disk["ingest-test-2026-1"]["tape_urls"]
+
+
+def test_ingest_tape_idempotent_on_identical_entry(ingest_env):
+    """An identical {date,url} is not appended twice (and skips re-validation)."""
+    client.post("/deals", json=_register_body())
+    entry = {"date": "2026-05-31", "url": "http://example/tape.csv"}
+    with patch("loanwhiz.api.main._load_tape", return_value=(MagicMock(), "csv")):
+        client.post("/deal/ingest-test-2026-1/ingest/tape", json=entry)
+    # Second post with the loader patched to raise — must NOT re-validate (idempotent).
+    with patch("loanwhiz.api.main._load_tape", side_effect=AssertionError("must not reload")):
+        resp = client.post("/deal/ingest-test-2026-1/ingest/tape", json=entry)
+    assert resp.status_code == 200
+    assert resp.json()["tape_urls"].count(entry) == 1
+
+
+def test_ingest_tape_unknown_deal_404(ingest_env):
+    resp = client.post(
+        "/deal/no-such-deal/ingest/tape", json={"date": "2026-05-31", "url": "http://x/t.csv"}
+    )
+    assert resp.status_code == 404
+
+
+def test_ingest_tape_bad_tape_422(ingest_env):
+    """A loader failure (bad URL/parse) → 422, and the tape is NOT persisted."""
+    runtime_file = ingest_env
+    client.post("/deals", json=_register_body())
+    entry = {"date": "2026-05-31", "url": "http://example/broken.csv"}
+    with patch("loanwhiz.api.main._load_tape", side_effect=ValueError("bad tape")):
+        resp = client.post("/deal/ingest-test-2026-1/ingest/tape", json=entry)
+    assert resp.status_code == 422
+    # Not persisted: the live registry still has the original (empty) tape list.
+    from loanwhiz.api import main
+
+    assert entry not in (main.DEALS["ingest-test-2026-1"].get("tape_urls") or [])
+
+
+def test_ingest_report_enqueues_202_and_status_polls_succeeded(ingest_env, tmp_path):
+    """POST /ingest/report adds the URL + enqueues (202); status polls to succeeded
+    against a stubbed resolver — never a real network/LLM extraction."""
+    from loanwhiz.api import extraction_jobs
+
+    client.post("/deals", json=_register_body())
+
+    def _resolve(deal_id, deal, *, cache_dir, allow_live):
+        assert allow_live is True
+        return object()
+
+    report_cache = tmp_path / "report_cache"
+    with patch("loanwhiz.api.main.REPORT_EXTRACTION_CACHE_DIR", str(report_cache)), patch(
+        "loanwhiz.primitives.report_extractor.resolve_parsed_report", _resolve
+    ):
+        resp = client.post(
+            "/deal/ingest-test-2026-1/ingest/report",
+            json={"url": "http://example/report.pdf", "period": "May 2026"},
+        )
+        assert resp.status_code == 202
+        assert resp.json()["status"] in ("queued", "running", "succeeded")
+
+        # Drain the single-worker pool so the job finishes deterministically.
+        extraction_jobs._EXECUTOR.submit(lambda: None).result(timeout=10)
+
+        status = client.get("/deal/ingest-test-2026-1/ingest/report/status").json()
+        assert status["status"] == "succeeded"
+
+    # The report URL was added to the deal's notes_cash_report_urls (live + runtime).
+    from loanwhiz.api import main
+
+    urls = main.DEALS["ingest-test-2026-1"]["notes_cash_report_urls"]
+    assert any(e["url"] == "http://example/report.pdf" for e in urls)
+
+
+def test_ingest_report_failure_polls_failed(ingest_env, tmp_path):
+    """A raising resolver → 202 then a 'failed' poll with the reason (no hang)."""
+    from loanwhiz.api import extraction_jobs
+
+    client.post("/deals", json=_register_body())
+
+    def _resolve(deal_id, deal, *, cache_dir, allow_live):
+        raise RuntimeError("live report extraction unavailable")
+
+    with patch(
+        "loanwhiz.primitives.report_extractor.resolve_parsed_report", _resolve
+    ):
+        resp = client.post(
+            "/deal/ingest-test-2026-1/ingest/report", json={"url": "http://example/r.pdf"}
+        )
+        assert resp.status_code == 202
+        extraction_jobs._EXECUTOR.submit(lambda: None).result(timeout=10)
+        status = client.get("/deal/ingest-test-2026-1/ingest/report/status").json()
+        assert status["status"] == "failed"
+        assert "live report extraction unavailable" in status["error"]
+
+
+def test_ingest_report_unknown_deal_404(ingest_env):
+    resp = client.post("/deal/no-such-deal/ingest/report", json={"url": "http://x/r.pdf"})
+    assert resp.status_code == 404
+
+
+def test_ingest_report_status_none_when_no_job(ingest_env):
+    client.post("/deals", json=_register_body())
+    resp = client.get("/deal/ingest-test-2026-1/ingest/report/status")
+    assert resp.status_code == 200
+    assert resp.json()["status"] == "none"
+
+
+# ---------------------------------------------------------------------------
 # Committed deal-model seed fallback (#196 — Overview cold-cache)
 # ---------------------------------------------------------------------------
 

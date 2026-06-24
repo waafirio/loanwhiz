@@ -42,6 +42,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from pydantic import BaseModel, Field, field_validator
 
 from loanwhiz.agent.executor import execute_query
+from loanwhiz import config as _config
 from loanwhiz.config import DEAL_REGISTRY
 from loanwhiz.extraction.assembler import (
     DEFAULT_DEAL_CACHE_DIR,
@@ -384,6 +385,17 @@ DEAL_MODEL_CACHE_DIR = str(DEFAULT_DEAL_CACHE_DIR)
 # tests, mirroring ``DEAL_MODEL_CACHE_DIR``. Generated/refreshed by
 # ``scripts/seed_deal_models.py``.
 DEAL_MODEL_SEED_DIR = str(Path(__file__).resolve().parents[1] / "data" / "deals" / "seed")
+
+# Durable report-extraction cache directory. ``report_extractor.resolve_parsed_report``
+# reads (committed fixtures → durable cache → opt-in live extraction) and writes its
+# durable cache here. Sourced from the resolver's own default so the report-ingest job
+# writer (#399) and the offline ``/report-gate`` / ``/waterfall`` readers never diverge
+# — one source of truth. Patchable in tests (like ``DEAL_MODEL_CACHE_DIR``) so the
+# ingest job's durable write and the GET readers can be pointed at the same tmp dir.
+# Computed inline (not imported) to keep ``report_extractor``'s heavy chain out of
+# this module's import path — the resolver itself is deferred-imported in the routes.
+# Mirrors ``report_extractor.DEFAULT_EXTRACTION_CACHE_DIR`` (repo-root/data/extraction_cache).
+REPORT_EXTRACTION_CACHE_DIR = str(Path(__file__).resolve().parents[3] / "data" / "extraction_cache")
 
 
 def _load_cached_deal_model(deal: dict) -> DealModel | None:
@@ -733,6 +745,240 @@ def extract_status(deal_id: str) -> ExtractionJobResponse:
 
 
 # --- end on-demand extraction job (#384) -------------------------------------
+
+
+# --- self-service ingest API (#399) ------------------------------------------
+# Runtime surface that turns deal onboarding into a product action instead of a
+# committed-file edit + restart. Three routes mutate the config-driven registry and
+# trigger the EXISTING materialisation paths — no new engine, no second source of
+# truth:
+#
+#   * ``POST /deals``                       — register a deal (sync).
+#   * ``POST /deal/{id}/ingest/tape``       — append a tape, validate-load it (sync).
+#   * ``POST /deal/{id}/ingest/report``     — add a report URL + enqueue the live
+#     report extraction job (async, 202 + poll ``GET .../ingest/report/status``).
+#
+# Persistence lands in the RUNTIME overlay ``data/deals.runtime.json`` via
+# ``config.register_deal`` (the committed, human-curated ``data/deals.json`` is never
+# mutated at runtime; ``config._load_deal_registry`` merges committed then runtime on
+# cold start). Each route also mutates the live ``DEALS`` dict in place so
+# already-loaded routes see the change within the same process.
+
+
+def _persist_and_update_live(deal_id: str, context: dict) -> dict:
+    """Persist a deal context to the runtime overlay and update the live registry.
+
+    Writes ``context`` to ``data/deals.runtime.json`` (committed file untouched) and
+    sets ``DEALS[deal_id]`` in place so routes already holding the shared ``DEALS``
+    alias observe the new/updated deal. Returns the persisted context.
+    """
+    _config.register_deal(deal_id, context)
+    DEALS[deal_id] = context
+    return context
+
+
+class RegisterDealRequest(BaseModel):
+    """Body for ``POST /deals`` — register (or, with ``?force``, overwrite) a deal.
+
+    ``deal_id``, ``deal_name`` and ``prospectus_url`` are the required minimum; the
+    remaining keys mirror the deal-context shape (``loanwhiz.config.GREEN_LION``) and
+    are optional. Omitted list keys default to empty lists so the persisted context
+    is always shape-complete for the downstream readers.
+    """
+
+    deal_id: str = Field(min_length=1)
+    deal_name: str = Field(min_length=1)
+    prospectus_url: str = Field(min_length=1)
+    tape_urls: list[dict] = Field(default_factory=list)
+    investor_report_urls: list[dict] = Field(default_factory=list)
+    notes_cash_report_urls: list[dict] = Field(default_factory=list)
+    # Optional per-deal structural config (resolved by the engine; see config.py).
+    jurisdiction: str | None = None
+    capital_structure: dict | None = None
+    reserve_account_target: float | None = None
+    original_pool_balance: float | None = None
+    projection_base: dict | None = None
+
+    def to_context(self) -> dict:
+        """Build the deal-context dict persisted into the registry (drops unset keys)."""
+        context: dict = {
+            "deal_name": self.deal_name,
+            "prospectus_url": self.prospectus_url,
+            "tape_urls": self.tape_urls,
+            "investor_report_urls": self.investor_report_urls,
+        }
+        if self.notes_cash_report_urls:
+            context["notes_cash_report_urls"] = self.notes_cash_report_urls
+        for key in (
+            "jurisdiction",
+            "capital_structure",
+            "reserve_account_target",
+            "original_pool_balance",
+            "projection_base",
+        ):
+            value = getattr(self, key)
+            if value is not None:
+                context[key] = value
+        return context
+
+
+class RegisterDealResponse(BaseModel):
+    """Response for ``POST /deals`` — the registered id + its persisted context."""
+
+    deal_id: str
+    deal: dict
+
+
+@app.post("/deals", response_model=RegisterDealResponse, status_code=201)
+def register_deal(
+    body: RegisterDealRequest, force: bool = Query(False)
+) -> RegisterDealResponse:
+    """Register a deal at runtime, persisting it to the runtime overlay.
+
+    Returns ``201`` with the persisted context; the deal then surfaces in
+    ``GET /deals`` and the ``/deal/{id}/...`` routes within the same process. A
+    duplicate ``deal_id`` returns ``409`` unless ``?force=true`` (which overwrites
+    the existing entry). Pydantic rejects a missing required field (``deal_id`` /
+    ``deal_name`` / ``prospectus_url``) with ``422``.
+
+    Persistence target is the RUNTIME overlay ``data/deals.runtime.json`` (#399's
+    approved file-split): the committed, human-curated ``data/deals.json`` is never
+    mutated at runtime. ``config._load_deal_registry`` overlays the runtime file on
+    cold start, so a runtime-registered deal survives a restart.
+    """
+    if not force and body.deal_id in DEALS:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                f"Deal {body.deal_id} already exists; pass ?force=true to overwrite "
+                f"its registration."
+            ),
+        )
+    context = _persist_and_update_live(body.deal_id, body.to_context())
+    return RegisterDealResponse(deal_id=body.deal_id, deal=context)
+
+
+class IngestTapeRequest(BaseModel):
+    """Body for ``POST /deal/{deal_id}/ingest/tape`` — one ESMA tape to append."""
+
+    date: str = Field(min_length=1)
+    url: str = Field(min_length=1)
+
+
+class IngestTapeResponse(BaseModel):
+    """Response for the tape-ingest route — the deal's updated ``tape_urls``."""
+
+    deal_id: str
+    tape_urls: list[dict]
+
+
+@app.post("/deal/{deal_id}/ingest/tape", response_model=IngestTapeResponse)
+def ingest_tape(deal_id: str, body: IngestTapeRequest) -> IngestTapeResponse:
+    """Append an ESMA tape ``{date, url}`` to a deal and validate-load it inline.
+
+    Validates the tape by loading it through the existing ESMA tape loader
+    (:func:`~loanwhiz.primitives.esma_tape_normaliser._load_tape`) — a bad URL / parse
+    fails loudly with ``422`` rather than persisting an unusable entry. An unknown
+    deal id returns ``404``. The append is idempotent on an identical ``{date, url}``
+    (no duplicate). On success the entry is persisted to the runtime overlay, the live
+    registry is updated in place, and the updated ``tape_urls`` is returned; the tape
+    itself is loaded lazily by the analytics/waterfall paths on the next call.
+    """
+    deal = _require_deal(deal_id)
+    entry = {"date": body.date, "url": body.url}
+
+    existing = deal.get("tape_urls") or []
+    if entry in existing:
+        # Idempotent: identical entry already present — no re-validate, no re-write.
+        return IngestTapeResponse(deal_id=deal_id, tape_urls=existing)
+
+    # Validate-load the tape (loud 422 on a bad URL/parse) before persisting it.
+    try:
+        _load_tape(body.url, None)
+    except Exception as exc:  # noqa: BLE001 — surface any loader failure as a 422
+        raise HTTPException(
+            status_code=422,
+            detail=f"Tape at {body.url} could not be loaded: {type(exc).__name__}: {exc}",
+        ) from exc
+
+    # Copy the context so we mutate a fresh dict (the live default may be a module
+    # constant like GREEN_LION we must not mutate in place).
+    context = dict(deal)
+    context["tape_urls"] = [*existing, entry]
+    _persist_and_update_live(deal_id, context)
+    return IngestTapeResponse(deal_id=deal_id, tape_urls=context["tape_urls"])
+
+
+class IngestReportRequest(BaseModel):
+    """Body for ``POST /deal/{deal_id}/ingest/report`` — one Notes & Cash report."""
+
+    url: str = Field(min_length=1)
+    period: str | None = None
+
+
+@app.post(
+    "/deal/{deal_id}/ingest/report",
+    response_model=ExtractionJobResponse,
+    status_code=202,
+)
+def ingest_report(
+    deal_id: str, body: IngestReportRequest, force: bool = Query(False)
+) -> ExtractionJobResponse:
+    """Add a Notes & Cash report URL to a deal and enqueue its live extraction.
+
+    Adds ``{url[, period]}`` to the deal's ``notes_cash_report_urls`` (persisted to the
+    runtime overlay, live registry updated), then enqueues a background job that runs
+    #398's ``resolve_parsed_report(..., allow_live=True)`` and returns ``202`` — the
+    request **never** blocks on the minutes-long network+LLM extraction (the #384
+    no-hang guarantee). The job populates the durable report cache so the offline
+    ``GET /deal/{id}/report-gate`` / ``/waterfall`` paths then resolve the report with
+    no second source of truth. Poll :func:`ingest_report_status` for completion. An
+    unknown deal id returns ``404``; a re-``POST`` while a job is running (without
+    ``?force``) returns the in-flight job.
+    """
+    deal = _require_deal(deal_id)
+    entry: dict = {"url": body.url}
+    if body.period is not None:
+        entry["period"] = body.period
+
+    existing = deal.get("notes_cash_report_urls") or []
+    context = dict(deal)
+    if entry not in existing:
+        context["notes_cash_report_urls"] = [*existing, entry]
+    else:
+        context["notes_cash_report_urls"] = existing
+    _persist_and_update_live(deal_id, context)
+
+    job, _future = _extraction_jobs.submit_report_ingest(
+        deal_id,
+        deal=context,
+        cache_dir=REPORT_EXTRACTION_CACHE_DIR,
+        allow_live=True,
+        force=force,
+    )
+    return ExtractionJobResponse(**job.to_response())
+
+
+@app.get(
+    "/deal/{deal_id}/ingest/report/status",
+    response_model=ExtractionJobResponse,
+)
+def ingest_report_status(deal_id: str) -> ExtractionJobResponse:
+    """Poll the report-ingest job for a deal.
+
+    Reports ``queued|running|succeeded|failed`` for the most recent report ingest,
+    with the failure reason in ``error`` on ``failed``. When no report ingest was ever
+    submitted for the deal, returns ``200`` with ``status="none"`` (a uniform,
+    non-hanging body the frontend can poll without special-casing a 404).
+    """
+    _require_deal(deal_id)
+    job = _extraction_jobs.get_report_job(deal_id)
+    if job is None:
+        return ExtractionJobResponse(deal_id=deal_id, status="none")
+    return ExtractionJobResponse(**job.to_response())
+
+
+# --- end self-service ingest API (#399) --------------------------------------
 
 
 def _map_extracted_trigger(raw: dict) -> TriggerDefinition:
@@ -1693,7 +1939,9 @@ def _reconstruct_series_from_reports(deal_id: str, deal: dict) -> DealStateSerie
         raise _not_modelable_deal(deal_id)
 
     try:
-        report = resolve_parsed_report(deal_id, deal).to_notes_cash_report()
+        report = resolve_parsed_report(
+            deal_id, deal, cache_dir=REPORT_EXTRACTION_CACHE_DIR
+        ).to_notes_cash_report()
     except ReportUnavailable as exc:
         # No committed fixture, durable cache, or live report source resolved —
         # honest 422, not an empty cascade.
@@ -3000,7 +3248,9 @@ def deal_report_gate(
     # has. Either input missing → honest available=false, not a 500.
     model = _load_gate_deal_model(deal)
     try:
-        parsed_report = resolve_parsed_report(deal_id, deal)
+        parsed_report = resolve_parsed_report(
+            deal_id, deal, cache_dir=REPORT_EXTRACTION_CACHE_DIR
+        )
     except ReportUnavailable:
         parsed_report = None
     if model is None or parsed_report is None:

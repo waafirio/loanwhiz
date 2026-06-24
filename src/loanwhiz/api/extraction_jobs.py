@@ -176,6 +176,134 @@ def _run_extraction(
     return job
 
 
+# ---------------------------------------------------------------------------
+# Report-ingest jobs (#399)
+# ---------------------------------------------------------------------------
+# The self-service report-ingest path mirrors the prospectus-extraction job above:
+# live report extraction (PDF fetch + OCR/LLM) is a minutes-long network run, so it
+# must NOT block the request thread (the same no-hang guarantee #384 established).
+# ``POST /deal/{id}/ingest/report`` enqueues a background job that calls #398's
+# ``report_extractor.resolve_parsed_report(..., allow_live=True)``, which populates
+# the durable report cache the offline ``/report-gate`` / ``/waterfall`` GETs then
+# serve — closing the self-service loop with one source of truth.
+#
+# The job store is keyed SEPARATELY from the prospectus jobs (``_REPORT_JOBS``) so a
+# deal can have an in-flight report ingest and an in-flight prospectus extraction
+# tracked independently; both run on the shared single-worker ``_EXECUTOR``.
+
+# Injection seam for the report resolver. The real implementation is
+# ``loanwhiz.primitives.report_extractor.resolve_parsed_report``; tests pass a fast
+# stub with a compatible signature so NO real network/LLM extraction runs.
+ResolveReportFn = Callable[..., object]
+
+_REPORT_JOBS: dict[str, ExtractionJob] = {}
+
+
+def get_report_job(deal_id: str) -> Optional[ExtractionJob]:
+    """Return the most recent report-ingest job for ``deal_id``, or ``None``."""
+    with _LOCK:
+        return _REPORT_JOBS.get(deal_id)
+
+
+def reset_report_jobs() -> None:
+    """Clear the in-process report-ingest store. Test-only isolation helper."""
+    with _LOCK:
+        _REPORT_JOBS.clear()
+
+
+def _run_report_ingest(
+    job: ExtractionJob,
+    *,
+    deal_id: str,
+    deal: dict,
+    cache_dir: str,
+    allow_live: bool,
+    resolve_fn: ResolveReportFn,
+) -> ExtractionJob:
+    """Run the report resolver on the worker thread; record terminal state.
+
+    On success the resolver has populated the durable report cache (one source of
+    truth — the offline ``/report-gate`` reader then serves it). Any exception
+    (download, OCR, LLM, ``ReportUnavailable``) is caught and recorded as ``failed``
+    with the reason — the worker thread never crashes the pool and the poll never
+    500s.
+    """
+    with _LOCK:
+        job.status = "running"
+        job.started_at = _now_iso()
+
+    try:
+        resolve_fn(deal_id, deal, cache_dir=cache_dir, allow_live=allow_live)
+        with _LOCK:
+            job.status = "succeeded"
+            job.finished_at = _now_iso()
+    except Exception as exc:  # noqa: BLE001 — honest failure surfacing is the point
+        logger.exception("Report-ingest job for deal %s failed", job.deal_id)
+        with _LOCK:
+            job.status = "failed"
+            job.finished_at = _now_iso()
+            job.error = f"{type(exc).__name__}: {exc}"
+    return job
+
+
+def submit_report_ingest(
+    deal_id: str,
+    *,
+    deal: dict,
+    cache_dir: str,
+    allow_live: bool = True,
+    force: bool = False,
+    resolve_fn: Optional[ResolveReportFn] = None,
+) -> tuple[ExtractionJob, Optional[Future]]:
+    """Enqueue a background report ingest for ``deal_id`` and return immediately.
+
+    Mirrors :func:`submit_extraction`: returns ``(job, future)`` where ``future`` is
+    ``None`` when an already-running job is returned unchanged (idempotent enqueue),
+    otherwise the :class:`~concurrent.futures.Future` for the scheduled run so tests
+    can await completion deterministically without a real long run.
+
+    Re-submit semantics match the prospectus job: a ``queued``/``running`` job for
+    this deal (without ``force``) is returned unchanged; a finished job or any
+    ``force`` submit is replaced.
+
+    ``resolve_fn`` is the injection seam; when ``None`` it resolves to
+    ``report_extractor.resolve_parsed_report`` **at call time** so a test's patch is
+    honoured. Tests pass a fast stub — no real network/LLM extraction runs.
+    """
+    if resolve_fn is None:
+        from loanwhiz.primitives.report_extractor import resolve_parsed_report
+
+        resolve_fn = resolve_parsed_report
+
+    with _LOCK:
+        existing = _REPORT_JOBS.get(deal_id)
+        if (
+            existing is not None
+            and existing.status in ("queued", "running")
+            and not force
+        ):
+            return existing, None
+
+        job = ExtractionJob(
+            deal_id=deal_id,
+            status="queued",
+            force=force,
+            submitted_at=_now_iso(),
+        )
+        _REPORT_JOBS[deal_id] = job
+
+    future = _EXECUTOR.submit(
+        _run_report_ingest,
+        job,
+        deal_id=deal_id,
+        deal=deal,
+        cache_dir=cache_dir,
+        allow_live=allow_live,
+        resolve_fn=resolve_fn,
+    )
+    return job, future
+
+
 def submit_extraction(
     deal_id: str,
     *,

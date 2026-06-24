@@ -14,6 +14,9 @@ venv/
 data/deals/*.json
 data/docling_cache/*.md
 data/extraction_cache/*.json
+# Runtime deal overlay written by the self-service ingest API (#399). Runtime
+# state, not the committed human-curated data/deals.json registry — never tracked.
+deals.runtime.json
 node_modules/
 dist/
 .liz/state/
