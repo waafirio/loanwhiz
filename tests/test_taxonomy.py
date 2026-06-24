@@ -95,6 +95,142 @@ def test_recipient_normalisation_is_punctuation_insensitive() -> None:
 
 
 # ---------------------------------------------------------------------------
+# Global-ABS breadth (#394) — deeper capital stacks + collapse-onto-existing.
+# ---------------------------------------------------------------------------
+
+# Deeper-stack interest / principal recipients, each via the deterministic path.
+_DEEP_RECIPIENTS: list[tuple[str, RecipientType]] = [
+    ("class_d_interest", RecipientType.class_d_interest),
+    ("class_e_interest", RecipientType.class_e_interest),
+    ("class_f_interest", RecipientType.class_f_interest),
+    ("class_d_notes_principal", RecipientType.class_d_principal),
+    ("class_e_notes_principal", RecipientType.class_e_principal),
+    ("class_f_notes_principal", RecipientType.class_f_principal),
+    ("class_c_pdl_replenishment", RecipientType.class_c_pdl_cure),
+]
+
+
+@pytest.mark.parametrize("raw,expected", _DEEP_RECIPIENTS)
+def test_deep_stack_recipient_maps_deterministically(
+    raw: str, expected: RecipientType
+) -> None:
+    m = map_recipient(raw, use_llm=False)
+    assert m.value == expected, f"{raw!r} -> {m.value} (expected {expected})"
+    assert m.value != RecipientType.unmapped
+    assert m.method == "deterministic"
+
+
+def test_deep_stack_recipients_bind_existing_basis() -> None:
+    # The load-bearing invariant: a new RecipientType binds to an existing engine
+    # basis key (never silently falls through to report_supplied).
+    for r in (
+        RecipientType.class_d_interest,
+        RecipientType.class_e_interest,
+        RecipientType.class_f_interest,
+    ):
+        assert basis_for_recipient(r) == "interest_accrual"
+    for r in (
+        RecipientType.class_d_principal,
+        RecipientType.class_e_principal,
+        RecipientType.class_f_principal,
+    ):
+        assert basis_for_recipient(r) == "principal_due"
+    assert basis_for_recipient(RecipientType.class_c_pdl_cure) == "pdl_balance"
+    assert (
+        basis_for_recipient(RecipientType.liquidity_reserve_replenishment)
+        == "target_shortfall"
+    )
+
+
+def test_generic_class_letter_refine_resolves_beyond_exact_aliases() -> None:
+    # A class-E redemption phrasing that isn't an exact alias still resolves to
+    # principal of the named class via the generic class_<letter>_... handler.
+    assert map_recipient("class_e_notes_redemption", use_llm=False).value == (
+        RecipientType.class_e_principal
+    )
+    # Coupon cue resolves to interest of the named class.
+    assert map_recipient("class_f_coupon", use_llm=False).value == (
+        RecipientType.class_f_interest
+    )
+
+
+def test_class_c_pdl_class_refinement() -> None:
+    assert map_recipient("class_c_pdl_topup", use_llm=False).value == (
+        RecipientType.class_c_pdl_cure
+    )
+
+
+@pytest.mark.parametrize(
+    "raw,expected",
+    [
+        # Senior-cost vocabulary collapses onto senior_expenses (no new enum).
+        ("paying_agent_fees", RecipientType.senior_expenses),
+        ("cash_manager_fees", RecipientType.senior_expenses),
+        ("account_bank_fees", RecipientType.senior_expenses),
+        ("withholding_tax_gross_up", RecipientType.senior_expenses),
+        # Cap/floor/basis-swap counterparties collapse onto swap_payment.
+        ("cap_counterparty", RecipientType.swap_payment),
+        ("basis_swap_counterparty", RecipientType.swap_payment),
+        # Liquidity / commingling / set-off reserve top-ups.
+        ("liquidity_reserve_replenishment", RecipientType.liquidity_reserve_replenishment),
+        ("commingling_reserve_replenishment", RecipientType.liquidity_reserve_replenishment),
+        ("set_off_reserve_replenishment", RecipientType.liquidity_reserve_replenishment),
+    ],
+)
+def test_collapse_onto_existing_recipients(
+    raw: str, expected: RecipientType
+) -> None:
+    m = map_recipient(raw, use_llm=False)
+    assert m.value == expected, f"{raw!r} -> {m.value} (expected {expected})"
+    assert m.method == "deterministic"
+
+
+# ---------------------------------------------------------------------------
+# Multilingual deterministic mapping (#394) — proves alias + diacritic fold,
+# not the LLM (use_llm=False throughout).
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "raw,expected",
+    [
+        # Reserve fund — incl. the accented FR form the diacritic fold rescues.
+        ("Fondo di riserva", RecipientType.reserve_replenishment),
+        ("Fondo de reserva", RecipientType.reserve_replenishment),
+        ("Fonds de réserve", RecipientType.reserve_replenishment),
+        ("Reservefonds", RecipientType.reserve_replenishment),
+        # Servicing.
+        ("Commissioni di servicing", RecipientType.servicing_fee),
+        ("Comisión de administración", RecipientType.servicing_fee),
+        # Senior expenses / trustee.
+        ("Commissioni e spese", RecipientType.senior_expenses),
+        ("Comisiones y gastos", RecipientType.senior_expenses),
+        ("Treuhänder", RecipientType.senior_expenses),
+    ],
+)
+def test_multilingual_recipient_maps_on_deterministic_path(
+    raw: str, expected: RecipientType
+) -> None:
+    m = map_recipient(raw, use_llm=False)
+    assert m.value == expected, f"{raw!r} -> {m.value} (expected {expected})"
+    assert m.method == "deterministic"
+
+
+def test_normalise_diacritic_fold_is_ascii_noop() -> None:
+    # The fold must be a strict no-op on pure ASCII (regression guard for the
+    # existing English alias keys / tests).
+    for ascii_key in (
+        "class_a_interest",
+        "security_trustee_fees",
+        "reserve_account_replenishment",
+        "cumulative_loss_rate_pct",
+    ):
+        assert taxonomy._normalise(ascii_key) == ascii_key
+    # And it actually folds accents.
+    assert taxonomy._normalise("Fonds de réserve") == "fonds_de_reserve"
+
+
+# ---------------------------------------------------------------------------
 # LLM fallback — only fires for an unrecognised string, with unmapped escape.
 # ---------------------------------------------------------------------------
 
@@ -145,6 +281,65 @@ def test_gl_metrics_map_to_canonical() -> None:
 
 def test_unknown_metric_degrades_to_unmapped_offline() -> None:
     assert map_metric("weather_index_basis", use_llm=False).value == MetricType.unmapped
+
+
+# ---------------------------------------------------------------------------
+# Global-ABS metric breadth (#394) — finer arrears, gross-default, deeper PDL.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "raw,expected",
+    [
+        ("arrears_30d_ratio", MetricType.arrears_30d_ratio),
+        ("arrears_30_ratio", MetricType.arrears_30d_ratio),
+        ("arrears_60d_ratio", MetricType.arrears_60d_ratio),
+        ("class_c_pdl", MetricType.class_c_pdl),
+        ("cumulative_default_rate", MetricType.cumulative_default_rate),
+        ("cumulative_default_ratio", MetricType.cumulative_default_rate),
+        ("cumulative_gross_default_rate", MetricType.cumulative_default_rate),
+        ("clean_up_call_threshold", MetricType.pool_factor),
+    ],
+)
+def test_new_metric_maps_deterministically(raw: str, expected: MetricType) -> None:
+    m = map_metric(raw, use_llm=False)
+    assert m.value == expected, f"{raw!r} -> {m.value} (expected {expected})"
+    assert m.value != MetricType.unmapped
+    assert m.method == "deterministic"
+
+
+def test_cumulative_default_distinct_from_loss() -> None:
+    # The anti-mis-map assertion: gross default must NOT collapse onto net loss.
+    default = map_metric("cumulative_default_rate", use_llm=False).value
+    loss = map_metric("cumulative_loss_rate", use_llm=False).value
+    assert default == MetricType.cumulative_default_rate
+    assert loss == MetricType.cumulative_loss_rate
+    assert default != loss
+    # The substring path also keeps the two distinct (default precedes loss).
+    assert map_metric("class_a_cumulative_default_test", use_llm=False).value == (
+        MetricType.cumulative_default_rate
+    )
+    assert map_metric("class_a_cumulative_loss_test", use_llm=False).value == (
+        MetricType.cumulative_loss_rate
+    )
+
+
+@pytest.mark.parametrize(
+    "raw,expected",
+    [
+        ("Perdite cumulate", MetricType.cumulative_loss_rate),
+        ("Pérdidas acumuladas", MetricType.cumulative_loss_rate),
+        ("Pertes cumulées", MetricType.cumulative_loss_rate),
+        ("Tasso di insolvenza cumulato", MetricType.cumulative_default_rate),
+        ("Taux de défaut cumulé", MetricType.cumulative_default_rate),
+    ],
+)
+def test_multilingual_metric_maps_on_deterministic_path(
+    raw: str, expected: MetricType
+) -> None:
+    m = map_metric(raw, use_llm=False)
+    assert m.value == expected, f"{raw!r} -> {m.value} (expected {expected})"
+    assert m.method == "deterministic"
 
 
 def test_metric_llm_fallback() -> None:
