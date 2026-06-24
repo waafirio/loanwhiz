@@ -779,6 +779,168 @@ def monitor_portfolio() -> dict:
     }
 
 
+# ---------------------------------------------------------------------------
+# Cross-source synthesis (#403)
+# ---------------------------------------------------------------------------
+#
+# The per-source tools above each answer from ONE source (the prospectus
+# deal-model, the loan tape, or the investor report). A question that spans
+# structure *and* performance — "does the pool's actual performance still
+# justify the prospectus's reserve target?", "reconcile the investor report
+# against the deal's own collections" — needs all three woven into one
+# grounded answer. Routing such a question to a single tool either ignores the
+# other sources or, worse, lets the model fabricate the cross-source link in
+# prose. ``synthesise_cross_source`` closes that gap: it gathers each source's
+# grounded facts into ONE provenance-tagged bundle so the agent can only
+# synthesise over facts that already carry their source + citations, and it
+# reports explicitly which sources were available vs. missing — never a silent
+# omission, never a fabricated value.
+
+# The three grounding sources the synthesis bundle draws on, in
+# senior→performance order (structure first, then how the pool is actually
+# doing, then what the servicer reported). Each maps to an existing per-source
+# tool whose underlying function this tool composes (``.func`` — the plain
+# callable behind the ``@tool`` wrapper), so source access stays DRY and the
+# governance posture (honest gaps, no default-deal fallback) is inherited.
+_SYNTHESIS_SOURCES = (
+    ("deal_model", "prospectus deal-model"),
+    ("pool", "loan tape"),
+    ("report", "investor report"),
+)
+
+
+def _is_unavailable_block(payload: dict) -> bool:
+    """Whether a per-source payload represents an honest gap rather than data.
+
+    A source block is "unavailable" when the underlying tool reported an
+    explicit gap rather than analytical content: an ``error`` (e.g. unknown
+    deal, no tapes, deal publishes no report) or the deal-model's
+    ``extraction_status == "not_cached"`` cache-miss. Used to split the bundle
+    into ``sources_available`` / ``sources_missing`` so the agent can degrade
+    honestly.
+    """
+    if "error" in payload:
+        return True
+    if payload.get("extraction_status") == "not_cached":
+        return True
+    return False
+
+
+@tool
+def synthesise_cross_source(deal_id: str = DEFAULT_DEAL_ID, period: str | None = None) -> dict:
+    """Gather prospectus + loan-tape + investor-report facts into one cited, source-tagged bundle.
+
+    Use this for ANY question that spans MORE THAN ONE source — structure
+    *and* performance together. Examples: "does the pool's actual performance
+    still justify the prospectus's reserve target?", "reconcile the latest
+    investor report against the deal's own collections", "given the arrears
+    trend, are the prospectus triggers still appropriate?". For a question that
+    a single source answers (just the reserve target → ``get_deal_model``; just
+    arrears → the tape tools; just report tie-out → ``verify_report``), prefer
+    that single tool — this tool is for the genuinely cross-source case.
+
+    Pass only the ``deal_id`` and an optional ``period`` substring (e.g.
+    "2026-03"); the tool fetches each source itself by composing the existing
+    per-source tools (``get_deal_model`` for the prospectus deal-model,
+    ``aggregate_collections`` for the loan-tape pool facts, ``verify_report``
+    for the investor report). It does NOT call an LLM — it only assembles
+    grounded, already-cited facts.
+
+    Returns a dict with one block per source, each carrying its ``source``
+    label and the underlying tool's own ``citations`` / ``confidence``:
+
+    - ``deal_model`` — prospectus-derived terms (reserve target, triggers,
+      tranche structure, definitions), or an explicit ``not_cached`` block when
+      the prospectus has not been extracted in this environment.
+    - ``pool`` — loan-tape collections / available funds for the period, or an
+      explicit ``error`` block when no tape matches.
+    - ``report`` — investor-report tie-out (reported vs. computed), or an
+      explicit ``error`` block when the deal publishes no report.
+
+    Plus ``sources_available`` / ``sources_missing`` (which blocks carry data
+    vs. an honest gap) and a ``synthesis_guidance`` instruction. An unknown
+    ``deal_id`` returns the standard ``{"error", "available_deals"}`` shape —
+    the tool never silently falls back to the default deal.
+    """
+    deal = DEAL_REGISTRY.get(deal_id)
+    if deal is None:
+        # Mirror every other tool: a bad deal_id is an explicit miss, never a
+        # silent fall-back to the default deal (answering about the wrong deal
+        # is worse than an honest error).
+        return {
+            "error": f"deal {deal_id!r} not found",
+            "available_deals": list(DEAL_REGISTRY),
+            "confidence": 0.0,
+            "citations": [],
+        }
+
+    # Compose the underlying per-source tool functions (the plain callables
+    # behind the @tool wrappers). Each already returns governance-tagged output
+    # and degrades honestly on a missing source; we only add the ``source``
+    # provenance label and split available vs. missing. A per-source crash is
+    # caught and turned into an honest error block rather than taking down the
+    # whole synthesis — one absent source must not lose the others.
+    raw: dict[str, dict] = {}
+    raw["deal_model"] = get_deal_model.func(deal_id)
+    try:
+        raw["pool"] = aggregate_collections.func(deal_id, period)
+    except Exception as exc:  # noqa: BLE001 — surface an honest per-source gap
+        raw["pool"] = {"error": f"pool/collections unavailable: {exc}", "confidence": 0.0, "citations": []}
+    try:
+        raw["report"] = verify_report.func(deal_id, period)
+    except Exception as exc:  # noqa: BLE001 — surface an honest per-source gap
+        raw["report"] = {"error": f"investor report unavailable: {exc}", "confidence": 0.0, "citations": []}
+
+    bundle: dict = {"deal_id": deal_id, "deal_name": deal["deal_name"]}
+    if period is not None:
+        bundle["period_filter"] = period
+
+    sources_available: list[str] = []
+    sources_missing: list[str] = []
+    for key, label in _SYNTHESIS_SOURCES:
+        payload = raw[key]
+        unavailable = _is_unavailable_block(payload)
+        block = dict(payload)
+        block["source"] = label
+        block["available"] = not unavailable
+        bundle[key] = block
+        (sources_missing if unavailable else sources_available).append(label)
+
+    bundle["sources_available"] = sources_available
+    bundle["sources_missing"] = sources_missing
+    bundle["synthesis_guidance"] = (
+        "Combine these sources into ONE grounded answer. Attribute every claim "
+        "to the `source` of the block it came from (e.g. 'per the prospectus "
+        "deal-model …', 'the loan tape shows …'). For any source listed in "
+        "`sources_missing`, state plainly that it was unavailable and do NOT "
+        "infer its content from the other sources — report the gap honestly "
+        "rather than fabricating a cross-source conclusion."
+    )
+    # The bundle's own confidence is the most-conservative of the available
+    # sources (mirrors the executor's min-aggregate); 0.0 when nothing is
+    # available so an all-missing bundle never reads as confident.
+    confidences = [
+        c
+        for c in (
+            raw[key].get("confidence")
+            for key, label in _SYNTHESIS_SOURCES
+            if label in sources_available
+        )
+        if isinstance(c, (int, float))
+    ]
+    bundle["confidence"] = min(confidences) if confidences else 0.0
+    # Citations are already carried per-source on each block; the top-level
+    # list is the union so a caller threading citations into the evidence pack
+    # gets them all.
+    bundle["citations"] = [
+        c
+        for key, _label in _SYNTHESIS_SOURCES
+        for c in (raw[key].get("citations") or [])
+        if isinstance(c, dict)
+    ]
+    return bundle
+
+
 # Collect all tools for the agent
 SF_TOOLS = [
     load_esma_tape,
@@ -792,6 +954,7 @@ SF_TOOLS = [
     list_deal_tapes,
     stress_matrix,  # #323 — appended (additive; keeps existing ordering stable)
     monitor_portfolio,  # #326 — appended (additive; keeps existing ordering stable)
+    synthesise_cross_source,  # #403 — appended (additive; keeps existing ordering stable)
 ]
 SF_TOOL_NODE = ToolNode(SF_TOOLS)
 

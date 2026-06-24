@@ -22,6 +22,7 @@ from loanwhiz.agent.tools import (
     project_cashflows,
     run_waterfall,
     stress_matrix,
+    synthesise_cross_source,
     verify_report,
 )
 from loanwhiz.config import DEAL_REGISTRY
@@ -1016,11 +1017,12 @@ def test_sf_tools_has_expected_tools():
         "list_deal_tapes",
         "stress_matrix",
         "monitor_portfolio",
+        "synthesise_cross_source",
     ]
 
 
-def test_sf_tools_has_exactly_eleven_tools():
-    assert len(SF_TOOLS) == 11
+def test_sf_tools_has_exactly_twelve_tools():
+    assert len(SF_TOOLS) == 12
 
 
 def test_sf_tool_node_is_tool_node_instance():
@@ -1048,7 +1050,7 @@ def test_sf_tools_all_have_invoke_method():
 def test_list_available_tools_returns_list_of_dicts():
     result = list_available_tools()
     assert isinstance(result, list)
-    assert len(result) == 11
+    assert len(result) == 12
 
 
 def test_list_available_tools_has_name_and_description():
@@ -1128,3 +1130,211 @@ def test_system_prompt_is_regrounded():
     # The agent is told the deal reports its three 2026 monthly tapes (and to
     # resolve them via list_deal_tapes rather than hardcoded URLs).
     assert "Feb/Mar/Apr" in SYSTEM_PROMPT
+
+
+# ---------------------------------------------------------------------------
+# synthesise_cross_source (#403) — cross-source synthesis bundle
+# ---------------------------------------------------------------------------
+#
+# The tool composes the underlying functions of get_deal_model /
+# aggregate_collections / verify_report (their plain ``.func`` callables), so
+# the tests stub those three at that seam — no LLM, no network, no real
+# primitive execution.
+
+
+def _patch_synthesis_sources(stack: ExitStack, deal_model, pool, report):
+    """Stub the three per-source tool functions the synthesis tool composes.
+
+    Each arg is either a dict (returned as-is) or an Exception instance (raised
+    when the source function is called, to exercise the per-source crash guard).
+    """
+    def _ret(value):
+        def _fn(*_args, **_kwargs):
+            if isinstance(value, Exception):
+                raise value
+            return value
+        return _fn
+
+    stack.enter_context(
+        patch("loanwhiz.agent.tools.get_deal_model.func", side_effect=_ret(deal_model))
+    )
+    stack.enter_context(
+        patch("loanwhiz.agent.tools.aggregate_collections.func", side_effect=_ret(pool))
+    )
+    stack.enter_context(
+        patch("loanwhiz.agent.tools.verify_report.func", side_effect=_ret(report))
+    )
+
+
+def _ok_deal_model() -> dict:
+    return {
+        "deal_id": DEFAULT_DEAL_ID,
+        "deal_name": "Green Lion 2026-1 B.V.",
+        "extraction_status": "cached",
+        "completeness_score": 0.9,
+        "trigger_names": ["reserve_fund_trigger"],
+        "tranche_structure": [{"class": "A"}],
+        "covenants": {},
+        "waterfalls": {},
+        "definitions": {"Reserve Target": "1.5% of note balance"},
+    }
+
+
+def _ok_pool() -> dict:
+    return {
+        "reporting_period": "April 2026",
+        "available_revenue_funds": 9_000_000.0,
+        "pool_balance_eur": 990_000_000.0,
+        "confidence": 0.85,
+        "citations": [{"document": "tape.csv", "page_or_row": 1, "excerpt": "balance"}],
+        "duration_ms": 1.0,
+    }
+
+
+def _ok_report() -> dict:
+    return {
+        "overall_match": True,
+        "summary": "Report ties out to the engine.",
+        "confidence": 0.8,
+        "citations": [{"document": "report.pdf", "page_or_row": 2, "excerpt": "class A"}],
+        "duration_ms": 1.0,
+    }
+
+
+def test_synthesise_cross_source_bundles_all_three_sources():
+    """All three sources present → one bundle, each block source-tagged + available."""
+    with ExitStack() as stack:
+        _patch_synthesis_sources(stack, _ok_deal_model(), _ok_pool(), _ok_report())
+        result = synthesise_cross_source.invoke({"deal_id": DEFAULT_DEAL_ID})
+
+    assert result["deal_model"]["source"] == "prospectus deal-model"
+    assert result["pool"]["source"] == "loan tape"
+    assert result["report"]["source"] == "investor report"
+    assert result["deal_model"]["available"] is True
+    assert result["pool"]["available"] is True
+    assert result["report"]["available"] is True
+    assert set(result["sources_available"]) == {
+        "prospectus deal-model",
+        "loan tape",
+        "investor report",
+    }
+    assert result["sources_missing"] == []
+    # The original analytical content survives on each block.
+    assert result["pool"]["available_revenue_funds"] == 9_000_000.0
+    assert result["deal_model"]["definitions"]["Reserve Target"] == "1.5% of note balance"
+
+
+def test_synthesise_cross_source_carries_per_source_citations():
+    """Each block keeps its own citations; the top-level union carries them all."""
+    with ExitStack() as stack:
+        _patch_synthesis_sources(stack, _ok_deal_model(), _ok_pool(), _ok_report())
+        result = synthesise_cross_source.invoke({"deal_id": DEFAULT_DEAL_ID})
+
+    assert result["pool"]["citations"] == [
+        {"document": "tape.csv", "page_or_row": 1, "excerpt": "balance"}
+    ]
+    assert result["report"]["citations"] == [
+        {"document": "report.pdf", "page_or_row": 2, "excerpt": "class A"}
+    ]
+    # Top-level union = both source citations.
+    docs = {c["document"] for c in result["citations"]}
+    assert docs == {"tape.csv", "report.pdf"}
+    # Bundle confidence is the most-conservative available source (min).
+    assert result["confidence"] == 0.8
+
+
+def test_synthesise_cross_source_uncached_deal_model_is_honest_gap():
+    """A not_cached deal-model is an explicit unavailable block — no fabricated terms."""
+    not_cached = {
+        "deal_id": DEFAULT_DEAL_ID,
+        "deal_name": "Green Lion 2026-1 B.V.",
+        "extraction_status": "not_cached",
+        "note": "prospectus not extracted",
+    }
+    with ExitStack() as stack:
+        _patch_synthesis_sources(stack, not_cached, _ok_pool(), _ok_report())
+        result = synthesise_cross_source.invoke({"deal_id": DEFAULT_DEAL_ID})
+
+    assert result["deal_model"]["available"] is False
+    assert result["deal_model"]["extraction_status"] == "not_cached"
+    assert "prospectus deal-model" in result["sources_missing"]
+    assert "loan tape" in result["sources_available"]
+    # No fabricated structural terms leaked in.
+    assert "definitions" not in result["deal_model"]
+
+
+def test_synthesise_cross_source_missing_tape_and_report_are_honest_gaps():
+    """A source returning an error → explicit unavailable block, others survive."""
+    pool_err = {"error": "No loan tapes published", "confidence": 0.0, "citations": []}
+    report_err = {"error": "deal publishes no investor reports", "confidence": 0.0, "citations": []}
+    with ExitStack() as stack:
+        _patch_synthesis_sources(stack, _ok_deal_model(), pool_err, report_err)
+        result = synthesise_cross_source.invoke({"deal_id": DEFAULT_DEAL_ID})
+
+    assert result["pool"]["available"] is False
+    assert result["report"]["available"] is False
+    assert result["deal_model"]["available"] is True
+    assert set(result["sources_missing"]) == {"loan tape", "investor report"}
+    assert result["sources_available"] == ["prospectus deal-model"]
+
+
+def test_synthesise_cross_source_per_source_crash_does_not_lose_others():
+    """If one source function raises, it becomes an honest error block — not a crash."""
+    with ExitStack() as stack:
+        _patch_synthesis_sources(
+            stack, _ok_deal_model(), RuntimeError("tape read blew up"), _ok_report()
+        )
+        result = synthesise_cross_source.invoke({"deal_id": DEFAULT_DEAL_ID})
+
+    assert result["pool"]["available"] is False
+    assert "tape read blew up" in result["pool"]["error"]
+    # The other two sources are unaffected.
+    assert result["deal_model"]["available"] is True
+    assert result["report"]["available"] is True
+
+
+def test_synthesise_cross_source_all_missing_is_not_confident():
+    """An all-missing bundle reports confidence 0.0 (never reads as confident)."""
+    err = {"error": "unavailable", "confidence": 0.0, "citations": []}
+    not_cached = {"extraction_status": "not_cached", "note": "x"}
+    with ExitStack() as stack:
+        _patch_synthesis_sources(stack, not_cached, err, err)
+        result = synthesise_cross_source.invoke({"deal_id": DEFAULT_DEAL_ID})
+
+    assert result["sources_available"] == []
+    assert result["confidence"] == 0.0
+    assert result["citations"] == []
+
+
+def test_synthesise_cross_source_unknown_deal_errors():
+    """A bad deal_id returns {error, available_deals} and never falls back to the default."""
+    result = synthesise_cross_source.invoke({"deal_id": "no-such-deal"})
+    assert "error" in result
+    assert "no-such-deal" in result["error"]
+    assert "available_deals" in result
+    assert result["confidence"] == 0.0
+    # Crucially: no per-source blocks were assembled for the wrong deal.
+    assert "deal_model" not in result
+
+
+def test_synthesise_cross_source_includes_attribution_guidance():
+    """The bundle instructs the consumer to attribute claims + report gaps honestly."""
+    with ExitStack() as stack:
+        _patch_synthesis_sources(stack, _ok_deal_model(), _ok_pool(), _ok_report())
+        result = synthesise_cross_source.invoke({"deal_id": DEFAULT_DEAL_ID})
+
+    guidance = result["synthesis_guidance"].lower()
+    assert "source" in guidance
+    assert "sources_missing" in guidance or "unavailable" in guidance
+
+
+def test_system_prompt_documents_cross_source_synthesis():
+    """The prompt names the synthesis tool and mandates per-source attribution + honest gaps."""
+    from loanwhiz.agent.planner import SYSTEM_PROMPT
+
+    assert "synthesise_cross_source" in SYSTEM_PROMPT
+    # Honesty bar: attribute each claim to its source, and report missing
+    # sources rather than fabricating across the gap.
+    lowered = SYSTEM_PROMPT.lower()
+    assert "attribute" in lowered
+    assert "fabricate" in lowered or "fabricating" in lowered
