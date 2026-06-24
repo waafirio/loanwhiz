@@ -598,9 +598,34 @@ def _extract_tranches(
     return []
 
 
-# Maps a class letter to its 0-based seniority (A is most senior).
-def _seniority_for(letter: str) -> int:
-    return ord(letter.upper()) - ord("A")
+# A class letter is a single A–G (the realistic note-class alphabet: senior
+# Class A down to a deeply-subordinated Class G). Anything past G is not a real
+# note class — it is almost always a stray table cell ("Class O" with no
+# corroborating size column, OCR noise) being mis-read as a tranche. Bounding
+# the alphabet here is what kills the Sol-Lion "Class O = 42 EUR" artifact: an
+# out-of-range letter no longer matches `_CLASS_RE` at all, so it cannot become
+# a phantom tranche or get a junk `ord('O')-ord('A')=14` seniority (#397).
+_MAX_CLASS_LETTER = "G"
+
+
+def _seniority_for(label: str) -> int:
+    """0-based seniority for a class label such as ``A``, ``A1``, ``B``.
+
+    The class *letter* is the primary key (A most senior) and the optional
+    *series digit* is the sub-order, so multi-series stacks order
+    ``A1 < A2 < … < A6 < B < C`` rather than collapsing onto one ``A`` (#397).
+    Scaling the letter rank by 100 leaves ample room for the series digit while
+    keeping the senior→junior sort total.
+
+    Accepts either a bare letter (``"A"``) or a full label (``"A1"``,
+    ``"Class B"``); only the leading letter + trailing digits are read.
+    """
+    m = re.search(r"([A-Za-z])\s*(\d*)", label)
+    if not m:
+        return 0
+    letter_rank = ord(m.group(1).upper()) - ord("A")
+    series = int(m.group(2)) if m.group(2) else 0
+    return letter_rank * 100 + series
 
 
 # A EUR amount such as "€1,000,000,000", "EUR 53,100,000" or "10,500,000".
@@ -608,8 +633,24 @@ _AMOUNT_RE = re.compile(
     r"(?:€|EUR\s*)?\s*([0-9][0-9.,]*[0-9]|[0-9])",
 )
 
-# A note-class label, e.g. "Class A", "Class A1", "Class A Notes".
-_CLASS_RE = re.compile(r"Class\s+([A-Z])\d*", re.IGNORECASE)
+# A note-class label. Captures the class *letter* (group 1, bounded to the
+# realistic A–G note-class alphabet — see ``_MAX_CLASS_LETTER``) and the
+# optional *series digit* (group 2), so multi-series stacks like
+# ``Class A1 … Class A6`` are recognised as distinct tranches instead of all
+# collapsing onto ``Class A`` (#397). Matches "Class A", "Class A1",
+# "Class A Notes", and "Series A1" / "Series A6" (RMBS prospectuses use
+# "Series" for the senior multi-series block).
+_CLASS_RE = re.compile(
+    rf"(?:Class|Series)\s+([A-{_MAX_CLASS_LETTER}])\s*(\d*)",
+    re.IGNORECASE,
+)
+
+
+def _class_label(match: "re.Match[str]") -> str:
+    """Build the canonical ``Class A`` / ``Class A1`` name from a `_CLASS_RE` match."""
+    letter = match.group(1).upper()
+    series = match.group(2) or ""
+    return f"Class {letter}{series}"
 
 # A coupon / interest-rate expression, e.g. "3 month EURIBOR + 0.43%" or "0.43%".
 _RATE_RE = re.compile(
@@ -694,44 +735,51 @@ def _markdown_tables(markdown_text: str) -> list[list[list[str]]]:
 
 
 def _tranches_from_class_column_table(table: list[list[str]]) -> list[dict]:
-    """Parse a table where each *column* is a note class."""
+    """Parse a table where each *column* is a note class.
+
+    Each class column is keyed by its **full label** (``Class A``, ``Class A1``,
+    …) so a multi-series header row ``| | Class A1 | … | Class A6 | Class B |``
+    yields one distinct tranche per column instead of collapsing the A-series
+    onto a single ``Class A`` (#397).
+    """
     # Find the header row that names the classes.
     header_idx = None
     class_cols: dict[int, str] = {}
     for idx, row in enumerate(table):
-        cols = {i: _CLASS_RE.search(cell).group(1).upper()
-                for i, cell in enumerate(row) if _CLASS_RE.search(cell)}
+        cols = {i: _class_label(m)
+                for i, cell in enumerate(row) if (m := _CLASS_RE.search(cell))}
         if len(cols) >= 2:
             header_idx, class_cols = idx, cols
             break
     if header_idx is None or not class_cols:
         return []
 
-    # Walk attribute rows, slotting each cell into its class column.
+    # Walk attribute rows, slotting each cell into its class column. Keyed by
+    # the full label so A1…A6 stay distinct.
     attrs: dict[str, dict] = {
-        letter: {"name": f"Class {letter}", "size_eur": None,
-                 "rating": None, "rate": None, "seniority": _seniority_for(letter)}
-        for letter in class_cols.values()
+        name: {"name": name, "size_eur": None,
+               "rating": None, "rate": None, "seniority": _seniority_for(name)}
+        for name in class_cols.values()
     }
     for row in table[header_idx + 1:]:
         if not row:
             continue
         label = row[0].lower()
-        for col, letter in class_cols.items():
+        for col, name in class_cols.items():
             if col >= len(row):
                 continue
             cell = row[col]
             if re.search(r"principal|amount|nominal", label):
-                if attrs[letter]["size_eur"] is None:
-                    attrs[letter]["size_eur"] = _parse_euro_amount(cell)
+                if attrs[name]["size_eur"] is None:
+                    attrs[name]["size_eur"] = _parse_euro_amount(cell)
             elif "rating" in label:
                 m = _RATING_RE.search(cell)
-                if m and attrs[letter]["rating"] is None:
-                    attrs[letter]["rating"] = m.group(1)
+                if m and attrs[name]["rating"] is None:
+                    attrs[name]["rating"] = m.group(1)
             elif re.search(r"interest|rate|coupon|margin", label):
                 m = _RATE_RE.search(cell)
-                if m and attrs[letter]["rate"] is None:
-                    attrs[letter]["rate"] = m.group(1).strip()
+                if m and attrs[name]["rate"] is None:
+                    attrs[name]["rate"] = m.group(1).strip()
 
     ordered = sorted(attrs.values(), key=lambda t: t["seniority"])
     # Only accept the parse if at least one tranche carries a size.
@@ -741,7 +789,14 @@ def _tranches_from_class_column_table(table: list[list[str]]) -> list[dict]:
 
 
 def _tranches_from_class_row_table(table: list[list[str]]) -> list[dict]:
-    """Parse a table where each *row* is a note class."""
+    """Parse a table where each *row* is a note class.
+
+    Each row is identified and de-duplicated by its **full label** (``Class A``,
+    ``Class A1``, …) so multi-series rows are distinct tranches (#397). A row
+    whose only class-shaped cell is junk (out-of-range letter, no corroborating
+    amount) is dropped by the ``size is None`` guard combined with the bounded
+    ``_CLASS_RE`` alphabet — this is what removes the spurious ``Class O`` row.
+    """
     tranches: list[dict] = []
     seen: set[str] = set()
     for row in table:
@@ -749,8 +804,8 @@ def _tranches_from_class_row_table(table: list[list[str]]) -> list[dict]:
         m = _CLASS_RE.search(joined)
         if not m:
             continue
-        letter = m.group(1).upper()
-        if letter in seen:
+        name = _class_label(m)
+        if name in seen:
             continue
         # Exclude the cell holding the "Class X" label so its letter isn't
         # misread as a rating (e.g. "Class A Notes" -> rating "A").
@@ -764,13 +819,13 @@ def _tranches_from_class_row_table(table: list[list[str]]) -> list[dict]:
         )
         if size is None:
             continue
-        seen.add(letter)
+        seen.add(name)
         tranches.append({
-            "name": f"Class {letter}",
+            "name": name,
             "size_eur": size,
             "rating": rating,
             "rate": rate,
-            "seniority": _seniority_for(letter),
+            "seniority": _seniority_for(name),
         })
     return sorted(tranches, key=lambda t: t["seniority"]) if tranches else []
 
@@ -778,28 +833,44 @@ def _tranches_from_class_row_table(table: list[list[str]]) -> list[dict]:
 def _tranches_from_waterfalls(waterfalls: dict) -> list[dict]:
     """Fallback: derive class names + seniority from waterfall step recipients.
 
-    Scans every waterfall's step recipients for ``class_a`` / ``class_b`` /
-    ``class_c`` references and emits one tranche per distinct class, ordered
-    senior→junior.  Sizes / ratings / coupons are unavailable from this
-    source and left as ``None``.
+    Scans every waterfall's step recipients for note-class references and emits
+    one tranche per distinct class, ordered senior→junior.  Sizes / ratings /
+    coupons are unavailable from this source and left as ``None``.
+
+    Recognises both naming conventions structure-agnostically (#397):
+
+    * ``class_a`` / ``class_b`` / ``class_c`` — single-letter classes (the
+      historical A/B/C case; byte-identical output when only these appear).
+    * ``series_a1`` … ``series_a6`` — multi-series senior tranches, e.g.
+      Sol-Lion's ``series_a1_notes_redemption`` … ``series_a6_notes_redemption``
+      (+ ``class_b`` / ``class_c``), which the old single-letter pattern dropped
+      entirely.
+
+    The class *letter* is bounded to A–G (see ``_MAX_CLASS_LETTER``) so a
+    recipient that happens to contain ``class_x`` for some non-class token never
+    fabricates a phantom tranche.
     """
-    letters: set[str] = set()
-    # Match e.g. "class_a" in "class_a_notes_principal": a single class letter
-    # not immediately followed by another letter.
-    pattern = re.compile(r"class_([a-z])(?![a-z])")
+    labels: set[str] = set()
+    # "class_a" → letter A (single class letter not immediately followed by
+    # another letter); "series_a1" → letter A, series 1.
+    class_pat = re.compile(rf"class_([a-{_MAX_CLASS_LETTER.lower()}])(?![a-z])")
+    series_pat = re.compile(rf"series_([a-{_MAX_CLASS_LETTER.lower()}])(\d+)")
     for waterfall in waterfalls.values():
         for step in waterfall.steps:
-            for m in pattern.finditer(step.recipient.lower()):
-                letters.add(m.group(1).upper())
+            recipient = step.recipient.lower()
+            for m in class_pat.finditer(recipient):
+                labels.add(m.group(1).upper())
+            for m in series_pat.finditer(recipient):
+                labels.add(f"{m.group(1).upper()}{m.group(2)}")
     tranches = [
         {
-            "name": f"Class {letter}",
+            "name": f"Class {label}",
             "size_eur": None,
             "rating": None,
             "rate": None,
-            "seniority": _seniority_for(letter),
+            "seniority": _seniority_for(label),
         }
-        for letter in letters
+        for label in labels
     ]
     return sorted(tranches, key=lambda t: t["seniority"])
 
