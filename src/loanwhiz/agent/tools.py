@@ -746,6 +746,128 @@ def list_deal_tapes(deal_id: str = DEFAULT_DEAL_ID, period: str | None = None) -
     return result
 
 
+def _bound_compare_output(payload: dict) -> dict:
+    """Bound a ``/compare`` payload so multi-period output stays context-cheap.
+
+    The :class:`~loanwhiz.api.compare.CompareResponse` carries one
+    ``performance_series`` per deal, each a per-period list of points (one per
+    shared reporting date). Over a long shared history that is a lot of rows for
+    the agent to hold; when any series exceeds :data:`MAX_VERBATIM_PERIODS` this
+    collapses every series' ``points`` to first/last and adds a
+    ``periods_summarised`` note. The reasoned answer — ``deals`` (with their
+    provenance/coverage flags), ``structural_rows``, ``risk_summary`` (the
+    latest-period covenant-proximity triage, with benchmark deviations when a
+    ``target`` is set), ``comp_suggestions``, ``notes``, and any scoring /
+    narrative fields a future enrichment of ``/compare`` adds — is always kept
+    verbatim. Below the threshold the payload is returned unchanged (the small
+    seeded demo deals).
+
+    Mirrors :func:`_bound_projection` / :func:`_bound_covenant_output`: pure
+    Python over data ``/compare`` already produced, no extra LLM call.
+    """
+    series = payload.get("performance_series")
+    if not isinstance(series, list):
+        return payload
+    if not any(
+        isinstance(s, dict) and len(s.get("points", [])) > MAX_VERBATIM_PERIODS
+        for s in series
+    ):
+        return payload
+
+    bounded_series: list[dict] = []
+    for s in series:
+        points = s.get("points", []) if isinstance(s, dict) else []
+        if len(points) <= MAX_VERBATIM_PERIODS:
+            bounded_series.append(s)
+            continue
+        bounded = dict(s)
+        bounded["points"] = [points[0], points[-1]]
+        bounded["periods_summarised"] = (
+            f"{len(points)} periods reported; points shows only the first and "
+            f"last. The latest-period figures live in risk_summary."
+        )
+        bounded_series.append(bounded)
+    out = dict(payload)
+    out["performance_series"] = bounded_series
+    return out
+
+
+@tool
+def compare_deals(
+    deal_a: str,
+    deal_b: str,
+    target: str | None = None,
+    extra_deals: list[str] | None = None,
+) -> dict:
+    """Compare two (or more) deals side by side: structure, performance, and risk.
+
+    Use this for ANY cross-deal / relative-value question — "compare deal A vs
+    deal B", "how does X stack up against Y", "which of these is the safer
+    credit", "benchmark deal A against its comp set". Name the two deals to
+    compare with ``deal_a`` and ``deal_b`` (their registry ``deal_id``s); pass
+    ``extra_deals`` for an N-way comparison and ``target`` to benchmark one deal
+    against the median of the others (the comp set).
+
+    Wires the chat agent into the platform's existing ``GET /compare`` alignment
+    path: it aligns each deal's structural terms by canonical recipient/metric
+    (the tranche stack, the revenue/redemption waterfalls, covenant triggers and
+    thresholds, the reserve mechanics), overlays their reported performance
+    series, and summarises each deal's latest-period covenant proximity-to-breach.
+    With a ``target`` set, comparable structural thresholds and the proximity
+    risk metric are annotated with the comp-set median and the target's signed
+    deviation from it, plus jurisdiction/vintage comp suggestions.
+
+    Returns the comparison payload: ``deals`` (each with honest
+    ``has_structural`` / ``has_performance`` / provenance flags and a coverage
+    ``note``), ``structural_rows`` (diff-flagged where deals differ; ``unmapped``
+    rows surfaced as "not comparable" rather than coerced), ``performance_series``
+    (bounded to first/last over a long shared history — the latest figures are in
+    ``risk_summary``), ``risk_summary``, ``common_periods``, ``comp_suggestions``,
+    and honesty ``notes``. A deal with no cached model still appears with its
+    structural diff flagged unavailable rather than being dropped.
+
+    A comparison set with fewer than two distinct deals, or an unknown
+    ``deal_id`` (including a ``target`` not in the set), returns a graceful tool
+    error listing the available deals — it never silently falls back to a default
+    deal (answering a comparison about the wrong deals is worse than an explicit
+    miss).
+    """
+    # Call-time import to reuse the REST /compare recipe (the pure alignment +
+    # median assembly over the cached models / reconstructed series) without an
+    # import-time cycle (api.main -> agent.executor -> agent.tools -> api.main),
+    # mirroring run_waterfall / project_cashflows / stress_matrix. Aliased so the
+    # endpoint name does not shadow this tool.
+    from fastapi import HTTPException
+
+    from loanwhiz.api.main import compare_deals as _compare_endpoint
+
+    deal_ids = [deal_a, deal_b] + list(extra_deals or [])
+    deals_param = ",".join(deal_ids)
+
+    try:
+        resp = _compare_endpoint(deals=deals_param, target=target)
+    except HTTPException as exc:
+        # < 2 distinct deals, an unknown id, or a target not in the set raise a
+        # 422 — surface the endpoint's own detail as an honest tool error rather
+        # than crashing the agent's turn.
+        return {
+            "error": str(exc.detail),
+            "available_deals": list(DEAL_REGISTRY),
+            "confidence": 0.0,
+            "citations": [],
+        }
+
+    payload = resp.model_dump() if hasattr(resp, "model_dump") else dict(resp)
+    # Deterministic assembly over already-validated per-deal outputs → full
+    # confidence; the underlying tape/model reads are cited in the per-deal
+    # analytics (same posture as project_cashflows / stress_matrix).
+    return _bound_compare_output(payload) | {
+        "confidence": 1.0,
+        "citations": [],
+        "duration_ms": 0,
+    }
+
+
 @tool
 def monitor_portfolio() -> dict:
     """Cross-deal covenant watchlist: which deal is breaching or about to breach first.
@@ -792,6 +914,7 @@ SF_TOOLS = [
     list_deal_tapes,
     stress_matrix,  # #323 — appended (additive; keeps existing ordering stable)
     monitor_portfolio,  # #326 — appended (additive; keeps existing ordering stable)
+    compare_deals,  # #401 — appended (additive; keeps existing ordering stable)
 ]
 SF_TOOL_NODE = ToolNode(SF_TOOLS)
 
