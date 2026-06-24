@@ -2514,11 +2514,12 @@ def test_report_gate_inversion_reconciled_overrides_low_confidence():
     reconcile (Class A interest "(d)"), one on a field the engine never proves
     (reserve_balance). Only the latter must surface in review_items.
     """
-    from loanwhiz.api import main as api_main
+    from loanwhiz.config import DEAL_REGISTRY
     from loanwhiz.domain.provenance import FieldProvenance
-    from loanwhiz.primitives.report_extractor import ParsedReport
+    from loanwhiz.primitives import report_extractor as rx
 
-    base = api_main._build_green_lion_2024_1_parsed_report()
+    gl_deal = DEAL_REGISTRY["green-lion-2024-1"]
+    base = rx.resolve_parsed_report("green-lion-2024-1", gl_deal)
     # Index of the "(d)" Class A interest step in period 0's revenue PoP.
     labels = [s.priority_label for s in base.periods[0].revenue_pop]
     d_idx = labels.index("(d)")
@@ -2538,14 +2539,10 @@ def test_report_gate_inversion_reconciled_overrides_low_confidence():
         }
     )
 
-    def _seeded_builder() -> ParsedReport:
-        return seeded.model_copy(deep=True)
-
-    _, model_loader = api_main._REPORT_GATE_BUILDERS["green-lion-2024-1"]
-    with patch.dict(
-        api_main._REPORT_GATE_BUILDERS,
-        {"green-lion-2024-1": (_seeded_builder, model_loader)},
-        clear=False,
+    # The gate resolves its ParsedReport generally via resolve_parsed_report; patch
+    # it to return the seeded low-confidence copy (the model still resolves offline).
+    with patch.object(
+        rx, "resolve_parsed_report", return_value=seeded.model_copy(deep=True)
     ):
         body = client.get("/deal/green-lion-2024-1/report-gate").json()
 
@@ -2564,11 +2561,12 @@ def test_report_gate_inversion_reconciled_overrides_low_confidence():
 
 def test_report_gate_confidence_threshold_query_is_honored():
     """The optional confidence_threshold query flows into the gate's routing."""
-    from loanwhiz.api import main as api_main
+    from loanwhiz.config import DEAL_REGISTRY
     from loanwhiz.domain.provenance import FieldProvenance
-    from loanwhiz.primitives.report_extractor import ParsedReport
+    from loanwhiz.primitives import report_extractor as rx
 
-    base = api_main._build_green_lion_2024_1_parsed_report()
+    gl_deal = DEAL_REGISTRY["green-lion-2024-1"]
+    base = rx.resolve_parsed_report("green-lion-2024-1", gl_deal)
     seeded = base.model_copy(
         update={
             "provenance": {
@@ -2579,14 +2577,8 @@ def test_report_gate_confidence_threshold_query_is_honored():
         }
     )
 
-    def _seeded_builder() -> ParsedReport:
-        return seeded.model_copy(deep=True)
-
-    _, model_loader = api_main._REPORT_GATE_BUILDERS["green-lion-2024-1"]
-    with patch.dict(
-        api_main._REPORT_GATE_BUILDERS,
-        {"green-lion-2024-1": (_seeded_builder, model_loader)},
-        clear=False,
+    with patch.object(
+        rx, "resolve_parsed_report", return_value=seeded.model_copy(deep=True)
     ):
         # 0.6 < 0.7 → routed; 0.6 >= 0.5 → not routed (strictly-below).
         flagged = client.get(
