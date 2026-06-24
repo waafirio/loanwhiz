@@ -118,6 +118,42 @@ class DefinitionsGraph:
                 found[key] = defined_term
         return found
 
+    def link(self, text: str) -> list[DefinedTerm]:
+        """Link a free-text fragment to the defined terms it references.
+
+        The list-returning form of :meth:`resolve_all`: returns the
+        :class:`DefinedTerm`\\ s referenced in ``text``, **in document order of
+        first appearance** and de-duplicated. This is the single resolution
+        surface the assembler and the interpreter call to turn a raw step
+        ``condition`` (or a trigger ``metric`` / ``display_name``) into the
+        structured defined-term links that let conditional waterfall prose
+        resolve against its trigger instead of silently no-op'ing.
+
+        Ordering by first appearance (rather than ``self.terms`` insertion
+        order) makes the link deterministic from the *text* — two callers
+        passing the same condition get the same ordered link regardless of how
+        the graph was built. Blank / unmatched text yields ``[]``.
+        """
+        if not text or not text.strip():
+            return []
+        lower_text = text.lower()
+        # (first-index, canonical-key, DefinedTerm) for every term present.
+        hits: list[tuple[int, str, DefinedTerm]] = []
+        for key, defined_term in self.terms.items():
+            idx = lower_text.find(key.lower())
+            if idx >= 0:
+                hits.append((idx, key, defined_term))
+        # Order by first appearance, then by key for a stable tie-break.
+        hits.sort(key=lambda h: (h[0], h[1]))
+        seen: set[str] = set()
+        ordered: list[DefinedTerm] = []
+        for _idx, key, defined_term in hits:
+            if key in seen:
+                continue
+            seen.add(key)
+            ordered.append(defined_term)
+        return ordered
+
     def __len__(self) -> int:
         return len(self.terms)
 

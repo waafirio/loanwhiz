@@ -95,6 +95,14 @@ class StepSpec(BaseModel):
         Free-text trigger condition gating this step, or ``None`` when the step
         is unconditional. Evaluated by the injected ``ConditionEvaluator`` — the
         interpreter never parses this prose itself.
+    condition_terms:
+        Canonical names of the **defined terms** this step's ``condition``
+        references, as linked by the definitions graph
+        (``DefinitionsGraph.link``) at assembly time. Empty when nothing was
+        linked (the default). The evaluator consults these to recognise a named
+        trigger even when the raw ``condition`` prose phrases it differently —
+        this is what makes conditional waterfall prose resolve against its
+        definition instead of falling through to the "unknown → pay" default.
     pari_passu_group:
         An optional group id. Steps sharing a group id rank equally and split a
         shortfall pro-rata by need. ``None`` means the step ranks alone.
@@ -109,6 +117,7 @@ class StepSpec(BaseModel):
     priority: str
     recipient: str
     condition: str | None = None
+    condition_terms: list[str] = Field(default_factory=list)
     pari_passu_group: str | None = None
     residual: bool = False
 
@@ -118,7 +127,9 @@ class StepSpec(BaseModel):
 
         Accepts the ``waterfall_extractor.WaterfallStep`` JSON shape (as stored
         in ``DealModel.waterfalls[*]["steps"]``): keys ``priority``,
-        ``recipient``, ``condition``, ``is_pari_passu``.
+        ``recipient``, ``condition``, ``is_pari_passu``, and the assembler-added
+        ``condition_terms`` (the defined-term names the condition links to —
+        absent on legacy/builtin steps, defaulting to ``[]``).
 
         A step flagged ``is_pari_passu`` is assigned a group id derived from its
         priority label (``"<group_prefix>:<priority>"``) so each pari-passu step
@@ -131,6 +142,14 @@ class StepSpec(BaseModel):
         """
         condition = step.get("condition")
         condition = condition or None  # "" → None
+        terms = step.get("condition_terms") or []
+        # Be tolerant of the serialised shape: accept a list of bare term names
+        # or a list of {"term": ...} dicts (the assembler emits bare names).
+        condition_terms = [
+            t.get("term", "") if isinstance(t, dict) else str(t)
+            for t in terms
+        ]
+        condition_terms = [t for t in condition_terms if t]
         group: str | None = None
         if step.get("is_pari_passu"):
             group = f"{group_prefix}:{step.get('priority', '')}"
@@ -138,6 +157,7 @@ class StepSpec(BaseModel):
             priority=str(step.get("priority", "")),
             recipient=str(step.get("recipient", "")),
             condition=condition,
+            condition_terms=condition_terms,
             pari_passu_group=group,
         )
 
@@ -458,8 +478,20 @@ class ConditionEvaluator(Protocol):
     into S5's trigger internals).
     """
 
-    def evaluate(self, condition: str, funds: WaterfallFunds) -> bool:
-        """Return ``True`` if a step carrying ``condition`` should pay."""
+    def evaluate(
+        self,
+        condition: str,
+        funds: WaterfallFunds,
+        terms: list[str] | None = None,
+    ) -> bool:
+        """Return ``True`` if a step carrying ``condition`` should pay.
+
+        ``terms`` carries the canonical defined-term names the condition was
+        linked to (``StepSpec.condition_terms``). An evaluator may use them to
+        recognise a named trigger when the raw ``condition`` prose phrases it
+        differently. It is optional and defaults to ``None`` so existing
+        evaluators (and call sites) that ignore the link keep working.
+        """
         ...
 
     def sequential_pay_active(self, funds: WaterfallFunds) -> bool:
@@ -480,7 +512,9 @@ class DefaultConditionEvaluator:
     ---------
     - An **empty / unknown** condition → ``True`` (the step is unconditional, or
       we cannot prove it should be suppressed — pay it).
-    - A condition mentioning the **sequential pay trigger** gates on
+    - A condition mentioning the **sequential pay trigger** — either lexically in
+      the raw prose, **or** via a linked defined term in ``terms`` (the
+      ``condition_terms`` the definitions graph resolved) — gates on
       :meth:`sequential_pay_active`, honouring negation ("*not* in effect").
     - A condition naming a **flag** present in ``funds.flags`` gates on that
       flag (negation honoured).
@@ -494,14 +528,36 @@ class DefaultConditionEvaluator:
     # Phrases that flip the polarity of a condition.
     _NEG_MARKERS = ("not ", "no longer", "absence", "unless", "is not")
 
-    def evaluate(self, condition: str, funds: WaterfallFunds) -> bool:
+    def _references_sequential_pay(self, text: str, terms: list[str] | None) -> bool:
+        """True when the condition references the sequential pay trigger.
+
+        Checks both the raw prose (the lexical ``_SEQ_MARKERS``) and the linked
+        defined-term names (``condition_terms``), so a condition whose prose the
+        markers don't catch still resolves when the definitions graph linked it
+        to the Sequential Pay Trigger term. The latter is the #395 link: without
+        it the condition fell through to the "unknown → pay" default.
+        """
+        if any(marker in text for marker in self._SEQ_MARKERS):
+            return True
+        for term in terms or []:
+            lowered = term.lower()
+            if any(marker in lowered for marker in self._SEQ_MARKERS):
+                return True
+        return False
+
+    def evaluate(
+        self,
+        condition: str,
+        funds: WaterfallFunds,
+        terms: list[str] | None = None,
+    ) -> bool:
         text = (condition or "").strip().lower()
         if not text:
             return True
 
         negated = any(neg in text for neg in self._NEG_MARKERS)
 
-        if any(marker in text for marker in self._SEQ_MARKERS):
+        if self._references_sequential_pay(text, terms):
             active = self.sequential_pay_active(funds)
             # "if Sequential Pay Trigger is *not* in effect" → pay when inactive.
             return (not active) if negated else active
@@ -532,8 +588,9 @@ class StepResult(BaseModel):
 
     Attributes
     ----------
-    priority / recipient / condition / pari_passu_group:
-        Echoed from the :class:`StepSpec`.
+    priority / recipient / condition / condition_terms / pari_passu_group:
+        Echoed from the :class:`StepSpec` (``condition_terms`` is the linked
+        defined-term names that gated the step — empty when nothing was linked).
     amount_available:
         Funds available *before* this step (or this pari-passu group) deducted.
     need:
@@ -552,6 +609,7 @@ class StepResult(BaseModel):
     priority: str
     recipient: str
     condition: str | None = None
+    condition_terms: list[str] = Field(default_factory=list)
     pari_passu_group: str | None = None
     amount_available: float
     need: float
@@ -649,8 +707,22 @@ def interpret(
             return max(0.0, overrides[spec.recipient]), True
         return compute_need(spec.recipient, funds)
 
+    def _eval_condition(spec: StepSpec) -> bool:
+        """Run the evaluator over a step's condition + its linked terms.
+
+        Passes ``spec.condition_terms`` through to the evaluator so a linked
+        condition resolves against its defined term. Falls back to the legacy
+        two-arg call for evaluators (e.g. an S5 trigger engine) whose
+        ``evaluate`` predates the optional ``terms`` parameter — the link is
+        additive, never a hard dependency on the evaluator implementation.
+        """
+        try:
+            return ev.evaluate(spec.condition, funds, spec.condition_terms)
+        except TypeError:
+            return ev.evaluate(spec.condition, funds)
+
     def _is_gated(spec: StepSpec) -> bool:
-        return spec.condition is not None and not ev.evaluate(spec.condition, funds)
+        return spec.condition is not None and not _eval_condition(spec)
 
     # Pre-compute, per pari-passu group, the pro-rata distribution each member
     # receives — resolved against the pot available at the group's *first*
@@ -673,6 +745,7 @@ def interpret(
                     priority=spec.priority,
                     recipient=spec.recipient,
                     condition=spec.condition,
+                    condition_terms=spec.condition_terms,
                     pari_passu_group=spec.pari_passu_group,
                     amount_available=available,
                     need=0.0,
@@ -716,6 +789,7 @@ def interpret(
                     priority=spec.priority,
                     recipient=spec.recipient,
                     condition=spec.condition,
+                    condition_terms=spec.condition_terms,
                     pari_passu_group=spec.pari_passu_group,
                     amount_available=pot_before,
                     need=need,
@@ -734,6 +808,7 @@ def interpret(
                     priority=spec.priority,
                     recipient=spec.recipient,
                     condition=spec.condition,
+                    condition_terms=spec.condition_terms,
                     pari_passu_group=spec.pari_passu_group,
                     amount_available=available,
                     need=dist,
@@ -753,6 +828,7 @@ def interpret(
                 priority=spec.priority,
                 recipient=spec.recipient,
                 condition=spec.condition,
+                condition_terms=spec.condition_terms,
                 pari_passu_group=spec.pari_passu_group,
                 amount_available=available,
                 need=need,

@@ -257,6 +257,84 @@ class TestDefinitionsGraph:
         assert "Notes Payment Date" in result.definition
 
 
+class TestDefinitionsGraphLink:
+    """DefinitionsGraph.link — the ordered, de-duplicated linking surface (#395).
+
+    ``link`` is the list-returning sibling of ``resolve_all``: the assembler and
+    interpreter call it to turn a raw step condition / trigger metric into the
+    structured defined-term links that let conditional waterfall prose resolve
+    against its trigger instead of silently no-op'ing.
+    """
+
+    def _graph(self) -> DefinitionsGraph:
+        return _make_graph(
+            (
+                "Available Revenue Funds",
+                "Available Revenue Funds means interest and principal receipts.",
+                "Section 9.1",
+            ),
+            (
+                "Notes Payment Date",
+                "Notes Payment Date means the 25th calendar day of each month.",
+                "Section 9.1",
+            ),
+            (
+                "Sequential Pay Trigger",
+                "Sequential Pay Trigger switches the waterfall to sequential.",
+                "Section 9.1",
+            ),
+        )
+
+    def test_link_returns_referenced_terms(self) -> None:
+        graph = self._graph()
+        linked = graph.link("if a Sequential Pay Trigger has occurred")
+        assert [t.term for t in linked] == ["Sequential Pay Trigger"]
+
+    def test_link_returns_definedterm_objects(self) -> None:
+        graph = self._graph()
+        linked = graph.link("Available Revenue Funds were applied.")
+        assert linked and isinstance(linked[0], DefinedTerm)
+
+    def test_link_is_ordered_by_first_appearance(self) -> None:
+        """Terms come back in document order of first appearance, not graph order."""
+        graph = self._graph()
+        # Notes Payment Date appears in the text BEFORE Sequential Pay Trigger,
+        # even though the graph inserts Sequential Pay Trigger last.
+        text = (
+            "On each Notes Payment Date, if a Sequential Pay Trigger has "
+            "occurred, the Available Revenue Funds are applied sequentially."
+        )
+        linked = graph.link(text)
+        assert [t.term for t in linked] == [
+            "Notes Payment Date",
+            "Sequential Pay Trigger",
+            "Available Revenue Funds",
+        ]
+
+    def test_link_deduplicates(self) -> None:
+        graph = self._graph()
+        text = "Sequential Pay Trigger ... and again the Sequential Pay Trigger."
+        linked = graph.link(text)
+        assert [t.term for t in linked] == ["Sequential Pay Trigger"]
+
+    def test_link_case_insensitive(self) -> None:
+        graph = self._graph()
+        linked = graph.link("if a SEQUENTIAL PAY TRIGGER has occurred")
+        assert [t.term for t in linked] == ["Sequential Pay Trigger"]
+
+    def test_link_empty_text_returns_empty_list(self) -> None:
+        graph = self._graph()
+        assert graph.link("") == []
+        assert graph.link("   ") == []
+
+    def test_link_no_match_returns_empty_list(self) -> None:
+        graph = self._graph()
+        assert graph.link("The quick brown fox.") == []
+
+    def test_link_on_empty_graph(self) -> None:
+        assert DefinitionsGraph().link("Sequential Pay Trigger") == []
+
+
 class TestJsonRoundTrip:
     """_graph_to_json / _graph_from_json round-trip."""
 

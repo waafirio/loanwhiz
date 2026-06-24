@@ -192,6 +192,118 @@ class TestDefaultConditionEvaluator:
         assert isinstance(DefaultConditionEvaluator(), ConditionEvaluator)
 
 
+class TestConditionTermsLinking:
+    """The #395 definitions link: ``StepSpec.condition_terms`` + the evaluator's
+    consumption of it.
+
+    Before the link, a conditional step whose raw prose the lexical
+    ``_SEQ_MARKERS`` did not catch fell through to the evaluator's
+    "unknown condition → pay" default. The linked defined-term name now lets the
+    evaluator recognise the Sequential Pay Trigger even when the prose phrases it
+    differently.
+    """
+
+    def test_from_extracted_populates_condition_terms(self):
+        spec = StepSpec.from_extracted(
+            {
+                "priority": "(g)",
+                "recipient": "class_b_interest",
+                "condition": "while the trigger is in effect",
+                "condition_terms": ["Sequential Pay Trigger"],
+            }
+        )
+        assert spec.condition_terms == ["Sequential Pay Trigger"]
+
+    def test_from_extracted_defaults_condition_terms_empty(self):
+        spec = StepSpec.from_extracted(
+            {"priority": "(a)", "recipient": "senior_fees", "condition": "if X"}
+        )
+        assert spec.condition_terms == []
+
+    def test_from_extracted_accepts_dict_shaped_terms(self):
+        """Tolerant of a list of {"term": ...} dicts as well as bare names."""
+        spec = StepSpec.from_extracted(
+            {
+                "priority": "(g)",
+                "recipient": "class_b_interest",
+                "condition": "x",
+                "condition_terms": [{"term": "Sequential Pay Trigger"}],
+            }
+        )
+        assert spec.condition_terms == ["Sequential Pay Trigger"]
+
+    def test_linked_term_gates_when_prose_does_not_match(self):
+        """The core #395 fix.
+
+        The raw prose ("while the trigger is in effect") contains none of the
+        lexical sequential-pay markers, so without the link the evaluator would
+        fall through to "unknown → pay". The linked ``condition_terms`` name the
+        Sequential Pay Trigger, so the evaluator now gates on its state.
+        """
+        ev = DefaultConditionEvaluator()
+        cond = "while the trigger is in effect"
+        terms = ["Sequential Pay Trigger"]
+        # No link → falls through to the "unknown → pay" default.
+        assert ev.evaluate(cond, _funds(sequential_pay=True)) is True
+        assert ev.evaluate(cond, _funds(sequential_pay=False)) is True
+        # Linked → gates on the Sequential Pay Trigger state.
+        assert ev.evaluate(cond, _funds(sequential_pay=True), terms) is True
+        assert ev.evaluate(cond, _funds(sequential_pay=False), terms) is False
+
+    def test_linked_condition_gates_through_interpret(self):
+        """End-to-end through ``interpret`` with the real DefaultConditionEvaluator.
+
+        A linked conditional step suppresses (pays 0, gated) when its Sequential
+        Pay Trigger is inactive, and pays when active — driven purely by the
+        linked term, since the raw prose has no lexical marker.
+        """
+        steps = [
+            StepSpec(
+                priority="(g)",
+                recipient="senior_fees",
+                condition="while the trigger applies",
+                condition_terms=["Sequential Pay Trigger"],
+            ),
+        ]
+        # Inactive trigger → the linked step is gated (pays 0).
+        ex_inactive = interpret(
+            steps, _funds(sequential_pay=False), available=1_000_000.0
+        )
+        assert ex_inactive.steps[0].gated is True
+        assert ex_inactive.steps[0].amount_distributed == 0.0
+        assert ex_inactive.steps[0].condition_terms == ["Sequential Pay Trigger"]
+        # Active trigger → the linked step pays.
+        ex_active = interpret(
+            steps, _funds(sequential_pay=True), available=1_000_000.0
+        )
+        assert ex_active.steps[0].gated is False
+        assert ex_active.steps[0].amount_distributed == 50_000.0
+
+    def test_legacy_two_arg_evaluator_still_works(self):
+        """An evaluator whose ``evaluate`` predates the optional ``terms`` param
+        (TypeError on the 3-arg call) still drives interpret via the fallback."""
+
+        class TwoArgEvaluator:
+            def evaluate(self, condition, funds):
+                return False
+
+            def sequential_pay_active(self, funds):
+                return True
+
+        steps = [
+            StepSpec(
+                priority="(a)",
+                recipient="senior_fees",
+                condition="if X",
+                condition_terms=["Sequential Pay Trigger"],
+            ),
+        ]
+        ex = interpret(
+            steps, _funds(), available=1_000_000.0, evaluator=TwoArgEvaluator()
+        )
+        assert ex.steps[0].gated is True
+
+
 # ---------------------------------------------------------------------------
 # Pari-passu groups
 # ---------------------------------------------------------------------------
