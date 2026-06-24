@@ -219,7 +219,7 @@ def register_deal(
     deal_id: str,
     context: dict,
     *,
-    runtime_file: Path = DEALS_RUNTIME_FILE,
+    runtime_file: Path | None = None,
 ) -> dict[str, dict]:
     """Persist a deal's context into the RUNTIME overlay (``data/deals.runtime.json``).
 
@@ -228,7 +228,13 @@ def register_deal(
     atomically. The committed ``data/deals.json`` is never read or mutated here, so
     it stays the human-curated source of truth. Returns the updated runtime overlay
     map (committed deals are merged in only at :func:`_load_deal_registry` load).
+
+    ``runtime_file`` defaults to the module-level :data:`DEALS_RUNTIME_FILE` resolved
+    **at call time** (not bind time) so a test's ``patch("loanwhiz.config.DEALS_RUNTIME_FILE", ...)``
+    is honoured.
     """
+    if runtime_file is None:
+        runtime_file = DEALS_RUNTIME_FILE
     overlay = _load_runtime_registry(runtime_file)
     overlay[deal_id] = context
     _atomic_write_json(runtime_file, overlay)
