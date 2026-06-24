@@ -43,7 +43,8 @@ distributions into the S1 ``WaterfallResult`` DTO
 Sequential-pay branch
 ---------------------
 The pro-rata ↔ sequential principal-allocation choice (the *Sequential Pay
-Trigger*, ``MODELING-GAPS.md`` A3) is expressed through the same
+Trigger*, a since-closed modelling gap — see ``SYSTEM-STATUS.md``) is
+expressed through the same
 condition→predicate seam: ``allocate_principal`` reads
 ``evaluator.sequential_pay_active(funds)`` and allocates either senior-first
 (sequential) or pro-rata by outstanding balance.
@@ -127,7 +128,7 @@ class StepSpec(BaseModel):
         construction (or build the specs directly). This keeps the extracted
         boolean meaningful — a pari-passu step splits a shortfall pro-rata even
         as a singleton — without inventing group membership the extractor never
-        captured (``MODELING-GAPS.md`` C9).
+        captured (a since-closed modelling gap; see ``SYSTEM-STATUS.md``).
         """
         condition = step.get("condition")
         condition = condition or None  # "" → None
@@ -787,7 +788,8 @@ def allocate_principal(
 ) -> dict[str, float]:
     """Allocate available principal across tranches: sequential ↔ pro-rata.
 
-    The Sequential Pay Trigger branch (``MODELING-GAPS.md`` A3). Reads
+    The Sequential Pay Trigger branch (a since-closed modelling gap; see
+    ``SYSTEM-STATUS.md``). Reads
     ``evaluator.sequential_pay_active(funds)`` and returns ``{class → principal}``:
 
     - **Sequential** (trigger active): pay senior-first. Class A is paid down to

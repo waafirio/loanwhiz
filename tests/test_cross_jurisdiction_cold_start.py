@@ -318,3 +318,42 @@ def test_multi_period_ledger_is_honest_not_modelable_422(
     detail = resp.json()["detail"]
     assert "not modelable" in detail.lower()
     assert deal_id in detail
+
+
+# ---------------------------------------------------------------------------
+# Graceful degradation through the report adapter seam — the thin ES model
+# does not fabricate a report-path cold-start.
+# ---------------------------------------------------------------------------
+
+
+def test_thin_es_model_does_not_fabricate_report_path_cold_start() -> None:
+    """The Spanish deal's thin extracted model cannot silently produce a
+    report-driven cold-start.
+
+    ``ReportAdapter.from_deal_model`` requires both a ``revenue`` and a
+    ``redemption`` waterfall in the extracted model. The Sol-Lion II seed has an
+    empty revenue PoP (0 steps) — and the report path additionally needs an
+    actual Notes & Cash report, which this deal does not ship. The adapter seam
+    therefore refuses to manufacture a seed/distribution from nothing: building
+    on a model without both waterfalls raises, and ``to_inputs`` on an empty
+    report raises a deal-named ``ValueError`` — the honest cold-start boundary at
+    the adapter layer, complementing the engine-level not_evaluable trace and the
+    API-level 422 above.
+    """
+    from loanwhiz.primitives import ReportAdapter
+    from loanwhiz.primitives.notes_cash_parser import NotesCashReport
+
+    model = _model_for("sol-lion-ii")
+    # The ES model has no enumerable revenue PoP (and ships no redemption either
+    # in the report-path shape the adapter consumes), so the adapter refuses to
+    # build rather than fabricating an empty waterfall.
+    revenue = model.waterfalls.get("revenue")
+    assert not (isinstance(revenue, dict) and revenue.get("steps")), (
+        "ES revenue PoP unexpectedly non-empty — the thin-model premise changed"
+    )
+
+    # Even given a (synthetic) adapter for it, a report-driven cold-start with no
+    # report periods fails honestly with the deal named — it does not invent a seed.
+    adapter = ReportAdapter(revenue_steps=[], redemption_steps=[])
+    with pytest.raises(ValueError, match="sol-lion"):
+        adapter.to_inputs(NotesCashReport(deal_name="sol-lion-ii", periods=[]))

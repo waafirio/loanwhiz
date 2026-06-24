@@ -119,8 +119,12 @@ def test_submit_transitions_to_succeeded_and_materialises_cache(tmp_path):
         force=False,
         extract_fn=_materialising_extract_fn,
     )
-    # The pool may already have started the run by now; "queued" is transient.
-    assert job.status in ("queued", "running")
+    # The single-worker pool may have already run the job to completion by the
+    # time this assertion executes (a fast stub finishes before we observe it),
+    # so "queued"/"running" is a transient state we cannot reliably catch — the
+    # stable invariant is that submit returned a tracked job in a valid lifecycle
+    # state plus a future to await. Don't pin a racy transient snapshot.
+    assert job.status in ("queued", "running", "succeeded")
     assert future is not None
     future.result(timeout=10)  # deterministic await — never a real long run
 
@@ -173,6 +177,125 @@ def test_force_propagates_force_refresh(tmp_path):
 
 def test_get_job_none_when_never_submitted():
     assert extraction_jobs.get_job("never-submitted") is None
+
+
+# --- re-submit semantics + store isolation (#384 docstring contract) ----------
+
+
+def _blocking_extract_fn(gate):
+    """An extract_fn that blocks until ``gate`` is set, so a job stays ``running``
+    long enough to test the in-flight re-submit branch deterministically."""
+
+    def _fn(*, prospectus_url, deal_name, cache_dir, force_refresh):
+        gate.wait(timeout=10)
+        return _fake_model(deal_name, prospectus_url, str(Path(cache_dir) / "m.json"))
+
+    return _fn
+
+
+def test_resubmit_while_running_returns_same_job_no_second_run(tmp_path):
+    """A second submit for a deal whose job is still in-flight (and force=False)
+    returns the SAME job with a ``None`` future — no second run is scheduled.
+    The idempotent-enqueue branch of submit_extraction."""
+    import threading
+
+    gate = threading.Event()
+    job1, fut1 = extraction_jobs.submit_extraction(
+        DEAL_ID,
+        prospectus_url="http://example/p.pdf",
+        deal_name="Green Lion 2026-1 B.V.",
+        cache_dir=str(tmp_path),
+        extract_fn=_blocking_extract_fn(gate),
+    )
+    try:
+        # While job1 is still queued/running, a non-force re-submit is idempotent.
+        job2, fut2 = extraction_jobs.submit_extraction(
+            DEAL_ID,
+            prospectus_url="http://example/p.pdf",
+            deal_name="Green Lion 2026-1 B.V.",
+            cache_dir=str(tmp_path),
+            extract_fn=_blocking_extract_fn(gate),
+        )
+        assert job2 is job1  # same job object, not a new one
+        assert fut2 is None  # no second run scheduled
+    finally:
+        gate.set()
+        if fut1 is not None:
+            fut1.result(timeout=10)
+
+
+def test_resubmit_after_finished_replaces_job(tmp_path):
+    """Once a job has finished (succeeded/failed), a fresh submit replaces it with
+    a new job that actually runs again (a new future)."""
+    job1, fut1 = extraction_jobs.submit_extraction(
+        DEAL_ID,
+        prospectus_url="http://example/p.pdf",
+        deal_name="Green Lion 2026-1 B.V.",
+        cache_dir=str(tmp_path),
+        extract_fn=_materialising_extract_fn,
+    )
+    fut1.result(timeout=10)
+    assert extraction_jobs.get_job(DEAL_ID).status == "succeeded"
+
+    job2, fut2 = extraction_jobs.submit_extraction(
+        DEAL_ID,
+        prospectus_url="http://example/p.pdf",
+        deal_name="Green Lion 2026-1 B.V.",
+        cache_dir=str(tmp_path),
+        extract_fn=_materialising_extract_fn,
+    )
+    assert job2 is not job1  # finished job was replaced
+    assert fut2 is not None  # a new run was scheduled
+    fut2.result(timeout=10)
+
+
+def test_force_resubmit_replaces_in_flight_job(tmp_path):
+    """A force=True submit replaces even an in-flight job (it must re-run),
+    scheduling a new future rather than returning the running one."""
+    import threading
+
+    gate = threading.Event()
+    fut2 = None
+    job1, fut1 = extraction_jobs.submit_extraction(
+        DEAL_ID,
+        prospectus_url="http://example/p.pdf",
+        deal_name="Green Lion 2026-1 B.V.",
+        cache_dir=str(tmp_path),
+        extract_fn=_blocking_extract_fn(gate),
+    )
+    try:
+        job2, fut2 = extraction_jobs.submit_extraction(
+            DEAL_ID,
+            prospectus_url="http://example/p.pdf",
+            deal_name="Green Lion 2026-1 B.V.",
+            cache_dir=str(tmp_path),
+            force=True,
+            extract_fn=_materialising_extract_fn,
+        )
+        assert job2 is not job1  # force replaces the in-flight job
+        assert fut2 is not None
+    finally:
+        gate.set()
+        if fut1 is not None:
+            fut1.result(timeout=10)
+        if fut2 is not None:
+            fut2.result(timeout=10)
+
+
+def test_reset_jobs_clears_the_store(tmp_path):
+    """``reset_jobs`` empties the process-local store — the isolation primitive
+    the autouse fixture relies on so cases don't leak job state into each other."""
+    _, future = extraction_jobs.submit_extraction(
+        DEAL_ID,
+        prospectus_url="http://example/p.pdf",
+        deal_name="Green Lion 2026-1 B.V.",
+        cache_dir=str(tmp_path),
+        extract_fn=_materialising_extract_fn,
+    )
+    future.result(timeout=10)
+    assert extraction_jobs.get_job(DEAL_ID) is not None
+    extraction_jobs.reset_jobs()
+    assert extraction_jobs.get_job(DEAL_ID) is None
 
 
 # --- endpoints (integration over the FastAPI app) -----------------------------
