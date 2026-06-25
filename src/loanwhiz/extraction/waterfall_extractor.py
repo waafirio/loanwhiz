@@ -64,44 +64,64 @@ class ExtractedWaterfall(BaseModel):
     extraction_confidence: float   # 0–1: real step-usability coverage (see _extraction_confidence)
 
 
+def _step_support(step: "WaterfallStep | dict") -> float:
+    """Per-step usability ("support") score in ``[0, 1]`` — the honest signal of
+    how *executable / auditable* a single extracted waterfall step is.
+
+    A step is only usable by the waterfall interpreter when it names **both** a
+    recipient (who is paid) and an ``amount_formula`` (how much); a citation adds
+    auditable provenance. This is the single source of the step-quality rubric:
+    :func:`_extraction_confidence` averages it across a waterfall, and the
+    assembler reuses it per-step so each governed ``FieldProvenance.confidence``
+    reflects the real support behind *that* step rather than a blanket taxonomy
+    score (#405).
+
+    Accepts either a :class:`WaterfallStep` (attribute access) or the raw
+    ``model_dump()`` dict the assembler walks (key access).
+
+    Scoring:
+
+    - 0.7 — has a non-empty ``recipient`` *and* a non-empty ``amount_formula``
+      (the executable core).
+    - 1.0 — additionally carries a non-empty citation (auditable provenance).
+    - 0.35 — has a recipient but no amount formula (named but not yet
+      executable).
+    - 0.0 — no recipient.
+    """
+    if isinstance(step, dict):
+        recipient = (step.get("recipient") or "").strip()
+        formula = (step.get("amount_formula") or "").strip()
+        citation = step.get("citation")
+    else:
+        recipient = (getattr(step, "recipient", "") or "").strip()
+        formula = (getattr(step, "amount_formula", "") or "").strip()
+        citation = getattr(step, "citation", None)
+
+    citation = citation if isinstance(citation, dict) else {}
+    has_citation = any(str(v).strip() for v in citation.values())
+
+    if recipient and formula:
+        return 1.0 if has_citation else 0.7
+    if recipient:
+        return 0.35
+    return 0.0
+
+
 def _extraction_confidence(steps: list["WaterfallStep"]) -> float:
     """Real per-waterfall coverage score in ``[0, 1]`` over extracted steps.
 
     Replaces the old metric (fraction of steps with a *non-empty recipient*),
     which was near-tautological — the materialiser strips recipients to a string,
     so a step almost always has one — and said nothing about whether the step is
-    actually *executable* downstream. A step is only usable by the waterfall
-    interpreter when it names **both** a recipient (who is paid) and an
-    ``amount_formula`` (how much); the score is the fraction of steps that carry
-    both, lightly bonused by citation presence (provenance the step can be
-    audited against).
-
-    Scoring per step (averaged across all steps):
-
-    - 0.7 — has a non-empty ``recipient`` *and* a non-empty ``amount_formula``
-      (the executable core).
-    - +0.3 — additionally carries a non-empty citation (auditable provenance).
-    - 0.35 — has a recipient but no amount formula (named but not yet
-      executable).
-    - 0.0 — no recipient.
+    actually *executable* downstream. The score is the mean per-step
+    :func:`_step_support` (recipient+formula → executable core, bonused by a
+    citation); a step with no recipient contributes 0.0.
 
     An empty step list scores 0.0 (nothing was extracted).
     """
     if not steps:
         return 0.0
-
-    total = 0.0
-    for s in steps:
-        recipient = (s.recipient or "").strip()
-        formula = (s.amount_formula or "").strip()
-        citation = s.citation if isinstance(s.citation, dict) else {}
-        has_citation = any(str(v).strip() for v in citation.values())
-        if recipient and formula:
-            total += 1.0 if has_citation else 0.7
-        elif recipient:
-            total += 0.35
-        # no recipient → contributes 0.0
-    return total / len(steps)
+    return sum(_step_support(s) for s in steps) / len(steps)
 
 
 # ---------------------------------------------------------------------------

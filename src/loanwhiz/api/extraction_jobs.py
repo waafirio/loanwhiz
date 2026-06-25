@@ -98,11 +98,25 @@ def _summarise(model: DealModel) -> dict:
         if trigger.get("citation"):
             citation_count += 1
 
+    # Per-waterfall / per-covenant-set extraction confidence (#405): the real
+    # step-usability and trigger-extraction quality the extractors already
+    # compute, surfaced so an operator polling status can tell a reliable section
+    # from noise — not just the deal-level ``completeness_score``. Additive: all
+    # pre-existing summary keys are unchanged.
+    extraction_confidence = {
+        "waterfalls": {
+            kind: waterfall.get("extraction_confidence")
+            for kind, waterfall in model.waterfalls.items()
+        },
+        "covenants": model.covenants.get("extraction_confidence"),
+    }
+
     return {
         "completeness_score": model.metadata.completeness_score,
         "trigger_count": len(model.trigger_names),
         "citation_count": citation_count,
         "sections_found": model.metadata.sections_found,
+        "extraction_confidence": extraction_confidence,
     }
 
 
