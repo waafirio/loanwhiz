@@ -109,9 +109,20 @@ class ExecutionResult(BaseModel):
                                tool calls were made — an answer with no
                                primitive evidence behind it is *ungrounded*,
                                not maximally confident.
-        human_review_required: ``True`` when
-                               ``aggregate_confidence < confidence_threshold``
-                               (always ``True`` for an ungrounded answer).
+        human_review_required: ``True`` when the answer must be routed to a
+                               human — fired by **either** trigger: the
+                               aggregate confidence falling below
+                               ``confidence_threshold`` (always ``True`` for an
+                               ungrounded answer), **or** a grounded answer
+                               (≥1 tool call) carrying zero citations (an
+                               unauditable answer, flagged even at high
+                               confidence). Equivalent to ``bool(review_reasons)``.
+        review_reasons:        Machine-readable cause(s) the answer was gated for
+                               human review, one human-readable string per fired
+                               trigger. **Empty** exactly when
+                               ``human_review_required`` is ``False`` — this is
+                               the structured signal a downstream consumer
+                               branches on instead of parsing the prose trace.
         evidence_pack_id:      ``pack_id`` of the governance evidence pack that
                                backs this result (links to the full audit log).
         reasoning_trace:       Human-readable, step-by-step trace of the run.
@@ -123,6 +134,7 @@ class ExecutionResult(BaseModel):
     step_validations: list[StepValidation]
     aggregate_confidence: float
     human_review_required: bool
+    review_reasons: list[str] = []
     evidence_pack_id: str
     reasoning_trace: list[str]
 
@@ -216,6 +228,7 @@ class DAGExecutor:
         overall_status: ValidationStatus,
         human_review_required: bool,
         aggregate_confidence: float,
+        review_reasons: list[str],
     ) -> list[str]:
         """Build a human-readable, step-by-step reasoning trace."""
         marks = {
@@ -263,11 +276,9 @@ class DAGExecutor:
             f"→ overall status: {overall_status.value}"
         )
         if human_review_required:
-            trace.append(
-                "Routed to human review queue "
-                + ("(ungrounded — no supporting tool calls)" if n == 0
-                   else "(aggregate confidence below threshold)")
-            )
+            trace.append("Routed to human review queue:")
+            for reason in review_reasons:
+                trace.append(f"  - {reason}")
         else:
             trace.append("No human review required")
         return trace
@@ -329,7 +340,36 @@ class DAGExecutor:
             if grounded
             else ValidationStatus.NEEDS_REVIEW
         )
-        human_review_required = aggregate_confidence < self.confidence_threshold
+
+        # 4b. Build the structured review reasons — the machine-readable cause(s)
+        #     that gate this answer for a human. The gate is *acted on* here, not
+        #     merely observed: two independent triggers fire it, and
+        #     ``human_review_required`` is exactly ``bool(review_reasons)`` so a
+        #     downstream consumer can branch on the reasons instead of re-deriving
+        #     the rule.
+        #       (1) aggregate confidence below the threshold — including the
+        #           ungrounded → 0.0 case (distinguished for the auditor); and
+        #       (2) a *grounded* answer (≥1 tool call) whose evidence pack carries
+        #           ZERO citations — primitive evidence with no traceable source is
+        #           unauditable and must route to a human even at high confidence.
+        review_reasons: list[str] = []
+        if aggregate_confidence < self.confidence_threshold:
+            if grounded:
+                review_reasons.append(
+                    f"aggregate confidence {aggregate_confidence:.2f} is below the "
+                    f"review threshold {self.confidence_threshold}"
+                )
+            else:
+                review_reasons.append(
+                    "ungrounded answer — no tool calls / primitive evidence backs "
+                    "this answer"
+                )
+        if grounded and not pack.all_citations:
+            review_reasons.append(
+                "grounded answer carries zero citations — no traceable source to "
+                "audit the answer against"
+            )
+        human_review_required = bool(review_reasons)
 
         # 5. Build the human-readable reasoning trace.
         reasoning_trace = self._build_trace(
@@ -338,6 +378,7 @@ class DAGExecutor:
             overall_status,
             human_review_required,
             aggregate_confidence,
+            review_reasons,
         )
 
         return ExecutionResult(
@@ -347,6 +388,7 @@ class DAGExecutor:
             step_validations=step_validations,
             aggregate_confidence=aggregate_confidence,
             human_review_required=human_review_required,
+            review_reasons=review_reasons,
             evidence_pack_id=pack.pack_id,
             reasoning_trace=reasoning_trace,
         )

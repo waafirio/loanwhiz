@@ -35,7 +35,7 @@ from pathlib import Path
 from collections.abc import Callable
 from typing import Any
 
-from fastapi import FastAPI, HTTPException, Query, Request
+from fastapi import FastAPI, HTTPException, Query, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
@@ -183,6 +183,9 @@ app.add_middleware(
     allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],
     allow_methods=["*"],
     allow_headers=["*"],
+    # Surface the /query review-gate header (#406) to browser clients — custom
+    # response headers are otherwise unreadable cross-origin without this.
+    expose_headers=["X-Human-Review-Required"],
 )
 
 # Registry of known deals, sourced from the config-driven DEAL_REGISTRY. The
@@ -318,13 +321,23 @@ class QueryRequest(BaseModel):
 
 
 class QueryResponse(BaseModel):
-    """Response body for ``POST /query`` — the agent answer + governance fields."""
+    """Response body for ``POST /query`` — the agent answer + governance fields.
+
+    ``human_review_required`` / ``review_reasons`` are the **formalised review
+    gate** (#406): a low-confidence or uncited answer is flagged for human review.
+    ``review_reasons`` is the machine-readable cause set — empty exactly when
+    ``human_review_required`` is ``False`` — so a consumer can branch on the
+    structured reasons rather than parsing ``reasoning_trace`` prose. The same
+    boolean is also surfaced as the ``X-Human-Review-Required`` response header
+    so a gateway can route without reading the body.
+    """
 
     question: str
     answer: str
     overall_status: str
     aggregate_confidence: float
     human_review_required: bool
+    review_reasons: list[str] = []
     reasoning_trace: list[str]
     evidence_pack_id: str
 
@@ -542,15 +555,26 @@ def health() -> dict:
 
 
 @app.post("/query", response_model=QueryResponse)
-def query(req: QueryRequest) -> QueryResponse:
-    """Answer a natural language question about a structured finance deal."""
+def query(req: QueryRequest, response: Response) -> QueryResponse:
+    """Answer a natural language question about a structured finance deal.
+
+    Formalised review gate (#406): the answer is still returned (HTTP 200) so a
+    reviewer can act on it, but a low-confidence or uncited answer is flagged —
+    ``human_review_required`` + the machine-readable ``review_reasons`` in the
+    body, mirrored as the ``X-Human-Review-Required: true|false`` response header
+    so a gateway can route on it without parsing the body.
+    """
     result = execute_query(req.question, confidence_threshold=req.confidence_threshold)
+    response.headers["X-Human-Review-Required"] = (
+        "true" if result.human_review_required else "false"
+    )
     return QueryResponse(
         question=result.question,
         answer=result.answer,
         overall_status=result.overall_status.value,
         aggregate_confidence=result.aggregate_confidence,
         human_review_required=result.human_review_required,
+        review_reasons=result.review_reasons,
         reasoning_trace=result.reasoning_trace,
         evidence_pack_id=result.evidence_pack_id,
     )
