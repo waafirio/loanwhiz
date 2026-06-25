@@ -1079,6 +1079,7 @@ def _step_rules_from_waterfall(
     from loanwhiz.domain.provenance import FieldProvenance
     from loanwhiz.domain.rules import ConditionRef, StepRule
     from loanwhiz.extraction.taxonomy import build_amount_rule, map_recipient
+    from loanwhiz.extraction.waterfall_extractor import _step_support
 
     steps_in = waterfall.get("steps", []) if isinstance(waterfall, dict) else []
     rules: list[StepRule] = []
@@ -1110,11 +1111,17 @@ def _step_rules_from_waterfall(
         )
         rules.append(rule)
 
+        # Per-field confidence is the taxonomy mapping certainty *discounted by
+        # the real extraction support* behind this step (#405): a step from a
+        # poorly-extracted line (no amount formula, no citation) reads low even
+        # when its recipient string deterministically classifies onto the
+        # taxonomy, instead of inheriting a blanket high mapping score. The
+        # multiply means a field is only as trustworthy as its weakest dimension.
         key = f"waterfalls.{wf_kind}.{order}.recipient"
         provenance[key] = FieldProvenance(
             source="prospectus",
             method=mapping.method,  # type: ignore[arg-type]
-            confidence=mapping.confidence,
+            confidence=max(0.0, min(1.0, mapping.confidence * _step_support(raw))),
             citation=_citation_from_step(raw.get("citation", {}), f"{deal_name} Prospectus"),
         )
     return rules
@@ -1136,6 +1143,7 @@ def _trigger_rules_from_covenants(
     """
     from loanwhiz.domain.provenance import FieldProvenance
     from loanwhiz.domain.rules import TriggerRule
+    from loanwhiz.extraction.covenant_extractor import _trigger_support
     from loanwhiz.extraction.taxonomy import map_metric, normalize_threshold_unit
 
     _OP = {"above": ">", "below": "<", "non_zero": ">"}
@@ -1161,11 +1169,16 @@ def _trigger_rules_from_covenants(
         )
         rules.append(rule)
 
+        # Per-field confidence is the taxonomy mapping certainty *discounted by
+        # the real extraction support* behind this trigger (#405): a trigger with
+        # a metric but no quantified threshold / no citation reads low even when
+        # its metric string classifies onto the taxonomy, instead of inheriting a
+        # blanket high mapping score.
         key = f"triggers.{rule.name}.metric"
         provenance[key] = FieldProvenance(
             source="prospectus",
             method=mapping.method,  # type: ignore[arg-type]
-            confidence=mapping.confidence,
+            confidence=max(0.0, min(1.0, mapping.confidence * _trigger_support(raw))),
             citation=_citation_from_step(raw.get("citation", {}), f"{deal_name} Prospectus"),
         )
     return rules

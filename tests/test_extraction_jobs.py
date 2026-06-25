@@ -146,9 +146,34 @@ def test_submit_transitions_to_succeeded_and_materialises_cache(tmp_path):
     assert "confidence" in done.summary
     assert "human_review_required" in done.summary
     assert "audit_entry_id" in done.summary
+    # Per-section extraction confidence (#405) is surfaced additively: the
+    # _fake_model carries a revenue waterfall (no per-section score) and a
+    # covenant set scored 0.7. Existing keys above are unchanged.
+    assert done.summary["extraction_confidence"]["covenants"] == pytest.approx(0.7)
+    assert "revenue" in done.summary["extraction_confidence"]["waterfalls"]
     # Materialised into the same cache the cold-start reader serves.
     cache_file = tmp_path / f"{_slug('Green Lion 2026-1 B.V.')}.json"
     assert cache_file.exists()
+
+
+def test_summarise_surfaces_per_section_extraction_confidence():
+    """``_summarise`` adds an ``extraction_confidence`` object carrying each
+    waterfall's per-section score and the covenant-set score, without disturbing
+    the pre-existing count keys (#405)."""
+    model = _fake_model("Deal X", "http://example/p.pdf", "/tmp/x.json")
+    # Give the revenue waterfall a per-section score so the surface is exercised.
+    model.waterfalls["revenue"]["extraction_confidence"] = 0.42
+
+    summary = extraction_jobs._summarise(model)
+
+    # New additive surface.
+    assert summary["extraction_confidence"]["waterfalls"]["revenue"] == pytest.approx(0.42)
+    assert summary["extraction_confidence"]["covenants"] == pytest.approx(0.7)
+    # Pre-existing keys intact and unchanged.
+    assert summary["completeness_score"] == 0.85
+    assert summary["trigger_count"] == 1
+    assert summary["citation_count"] == 2
+    assert summary["sections_found"] == ["definitions", "revenue_priority_of_payments"]
 
 
 def test_failure_surfaces_as_failed_with_reason(tmp_path):
