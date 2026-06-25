@@ -119,9 +119,52 @@ curl http://localhost:8000/health
 Ask the agent a question (runs the LangGraph agent — needs Gemini credentials):
 
 ```bash
-curl -X POST http://localhost:8000/query \
+curl -i -X POST http://localhost:8000/query \
   -H 'Content-Type: application/json' \
   -d '{"question": "Is the Green Lion deal in compliance with its covenants?", "confidence_threshold": 0.7}'
+```
+
+### Human-review gate (the `/query` contract)
+
+`POST /query` does not just *observe* confidence — it **enforces a review
+gate**. An answer is still returned (HTTP `200`, so a reviewer can act on it),
+but a low-confidence or unauditable answer is flagged for human review on the
+response, in two machine-readable forms a consumer can branch on without
+parsing the prose `reasoning_trace`:
+
+- **`human_review_required`** (body, `bool`) — `true` when the answer must be
+  routed to a human.
+- **`review_reasons`** (body, `list[str]`) — the cause(s) the gate fired, one
+  string per trigger. **Empty exactly when `human_review_required` is `false`.**
+- **`X-Human-Review-Required`** (response header, `true|false`) — the same
+  boolean, so an API gateway can route on the header without reading the body.
+  (Exposed cross-origin via CORS `expose_headers`.)
+
+The gate fires on **either** trigger:
+
+1. **Low confidence** — `aggregate_confidence` (the conservative `min` of the
+   per-tool confidences) is below the request's `confidence_threshold`. An
+   *ungrounded* answer (zero tool calls / no primitive evidence) is pinned to
+   `0.0` and always fires.
+2. **Missing citations** — a *grounded* answer (≥1 tool call) whose evidence
+   pack carries **zero citations**. Primitive evidence with no traceable source
+   is unauditable, so it routes to a human **even at high confidence**.
+
+Example flagged response:
+
+```http
+HTTP/1.1 200 OK
+X-Human-Review-Required: true
+
+{
+  "question": "...",
+  "answer": "...",
+  "human_review_required": true,
+  "review_reasons": [
+    "aggregate confidence 0.30 is below the review threshold 0.7"
+  ],
+  ...
+}
 ```
 
 Deal model:
