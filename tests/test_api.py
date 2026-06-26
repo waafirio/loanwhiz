@@ -802,6 +802,7 @@ def test_query_wraps_execute_query():
         step_validations=[],
         aggregate_confidence=0.95,
         human_review_required=False,
+        review_reasons=[],
         evidence_pack_id="pack-123",
         reasoning_trace=["Called covenant_monitor → confidence 0.95 ✓"],
     )
@@ -824,6 +825,57 @@ def test_query_wraps_execute_query():
     m.assert_called_once_with("Is the deal compliant?", confidence_threshold=0.8)
 
 
+def test_query_review_gate_passes_surfaces_false_header_and_empty_reasons():
+    """PASS case (#406): a non-flagged answer → false header, empty review_reasons."""
+    fake = ExecutionResult(
+        question="q",
+        answer="a",
+        overall_status=ValidationStatus.PASSED,
+        step_validations=[],
+        aggregate_confidence=0.95,
+        human_review_required=False,
+        review_reasons=[],
+        evidence_pack_id="pack-1",
+        reasoning_trace=[],
+    )
+    with patch("loanwhiz.api.main.execute_query", return_value=fake):
+        resp = client.post("/query", json={"question": "q"})
+
+    assert resp.status_code == 200
+    assert resp.headers["X-Human-Review-Required"] == "false"
+    body = resp.json()
+    assert body["human_review_required"] is False
+    assert body["review_reasons"] == []
+
+
+def test_query_review_gate_fires_surfaces_true_header_and_reasons():
+    """FIRE case (#406): a flagged answer → true header + review_reasons in body.
+
+    Status stays 200 (surface-and-route): the answer is still returned for the
+    reviewer, with the machine-readable gate signals attached.
+    """
+    reasons = ["aggregate confidence 0.30 is below the review threshold 0.7"]
+    fake = ExecutionResult(
+        question="q",
+        answer="uncertain",
+        overall_status=ValidationStatus.NEEDS_REVIEW,
+        step_validations=[],
+        aggregate_confidence=0.3,
+        human_review_required=True,
+        review_reasons=reasons,
+        evidence_pack_id="pack-2",
+        reasoning_trace=["Routed to human review queue:"],
+    )
+    with patch("loanwhiz.api.main.execute_query", return_value=fake):
+        resp = client.post("/query", json={"question": "q"})
+
+    assert resp.status_code == 200
+    assert resp.headers["X-Human-Review-Required"] == "true"
+    body = resp.json()
+    assert body["human_review_required"] is True
+    assert body["review_reasons"] == reasons
+
+
 def test_query_default_confidence_threshold():
     fake = ExecutionResult(
         question="q",
@@ -832,6 +884,7 @@ def test_query_default_confidence_threshold():
         step_validations=[],
         aggregate_confidence=1.0,
         human_review_required=False,
+        review_reasons=[],
         evidence_pack_id="pack-1",
         reasoning_trace=[],
     )

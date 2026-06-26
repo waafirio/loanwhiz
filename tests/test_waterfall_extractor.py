@@ -32,6 +32,7 @@ from loanwhiz.extraction.waterfall_extractor import (
     WaterfallStep,
     _cache_path_for,
     _extraction_confidence,
+    _step_support,
     _waterfall_from_dict,
     _waterfall_to_dict,
     extract_all_waterfalls,
@@ -164,6 +165,50 @@ class TestExtractionConfidence:
             recipient="", amount_formula="", citation=self._EMPTY_CITATION
         )  # 0.00
         assert _extraction_confidence([usable, bare]) == pytest.approx(0.35)
+
+
+class TestStepSupport:
+    """``_step_support`` is the single per-step usability rubric (#405).
+
+    ``_extraction_confidence`` averages it; the assembler reuses it per-step to
+    discount the governed per-field confidence. It must accept both a
+    :class:`WaterfallStep` and the raw ``model_dump()`` dict the assembler walks,
+    and ``_extraction_confidence`` must equal the mean of ``_step_support``.
+    """
+
+    _EMPTY_CITATION = {"document": "", "page_or_row": "", "excerpt": ""}
+
+    def test_fully_supported_step_scores_one(self) -> None:
+        # recipient + amount_formula + non-empty citation.
+        assert _step_support(_make_step()) == pytest.approx(1.0)
+
+    def test_recipient_and_formula_without_citation_scores_070(self) -> None:
+        step = _make_step(amount_formula="EUR x", citation=self._EMPTY_CITATION)
+        assert _step_support(step) == pytest.approx(0.70)
+
+    def test_recipient_without_formula_scores_035(self) -> None:
+        step = _make_step(amount_formula="", citation=self._EMPTY_CITATION)
+        assert _step_support(step) == pytest.approx(0.35)
+
+    def test_no_recipient_scores_zero(self) -> None:
+        step = _make_step(recipient="", amount_formula="x", citation=self._EMPTY_CITATION)
+        assert _step_support(step) == 0.0
+
+    def test_accepts_raw_dict(self) -> None:
+        # The assembler hands _step_support the raw model_dump() dict, not the
+        # pydantic object — both paths must score identically.
+        step = _make_step(amount_formula="EUR x", citation=self._EMPTY_CITATION)
+        assert _step_support(step.model_dump()) == pytest.approx(0.70)
+        assert _step_support(_make_step().model_dump()) == pytest.approx(1.0)
+
+    def test_extraction_confidence_is_mean_of_step_support(self) -> None:
+        steps = [
+            _make_step(),  # 1.0
+            _make_step(amount_formula="EUR x", citation=self._EMPTY_CITATION),  # 0.70
+            _make_step(recipient="", amount_formula="", citation=self._EMPTY_CITATION),  # 0.0
+        ]
+        expected = sum(_step_support(s) for s in steps) / len(steps)
+        assert _extraction_confidence(steps) == pytest.approx(expected)
 
 
 # ---------------------------------------------------------------------------
