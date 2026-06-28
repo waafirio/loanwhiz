@@ -1,10 +1,10 @@
 ---
 id: 2026-06-27-ground-truth-quality-engine
 title: Ground-truth quality engine for cross-deal testing
-status: draft
+status: filed
 created: 2026-06-27
-updated: 2026-06-27
-epics: []
+updated: 2026-06-28
+epics: [425]
 ---
 
 # Ground-truth quality engine for cross-deal testing
@@ -76,7 +76,7 @@ wires them into one driver:
 
 ## Decomposition
 
-### Epic: Ground-truth quality engine for cross-deal testing   (umbrella #<N — filled in phase 4>)
+### Epic: Ground-truth quality engine for cross-deal testing   (umbrella #425)
 
 One epic, four children. Children 1 and 2 are independent and run in parallel;
 child 3 (the driver) integrates both and is where the engine actually comes
@@ -113,4 +113,8 @@ meaningful execution grades) **and** 2 (for the answer-key format); 4 depends on
 
 ## Filed issues
 
-<Filled in phase 4 — the artifact↔issue link.>
+- Epic "Ground-truth quality engine for cross-deal testing" → umbrella #425
+  - #426 Waterfall runner consumes extracted DealModel.waterfalls steps (parallel, prio 1)
+  - #427 Per-deal ground-truth answer-key format (parallel, prio 1)
+  - #428 quality_harness driver + graded scorecard API (sequential, after #427; needs #426; prio 2)
+  - #429 Backfill answer keys for existing deals with published reports (sequential, after #428; prio 3)
