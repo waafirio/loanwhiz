@@ -64,6 +64,11 @@ from loanwhiz.primitives.capability_matrix import (
     CapabilityMatrix,
     build_capability_matrix,
 )
+from loanwhiz.primitives.quality_harness import (
+    QualityMatrix,
+    build_quality_matrix,
+)
+from loanwhiz.primitives.reconciliation_answer_key import load_answer_key
 from loanwhiz.primitives.relative_value_screener import (
     RelativeValueScorecard,
     build_relative_value_scorecard,
@@ -3002,6 +3007,49 @@ def capability_matrix() -> CapabilityMatrix:
 
 
 # --- end cross-deal capability matrix (#241) ---------------------------------
+
+
+# --- cross-deal graded quality matrix (#428, epic #425) ----------------------
+# Self-contained block (handler) for GET /quality-matrix — the GRADED extension
+# of /capability-matrix. Where the capability matrix says "did the primitive RUN
+# for this deal?", the quality matrix grades "did the primitive's output RECONCILE
+# to the deal's published ground-truth answer key (#427), to tolerance?" — a typed
+# cell per (deal x check): `passed` / `failed` / `not-applicable`, with a numeric
+# score, EUR tolerance, governance evidence and an honest reason for every skip.
+#
+# The PoP checks grade via #427's reconcile_against_answer_key (the same to-the-cent
+# reconciler the /deal/{id}/validation proof uses), folding each deal's committed
+# offline engine series through run_period — so the grade reflects the real engine.
+#
+# Honesty (#193 discipline): no committed PRODUCTION answer key exists yet (the
+# backfill is #429), so over the live registry the honest current verdict is
+# all-`not-applicable` — never a fabricated wall of green. The grader is
+# dependency-injected with the live DEAL_REGISTRY / seed loader / answer-key loader
+# so it is both deal-generic and unit-testable. Offline & deterministic: it reads
+# committed seed + answer-key data and the committed offline series fold; no loan
+# tape is fetched and no LLM is run in the request path.
+
+
+@app.get("/quality-matrix", response_model=QualityMatrix)
+def quality_matrix() -> QualityMatrix:
+    """Return the cross-deal `checks x deals` graded quality matrix.
+
+    For each graded check (revenue / redemption PoP reconciliation, covenant
+    outcomes, pool statistics) and each registered deal, grades the engine's
+    output against the deal's committed ground-truth answer key (#427) to
+    tolerance — `passed` / `failed` / `not-applicable` with a score, evidence and
+    an honest reason. Runs offline and deterministically; a deal with no committed
+    answer key (the current state until backfill #429) grades honestly
+    not-applicable rather than a fabricated pass.
+    """
+    return build_quality_matrix(
+        DEALS,
+        seed_loader=_load_cached_deal_model,
+        answer_key_loader=load_answer_key,
+    )
+
+
+# --- end cross-deal graded quality matrix (#428) -----------------------------
 
 
 # --- cross-deal relative-value / spread screener (#324) ----------------------
