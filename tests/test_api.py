@@ -3919,3 +3919,73 @@ def test_projection_step_specs_none_without_model():
     from loanwhiz.api import main as api_main
 
     assert api_main._projection_step_specs(None) is None
+
+
+def test_history_fold_green_lion_numbers_identical_trace_uses_own_cascade():
+    """The live-history (tape) fold: GL reconciled numbers stay identical, trace
+    carries GL's OWN extracted recipient labels.
+
+    The `/deal/{id}/waterfall` endpoint folds the tape series through
+    ``reconstruct_period_series``; with #426 it now threads GL's extracted steps.
+    Pins the load-bearing property: the reconstructed STATES (the reconciled
+    pool/tranche/PDL/reserve numbers) are byte-identical to the builtin-default
+    fold, while the execution TRACE attributes the cascade to GL's own
+    prospectus recipients (e.g. ``security_trustee_fees`` /
+    ``class_a_notes_principal``) rather than the engine's internal canonical names.
+    """
+    from loanwhiz.api import main as api_main
+    from loanwhiz.config import GREEN_LION
+    from loanwhiz.primitives.deal_state import PeriodCollections
+    from loanwhiz.primitives.period_state_machine import (
+        PeriodInput,
+        reconstruct_period_series,
+    )
+
+    cap = {
+        "class_a_balance": 1_000_000_000.0, "class_a_rate_pct": 3.62,
+        "class_b_balance": 53_100_000.0, "class_b_rate_pct": 4.5,
+        "class_c_balance": 10_500_000.0, "class_c_rate_pct": 6.0,
+    }
+    periods = [
+        PeriodInput(
+            reporting_date="2026-02-28",
+            collections=PeriodCollections(
+                interest=2_600_000.0, scheduled_principal=6_000_000.0,
+                prepayment=270_522.0,
+            ),
+            days_in_period=28,
+        ),
+        PeriodInput(
+            reporting_date="2026-03-31",
+            collections=PeriodCollections(
+                interest=2_500_000.0, scheduled_principal=9_000_000.0,
+                prepayment=81_226.0, realized_loss=500_000.0,
+            ),
+            days_in_period=31,
+        ),
+    ]
+    common = dict(
+        capital_structure=cap, reserve_target=10_636_000.0,
+        original_pool_balance=1_063_600_000.0, opening_pool_balance=1_063_600_000.0,
+        seed_reporting_date="2026-01-31", periods=periods,
+    )
+
+    with patch.object(
+        api_main, "DEAL_MODEL_SEED_DIR", str(api_main._COMMITTED_DEAL_SEED_DIR)
+    ):
+        step_kwargs = api_main._run_period_step_kwargs(GREEN_LION)
+    assert step_kwargs, "GL should resolve its extracted steps from the seed model"
+
+    default = reconstruct_period_series(**common)
+    extracted = reconstruct_period_series(**common, **step_kwargs)
+
+    # Reconciled numbers (every closing state) are byte-identical.
+    assert default.states == extracted.states
+    # The trace now carries GL's own prospectus recipients, not the canonical names.
+    rev_recipients = {s.recipient for s in extracted.period_results[-1].revenue_execution.steps}
+    assert "security_trustee_fees" in rev_recipients
+    assert "senior_fees" not in rev_recipients
+    red_recipients = {
+        s.recipient for s in extracted.period_results[-1].redemption_execution.steps
+    }
+    assert "class_a_notes_principal" in red_recipients
