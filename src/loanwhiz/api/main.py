@@ -1823,6 +1823,9 @@ def _reconstruct_series_from_tapes(deal_id: str, deal: dict) -> DealStateSeries:
         original_pool_balance=original_pool_balance,
         seed_reporting_date=tapes[0]["date"] if tapes else "unknown",
         periods=periods,
+        # Fold the deal's OWN extracted cascade when a model is available; fall
+        # back to the engine's builtin Green-Lion defaults otherwise (#426).
+        **_run_period_step_kwargs(deal),
     )
     cache_path.parent.mkdir(parents=True, exist_ok=True)
     cache_path.write_text(series.model_dump_json(), encoding="utf-8")
@@ -2009,6 +2012,75 @@ def _report_step_specs(
     )
 
 
+def _projection_step_specs(
+    model: DealModel | None,
+) -> tuple[list[StepSpec], list[StepSpec]] | None:
+    """Build forward-fold revenue/redemption ``StepSpec`` lists from a deal model.
+
+    The projection / scenario / live-history folds default to the engine's builtin
+    Green-Lion priority-of-payments (``DEFAULT_REVENUE_STEPS`` /
+    ``DEFAULT_REDEMPTION_STEPS``). This builds each deal's OWN cascade from its
+    extracted ``DealModel.waterfalls`` so a non-Green-Lion deal executes its own
+    steps instead of silently borrowing Green Lion's (MODELING-GAPS A1, #426) —
+    the prerequisite for cross-deal execution-quality grading.
+
+    Unlike the report-path build (``_report_step_specs`` / ``build_step_specs``)
+    this is for the **forward** paths, so:
+
+    - step **conditions are kept** (the projection has no published distribution to
+      defer to, so the live ``TriggerConditionEvaluator`` gates each step) — this
+      is exactly what :meth:`StepSpec.from_extracted` already does;
+    - the **residual sweep** is assigned to each waterfall's *terminal* step. The
+      extracted step dict carries no residual marker and there is no
+      ``ReportAdapter`` here to supply a label, but the terminal step is the deal's
+      residual sweep — matching the builtin lists where revenue ``(k)`` and
+      redemption ``(d)`` are terminal + residual.
+
+    Returns ``None`` when no model is available or either waterfall is missing /
+    empty, so the caller falls back to the engine's builtin Green-Lion defaults
+    (the unchanged behaviour for unmodelled deals).
+    """
+    if model is None:
+        return None
+    waterfalls = getattr(model, "waterfalls", None) or {}
+
+    def _build(name: str) -> list[StepSpec] | None:
+        block = waterfalls.get(name) or {}
+        steps = block.get("steps") or []
+        if not steps:
+            return None
+        specs = [StepSpec.from_extracted(step) for step in steps]
+        specs[-1] = specs[-1].model_copy(update={"residual": True})
+        return specs
+
+    revenue = _build("revenue")
+    redemption = _build("redemption")
+    if revenue is None or redemption is None:
+        return None
+    return revenue, redemption
+
+
+def _run_period_step_kwargs(deal: dict) -> dict[str, list[StepSpec]]:
+    """``run_period`` step kwargs for a deal's forward fold, or ``{}`` for default.
+
+    Resolves the deal's extracted ``DealModel`` (``_load_cached_deal_model``) and
+    builds its revenue/redemption ``StepSpec`` lists (:func:`_projection_step_specs`).
+    Returns ``{"revenue_steps": ..., "redemption_steps": ...}`` so a caller can
+    splat it into ``run_period`` / ``reconstruct_period_series``, or an **empty
+    dict** when the deal carries no resolvable extracted model — in which case the
+    call applies the engine's builtin Green-Lion defaults exactly as before (#426).
+    """
+    # ``_load_cached_deal_model`` keys off ``deal["deal_name"]``; a deal context
+    # without a name (e.g. a bare tape stub) has no resolvable model → defaults.
+    if not deal.get("deal_name"):
+        return {}
+    specs = _projection_step_specs(_load_cached_deal_model(deal))
+    if specs is None:
+        return {}
+    revenue, redemption = specs
+    return {"revenue_steps": revenue, "redemption_steps": redemption}
+
+
 def fold_report_series(
     model: Any, report: NotesCashReport, adapter: ReportAdapter
 ) -> DealStateSeries:
@@ -2129,10 +2201,13 @@ def _projected_series_from_canonical(
             if k in capital_structure
         }
         rates.setdefault("class_a_rate_pct", base["class_a_rate_pct"])
+        # Execute the deal's OWN extracted cascade when a model is available;
+        # fall back to the engine's builtin Green-Lion defaults otherwise (#426).
+        step_kwargs = _run_period_step_kwargs(deal)
         states = [seed]
         current = seed
         for period in period_inputs:
-            result = run_period(current, period, rates=rates)
+            result = run_period(current, period, rates=rates, **step_kwargs)
             current = result.closing_state
             states.append(current)
         # The projection seed + generated states all carry the same
@@ -3454,6 +3529,10 @@ def deal_project(deal_id: str, req: ProjectRequest) -> dict:
     generator = ScenarioGenerator()
 
     overrides = req.assumptions or {}
+    # Execute the deal's OWN extracted cascade when a model is available; fall
+    # back to the engine's builtin Green-Lion defaults otherwise (#426). Resolved
+    # once and shared across scenarios (it depends only on the deal, not the run).
+    step_kwargs = _run_period_step_kwargs(deal)
     # Loan-level scheduled-amortisation schedule from the deal's latest tape
     # (#281), shared across scenarios (it depends only on the tape + horizon,
     # not the scenario). ``None`` for no-tape deals → the generator's
@@ -3489,7 +3568,7 @@ def deal_project(deal_id: str, req: ProjectRequest) -> dict:
         states = [seed]
         current = seed
         for period in period_inputs:
-            result = run_period(current, period, rates=rates)
+            result = run_period(current, period, rates=rates, **step_kwargs)
             current = result.closing_state
             states.append(current)
         series = DealStateSeries(
@@ -3691,6 +3770,10 @@ def _run_stress_matrix(deal_id: str, deal: dict, req: StressMatrixRequest) -> di
         if k in capital_structure
     }
     rates.setdefault("class_a_rate_pct", base["class_a_rate_pct"])
+    # Execute the deal's OWN extracted cascade when a model is available; fall
+    # back to the engine's builtin Green-Lion defaults otherwise (#426). Resolved
+    # once and shared across every grid cell (it depends only on the deal).
+    step_kwargs = _run_period_step_kwargs(deal)
 
     cells: list[dict] = []
     for cdr in req.cdr_pct:
@@ -3720,7 +3803,7 @@ def _run_stress_matrix(deal_id: str, deal: dict, req: StressMatrixRequest) -> di
                 period_results = []
                 current = seed
                 for period in period_inputs:
-                    result = run_period(current, period, rates=rates)
+                    result = run_period(current, period, rates=rates, **step_kwargs)
                     current = result.closing_state
                     states.append(current)
                     period_results.append(result)

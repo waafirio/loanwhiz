@@ -3796,3 +3796,126 @@ def test_relative_value_screener_endpoint_is_deterministic_and_offline():
     assert [(r["deal_id"], r["tranche_name"], r["rank"]) for r in first["tranches"]] == [
         (r["deal_id"], r["tranche_name"], r["rank"]) for r in second["tranches"]
     ]
+
+
+# ---------------------------------------------------------------------------
+# Extracted-cascade folding (#426)
+#
+# The projection / scenario / live-history folds run each deal's OWN extracted
+# DealModel.waterfalls steps through run_period instead of the hard-coded Green
+# Lion DEFAULT_*_STEPS. Green Lion's surfaced output must stay byte-identical
+# (its extracted steps reproduce the builtin cascade); a non-Green-Lion deal
+# executes its own cascade.
+# ---------------------------------------------------------------------------
+
+
+def test_deal_project_green_lion_byte_identical_with_extracted_steps():
+    """GL /project is byte-identical whether folded via extracted steps or builtin."""
+    from loanwhiz.api import main as api_main
+
+    req = {"scenarios": ["base", "stress"], "months": 12}
+    # Opt back into the REAL committed seed dir (the autouse fixture blanks it) so
+    # GL resolves its extracted cascade rather than degrading to the builtin.
+    with patch.object(
+        api_main, "DEAL_MODEL_SEED_DIR", str(api_main._COMMITTED_DEAL_SEED_DIR)
+    ):
+        with_extracted = client.post(
+            "/deal/green-lion-2026-1/project", json=req
+        ).json()
+        # Neutralise the step resolver → run_period applies its builtin GL defaults.
+        with patch.object(api_main, "_run_period_step_kwargs", return_value={}):
+            with_default = client.post(
+                "/deal/green-lion-2026-1/project", json=req
+            ).json()
+    assert with_extracted == with_default
+
+
+def test_deal_stress_matrix_green_lion_byte_identical_with_extracted_steps():
+    """GL /stress-matrix is byte-identical via extracted steps or builtin."""
+    from loanwhiz.api import main as api_main
+
+    req = {"cpr_pct": [5, 10], "cdr_pct": [1, 2], "rate_shift_bps": [0], "months": 6}
+    with patch.object(
+        api_main, "DEAL_MODEL_SEED_DIR", str(api_main._COMMITTED_DEAL_SEED_DIR)
+    ):
+        with_extracted = client.post(
+            "/deal/green-lion-2026-1/stress-matrix", json=req
+        ).json()
+        with patch.object(api_main, "_run_period_step_kwargs", return_value={}):
+            with_default = client.post(
+                "/deal/green-lion-2026-1/stress-matrix", json=req
+            ).json()
+    assert with_extracted == with_default
+
+
+def test_run_period_step_kwargs_resolves_green_lion_own_cascade():
+    """GL's resolved fold steps are its OWN extracted recipients, terminal residual."""
+    from loanwhiz.api import main as api_main
+
+    deal = api_main._require_deal("green-lion-2026-1")
+    # Opt back into the real committed seed dir (autouse fixture blanks it).
+    with patch.object(
+        api_main, "DEAL_MODEL_SEED_DIR", str(api_main._COMMITTED_DEAL_SEED_DIR)
+    ):
+        kwargs = api_main._run_period_step_kwargs(deal)
+    assert set(kwargs) == {"revenue_steps", "redemption_steps"}
+    # GL's extracted revenue recipients (e.g. security_trustee_fees) are NOT the
+    # builtin canonical spelling (senior_fees) — proving the deal's own cascade.
+    rev_recipients = [s.recipient for s in kwargs["revenue_steps"]]
+    assert "security_trustee_fees" in rev_recipients
+    assert "class_a_notes_principal" in [
+        s.recipient for s in kwargs["redemption_steps"]
+    ]
+    # The terminal step of each waterfall is flagged as the residual sweep.
+    assert kwargs["revenue_steps"][-1].residual is True
+    assert kwargs["redemption_steps"][-1].residual is True
+
+
+def test_run_period_step_kwargs_defaults_when_no_model():
+    """A deal with no resolvable extracted model folds with the builtin defaults."""
+    from loanwhiz.api import main as api_main
+
+    # No deal_name → no model resolvable → empty kwargs (builtin GL defaults apply).
+    assert api_main._run_period_step_kwargs({"tape_urls": []}) == {}
+
+
+def test_projection_step_specs_builds_non_green_lion_own_cascade():
+    """A non-GL deal's extracted model yields ITS own steps, not Green Lion's."""
+    from loanwhiz.api import main as api_main
+    from loanwhiz.extraction.assembler import DealModel
+    from loanwhiz.primitives.period_state_machine import (
+        DEFAULT_REVENUE_STEPS,
+        DEFAULT_REDEMPTION_STEPS,
+    )
+
+    seed = api_main._COMMITTED_DEAL_SEED_DIR / "leone-arancio-rmbs-2023-1-srl.json"
+    if not seed.exists():
+        pytest.skip("Leone Arancio seed model not present")
+    model = DealModel.model_validate_json(seed.read_text(encoding="utf-8"))
+
+    specs = api_main._projection_step_specs(model)
+    assert specs is not None
+    revenue, redemption = specs
+
+    # The specs mirror the deal's OWN extracted recipients, in order.
+    assert [s.recipient for s in revenue] == [
+        s["recipient"] for s in model.waterfalls["revenue"]["steps"]
+    ]
+    assert [s.recipient for s in redemption] == [
+        s["recipient"] for s in model.waterfalls["redemption"]["steps"]
+    ]
+    # ... which are NOT the builtin Green-Lion cascade.
+    builtin_rev = {s.recipient for s in DEFAULT_REVENUE_STEPS}
+    builtin_red = {s.recipient for s in DEFAULT_REDEMPTION_STEPS}
+    assert {s.recipient for s in revenue} != builtin_rev
+    assert {s.recipient for s in redemption} != builtin_red
+    # Terminal step of each waterfall is the residual sweep.
+    assert revenue[-1].residual is True
+    assert redemption[-1].residual is True
+
+
+def test_projection_step_specs_none_without_model():
+    """No model (or a model without waterfalls) → None → caller uses defaults."""
+    from loanwhiz.api import main as api_main
+
+    assert api_main._projection_step_specs(None) is None
