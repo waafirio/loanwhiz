@@ -607,6 +607,30 @@ def _apply_step_overrides(
     return out_specs, need_overrides
 
 
+def _principal_recipient_for(cls: str, redemption_steps: list[StepSpec]) -> str:
+    """The redemption-step recipient that carries ``cls``'s principal.
+
+    A deal model spells a tranche's principal recipient either ``<cls>_principal``
+    (the builtin / tape spelling) or ``<cls>_notes_principal`` (an extracted
+    model's spelling, e.g. Green Lion 2026-1's ``class_a_notes_principal``). The
+    engine's computed principal allocation must be fed back to the interpreter
+    keyed by whichever spelling the redemption steps actually use, else the
+    override never matches and the redemption execution trace shows 0 distributed.
+
+    Returns the matching recipient found in ``redemption_steps``, preferring an
+    exact ``<cls>_principal`` then ``<cls>_notes_principal``; falls back to
+    ``<cls>_principal`` when neither is present (so the builtin path is unchanged).
+    """
+    plain = f"{cls}_principal"
+    notes = f"{cls}_notes_principal"
+    recipients = {step.recipient for step in redemption_steps}
+    if plain in recipients:
+        return plain
+    if notes in recipients:
+        return notes
+    return plain
+
+
 def run_period(
     opening: DealState,
     period: "PeriodInput | CanonicalPeriodInputs",
@@ -751,8 +775,17 @@ def run_period(
             classes=principal_classes,
             evaluator=evaluator,
         )
+        # Feed the allocation back as need_overrides keyed by the redemption
+        # waterfall's ACTUAL principal recipient for each class — ``<cls>_principal``
+        # (builtin / tape spelling) OR ``<cls>_notes_principal`` (an extracted
+        # model's spelling, e.g. ``class_a_notes_principal``). For the builtin list
+        # this resolves to ``<cls>_principal`` exactly as before (byte-identical);
+        # for an extracted-step fold (#426) it routes the override to that deal's
+        # own recipient so the redemption execution TRACE reflects the redemption.
+        # The closing state is unaffected either way — it is built from
+        # ``principal_alloc`` (tranche-name keyed) in ``to_waterfall_result``.
         combined_red_overrides = {
-            f"{cls}_principal": principal_alloc.get(cls, 0.0)
+            _principal_recipient_for(cls, red_steps): principal_alloc.get(cls, 0.0)
             for cls in principal_classes
         }
         combined_red_overrides.update(red_overrides)
