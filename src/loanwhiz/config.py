@@ -129,6 +129,19 @@ GREEN_LION = {
 DEALS_DATA_FILE = Path(__file__).resolve().parent / "data" / "deals.json"
 DEALS_RUNTIME_FILE = Path(__file__).resolve().parent / "data" / "deals.runtime.json"
 
+# Per-deal ground-truth answer keys (#427, epic #425). The data-driven
+# generalization of the hand-built ``api.main._VALIDATION_BUILDERS`` map: a deal's
+# published ground truth (Notes & Cash Priority-of-Payments line items, covenant
+# test results, pool statistics) lives as committed JSON at
+# ``data/deals/answer_keys/<slug>.json``, keyed by the SAME deal-name slug the
+# committed seed model uses (``data/deals/seed/<slug>.json``) so a deal's seed and
+# answer key sit under one naming convention. This constant is the single source of
+# truth for that directory; the typed format + loader live in
+# ``loanwhiz.primitives.reconciliation_answer_key`` and a reconciler consumes them
+# via ``reconcile_against_answer_key``. The dir may be empty (no committed key for a
+# deal ⇒ the loader returns ``None`` and the caller degrades honestly).
+ANSWER_KEY_DATA_DIR = Path(__file__).resolve().parent / "data" / "deals" / "answer_keys"
+
 
 def _merge_data_file(registry: dict[str, dict], data_file: Path, *, kind: str) -> None:
     """Overlay one ``deal_id -> context`` JSON ``data_file`` onto ``registry`` in place.

@@ -771,3 +771,79 @@ def test_run_period_non_abc_funds_view_is_name_keyed() -> None:
     junior = funds.tranche("junior")
     assert senior is not None and senior.balance == 8_000_000.0 and senior.rate_pct == 3.0
     assert junior is not None and junior.pdl_balance == 500.0
+
+
+# ===========================================================================
+# 4. Extracted-cascade principal-recipient keying (#426)
+#
+# run_period feeds its computed principal allocation back to the interpreter
+# keyed by the redemption waterfall's ACTUAL principal recipient, so an extracted
+# model that spells the recipient ``<cls>_notes_principal`` (e.g. Green Lion
+# 2026-1) gets a faithful redemption execution trace — while the closing state
+# (built from the allocation, tranche-name keyed) stays byte-identical to the
+# builtin ``<cls>_principal`` spelling.
+# ===========================================================================
+
+
+def test_principal_recipient_for_maps_to_redemption_step_spelling() -> None:
+    """``_principal_recipient_for`` resolves the override key from the steps."""
+    from loanwhiz.primitives.period_state_machine import (
+        DEFAULT_REDEMPTION_STEPS,
+        _principal_recipient_for,
+    )
+
+    notes_steps = [
+        StepSpec(priority="(b)", recipient="class_a_notes_principal"),
+        StepSpec(priority="(c)", recipient="class_b_notes_principal"),
+    ]
+    # Builtin spelling → ``<cls>_principal`` (byte-identical to the old hardcode).
+    assert _principal_recipient_for("class_a", DEFAULT_REDEMPTION_STEPS) == "class_a_principal"
+    # Extracted ``_notes_principal`` spelling → that recipient.
+    assert _principal_recipient_for("class_a", notes_steps) == "class_a_notes_principal"
+    # Neither present → fall back to ``<cls>_principal`` (no override match, no crash).
+    assert _principal_recipient_for("class_z", notes_steps) == "class_z_principal"
+
+
+def test_run_period_notes_principal_keying_state_identical_trace_faithful() -> None:
+    """Notes-spelled redemption steps: state byte-identical, trace attributes principal.
+
+    The closing state is built from the principal allocation (tranche-name keyed),
+    so it is unaffected by the redemption recipient spelling. The redemption
+    EXECUTION trace, however, must show the principal distributed under the
+    deal's own recipient name — otherwise an extracted-cascade fold looks like it
+    redeemed nothing.
+    """
+    opening = _clean_state(reporting_date="2026-01-31")
+    period = _synthetic_periods()[0]  # clean period, real scheduled principal
+    rates = {k: v for k, v in _CAP_STRUCTURE.items() if k.endswith("rate_pct")}
+
+    notes_redemption = [
+        StepSpec(
+            priority="(a)",
+            recipient="initial_purchase_price_of_new_mortgage_receivables",
+            condition="during the Revolving Period",
+        ),
+        StepSpec(priority="(b)", recipient="class_a_notes_principal"),
+        StepSpec(priority="(c)", recipient="class_b_notes_principal"),
+        StepSpec(
+            priority="(d)",
+            recipient="deferred_purchase_price_instalment_to_seller",
+            residual=True,
+        ),
+    ]
+
+    default_result = run_period(opening, period, rates=rates)
+    notes_result = run_period(
+        opening, period, rates=rates, redemption_steps=notes_redemption
+    )
+
+    # Closing state is byte-identical regardless of recipient spelling.
+    assert default_result.closing_state == notes_result.closing_state
+
+    # The trace attributes the redemption under each list's own recipient name.
+    a_default = default_result.redemption_execution.distributed_to("class_a_principal")
+    a_notes = notes_result.redemption_execution.distributed_to("class_a_notes_principal")
+    assert a_default > 0.0
+    assert a_notes == pytest.approx(a_default)
+    # The notes-spelled run did NOT leak the principal onto the builtin recipient.
+    assert notes_result.redemption_execution.distributed_to("class_a_principal") == 0.0
