@@ -3021,9 +3021,11 @@ def capability_matrix() -> CapabilityMatrix:
 # reconciler the /deal/{id}/validation proof uses), folding each deal's committed
 # offline engine series through run_period — so the grade reflects the real engine.
 #
-# Honesty (#193 discipline): no committed PRODUCTION answer key exists yet (the
-# backfill is #429), so over the live registry the honest current verdict is
-# all-`not-applicable` — never a fabricated wall of green. The grader is
+# Honesty (#193 discipline): Green Lion 2024-1's answer key is committed (#429,
+# authored from its published Notes & Cash report), so over the live registry the
+# honest verdict is mixed — GL-2024-1's revenue + redemption PoP grade to the
+# cent, deals with no committed published ground truth stay `not-applicable` —
+# never a fabricated wall of green. The grader is
 # dependency-injected with the live DEAL_REGISTRY / seed loader / answer-key loader
 # so it is both deal-generic and unit-testable. Offline & deterministic: it reads
 # committed seed + answer-key data and the committed offline series fold; no loan
@@ -3039,8 +3041,8 @@ def quality_matrix() -> QualityMatrix:
     output against the deal's committed ground-truth answer key (#427) to
     tolerance — `passed` / `failed` / `not-applicable` with a score, evidence and
     an honest reason. Runs offline and deterministically; a deal with no committed
-    answer key (the current state until backfill #429) grades honestly
-    not-applicable rather than a fabricated pass.
+    answer key (every deal except Green Lion 2024-1, whose key the #429 backfill
+    committed) grades honestly not-applicable rather than a fabricated pass.
     """
     return build_quality_matrix(
         DEALS,

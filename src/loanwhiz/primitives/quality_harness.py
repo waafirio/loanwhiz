@@ -30,10 +30,12 @@ Honesty discipline (#193 — no wall of green). This harness is the *opposite* o
 green-painting exercise:
 
 - A deal with **no committed answer key** grades every check ``not-applicable``
-  with the real reason — never a fabricated pass. Today no production answer key
-  is committed (authoring them is the sibling backfill #429), so over the live
-  registry the honest verdict is currently all-``not-applicable``; #429 lights it
-  up. The grading machinery itself is proven against injected/synthetic keys.
+  with the real reason — never a fabricated pass. The backfill (#429) committed
+  Green Lion 2024-1's answer key (authored from its published Notes & Cash
+  report), so over the live registry the honest verdict is now mixed: GL-2024-1's
+  revenue + redemption PoP grade ``passed`` to the cent, while deals with no
+  committed published ground truth stay honestly ``not-applicable``. The grading
+  machinery is also proven against injected/synthetic keys.
 - A check whose answer-key section is empty, or whose engine series could not be
   folded, is ``not-applicable`` with that reason — not silently passed.
 - A genuine miss is ``failed`` with the delta, surfaced, never hidden.
@@ -165,8 +167,9 @@ class QualityMatrix(BaseModel):
             "answer key (#427), to the key's EUR tolerance: 'passed' = reconciled to "
             "tolerance; 'failed' = a real miss (with the delta); 'not-applicable' = no "
             "answer key / empty section / unfoldable series, with the real reason. "
-            "No committed production answer key exists yet (the backfill is #429), so over "
-            "the live registry the honest current verdict is all not-applicable. "
+            "Green Lion 2024-1's answer key is committed (#429, from its published Notes "
+            "& Cash report), so its revenue + redemption PoP grade to the cent; deals "
+            "with no committed published ground truth stay honestly not-applicable. "
             "Honesty over a wall of green."
         ),
         description="Standing honesty disclosure for the quality matrix.",

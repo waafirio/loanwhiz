@@ -10,10 +10,13 @@ green — so these tests pin both the shape AND the honest grading behaviour.
 They run fully offline (no network, no LLM):
 
 - A **live-registry** test exercises the harness over the *real* shipped
-  ``DEAL_REGISTRY`` + committed seeds. No production answer key is committed yet
-  (authoring them is the sibling backfill #429), so the honest current verdict is
-  all-``not-applicable`` — this pins that honest state and the per-cell reason
-  contract.
+  ``DEAL_REGISTRY`` + committed seeds + committed answer keys. The backfill (#429)
+  committed Green Lion 2024-1's answer key (authored from its published Notes &
+  Cash report), so the honest current verdict is: GL-2024-1's revenue + redemption
+  PoP grade ``passed`` to the cent, while every other ``(deal × check)`` — including
+  GL-2024-1's covenants / pool stats, which have no committed published figures —
+  grades ``not-applicable`` with a real reason. This pins that honest mixed state
+  and the per-cell reason contract (never a fabricated wall of green).
 - **Machinery** tests inject synthetic / committed-report-derived answer keys (the
   same discipline ``test_reconciliation_answer_key.py`` uses) to prove the grading
   path lights up: a passing grade (matching the hand-built
@@ -125,20 +128,58 @@ def test_matrix_shape_covers_every_deal_x_check() -> None:
 
 
 # ---------------------------------------------------------------------------
-# Live-registry honesty (#193) — no committed answer key yet ⇒ all not-applicable
+# Live-registry honesty (#193) — backfilled GL-2024-1 PoP grades real; the rest
+# stay honestly not-applicable. Never a fabricated wall of green.
 # ---------------------------------------------------------------------------
 
 
-def test_live_registry_is_honestly_all_not_applicable_today() -> None:
-    """No production answer key is committed yet (#429 backfills them), so the
-    honest verdict over the live registry is all not-applicable — never a
-    fabricated wall of green."""
+def test_live_registry_reflects_the_backfilled_answer_key_honestly() -> None:
+    """The #429 backfill committed Green Lion 2024-1's answer key (from its
+    published Notes & Cash report), so the honest verdict over the *live* registry
+    is now mixed: GL-2024-1's revenue + redemption PoP grade `passed` to the cent,
+    every other (deal × check) — including GL-2024-1's covenants / pool stats,
+    which have no committed published figures — grades `not-applicable` with a real
+    reason. Nothing is fabricated and nothing fails."""
     m = _real_matrix()
-    assert m.tally.get(GRADE_PASSED, 0) == 0
+
+    # The only deal with a committed answer key is GL-2024-1.
+    assert {d.deal_id for d in m.deals if d.has_answer_key} == {GL_DEAL_ID}
+
+    # GL-2024-1's two PoP checks are the only graded cells, and they passed.
+    rev = _cell(m, GL_DEAL_ID, "revenue_pop")
+    red = _cell(m, GL_DEAL_ID, "redemption_pop")
+    assert rev.grade == GRADE_PASSED and rev.score == pytest.approx(1.0)
+    assert red.grade == GRADE_PASSED and red.score == pytest.approx(1.0)
+
+    # Honest, not green-painted: exactly those two pass, nothing fails, and every
+    # other cell (incl. GL-2024-1 covenants/pool_stats with no published figures)
+    # is not-applicable.
+    assert m.tally[GRADE_PASSED] == 2
     assert m.tally.get(GRADE_FAILED, 0) == 0
-    assert m.tally[GRADE_NOT_APPLICABLE] == len(m.cells)
-    # No deal carries a committed answer key today.
-    assert all(not d.has_answer_key for d in m.deals)
+    assert m.tally[GRADE_NOT_APPLICABLE] == len(m.cells) - 2
+    for ck in ("covenants", "pool_stats"):
+        assert _cell(m, GL_DEAL_ID, ck).grade == GRADE_NOT_APPLICABLE
+    for d in m.deals:
+        if d.deal_id == GL_DEAL_ID:
+            continue
+        for ck in _EXPECTED_CHECK_KEYS:
+            assert _cell(m, d.deal_id, ck).grade == GRADE_NOT_APPLICABLE
+
+
+def test_committed_gl_answer_key_loads_and_matches_its_published_report() -> None:
+    """Regression for the #429 backfill: the *committed* GL-2024-1 answer key
+    resolves through the real loader (no base_dir override, from
+    ``ANSWER_KEY_DATA_DIR``) and is faithful to its source published report —
+    proving the on-disk key is genuine ground truth, not hand-edited drift."""
+    loaded = load_answer_key(DEAL_REGISTRY[GL_DEAL_ID])
+    assert loaded is not None, "committed green-lion-2024-1-bv.json must resolve"
+    assert loaded.deal_id == GL_DEAL_ID
+    assert loaded.deal_name == GL_DEAL_NAME
+    assert loaded.format_version == 1
+    assert len(loaded.periods) == 3
+    # The committed key equals one freshly authored from the published report: it
+    # was authored via from_notes_cash_report and never hand-tweaked.
+    assert loaded == _gl_key_from_report()
 
 
 def test_every_not_applicable_cell_carries_a_real_reason() -> None:
@@ -424,5 +465,8 @@ def test_quality_matrix_endpoint_returns_graded_matrix_offline() -> None:
     assert len(body["cells"]) == len(body["deals"]) * len(body["checks"])
     assert sum(body["tally"].values()) == len(body["cells"])
     assert body["note"]
-    # Offline + no committed answer keys ⇒ honest all-not-applicable today.
-    assert body["tally"][GRADE_NOT_APPLICABLE] == len(body["cells"])
+    # Offline + the committed GL-2024-1 answer key (#429): the honest verdict is
+    # GL-2024-1's two PoP checks pass, nothing fails, the rest are not-applicable.
+    assert body["tally"][GRADE_PASSED] == 2
+    assert body["tally"].get(GRADE_FAILED, 0) == 0
+    assert body["tally"][GRADE_NOT_APPLICABLE] == len(body["cells"]) - 2

@@ -18,10 +18,15 @@ Green Lion 2024-1 B.V.  ->  green-lion-2024-1-bv.json
 (Slug rule: lower-case, strip `.`/`,`, spaces → `-`; see
 `loanwhiz.primitives.notes_cash_parser._slug`.)
 
-The directory may be empty: a deal with no committed answer key resolves to
-`None` via `load_answer_key(...)` and the caller degrades honestly (no fabricated
-ground truth). Authoring the real keys for deals with published reports is the
-backfill, tracked separately in #429.
+A deal with no committed answer key resolves to `None` via `load_answer_key(...)`
+and the caller degrades honestly (no fabricated ground truth). The #429 backfill
+committed the first real key — `green-lion-2024-1-bv.json`, authored from Green
+Lion 2024-1's published Notes & Cash report via
+`DealAnswerKey.from_notes_cash_report(...)` — so `/quality-matrix` grades its
+revenue + redemption Priority-of-Payments to the cent. Only deals with genuine
+published ground truth get a key (the #193 honesty discipline): Green Lion 2024-1
+is the only deal today with committed Notes & Cash report fixtures, so it is the
+only committed key.
 
 ## Format
 
