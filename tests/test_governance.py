@@ -500,7 +500,7 @@ class TestAgentModelCard:
 
         registered = {t.name for t in SF_TOOLS}
         assert set(AGENT_MODEL_CARD["tools"]) == registered
-        assert len(AGENT_MODEL_CARD["tools"]) == 11
+        assert len(AGENT_MODEL_CARD["tools"]) == 14
         # No duplicates crept into the literal list.
         assert len(AGENT_MODEL_CARD["tools"]) == len(set(AGENT_MODEL_CARD["tools"]))
 
