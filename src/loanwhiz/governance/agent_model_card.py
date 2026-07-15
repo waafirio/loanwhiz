@@ -23,7 +23,7 @@ AGENT_MODEL_CARD: dict = {
     "name": "LoanWhiz Agent v0.1",
     "type": "LangGraph ReAct agent",
     "backbone": "Gemini 2.5 Flash (Vertex AI, project=loanwhiz)",
-    # All 11 tools the agent registers in ``loanwhiz.agent.tools.SF_TOOLS``,
+    # All 14 tools the agent registers in ``loanwhiz.agent.tools.SF_TOOLS``,
     # in that registration order. Kept as an explicit literal (rather than
     # imported from the agent module) so this static governance document carries
     # no import-time dependency on the langchain/langgraph tool chain. The
@@ -41,6 +41,9 @@ AGENT_MODEL_CARD: dict = {
         "list_deal_tapes",
         "stress_matrix",
         "monitor_portfolio",
+        "read_investor_report",
+        "compare_deals",
+        "synthesise_cross_source",
     ],
     "intended_use": "Structured finance Q&A over RMBS deal data",
     "out_of_scope": [

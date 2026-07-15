@@ -15,13 +15,16 @@ from loanwhiz.agent.tools import (
     DEFAULT_DEAL_ID,
     aggregate_collections,
     check_covenants,
+    compare_deals,
     forecast_trigger_breaches,
     get_deal_model,
     list_deal_tapes,
     load_esma_tape,
     project_cashflows,
+    read_investor_report,
     run_waterfall,
     stress_matrix,
+    synthesise_cross_source,
     verify_report,
 )
 from loanwhiz.config import DEAL_REGISTRY
@@ -388,6 +391,126 @@ def test_stress_matrix_oversized_grid_errors_gracefully():
     )
     assert result["confidence"] == 0.0
     assert "error" in result
+
+
+# ---------------------------------------------------------------------------
+# compare_deals (#401 — expose deal comparison to chat)
+#
+# These exercise the REAL /compare alignment path offline against the committed
+# seed models (integration-level per the plan's load-bearing contract — no mock
+# of the unit under test); the bounding helper is pinned by a focused unit test.
+# ---------------------------------------------------------------------------
+
+# Two seeded deals that both carry a committed DealModel (so the structural diff
+# renders offline); green-lion-2024-1 also reconstructs a real performance series
+# via the offline report loader. Mirrors tests/test_compare.py.
+_SEED_A = "green-lion-2024-1"
+_SEED_B = "green-lion-2023-1"
+
+
+def test_compare_deals_returns_aligned_comparison():
+    """Two seeded deals return an aligned structural diff + risk summary, with
+    full confidence on the deterministic assembly and no error."""
+    result = compare_deals.invoke({"deal_a": _SEED_A, "deal_b": _SEED_B})
+    assert result["confidence"] == 1.0
+    assert "error" not in result
+    # Columns are the requested deals, in order.
+    assert [d["deal_id"] for d in result["deals"]] == [_SEED_A, _SEED_B]
+    # Both seeded deals got a structural diff (cached models present).
+    assert all(d["has_structural"] for d in result["deals"])
+    # Structural rows span the canonical sections, one risk row per deal.
+    sections = {row["section"] for row in result["structural_rows"]}
+    assert {"tranche", "waterfall:revenue", "trigger", "reserve"} <= sections
+    assert [rs["deal_id"] for rs in result["risk_summary"]] == [_SEED_A, _SEED_B]
+
+
+def test_compare_deals_target_sets_benchmark_deviation():
+    """With a ``target`` in the set, the benchmark lens annotates the target's
+    comparable structural cells with a comp-set median + signed deviation."""
+    result = compare_deals.invoke(
+        {"deal_a": _SEED_A, "deal_b": _SEED_B, "target": _SEED_A}
+    )
+    assert "error" not in result
+    assert result["target_deal_id"] == _SEED_A
+    assert next(d for d in result["deals"] if d["deal_id"] == _SEED_A)["is_target"]
+    target_deviations = [
+        cell["deviation"]
+        for row in result["structural_rows"]
+        for cell in row["cells"]
+        if cell["deal_id"] == _SEED_A and cell.get("deviation") is not None
+    ]
+    assert target_deviations, "target should carry benchmark deviations"
+
+
+def test_compare_deals_n_way_with_extra_deals():
+    """``extra_deals`` extends the comparison to an N-way set."""
+    result = compare_deals.invoke(
+        {"deal_a": _SEED_A, "deal_b": _SEED_B, "extra_deals": ["leone-arancio-2023-1"]}
+    )
+    assert "error" not in result
+    assert [d["deal_id"] for d in result["deals"]] == [
+        _SEED_A,
+        _SEED_B,
+        "leone-arancio-2023-1",
+    ]
+
+
+def test_compare_deals_unknown_deal_errors_gracefully():
+    """An unknown deal id returns a graceful tool error listing available deals,
+    never a crash and never a silent fallback to a default deal."""
+    result = compare_deals.invoke({"deal_a": _SEED_A, "deal_b": "no-such-deal"})
+    assert result["confidence"] == 0.0
+    assert "error" in result
+    assert "available_deals" in result
+
+
+def test_compare_deals_needs_two_distinct_deals():
+    """The same deal twice is a degenerate comparison → graceful error."""
+    result = compare_deals.invoke({"deal_a": _SEED_A, "deal_b": _SEED_A})
+    assert "error" in result
+    assert result["confidence"] == 0.0
+
+
+def test_compare_deals_target_not_in_set_errors():
+    """A ``target`` not among the compared deals returns a graceful error."""
+    result = compare_deals.invoke(
+        {"deal_a": _SEED_A, "deal_b": _SEED_B, "target": "leone-arancio-2023-1"}
+    )
+    assert "error" in result
+
+
+def test_bound_compare_output_collapses_long_series():
+    """A performance series beyond MAX_VERBATIM_PERIODS collapses to first/last
+    with a ``periods_summarised`` note; structural/risk fields are untouched."""
+    from loanwhiz.agent.tools import MAX_VERBATIM_PERIODS, _bound_compare_output
+
+    n = MAX_VERBATIM_PERIODS + 3
+    points = [{"reporting_date": f"2026-{m:02d}-28", "pool_factor": 1.0} for m in range(n)]
+    payload = {
+        "performance_series": [{"deal_id": "d1", "points": points}],
+        "structural_rows": [{"key": "tranche_rank_0"}],
+        "risk_summary": [{"deal_id": "d1"}],
+    }
+    bounded = _bound_compare_output(payload)
+    series = bounded["performance_series"][0]
+    assert len(series["points"]) == 2  # first + last only
+    assert series["points"][0] == points[0]
+    assert series["points"][-1] == points[-1]
+    assert "periods_summarised" in series
+    # Non-series fields are passed through verbatim.
+    assert bounded["structural_rows"] == payload["structural_rows"]
+    assert bounded["risk_summary"] == payload["risk_summary"]
+
+
+def test_bound_compare_output_short_series_verbatim():
+    """At/under the bound the series is returned unchanged (no summarisation)."""
+    from loanwhiz.agent.tools import _bound_compare_output
+
+    points = [{"reporting_date": "2026-01-31", "pool_factor": 1.0}]
+    payload = {"performance_series": [{"deal_id": "d1", "points": points}]}
+    bounded = _bound_compare_output(payload)
+    assert bounded["performance_series"][0]["points"] == points
+    assert "periods_summarised" not in bounded["performance_series"][0]
 
 
 # ---------------------------------------------------------------------------
@@ -1016,11 +1139,14 @@ def test_sf_tools_has_expected_tools():
         "list_deal_tapes",
         "stress_matrix",
         "monitor_portfolio",
+        "read_investor_report",
+        "compare_deals",
+        "synthesise_cross_source",
     ]
 
 
-def test_sf_tools_has_exactly_eleven_tools():
-    assert len(SF_TOOLS) == 11
+def test_sf_tools_has_exactly_fourteen_tools():
+    assert len(SF_TOOLS) == 14
 
 
 def test_sf_tool_node_is_tool_node_instance():
@@ -1048,7 +1174,7 @@ def test_sf_tools_all_have_invoke_method():
 def test_list_available_tools_returns_list_of_dicts():
     result = list_available_tools()
     assert isinstance(result, list)
-    assert len(result) == 11
+    assert len(result) == 14
 
 
 def test_list_available_tools_has_name_and_description():
@@ -1066,6 +1192,29 @@ def test_list_available_tools_names_match_sf_tools():
     tool_names = [t.name for t in SF_TOOLS]
     listed_names = [e["name"] for e in list_available_tools()]
     assert listed_names == tool_names
+
+
+# ---------------------------------------------------------------------------
+# Planner system prompt — cross-deal framing + compare routing (#401)
+# ---------------------------------------------------------------------------
+
+
+def test_system_prompt_is_not_single_deal_framed():
+    """The prompt no longer asserts the agent only analyses one deal, and tells
+    it an explicit deal_id targets any registered deal (cross-deal reasoning)."""
+    from loanwhiz.agent.planner import SYSTEM_PROMPT
+
+    assert "You analyse the Green Lion 2026-1 Dutch RMBS deal" not in SYSTEM_PROMPT
+    assert "not limited to one deal" in SYSTEM_PROMPT.lower()
+
+
+def test_system_prompt_documents_compare_deals_routing():
+    """The prompt documents compare_deals and routes 'A vs B' / relative-value /
+    benchmark questions to it, so the agent reaches the comparison path."""
+    from loanwhiz.agent.planner import SYSTEM_PROMPT
+
+    assert "compare_deals" in SYSTEM_PROMPT
+    assert "relative value" in SYSTEM_PROMPT.lower()
 
 
 # ---------------------------------------------------------------------------
@@ -1100,6 +1249,177 @@ def test_agent_init_exports():
     assert callable(list_available_tools)
 
 
+# ---------------------------------------------------------------------------
+# read_investor_report — general report reader over the durable cache (#402)
+# ---------------------------------------------------------------------------
+
+
+def _make_notes_cash_report():
+    """A tiny two-period NotesCashReport fixture (liability side)."""
+    from loanwhiz.primitives.notes_cash_parser import (
+        IssuerAccount,
+        NoteClassBalance,
+        NotesCashPeriod,
+        NotesCashReport,
+        PoPStep,
+        TriggerState,
+    )
+
+    jan = NotesCashPeriod(
+        reporting_date="2025-01-23",
+        period_label="January 2025",
+        deal_name="Green Lion 2023-1 B.V.",
+        note_balances=[
+            NoteClassBalance(
+                note_class="class_a",
+                principal_balance_after_payment=900_000_000.0,
+                pdl_balance_after_payment=0.0,
+            )
+        ],
+        revenue_pop=[PoPStep(priority="(a)", recipient="Senior fees", amount=125_000.0)],
+        redemption_pop=[PoPStep(priority="(a)", recipient="Class A principal", amount=10_000_000.0)],
+        issuer_accounts=[
+            IssuerAccount(name="reserve_account", balance_end=15_000_000.0, target=15_000_000.0)
+        ],
+        triggers=[
+            TriggerState(label="(a)", description="Cumulative loss trigger", breached=False, status="OK")
+        ],
+    )
+    apr = NotesCashPeriod(
+        reporting_date="2025-04-23",
+        period_label="April 2025",
+        deal_name="Green Lion 2023-1 B.V.",
+        note_balances=[
+            NoteClassBalance(
+                note_class="class_a",
+                principal_balance_after_payment=850_000_000.0,
+                pdl_balance_after_payment=250_000.0,
+            )
+        ],
+    )
+    return NotesCashReport(deal_name="Green Lion 2023-1 B.V.", periods=[jan, apr])
+
+
+def _make_collateral_ledger():
+    """A tiny one-period CollateralLedger fixture (collateral side, arrears)."""
+    from loanwhiz.extraction.collateral_ledger import CollateralLedger, CollateralPeriod
+
+    jan = CollateralPeriod(
+        reporting_date="2025-01-23",
+        period_label="January 2025",
+        pool_balance_begin=1_000_000_000.0,
+        pool_balance_end=980_000_000.0,
+        repayments=20_000_000.0,
+        default_amount=1_500_000.0,
+        cdr_pct=0.5,
+        payment_ratio_pct=99.1,
+    )
+    return CollateralLedger(deal_name="Green Lion 2023-1 B.V.", periods=[jan])
+
+
+_SEASONED_DEAL_ID = "green-lion-2023-1"
+
+
+def test_read_investor_report_merges_both_report_families_with_citations():
+    """A cache hit surfaces both liability + collateral figures per period, cited."""
+    from loanwhiz.agent import tools as tools_mod
+
+    with patch.object(tools_mod, "_read_cached_notes_cash", return_value=_make_notes_cash_report()), \
+         patch.object(tools_mod, "_read_cached_collateral_ledger", return_value=_make_collateral_ledger()):
+        result = read_investor_report.invoke({"deal_id": _SEASONED_DEAL_ID})
+
+    assert result["reports_status"] == "cached"
+    # Two distinct reporting dates across the two report sets.
+    dates = [p["reporting_date"] for p in result["periods"]]
+    assert dates == ["2025-01-23", "2025-04-23"]
+    jan = result["periods"][0]
+    # Liability side (Notes & Cash) present.
+    assert jan["notes_cash"]["issuer_accounts"][0]["balance_end"] == 15_000_000.0
+    assert jan["notes_cash"]["note_balances"][0]["note_class"] == "class_a"
+    # Collateral side (arrears / default) merged into the SAME period entry.
+    assert jan["collateral_ledger"]["default_amount"] == 1_500_000.0
+    assert jan["collateral_ledger"]["cdr_pct"] == 0.5
+    # One citation per surfaced period.
+    assert len(result["citations"]) == 2
+    assert result["citations"][0]["page_or_row"] == "2025-01-23"
+    assert result["confidence"] == 1.0
+
+
+def test_read_investor_report_period_filter_selects_one_period():
+    """The period substring selects the matching reporting period (label or ISO)."""
+    from loanwhiz.agent import tools as tools_mod
+
+    with patch.object(tools_mod, "_read_cached_notes_cash", return_value=_make_notes_cash_report()), \
+         patch.object(tools_mod, "_read_cached_collateral_ledger", return_value=None):
+        # Human label match.
+        by_label = read_investor_report.invoke({"deal_id": _SEASONED_DEAL_ID, "period": "April 2025"})
+        # ISO date match.
+        by_iso = read_investor_report.invoke({"deal_id": _SEASONED_DEAL_ID, "period": "2025-04"})
+
+    for result in (by_label, by_iso):
+        assert len(result["periods"]) == 1
+        assert result["periods"][0]["reporting_date"] == "2025-04-23"
+        # available_periods still lists every cached period.
+        assert {p["reporting_date"] for p in result["available_periods"]} == {
+            "2025-01-23",
+            "2025-04-23",
+        }
+
+
+def test_read_investor_report_unmatched_period_returns_available_periods():
+    """An unmatched period returns available_periods + a note, never fabricated data."""
+    from loanwhiz.agent import tools as tools_mod
+
+    with patch.object(tools_mod, "_read_cached_notes_cash", return_value=_make_notes_cash_report()), \
+         patch.object(tools_mod, "_read_cached_collateral_ledger", return_value=None):
+        result = read_investor_report.invoke({"deal_id": _SEASONED_DEAL_ID, "period": "2099-12"})
+
+    assert result["reports_status"] == "cached"
+    assert "periods" not in result  # no fabricated period data
+    assert result["period_filter"] == "2099-12"
+    assert {p["reporting_date"] for p in result["available_periods"]} == {
+        "2025-01-23",
+        "2025-04-23",
+    }
+    assert "note" in result
+
+
+def test_read_investor_report_cache_miss_degrades_without_extraction():
+    """A cache miss returns not_cached and NEVER triggers a live extraction."""
+    from loanwhiz.agent import tools as tools_mod
+
+    with patch.object(tools_mod, "_read_cached_notes_cash", return_value=None) as mock_nc, \
+         patch.object(tools_mod, "_read_cached_collateral_ledger", return_value=None) as mock_cl, \
+         patch("loanwhiz.primitives.notes_cash_parser.parse_notes_cash_report") as mock_parse, \
+         patch("loanwhiz.extraction.collateral_ledger.extract_collateral_ledger") as mock_extract:
+        result = read_investor_report.invoke({"deal_id": _SEASONED_DEAL_ID})
+
+    mock_nc.assert_called_once()
+    mock_cl.assert_called_once()
+    mock_parse.assert_not_called()  # cold notes-cash extraction must never run
+    mock_extract.assert_not_called()  # cold collateral extraction must never run
+    assert result["reports_status"] == "not_cached"
+    assert result["deal_id"] == _SEASONED_DEAL_ID
+    assert "list_deal_tapes" in result["note"]
+    assert result["confidence"] == 0.0
+
+
+def test_read_investor_report_unknown_deal_returns_error():
+    result = read_investor_report.invoke({"deal_id": "no-such-deal"})
+    assert "error" in result
+    assert set(result["available_deals"]) == set(DEAL_REGISTRY)
+
+
+def test_read_investor_report_defaults_to_green_lion():
+    """Called with no deal_id, the tool resolves the default deal."""
+    from loanwhiz.agent import tools as tools_mod
+
+    with patch.object(tools_mod, "_read_cached_notes_cash", return_value=None), \
+         patch.object(tools_mod, "_read_cached_collateral_ledger", return_value=None):
+        result = read_investor_report.invoke({})
+    assert result["deal_id"] == DEFAULT_DEAL_ID
+
+
 def test_grounding_tools_importable_from_tools_module():
     """The new grounding tools are importable from loanwhiz.agent.tools."""
     from loanwhiz.agent.tools import get_deal_model, list_deal_tapes
@@ -1128,3 +1448,211 @@ def test_system_prompt_is_regrounded():
     # The agent is told the deal reports its three 2026 monthly tapes (and to
     # resolve them via list_deal_tapes rather than hardcoded URLs).
     assert "Feb/Mar/Apr" in SYSTEM_PROMPT
+
+
+# ---------------------------------------------------------------------------
+# synthesise_cross_source (#403) — cross-source synthesis bundle
+# ---------------------------------------------------------------------------
+#
+# The tool composes the underlying functions of get_deal_model /
+# aggregate_collections / verify_report (their plain ``.func`` callables), so
+# the tests stub those three at that seam — no LLM, no network, no real
+# primitive execution.
+
+
+def _patch_synthesis_sources(stack: ExitStack, deal_model, pool, report):
+    """Stub the three per-source tool functions the synthesis tool composes.
+
+    Each arg is either a dict (returned as-is) or an Exception instance (raised
+    when the source function is called, to exercise the per-source crash guard).
+    """
+    def _ret(value):
+        def _fn(*_args, **_kwargs):
+            if isinstance(value, Exception):
+                raise value
+            return value
+        return _fn
+
+    stack.enter_context(
+        patch("loanwhiz.agent.tools.get_deal_model.func", side_effect=_ret(deal_model))
+    )
+    stack.enter_context(
+        patch("loanwhiz.agent.tools.aggregate_collections.func", side_effect=_ret(pool))
+    )
+    stack.enter_context(
+        patch("loanwhiz.agent.tools.verify_report.func", side_effect=_ret(report))
+    )
+
+
+def _ok_deal_model() -> dict:
+    return {
+        "deal_id": DEFAULT_DEAL_ID,
+        "deal_name": "Green Lion 2026-1 B.V.",
+        "extraction_status": "cached",
+        "completeness_score": 0.9,
+        "trigger_names": ["reserve_fund_trigger"],
+        "tranche_structure": [{"class": "A"}],
+        "covenants": {},
+        "waterfalls": {},
+        "definitions": {"Reserve Target": "1.5% of note balance"},
+    }
+
+
+def _ok_pool() -> dict:
+    return {
+        "reporting_period": "April 2026",
+        "available_revenue_funds": 9_000_000.0,
+        "pool_balance_eur": 990_000_000.0,
+        "confidence": 0.85,
+        "citations": [{"document": "tape.csv", "page_or_row": 1, "excerpt": "balance"}],
+        "duration_ms": 1.0,
+    }
+
+
+def _ok_report() -> dict:
+    return {
+        "overall_match": True,
+        "summary": "Report ties out to the engine.",
+        "confidence": 0.8,
+        "citations": [{"document": "report.pdf", "page_or_row": 2, "excerpt": "class A"}],
+        "duration_ms": 1.0,
+    }
+
+
+def test_synthesise_cross_source_bundles_all_three_sources():
+    """All three sources present → one bundle, each block source-tagged + available."""
+    with ExitStack() as stack:
+        _patch_synthesis_sources(stack, _ok_deal_model(), _ok_pool(), _ok_report())
+        result = synthesise_cross_source.invoke({"deal_id": DEFAULT_DEAL_ID})
+
+    assert result["deal_model"]["source"] == "prospectus deal-model"
+    assert result["pool"]["source"] == "loan tape"
+    assert result["report"]["source"] == "investor report"
+    assert result["deal_model"]["available"] is True
+    assert result["pool"]["available"] is True
+    assert result["report"]["available"] is True
+    assert set(result["sources_available"]) == {
+        "prospectus deal-model",
+        "loan tape",
+        "investor report",
+    }
+    assert result["sources_missing"] == []
+    # The original analytical content survives on each block.
+    assert result["pool"]["available_revenue_funds"] == 9_000_000.0
+    assert result["deal_model"]["definitions"]["Reserve Target"] == "1.5% of note balance"
+
+
+def test_synthesise_cross_source_carries_per_source_citations():
+    """Each block keeps its own citations; the top-level union carries them all."""
+    with ExitStack() as stack:
+        _patch_synthesis_sources(stack, _ok_deal_model(), _ok_pool(), _ok_report())
+        result = synthesise_cross_source.invoke({"deal_id": DEFAULT_DEAL_ID})
+
+    assert result["pool"]["citations"] == [
+        {"document": "tape.csv", "page_or_row": 1, "excerpt": "balance"}
+    ]
+    assert result["report"]["citations"] == [
+        {"document": "report.pdf", "page_or_row": 2, "excerpt": "class A"}
+    ]
+    # Top-level union = both source citations.
+    docs = {c["document"] for c in result["citations"]}
+    assert docs == {"tape.csv", "report.pdf"}
+    # Bundle confidence is the most-conservative available source (min).
+    assert result["confidence"] == 0.8
+
+
+def test_synthesise_cross_source_uncached_deal_model_is_honest_gap():
+    """A not_cached deal-model is an explicit unavailable block — no fabricated terms."""
+    not_cached = {
+        "deal_id": DEFAULT_DEAL_ID,
+        "deal_name": "Green Lion 2026-1 B.V.",
+        "extraction_status": "not_cached",
+        "note": "prospectus not extracted",
+    }
+    with ExitStack() as stack:
+        _patch_synthesis_sources(stack, not_cached, _ok_pool(), _ok_report())
+        result = synthesise_cross_source.invoke({"deal_id": DEFAULT_DEAL_ID})
+
+    assert result["deal_model"]["available"] is False
+    assert result["deal_model"]["extraction_status"] == "not_cached"
+    assert "prospectus deal-model" in result["sources_missing"]
+    assert "loan tape" in result["sources_available"]
+    # No fabricated structural terms leaked in.
+    assert "definitions" not in result["deal_model"]
+
+
+def test_synthesise_cross_source_missing_tape_and_report_are_honest_gaps():
+    """A source returning an error → explicit unavailable block, others survive."""
+    pool_err = {"error": "No loan tapes published", "confidence": 0.0, "citations": []}
+    report_err = {"error": "deal publishes no investor reports", "confidence": 0.0, "citations": []}
+    with ExitStack() as stack:
+        _patch_synthesis_sources(stack, _ok_deal_model(), pool_err, report_err)
+        result = synthesise_cross_source.invoke({"deal_id": DEFAULT_DEAL_ID})
+
+    assert result["pool"]["available"] is False
+    assert result["report"]["available"] is False
+    assert result["deal_model"]["available"] is True
+    assert set(result["sources_missing"]) == {"loan tape", "investor report"}
+    assert result["sources_available"] == ["prospectus deal-model"]
+
+
+def test_synthesise_cross_source_per_source_crash_does_not_lose_others():
+    """If one source function raises, it becomes an honest error block — not a crash."""
+    with ExitStack() as stack:
+        _patch_synthesis_sources(
+            stack, _ok_deal_model(), RuntimeError("tape read blew up"), _ok_report()
+        )
+        result = synthesise_cross_source.invoke({"deal_id": DEFAULT_DEAL_ID})
+
+    assert result["pool"]["available"] is False
+    assert "tape read blew up" in result["pool"]["error"]
+    # The other two sources are unaffected.
+    assert result["deal_model"]["available"] is True
+    assert result["report"]["available"] is True
+
+
+def test_synthesise_cross_source_all_missing_is_not_confident():
+    """An all-missing bundle reports confidence 0.0 (never reads as confident)."""
+    err = {"error": "unavailable", "confidence": 0.0, "citations": []}
+    not_cached = {"extraction_status": "not_cached", "note": "x"}
+    with ExitStack() as stack:
+        _patch_synthesis_sources(stack, not_cached, err, err)
+        result = synthesise_cross_source.invoke({"deal_id": DEFAULT_DEAL_ID})
+
+    assert result["sources_available"] == []
+    assert result["confidence"] == 0.0
+    assert result["citations"] == []
+
+
+def test_synthesise_cross_source_unknown_deal_errors():
+    """A bad deal_id returns {error, available_deals} and never falls back to the default."""
+    result = synthesise_cross_source.invoke({"deal_id": "no-such-deal"})
+    assert "error" in result
+    assert "no-such-deal" in result["error"]
+    assert "available_deals" in result
+    assert result["confidence"] == 0.0
+    # Crucially: no per-source blocks were assembled for the wrong deal.
+    assert "deal_model" not in result
+
+
+def test_synthesise_cross_source_includes_attribution_guidance():
+    """The bundle instructs the consumer to attribute claims + report gaps honestly."""
+    with ExitStack() as stack:
+        _patch_synthesis_sources(stack, _ok_deal_model(), _ok_pool(), _ok_report())
+        result = synthesise_cross_source.invoke({"deal_id": DEFAULT_DEAL_ID})
+
+    guidance = result["synthesis_guidance"].lower()
+    assert "source" in guidance
+    assert "sources_missing" in guidance or "unavailable" in guidance
+
+
+def test_system_prompt_documents_cross_source_synthesis():
+    """The prompt names the synthesis tool and mandates per-source attribution + honest gaps."""
+    from loanwhiz.agent.planner import SYSTEM_PROMPT
+
+    assert "synthesise_cross_source" in SYSTEM_PROMPT
+    # Honesty bar: attribute each claim to its source, and report missing
+    # sources rather than fabricating across the gap.
+    lowered = SYSTEM_PROMPT.lower()
+    assert "attribute" in lowered
+    assert "fabricate" in lowered or "fabricating" in lowered

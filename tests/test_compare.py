@@ -500,3 +500,160 @@ def test_suggest_comps_filters_by_jurisdiction_and_vintage():
         already_selected={"t"},
     )
     assert set(out) == {"same", "near"}  # same/near juris+vintage; far/other excluded
+
+
+# ---------------------------------------------------------------------------
+# #400 — scoring + reasoning wired into /compare.
+# ---------------------------------------------------------------------------
+
+
+from loanwhiz.primitives.relative_value_screener import (  # noqa: E402
+    DIM_POOL_QUALITY,
+    DIM_SUBORDINATION_CE,
+    DIM_TRIGGER_HEADROOM,
+    DIM_WAL,
+    RelativeValueScorecard,
+    RvFactor,
+    TrancheScore,
+)
+
+
+def _rv_factor(dim: str, *, available: bool, value=None, score=None, reason="r") -> RvFactor:
+    return RvFactor(
+        dimension=dim,
+        available=available,
+        value=value,
+        score=score,
+        basis="structural" if available else "live-required",
+        reason=reason,
+    )
+
+
+def _scored_tranche(deal_id: str, name: str, composite: float, *, ce=0.18) -> TrancheScore:
+    """A fully-scored tranche row for verdict unit tests."""
+    return TrancheScore(
+        deal_id=deal_id,
+        deal_name=deal_id.upper(),
+        tranche_name=name,
+        seniority=0,
+        rating="AAA",
+        size_eur=900.0,
+        factors={
+            DIM_SUBORDINATION_CE: _rv_factor(
+                DIM_SUBORDINATION_CE, available=True, value=ce, score=80.0,
+                reason=f"{ce:.1%} junior",
+            ),
+            DIM_WAL: _rv_factor(DIM_WAL, available=True, value=0.0, score=70.0),
+            DIM_TRIGGER_HEADROOM: _rv_factor(
+                DIM_TRIGGER_HEADROOM, available=True, value=0.5, score=60.0,
+                reason="2/4 triggers quantified",
+            ),
+            DIM_POOL_QUALITY: _rv_factor(
+                DIM_POOL_QUALITY, available=False,
+                reason="needs the ESMA tape (live-only)",
+            ),
+        },
+        composite_score=composite,
+    )
+
+
+def _scorecard(rows: list[TrancheScore]) -> RelativeValueScorecard:
+    return RelativeValueScorecard(
+        dimensions=[DIM_SUBORDINATION_CE, DIM_WAL, DIM_TRIGGER_HEADROOM, DIM_POOL_QUALITY],
+        weights={DIM_SUBORDINATION_CE: 1.0},
+        tranches=rows,
+        tally={},
+    )
+
+
+def _ref(deal_id: str) -> cmp.DealRef:
+    return cmp.DealRef(deal_id=deal_id, deal_name=deal_id.upper(), jurisdiction="NL")
+
+
+def test_build_comparative_verdict_picks_clear_winner():
+    """Two scored deals → a ranked verdict citing the winner's real CE."""
+    card = _scorecard(
+        [
+            _scored_tranche("a", "Class A", 90.0, ce=0.20),
+            _scored_tranche("b", "Class A", 40.0, ce=0.05),
+        ]
+    )
+    verdict = cmp.build_comparative_verdict(
+        card,
+        [_ref("a"), _ref("b")],
+        [
+            cmp.RiskSummary(deal_id="a", tightest_trigger="PDL", tightest_proximity_pct=12.0),
+            cmp.RiskSummary(deal_id="b", tightest_trigger="PDL", tightest_proximity_pct=3.0),
+        ],
+    )
+    assert verdict.confidence == "scored"
+    assert verdict.winner_deal_id == "a"
+    assert verdict.ranking == ["a", "b"]
+    # A reason cites the winner's real 20% credit enhancement.
+    assert any("20.0%" in r and "credit enhancement" in r for r in verdict.reasons)
+    # And the live covenant proximity is surfaced.
+    assert any("12.0%" in r and "breach" in r for r in verdict.reasons)
+
+
+def test_build_comparative_verdict_insufficient_data_when_under_two_score():
+    """Only one deal scores → honest insufficient-data, no fabricated winner."""
+    card = _scorecard(
+        [
+            _scored_tranche("a", "Class A", 90.0),
+            # b's tranche came back unscored (no composite).
+            TrancheScore(
+                deal_id="b",
+                deal_name="B",
+                tranche_name="Class A",
+                factors={
+                    DIM_SUBORDINATION_CE: _rv_factor(
+                        DIM_SUBORDINATION_CE, available=False,
+                        reason="No sized tranche structure extracted",
+                    )
+                },
+                composite_score=None,
+            ),
+        ]
+    )
+    verdict = cmp.build_comparative_verdict(card, [_ref("a"), _ref("b")], [])
+    assert verdict.confidence == "insufficient-data"
+    assert verdict.winner_deal_id is None
+    assert verdict.ranking == []
+    assert verdict.reasons == []
+    assert "Insufficient data" in verdict.summary
+
+
+def test_build_comparative_verdict_surfaces_unavailable_caveats():
+    """Live-only (unavailable) dimensions surface as caveats from real reasons."""
+    card = _scorecard([_scored_tranche("a", "Class A", 90.0), _scored_tranche("b", "Class A", 50.0)])
+    verdict = cmp.build_comparative_verdict(card, [_ref("a"), _ref("b")], [])
+    assert verdict.confidence == "scored"
+    # The pool-quality factor was flagged unavailable → its reason is a caveat.
+    assert any("ESMA tape" in c and DIM_POOL_QUALITY in c for c in verdict.caveats)
+
+
+def test_compare_endpoint_returns_scorecard_and_verdict():
+    """GET /compare now carries a subset relative_value scorecard + a verdict."""
+    body = client.get("/compare", params={"deals": SEEDED_THREE}).json()
+    # Subset scorecard scoped to exactly the requested deals.
+    assert body["relative_value"] is not None
+    screened = {r["deal_id"] for r in body["relative_value"]["tranches"]}
+    assert screened <= {"green-lion-2024-1", "green-lion-2023-1", "leone-arancio-2023-1"}
+    verdict = body["comparative_verdict"]
+    assert verdict is not None
+    assert verdict["confidence"] in {"scored", "insufficient-data"}
+    if verdict["confidence"] == "scored":
+        assert verdict["winner_deal_id"] in screened
+        assert verdict["reasons"]
+
+
+def test_compare_endpoint_verdict_is_honest_on_thin_set(monkeypatch):
+    """A set where no deal yields a scored tranche degrades to insufficient-data."""
+    # Force every cached model to None → screener emits no scorable tranche.
+    import loanwhiz.api.main as main_mod
+
+    monkeypatch.setattr(main_mod, "_load_cached_deal_model", lambda _deal: None)
+    body = client.get("/compare", params={"deals": SEEDED_THREE}).json()
+    verdict = body["comparative_verdict"]
+    assert verdict["confidence"] == "insufficient-data"
+    assert verdict["winner_deal_id"] is None

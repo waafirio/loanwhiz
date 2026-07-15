@@ -49,6 +49,11 @@ from loanwhiz.domain.rules import (
     WaterfallKind,
 )
 from loanwhiz.primitives.deal_state import DealState
+from loanwhiz.primitives.relative_value_screener import (
+    DIM_SUBORDINATION_CE,
+    DIM_TRIGGER_HEADROOM,
+    RelativeValueScorecard,
+)
 
 # The waterfalls compared in Panel 1, in the priority order an analyst reads
 # them. ``post_enforcement`` is intentionally omitted from the default diff: it
@@ -169,6 +174,47 @@ class PerformanceSeries(BaseModel):
     points: list[PerformancePoint] = Field(default_factory=list)
 
 
+class ComparativeVerdict(BaseModel):
+    """The reasoned "why one deal is better" answer over the comparison set (#400).
+
+    Grounds the verdict in the relative-value scorecard's *available* (real,
+    structural) factors and the latest-period covenant proximity — never a
+    fabricated winner. When fewer than two deals produced a scored tranche the
+    set cannot be ranked honestly, so ``confidence`` is ``"insufficient-data"``,
+    ``winner_deal_id`` is ``None``, and ``summary`` says what was missing.
+    """
+
+    confidence: Literal["scored", "insufficient-data"] = Field(
+        ...,
+        description=(
+            "'scored' when >=2 deals produced a ranked tranche; "
+            "'insufficient-data' when the structural inputs were too thin to rank."
+        ),
+    )
+    winner_deal_id: str | None = Field(
+        default=None,
+        description="Deal with the best top-ranked tranche, or None when insufficient-data.",
+    )
+    winner_deal_name: str | None = Field(
+        default=None, description="Human name of the winning deal, or None."
+    )
+    ranking: list[str] = Field(
+        default_factory=list,
+        description="Deal ids best->worst by their best tranche's composite (scored deals only).",
+    )
+    summary: str = Field(
+        ..., description="One-line plain verdict, honest about the basis or the gap."
+    )
+    reasons: list[str] = Field(
+        default_factory=list,
+        description="Grounded one-liners citing real structural values (CE, trigger coverage, proximity).",
+    )
+    caveats: list[str] = Field(
+        default_factory=list,
+        description="Honest 'unavailable / live-data-required' flags, sourced from real RvFactor reasons.",
+    )
+
+
 class CompareResponse(BaseModel):
     """The single comparison payload the view + chat both consume."""
 
@@ -183,6 +229,14 @@ class CompareResponse(BaseModel):
     comp_suggestions: list[str] = Field(
         default_factory=list,
         description="Registry deal_ids (not in the set) sharing the target's jurisdiction/vintage.",
+    )
+    relative_value: RelativeValueScorecard | None = Field(
+        default=None,
+        description="Cross-deal relative-value scorecard scoped to this comparison set (#400).",
+    )
+    comparative_verdict: ComparativeVerdict | None = Field(
+        default=None,
+        description="Reasoned 'why one deal is better' verdict grounded in the scorecard (#400).",
     )
     notes: list[str] = Field(
         default_factory=list, description="Honesty notes about coverage / provenance differences."
@@ -644,6 +698,163 @@ def apply_benchmark(
                 rs.proximity_deviation = rs.tightest_proximity_pct - median_prox
 
     return response
+
+
+# ---------------------------------------------------------------------------
+# Comparative verdict — reasoned "why one deal is better" over the comp set.
+# ---------------------------------------------------------------------------
+
+
+def _best_tranche_per_deal(scorecard: RelativeValueScorecard) -> dict[str, Any]:
+    """The highest-composite scored tranche for each deal in the scorecard.
+
+    The scorecard ranks tranches cross-deal; for a deal-level verdict we take
+    each deal's *best* (lowest-rank / highest-composite) scored tranche as that
+    deal's representative — typically its senior note. Deals whose tranches all
+    came back unscored (``composite_score is None``) are omitted; they cannot be
+    ranked honestly.
+    """
+    best: dict[str, Any] = {}
+    for tr in scorecard.tranches:
+        if tr.composite_score is None:
+            continue
+        cur = best.get(tr.deal_id)
+        if cur is None or tr.composite_score > cur.composite_score:
+            best[tr.deal_id] = tr
+    return best
+
+
+def build_comparative_verdict(
+    scorecard: RelativeValueScorecard,
+    deals: list[DealRef],
+    risk_summary: list[RiskSummary],
+    target_deal_id: str | None = None,
+) -> ComparativeVerdict:
+    """Turn the relative-value scorecard into a reasoned, honest deal verdict (#400).
+
+    Pure and deterministic — no LLM, no network. Ranks the deals by their best
+    scored tranche's composite, composes grounded ``reasons`` from the
+    *available* structural factors (credit enhancement, trigger coverage) and
+    each deal's latest-period covenant proximity, and collects ``caveats`` from
+    every factor the screener honestly flagged ``available=False``.
+
+    When fewer than two deals produced a scored tranche the set cannot be ranked
+    honestly: ``confidence`` is ``"insufficient-data"``, ``winner_deal_id`` is
+    ``None``, and ``summary`` names what was missing — never a fabricated winner.
+    """
+    name_by_id = {d.deal_id: d.deal_name for d in deals}
+    proximity_by_id = {
+        rs.deal_id: rs.tightest_proximity_pct
+        for rs in risk_summary
+        if rs.tightest_proximity_pct is not None
+    }
+    tightest_name_by_id = {
+        rs.deal_id: rs.tightest_trigger for rs in risk_summary if rs.tightest_trigger
+    }
+
+    best = _best_tranche_per_deal(scorecard)
+
+    # Caveats: the honest unavailable-dimension flags, deduped, sourced from the
+    # screener's real RvFactor.reason strings (never fabricated).
+    caveats: list[str] = []
+    seen_caveats: set[str] = set()
+    for tr in scorecard.tranches:
+        deal_name = name_by_id.get(tr.deal_id, tr.deal_name)
+        for factor in tr.factors.values():
+            if factor.available:
+                continue
+            caveat = f"{deal_name} · {factor.dimension}: {factor.reason}"
+            if caveat not in seen_caveats:
+                seen_caveats.add(caveat)
+                caveats.append(caveat)
+
+    if len(best) < 2:
+        missing = [
+            name_by_id.get(d.deal_id, d.deal_id)
+            for d in deals
+            if d.deal_id not in best
+        ]
+        if best:
+            scored_name = name_by_id.get(next(iter(best)), next(iter(best)))
+            summary = (
+                f"Insufficient data to rank: only {scored_name} produced a scored "
+                "tranche from the available structural data. "
+                f"No comparable score for: {', '.join(missing) or 'the other deals'}."
+            )
+        else:
+            summary = (
+                "Insufficient data to rank: no deal in the set produced a scorable "
+                "capital structure from the committed extracted models."
+            )
+        return ComparativeVerdict(
+            confidence="insufficient-data",
+            winner_deal_id=None,
+            winner_deal_name=None,
+            ranking=[],
+            summary=summary,
+            reasons=[],
+            caveats=caveats,
+        )
+
+    # Rank deals by their best tranche's composite, desc; deterministic tie-break
+    # on deal_id (mirrors the scorecard's own stable ordering).
+    ranked_ids = sorted(
+        best.keys(),
+        key=lambda did: (-best[did].composite_score, did),
+    )
+    winner_id = ranked_ids[0]
+    winner_tr = best[winner_id]
+    winner_name = name_by_id.get(winner_id, winner_tr.deal_name)
+
+    reasons: list[str] = []
+    # Composite headline.
+    runner_up_id = ranked_ids[1]
+    reasons.append(
+        f"{winner_name} ({winner_tr.tranche_name}) leads on composite relative-value "
+        f"score {winner_tr.composite_score:.0f}/100 vs "
+        f"{name_by_id.get(runner_up_id, runner_up_id)} "
+        f"({best[runner_up_id].composite_score:.0f}/100)."
+    )
+    # Credit enhancement — the load-bearing structural protection.
+    ce = winner_tr.factors.get(DIM_SUBORDINATION_CE)
+    if ce is not None and ce.available and ce.value is not None:
+        reasons.append(
+            f"{winner_name} {winner_tr.tranche_name} carries "
+            f"{ce.value:.1%} structural credit enhancement (capital junior to it)."
+        )
+    # Trigger coverage proxy.
+    th = winner_tr.factors.get(DIM_TRIGGER_HEADROOM)
+    if th is not None and th.available and th.value is not None:
+        reasons.append(
+            f"{winner_name} protective-trigger coverage proxy: {th.value:.0%} of "
+            "extracted triggers are quantified."
+        )
+    # Live covenant proximity, when a risk summary exists for the winner.
+    win_prox = proximity_by_id.get(winner_id)
+    if win_prox is not None:
+        trig = tightest_name_by_id.get(winner_id)
+        trig_phrase = f" ({trig})" if trig else ""
+        reasons.append(
+            f"{winner_name} tightest covenant{trig_phrase} sits "
+            f"{win_prox:.1f}% from breach in the latest reported period."
+        )
+
+    summary = (
+        f"{winner_name} ranks best on structural relative value "
+        f"(composite {winner_tr.composite_score:.0f}/100). "
+        "Ranking blends only the dimensions with real structural data; "
+        "live-data-only dimensions are flagged as caveats."
+    )
+
+    return ComparativeVerdict(
+        confidence="scored",
+        winner_deal_id=winner_id,
+        winner_deal_name=winner_name,
+        ranking=ranked_ids,
+        summary=summary,
+        reasons=reasons,
+        caveats=caveats,
+    )
 
 
 # ---------------------------------------------------------------------------
