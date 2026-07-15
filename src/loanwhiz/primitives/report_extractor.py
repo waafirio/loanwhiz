@@ -760,6 +760,231 @@ def extract_report(
     )
 
 
+# ===========================================================================
+# General per-deal report resolution (the #398 cold-start seam)
+# ===========================================================================
+#
+# Turns *any* deal's published Notes & Cash reports into one canonical
+# :class:`ParsedReport`, replacing the hand-written per-deal loader maps the API
+# used to require (``api.main._REPORT_LOADERS`` / ``_REPORT_GATE_BUILDERS``). A
+# new deal cold-starts the report path zero-touch: drop a registry entry with
+# ``notes_cash_report_urls`` and the resolver fetches + extracts it generally,
+# deterministic-first, under the same governed extractor + determinism cache.
+#
+# Resolution order (cheapest, most-reproducible first), mirroring
+# ``notes_cash_parser.parse_notes_cash_report``:
+#   1. **Committed offline fixtures** — a deal registered in
+#      ``COMMITTED_REPORT_FIXTURES`` (Green Lion 2024-1 ships its three quarterly
+#      ``.txt`` extracts) parses each fixture through ``extract_report``; the
+#      deterministic format registry recognizes them, so the parse is byte-stable
+#      in CI with no network / no LLM. This is what keeps GL-2024-1's
+#      validated-to-the-cent proof unchanged after the loader map is deleted.
+#   2. **Durable report cache** ``data/extraction_cache/notes-cash-{slug}.json``
+#      (the cache ``notes_cash_parser`` writes) — load + bridge offline on hit.
+#   3. **Live extraction** (``allow_live=True`` only) — fetch each
+#      ``notes_cash_report_urls`` PDF, extract its text
+#      (``notes_cash_parser._extract_pdf_text``), run ``extract_report``
+#      (deterministic format if recognized, else the governed OCR/LLM fallback),
+#      and persist to the durable cache. Network/LLM only — never reached in the
+#      fast suite. The **synchronous API GETs** call with the default
+#      ``allow_live=False`` so they never block on a live extraction and degrade
+#      honestly when only step 3 would resolve; an async ingest flow (#399 /
+#      the on-demand extraction endpoint) opts in to populate the cache.
+
+
+class ReportUnavailable(RuntimeError):
+    """A deal has no resolvable Notes & Cash report source (#398).
+
+    Raised by :func:`resolve_parsed_report` when none of committed fixtures, a
+    durable cache, or live ``notes_cash_report_urls`` yields a report — so the
+    caller can degrade honestly (a labelled 422 / ``available=false``) rather
+    than fold an empty series.
+    """
+
+
+#: Per-deal **committed** Notes & Cash fixtures, keyed by canonical deal id. Each
+#: value is a ``(fixture_dir, [(filename, period_label), ...])`` pair of
+#: deterministic ``pypdf`` text extracts (oldest-first — the fold + reconciler
+#: read them positionally). This is the offline source that keeps a deal's report
+#: path network-free in CI; it is **pure data** — adding a deal's offline fixtures
+#: is a data edit, not a new code loader. A deal absent here simply falls through
+#: to the durable cache / live extraction. Patchable in tests.
+_NOTES_CASH_FIXTURE_DIR = _REPO_ROOT / "tests" / "fixtures" / "notes_cash"
+COMMITTED_REPORT_FIXTURES: dict[str, tuple[Path, tuple[tuple[str, str], ...]]] = {
+    "green-lion-2024-1": (
+        _NOTES_CASH_FIXTURE_DIR,
+        (
+            ("green-lion-2024-1-september-2025.txt", "September 2025"),
+            ("green-lion-2024-1-december-2025.txt", "December 2025"),
+            ("green-lion-2024-1-march-2026.txt", "March 2026"),
+        ),
+    ),
+}
+
+
+def _splice_periods(
+    deal_name: str, period_reports: list[ParsedReport]
+) -> ParsedReport:
+    """Splice per-period :class:`ParsedReport` extractions into one report.
+
+    Each ``extract_report`` call over a single Notes & Cash period yields a
+    one-period :class:`ParsedReport`; the cold-start fold + reconciler read a
+    deal's periods positionally (oldest-first), so the per-period results are
+    concatenated into a single report. ``extraction_method`` is ``deterministic``
+    only when *every* period was; any LLM-extracted period downgrades it to
+    ``ocr+llm`` so the provenance stays honest.
+    """
+    periods: list[ParsedReportPeriod] = []
+    methods: set[str] = set()
+    for r in period_reports:
+        periods.extend(r.periods)
+        methods.add(r.extraction_method)
+    method = "deterministic" if methods == {"deterministic"} else "ocr+llm"
+    return ParsedReport(
+        deal_name=deal_name,
+        report_type="notes_and_cash",
+        periods=periods,
+        extraction_method=method,  # type: ignore[arg-type]
+    )
+
+
+def _parsed_from_committed_fixtures(
+    deal_id: str, deal_name: str
+) -> ParsedReport | None:
+    """Build a :class:`ParsedReport` from a deal's committed fixtures, or ``None``."""
+    entry = COMMITTED_REPORT_FIXTURES.get(deal_id)
+    if entry is None:
+        return None
+    fixture_dir, fixtures = entry
+    period_reports = [
+        extract_report(
+            ReportExtractInput(
+                deal_name=deal_name,
+                text=(fixture_dir / filename).read_text(encoding="utf-8"),
+            )
+        ).output
+        for filename, _label in fixtures
+    ]
+    return _splice_periods(deal_name, period_reports)
+
+
+def _parsed_from_notes_cash_report(report: NotesCashReport) -> ParsedReport:
+    """Bridge a concrete :class:`NotesCashReport` (durable cache) → :class:`ParsedReport`.
+
+    The inverse of :meth:`ParsedReport.to_notes_cash_report`; reuses the existing
+    deterministic ``NotesCashPeriod -> ParsedReportPeriod`` mapping so a cached
+    report folds identically to a freshly-extracted one.
+    """
+    return ParsedReport(
+        deal_name=report.deal_name,
+        report_type="notes_and_cash",
+        periods=[_notes_cash_period_to_parsed(p) for p in report.periods],
+        extraction_method="deterministic",
+    )
+
+
+def resolve_parsed_report(
+    deal_id: str,
+    deal: dict[str, Any],
+    *,
+    client: LlmClient | None = None,
+    model: str | None = None,
+    cache_dir: str | Path = DEFAULT_EXTRACTION_CACHE_DIR,
+    use_cache: bool = True,
+    allow_live: bool = False,
+) -> ParsedReport:
+    """Resolve *any* deal's Notes & Cash report into one canonical :class:`ParsedReport`.
+
+    The general report cold-start (#398): replaces the API's per-deal
+    ``_REPORT_LOADERS`` / ``_REPORT_GATE_BUILDERS`` maps so a new report-driven
+    deal models zero-touch. See the module-section comment above for the
+    resolution order (committed fixtures → durable cache → live extraction).
+
+    Parameters
+    ----------
+    deal_id:
+        Canonical deal id (the registry key + committed-fixture key).
+    deal:
+        The deal-registry dict; ``deal_name`` is required, ``notes_cash_report_urls``
+        is consulted only on the live-extraction path.
+    client / model:
+        Injected LLM client / model id for the live OCR+LLM fallback (passed
+        through to :func:`extract_report`); never reached on the
+        fixture/cache paths.
+    cache_dir / use_cache:
+        Durable + determinism cache controls, passed through.
+    allow_live:
+        Gate on the live extraction path (step 3 — PDF fetch + OCR/LLM). The
+        **synchronous API request path** (the waterfall + report-gate GETs) calls
+        with the default ``False`` so it never blocks on a ~minutes-long network +
+        LLM extraction and stays offline/deterministic in CI: a deal resolvable
+        only by live extraction raises :class:`ReportUnavailable`, which the caller
+        degrades honestly (labelled 422 / ``available=false``). An asynchronous
+        ingest flow (the on-demand extraction endpoint / ingest-API #399) opts in
+        with ``allow_live=True`` to populate the durable cache, after which the
+        offline paths serve the deal. This keeps "general report ingestion" true
+        without turning a GET into a live extraction.
+
+    Raises
+    ------
+    ReportUnavailable
+        When no committed fixture, durable cache, or (with ``allow_live``) live
+        report source resolves.
+    """
+    deal_name = deal["deal_name"]
+
+    # 1. Committed offline fixtures (deterministic, CI-stable, no network/LLM).
+    committed = _parsed_from_committed_fixtures(deal_id, deal_name)
+    if committed is not None:
+        logger.info("Report resolver: committed fixtures for %r.", deal_id)
+        return committed
+
+    # 2. Durable report cache (offline on hit).
+    from loanwhiz.primitives import notes_cash_parser as _ncp
+
+    durable_path = _ncp._cache_path(deal_name, cache_dir)
+    cached = _ncp._load_durable_cache(durable_path)
+    if cached is not None:
+        logger.info("Report resolver: durable notes-cash cache for %r.", deal_id)
+        return _parsed_from_notes_cash_report(cached)
+
+    # 3. Live extraction (network/LLM — cold cache only, opt-in).
+    report_urls = deal.get("notes_cash_report_urls") or []
+    if not allow_live or not report_urls:
+        raise ReportUnavailable(
+            f"Deal '{deal_id}' has no offline-resolvable Notes & Cash report: no "
+            f"committed fixtures and no durable cache"
+            + (
+                "."
+                if not report_urls
+                else " (live extraction not requested — pass allow_live=True to "
+                "fetch + extract its notes_cash_report_urls)."
+            )
+        )
+
+    period_reports: list[ParsedReport] = []
+    for entry in report_urls:  # pragma: no cover - network/integration only
+        url = entry["url"]
+        text = _ncp._extract_pdf_text(url)
+        period_reports.append(
+            extract_report(
+                ReportExtractInput(deal_name=deal_name, text=text),
+                client=client,
+                model=model,
+                cache_dir=cache_dir,
+                use_cache=use_cache,
+            ).output
+        )
+    resolved = _splice_periods(deal_name, period_reports)
+
+    # Persist to the durable notes-cash cache so the next request is offline.
+    try:  # pragma: no cover - network/integration only
+        _ncp._write_durable_cache(resolved.to_notes_cash_report(), durable_path)
+    except Exception as exc:  # caching is best-effort
+        logger.warning("Report resolver: durable cache write failed: %s", exc)
+    return resolved
+
+
 @register_primitive(
     name=_PRIMITIVE_NAME,
     version=_PRIMITIVE_VERSION,

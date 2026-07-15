@@ -403,6 +403,231 @@ def test_extract_status_none_when_no_job():
 
 
 # ---------------------------------------------------------------------------
+# Self-service ingest API (#399) — register + tape + report ingest.
+#
+# The approved runtime-file split: registrations/mutations persist to a SEPARATE
+# data/deals.runtime.json (the committed data/deals.json is NEVER touched). The
+# fixture below points config.DEALS_RUNTIME_FILE at a tmp file, snapshots the live
+# DEALS dict and restores it (it is a shared module global aliased into the running
+# app), and asserts the committed file is byte-identical before/after. All async
+# report paths use the resolve_fn injection seam — never a real network/LLM run.
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def ingest_env(tmp_path):
+    """Isolate the runtime file + live DEALS registry for an ingest test.
+
+    Yields the tmp runtime-file path. Restores the live ``DEALS`` dict (snapshot of
+    keys/values) and resets both job stores afterwards, and asserts the committed
+    ``data/deals.json`` was not mutated.
+    """
+    from loanwhiz import config
+    from loanwhiz.api import extraction_jobs, main
+
+    committed_before = Path(config.DEALS_DATA_FILE).read_bytes()
+    runtime_file = tmp_path / "deals.runtime.json"
+    deals_snapshot = dict(main.DEALS)
+
+    extraction_jobs.reset_jobs()
+    extraction_jobs.reset_report_jobs()
+    with patch("loanwhiz.config.DEALS_RUNTIME_FILE", runtime_file):
+        try:
+            yield runtime_file
+        finally:
+            # Restore the shared live registry to its pre-test contents.
+            main.DEALS.clear()
+            main.DEALS.update(deals_snapshot)
+            extraction_jobs.reset_jobs()
+            extraction_jobs.reset_report_jobs()
+
+    # The committed, human-curated registry must never be touched at runtime.
+    assert Path(config.DEALS_DATA_FILE).read_bytes() == committed_before
+
+
+def _register_body(deal_id: str = "ingest-test-2026-1") -> dict:
+    return {
+        "deal_id": deal_id,
+        "deal_name": "Ingest Test 2026-1 B.V.",
+        "prospectus_url": "http://example/ingest-test-prospectus.pdf",
+    }
+
+
+def test_register_deal_201_appears_in_list_and_persists_runtime(ingest_env):
+    """POST /deals registers (201), the deal surfaces in GET /deals, and it is
+    persisted to the runtime overlay file (NOT the committed deals.json)."""
+    runtime_file = ingest_env
+    body = _register_body()
+
+    resp = client.post("/deals", json=body)
+    assert resp.status_code == 201
+    assert resp.json()["deal_id"] == body["deal_id"]
+    assert resp.json()["deal"]["deal_name"] == body["deal_name"]
+
+    # Surfaces in the live listing.
+    ids = [d["id"] for d in client.get("/deals").json()]
+    assert body["deal_id"] in ids
+
+    # Persisted to the runtime overlay file.
+    assert runtime_file.exists()
+    on_disk = json.loads(runtime_file.read_text(encoding="utf-8"))
+    assert body["deal_id"] in on_disk
+    assert on_disk[body["deal_id"]]["deal_name"] == body["deal_name"]
+
+
+def test_register_duplicate_409_and_force_overrides(ingest_env):
+    """A duplicate deal_id → 409; ?force=true overwrites the existing entry."""
+    body = _register_body()
+    assert client.post("/deals", json=body).status_code == 201
+
+    dup = client.post("/deals", json=body)
+    assert dup.status_code == 409
+
+    changed = {**body, "deal_name": "Renamed 2026-1 B.V."}
+    forced = client.post("/deals?force=true", json=changed)
+    assert forced.status_code == 201
+    assert forced.json()["deal"]["deal_name"] == "Renamed 2026-1 B.V."
+
+
+def test_register_existing_committed_deal_409_without_force(ingest_env):
+    """Registering over a pre-existing (committed) deal id is a 409 without force —
+    protecting the curated registry from a silent overwrite."""
+    resp = client.post("/deals", json=_register_body("green-lion-2026-1"))
+    assert resp.status_code == 409
+
+
+def test_register_missing_required_field_422(ingest_env):
+    """A missing required field (deal_name) → 422 (Pydantic validation)."""
+    body = _register_body()
+    del body["deal_name"]
+    resp = client.post("/deals", json=body)
+    assert resp.status_code == 422
+
+
+def test_ingest_tape_appends_and_reflected_live(ingest_env):
+    """POST /ingest/tape validate-loads + appends a tape; reflected in the live
+    registry + the runtime file. The loader is stubbed (no real download)."""
+    runtime_file = ingest_env
+    client.post("/deals", json=_register_body())
+
+    entry = {"date": "2026-05-31", "url": "http://example/tape.csv"}
+    with patch("loanwhiz.api.main._load_tape", return_value=(MagicMock(), "csv")):
+        resp = client.post("/deal/ingest-test-2026-1/ingest/tape", json=entry)
+    assert resp.status_code == 200
+    assert entry in resp.json()["tape_urls"]
+
+    # Reflected in the live registry and persisted.
+    from loanwhiz.api import main
+
+    assert entry in main.DEALS["ingest-test-2026-1"]["tape_urls"]
+    on_disk = json.loads(runtime_file.read_text(encoding="utf-8"))
+    assert entry in on_disk["ingest-test-2026-1"]["tape_urls"]
+
+
+def test_ingest_tape_idempotent_on_identical_entry(ingest_env):
+    """An identical {date,url} is not appended twice (and skips re-validation)."""
+    client.post("/deals", json=_register_body())
+    entry = {"date": "2026-05-31", "url": "http://example/tape.csv"}
+    with patch("loanwhiz.api.main._load_tape", return_value=(MagicMock(), "csv")):
+        client.post("/deal/ingest-test-2026-1/ingest/tape", json=entry)
+    # Second post with the loader patched to raise — must NOT re-validate (idempotent).
+    with patch("loanwhiz.api.main._load_tape", side_effect=AssertionError("must not reload")):
+        resp = client.post("/deal/ingest-test-2026-1/ingest/tape", json=entry)
+    assert resp.status_code == 200
+    assert resp.json()["tape_urls"].count(entry) == 1
+
+
+def test_ingest_tape_unknown_deal_404(ingest_env):
+    resp = client.post(
+        "/deal/no-such-deal/ingest/tape", json={"date": "2026-05-31", "url": "http://x/t.csv"}
+    )
+    assert resp.status_code == 404
+
+
+def test_ingest_tape_bad_tape_422(ingest_env):
+    """A loader failure (bad URL/parse) → 422, and the tape is NOT persisted."""
+    runtime_file = ingest_env
+    client.post("/deals", json=_register_body())
+    entry = {"date": "2026-05-31", "url": "http://example/broken.csv"}
+    with patch("loanwhiz.api.main._load_tape", side_effect=ValueError("bad tape")):
+        resp = client.post("/deal/ingest-test-2026-1/ingest/tape", json=entry)
+    assert resp.status_code == 422
+    # Not persisted: the live registry still has the original (empty) tape list.
+    from loanwhiz.api import main
+
+    assert entry not in (main.DEALS["ingest-test-2026-1"].get("tape_urls") or [])
+
+
+def test_ingest_report_enqueues_202_and_status_polls_succeeded(ingest_env, tmp_path):
+    """POST /ingest/report adds the URL + enqueues (202); status polls to succeeded
+    against a stubbed resolver — never a real network/LLM extraction."""
+    from loanwhiz.api import extraction_jobs
+
+    client.post("/deals", json=_register_body())
+
+    def _resolve(deal_id, deal, *, cache_dir, allow_live):
+        assert allow_live is True
+        return object()
+
+    report_cache = tmp_path / "report_cache"
+    with patch("loanwhiz.api.main.REPORT_EXTRACTION_CACHE_DIR", str(report_cache)), patch(
+        "loanwhiz.primitives.report_extractor.resolve_parsed_report", _resolve
+    ):
+        resp = client.post(
+            "/deal/ingest-test-2026-1/ingest/report",
+            json={"url": "http://example/report.pdf", "period": "May 2026"},
+        )
+        assert resp.status_code == 202
+        assert resp.json()["status"] in ("queued", "running", "succeeded")
+
+        # Drain the single-worker pool so the job finishes deterministically.
+        extraction_jobs._EXECUTOR.submit(lambda: None).result(timeout=10)
+
+        status = client.get("/deal/ingest-test-2026-1/ingest/report/status").json()
+        assert status["status"] == "succeeded"
+
+    # The report URL was added to the deal's notes_cash_report_urls (live + runtime).
+    from loanwhiz.api import main
+
+    urls = main.DEALS["ingest-test-2026-1"]["notes_cash_report_urls"]
+    assert any(e["url"] == "http://example/report.pdf" for e in urls)
+
+
+def test_ingest_report_failure_polls_failed(ingest_env, tmp_path):
+    """A raising resolver → 202 then a 'failed' poll with the reason (no hang)."""
+    from loanwhiz.api import extraction_jobs
+
+    client.post("/deals", json=_register_body())
+
+    def _resolve(deal_id, deal, *, cache_dir, allow_live):
+        raise RuntimeError("live report extraction unavailable")
+
+    with patch(
+        "loanwhiz.primitives.report_extractor.resolve_parsed_report", _resolve
+    ):
+        resp = client.post(
+            "/deal/ingest-test-2026-1/ingest/report", json={"url": "http://example/r.pdf"}
+        )
+        assert resp.status_code == 202
+        extraction_jobs._EXECUTOR.submit(lambda: None).result(timeout=10)
+        status = client.get("/deal/ingest-test-2026-1/ingest/report/status").json()
+        assert status["status"] == "failed"
+        assert "live report extraction unavailable" in status["error"]
+
+
+def test_ingest_report_unknown_deal_404(ingest_env):
+    resp = client.post("/deal/no-such-deal/ingest/report", json={"url": "http://x/r.pdf"})
+    assert resp.status_code == 404
+
+
+def test_ingest_report_status_none_when_no_job(ingest_env):
+    client.post("/deals", json=_register_body())
+    resp = client.get("/deal/ingest-test-2026-1/ingest/report/status")
+    assert resp.status_code == 200
+    assert resp.json()["status"] == "none"
+
+
+# ---------------------------------------------------------------------------
 # Committed deal-model seed fallback (#196 — Overview cold-cache)
 # ---------------------------------------------------------------------------
 
@@ -577,6 +802,7 @@ def test_query_wraps_execute_query():
         step_validations=[],
         aggregate_confidence=0.95,
         human_review_required=False,
+        review_reasons=[],
         evidence_pack_id="pack-123",
         reasoning_trace=["Called covenant_monitor → confidence 0.95 ✓"],
     )
@@ -599,6 +825,57 @@ def test_query_wraps_execute_query():
     m.assert_called_once_with("Is the deal compliant?", confidence_threshold=0.8)
 
 
+def test_query_review_gate_passes_surfaces_false_header_and_empty_reasons():
+    """PASS case (#406): a non-flagged answer → false header, empty review_reasons."""
+    fake = ExecutionResult(
+        question="q",
+        answer="a",
+        overall_status=ValidationStatus.PASSED,
+        step_validations=[],
+        aggregate_confidence=0.95,
+        human_review_required=False,
+        review_reasons=[],
+        evidence_pack_id="pack-1",
+        reasoning_trace=[],
+    )
+    with patch("loanwhiz.api.main.execute_query", return_value=fake):
+        resp = client.post("/query", json={"question": "q"})
+
+    assert resp.status_code == 200
+    assert resp.headers["X-Human-Review-Required"] == "false"
+    body = resp.json()
+    assert body["human_review_required"] is False
+    assert body["review_reasons"] == []
+
+
+def test_query_review_gate_fires_surfaces_true_header_and_reasons():
+    """FIRE case (#406): a flagged answer → true header + review_reasons in body.
+
+    Status stays 200 (surface-and-route): the answer is still returned for the
+    reviewer, with the machine-readable gate signals attached.
+    """
+    reasons = ["aggregate confidence 0.30 is below the review threshold 0.7"]
+    fake = ExecutionResult(
+        question="q",
+        answer="uncertain",
+        overall_status=ValidationStatus.NEEDS_REVIEW,
+        step_validations=[],
+        aggregate_confidence=0.3,
+        human_review_required=True,
+        review_reasons=reasons,
+        evidence_pack_id="pack-2",
+        reasoning_trace=["Routed to human review queue:"],
+    )
+    with patch("loanwhiz.api.main.execute_query", return_value=fake):
+        resp = client.post("/query", json={"question": "q"})
+
+    assert resp.status_code == 200
+    assert resp.headers["X-Human-Review-Required"] == "true"
+    body = resp.json()
+    assert body["human_review_required"] is True
+    assert body["review_reasons"] == reasons
+
+
 def test_query_default_confidence_threshold():
     fake = ExecutionResult(
         question="q",
@@ -607,6 +884,7 @@ def test_query_default_confidence_threshold():
         step_validations=[],
         aggregate_confidence=1.0,
         human_review_required=False,
+        review_reasons=[],
         evidence_pack_id="pack-1",
         reasoning_trace=[],
     )
@@ -2514,11 +2792,12 @@ def test_report_gate_inversion_reconciled_overrides_low_confidence():
     reconcile (Class A interest "(d)"), one on a field the engine never proves
     (reserve_balance). Only the latter must surface in review_items.
     """
-    from loanwhiz.api import main as api_main
+    from loanwhiz.config import DEAL_REGISTRY
     from loanwhiz.domain.provenance import FieldProvenance
-    from loanwhiz.primitives.report_extractor import ParsedReport
+    from loanwhiz.primitives import report_extractor as rx
 
-    base = api_main._build_green_lion_2024_1_parsed_report()
+    gl_deal = DEAL_REGISTRY["green-lion-2024-1"]
+    base = rx.resolve_parsed_report("green-lion-2024-1", gl_deal)
     # Index of the "(d)" Class A interest step in period 0's revenue PoP.
     labels = [s.priority_label for s in base.periods[0].revenue_pop]
     d_idx = labels.index("(d)")
@@ -2538,14 +2817,10 @@ def test_report_gate_inversion_reconciled_overrides_low_confidence():
         }
     )
 
-    def _seeded_builder() -> ParsedReport:
-        return seeded.model_copy(deep=True)
-
-    _, model_loader = api_main._REPORT_GATE_BUILDERS["green-lion-2024-1"]
-    with patch.dict(
-        api_main._REPORT_GATE_BUILDERS,
-        {"green-lion-2024-1": (_seeded_builder, model_loader)},
-        clear=False,
+    # The gate resolves its ParsedReport generally via resolve_parsed_report; patch
+    # it to return the seeded low-confidence copy (the model still resolves offline).
+    with patch.object(
+        rx, "resolve_parsed_report", return_value=seeded.model_copy(deep=True)
     ):
         body = client.get("/deal/green-lion-2024-1/report-gate").json()
 
@@ -2564,11 +2839,12 @@ def test_report_gate_inversion_reconciled_overrides_low_confidence():
 
 def test_report_gate_confidence_threshold_query_is_honored():
     """The optional confidence_threshold query flows into the gate's routing."""
-    from loanwhiz.api import main as api_main
+    from loanwhiz.config import DEAL_REGISTRY
     from loanwhiz.domain.provenance import FieldProvenance
-    from loanwhiz.primitives.report_extractor import ParsedReport
+    from loanwhiz.primitives import report_extractor as rx
 
-    base = api_main._build_green_lion_2024_1_parsed_report()
+    gl_deal = DEAL_REGISTRY["green-lion-2024-1"]
+    base = rx.resolve_parsed_report("green-lion-2024-1", gl_deal)
     seeded = base.model_copy(
         update={
             "provenance": {
@@ -2579,14 +2855,8 @@ def test_report_gate_confidence_threshold_query_is_honored():
         }
     )
 
-    def _seeded_builder() -> ParsedReport:
-        return seeded.model_copy(deep=True)
-
-    _, model_loader = api_main._REPORT_GATE_BUILDERS["green-lion-2024-1"]
-    with patch.dict(
-        api_main._REPORT_GATE_BUILDERS,
-        {"green-lion-2024-1": (_seeded_builder, model_loader)},
-        clear=False,
+    with patch.object(
+        rx, "resolve_parsed_report", return_value=seeded.model_copy(deep=True)
     ):
         # 0.6 < 0.7 → routed; 0.6 >= 0.5 → not routed (strictly-below).
         flagged = client.get(
@@ -3526,3 +3796,196 @@ def test_relative_value_screener_endpoint_is_deterministic_and_offline():
     assert [(r["deal_id"], r["tranche_name"], r["rank"]) for r in first["tranches"]] == [
         (r["deal_id"], r["tranche_name"], r["rank"]) for r in second["tranches"]
     ]
+
+
+# ---------------------------------------------------------------------------
+# Extracted-cascade folding (#426)
+#
+# The projection / scenario / live-history folds run each deal's OWN extracted
+# DealModel.waterfalls steps through run_period instead of the hard-coded Green
+# Lion DEFAULT_*_STEPS. Green Lion's surfaced output must stay byte-identical
+# (its extracted steps reproduce the builtin cascade); a non-Green-Lion deal
+# executes its own cascade.
+# ---------------------------------------------------------------------------
+
+
+def test_deal_project_green_lion_byte_identical_with_extracted_steps():
+    """GL /project is byte-identical whether folded via extracted steps or builtin."""
+    from loanwhiz.api import main as api_main
+
+    req = {"scenarios": ["base", "stress"], "months": 12}
+    # Opt back into the REAL committed seed dir (the autouse fixture blanks it) so
+    # GL resolves its extracted cascade rather than degrading to the builtin.
+    with patch.object(
+        api_main, "DEAL_MODEL_SEED_DIR", str(api_main._COMMITTED_DEAL_SEED_DIR)
+    ):
+        with_extracted = client.post(
+            "/deal/green-lion-2026-1/project", json=req
+        ).json()
+        # Neutralise the step resolver → run_period applies its builtin GL defaults.
+        with patch.object(api_main, "_run_period_step_kwargs", return_value={}):
+            with_default = client.post(
+                "/deal/green-lion-2026-1/project", json=req
+            ).json()
+    assert with_extracted == with_default
+
+
+def test_deal_stress_matrix_green_lion_byte_identical_with_extracted_steps():
+    """GL /stress-matrix is byte-identical via extracted steps or builtin."""
+    from loanwhiz.api import main as api_main
+
+    req = {"cpr_pct": [5, 10], "cdr_pct": [1, 2], "rate_shift_bps": [0], "months": 6}
+    with patch.object(
+        api_main, "DEAL_MODEL_SEED_DIR", str(api_main._COMMITTED_DEAL_SEED_DIR)
+    ):
+        with_extracted = client.post(
+            "/deal/green-lion-2026-1/stress-matrix", json=req
+        ).json()
+        with patch.object(api_main, "_run_period_step_kwargs", return_value={}):
+            with_default = client.post(
+                "/deal/green-lion-2026-1/stress-matrix", json=req
+            ).json()
+    assert with_extracted == with_default
+
+
+def test_run_period_step_kwargs_resolves_green_lion_own_cascade():
+    """GL's resolved fold steps are its OWN extracted recipients, terminal residual."""
+    from loanwhiz.api import main as api_main
+
+    deal = api_main._require_deal("green-lion-2026-1")
+    # Opt back into the real committed seed dir (autouse fixture blanks it).
+    with patch.object(
+        api_main, "DEAL_MODEL_SEED_DIR", str(api_main._COMMITTED_DEAL_SEED_DIR)
+    ):
+        kwargs = api_main._run_period_step_kwargs(deal)
+    assert set(kwargs) == {"revenue_steps", "redemption_steps"}
+    # GL's extracted revenue recipients (e.g. security_trustee_fees) are NOT the
+    # builtin canonical spelling (senior_fees) — proving the deal's own cascade.
+    rev_recipients = [s.recipient for s in kwargs["revenue_steps"]]
+    assert "security_trustee_fees" in rev_recipients
+    assert "class_a_notes_principal" in [
+        s.recipient for s in kwargs["redemption_steps"]
+    ]
+    # The terminal step of each waterfall is flagged as the residual sweep.
+    assert kwargs["revenue_steps"][-1].residual is True
+    assert kwargs["redemption_steps"][-1].residual is True
+
+
+def test_run_period_step_kwargs_defaults_when_no_model():
+    """A deal with no resolvable extracted model folds with the builtin defaults."""
+    from loanwhiz.api import main as api_main
+
+    # No deal_name → no model resolvable → empty kwargs (builtin GL defaults apply).
+    assert api_main._run_period_step_kwargs({"tape_urls": []}) == {}
+
+
+def test_projection_step_specs_builds_non_green_lion_own_cascade():
+    """A non-GL deal's extracted model yields ITS own steps, not Green Lion's."""
+    from loanwhiz.api import main as api_main
+    from loanwhiz.extraction.assembler import DealModel
+    from loanwhiz.primitives.period_state_machine import (
+        DEFAULT_REVENUE_STEPS,
+        DEFAULT_REDEMPTION_STEPS,
+    )
+
+    seed = api_main._COMMITTED_DEAL_SEED_DIR / "leone-arancio-rmbs-2023-1-srl.json"
+    if not seed.exists():
+        pytest.skip("Leone Arancio seed model not present")
+    model = DealModel.model_validate_json(seed.read_text(encoding="utf-8"))
+
+    specs = api_main._projection_step_specs(model)
+    assert specs is not None
+    revenue, redemption = specs
+
+    # The specs mirror the deal's OWN extracted recipients, in order.
+    assert [s.recipient for s in revenue] == [
+        s["recipient"] for s in model.waterfalls["revenue"]["steps"]
+    ]
+    assert [s.recipient for s in redemption] == [
+        s["recipient"] for s in model.waterfalls["redemption"]["steps"]
+    ]
+    # ... which are NOT the builtin Green-Lion cascade.
+    builtin_rev = {s.recipient for s in DEFAULT_REVENUE_STEPS}
+    builtin_red = {s.recipient for s in DEFAULT_REDEMPTION_STEPS}
+    assert {s.recipient for s in revenue} != builtin_rev
+    assert {s.recipient for s in redemption} != builtin_red
+    # Terminal step of each waterfall is the residual sweep.
+    assert revenue[-1].residual is True
+    assert redemption[-1].residual is True
+
+
+def test_projection_step_specs_none_without_model():
+    """No model (or a model without waterfalls) → None → caller uses defaults."""
+    from loanwhiz.api import main as api_main
+
+    assert api_main._projection_step_specs(None) is None
+
+
+def test_history_fold_green_lion_numbers_identical_trace_uses_own_cascade():
+    """The live-history (tape) fold: GL reconciled numbers stay identical, trace
+    carries GL's OWN extracted recipient labels.
+
+    The `/deal/{id}/waterfall` endpoint folds the tape series through
+    ``reconstruct_period_series``; with #426 it now threads GL's extracted steps.
+    Pins the load-bearing property: the reconstructed STATES (the reconciled
+    pool/tranche/PDL/reserve numbers) are byte-identical to the builtin-default
+    fold, while the execution TRACE attributes the cascade to GL's own
+    prospectus recipients (e.g. ``security_trustee_fees`` /
+    ``class_a_notes_principal``) rather than the engine's internal canonical names.
+    """
+    from loanwhiz.api import main as api_main
+    from loanwhiz.config import GREEN_LION
+    from loanwhiz.primitives.deal_state import PeriodCollections
+    from loanwhiz.primitives.period_state_machine import (
+        PeriodInput,
+        reconstruct_period_series,
+    )
+
+    cap = {
+        "class_a_balance": 1_000_000_000.0, "class_a_rate_pct": 3.62,
+        "class_b_balance": 53_100_000.0, "class_b_rate_pct": 4.5,
+        "class_c_balance": 10_500_000.0, "class_c_rate_pct": 6.0,
+    }
+    periods = [
+        PeriodInput(
+            reporting_date="2026-02-28",
+            collections=PeriodCollections(
+                interest=2_600_000.0, scheduled_principal=6_000_000.0,
+                prepayment=270_522.0,
+            ),
+            days_in_period=28,
+        ),
+        PeriodInput(
+            reporting_date="2026-03-31",
+            collections=PeriodCollections(
+                interest=2_500_000.0, scheduled_principal=9_000_000.0,
+                prepayment=81_226.0, realized_loss=500_000.0,
+            ),
+            days_in_period=31,
+        ),
+    ]
+    common = dict(
+        capital_structure=cap, reserve_target=10_636_000.0,
+        original_pool_balance=1_063_600_000.0, opening_pool_balance=1_063_600_000.0,
+        seed_reporting_date="2026-01-31", periods=periods,
+    )
+
+    with patch.object(
+        api_main, "DEAL_MODEL_SEED_DIR", str(api_main._COMMITTED_DEAL_SEED_DIR)
+    ):
+        step_kwargs = api_main._run_period_step_kwargs(GREEN_LION)
+    assert step_kwargs, "GL should resolve its extracted steps from the seed model"
+
+    default = reconstruct_period_series(**common)
+    extracted = reconstruct_period_series(**common, **step_kwargs)
+
+    # Reconciled numbers (every closing state) are byte-identical.
+    assert default.states == extracted.states
+    # The trace now carries GL's own prospectus recipients, not the canonical names.
+    rev_recipients = {s.recipient for s in extracted.period_results[-1].revenue_execution.steps}
+    assert "security_trustee_fees" in rev_recipients
+    assert "senior_fees" not in rev_recipients
+    red_recipients = {
+        s.recipient for s in extracted.period_results[-1].redemption_execution.steps
+    }
+    assert "class_a_notes_principal" in red_recipients

@@ -32,6 +32,7 @@ from loanwhiz.extraction.covenant_extractor import (
     _covenants_from_json,
     _covenants_to_json,
     _default_cache_path,
+    _trigger_support,
     extract_covenants,
 )
 from loanwhiz.extraction.definitions_graph import DefinitionsGraph
@@ -166,6 +167,47 @@ def _make_covenants(
 # ---------------------------------------------------------------------------
 # Unit tests — no network, no LLM
 # ---------------------------------------------------------------------------
+
+
+class TestTriggerSupport:
+    """``_trigger_support`` is the per-trigger usability rubric (#405).
+
+    The assembler reuses it to discount the governed per-field confidence so a
+    trigger with a metric but no quantified threshold / no citation reads low.
+    Must accept both an :class:`ExtractedTrigger` and the raw ``model_dump()``
+    dict the assembler walks.
+    """
+
+    _EMPTY_CITATION = {"document": "", "page_or_row": "", "excerpt": ""}
+
+    def test_metric_threshold_and_citation_scores_one(self) -> None:
+        # _make_trigger defaults carry metric + threshold + citation.
+        assert _trigger_support(_make_trigger()) == pytest.approx(1.0)
+
+    def test_metric_and_threshold_without_citation_scores_070(self) -> None:
+        t = _make_trigger(citation=self._EMPTY_CITATION)
+        assert _trigger_support(t) == pytest.approx(0.70)
+
+    def test_metric_without_threshold_scores_035(self) -> None:
+        t = _make_trigger(threshold=None, citation=self._EMPTY_CITATION)
+        assert _trigger_support(t) == pytest.approx(0.35)
+
+    def test_non_zero_direction_counts_as_quantified(self) -> None:
+        # A non_zero trigger fires on any positive balance (threshold bound to 0
+        # by the assembler), so it is evaluable even with threshold None.
+        t = _make_trigger(
+            threshold=None, direction="non_zero", citation=self._EMPTY_CITATION
+        )
+        assert _trigger_support(t) == pytest.approx(0.70)
+
+    def test_no_metric_scores_zero(self) -> None:
+        t = _make_trigger(metric="", threshold=None, citation=self._EMPTY_CITATION)
+        assert _trigger_support(t) == 0.0
+
+    def test_accepts_raw_dict(self) -> None:
+        t = _make_trigger(citation=self._EMPTY_CITATION)
+        assert _trigger_support(t.model_dump()) == pytest.approx(0.70)
+        assert _trigger_support(_make_trigger().model_dump()) == pytest.approx(1.0)
 
 
 class TestExtractedTrigger:

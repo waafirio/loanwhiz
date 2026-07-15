@@ -64,6 +64,52 @@ class ExtractedCovenants(BaseModel):
     extraction_confidence: float
 
 
+def _trigger_support(trigger: "ExtractedTrigger | dict") -> float:
+    """Per-trigger usability ("support") score in ``[0, 1]`` — the honest signal
+    of how *executable / auditable* a single extracted trigger is.
+
+    A trigger is only evaluable by the governance engine when it names a
+    ``metric`` (what to measure) and is *quantified* — either it carries a
+    numeric ``threshold`` or its ``direction`` is ``non_zero`` (which fires on any
+    positive balance, so the assembler binds it to threshold 0). A citation adds
+    auditable provenance. The assembler reuses this per-trigger so each governed
+    ``FieldProvenance.confidence`` reflects the real support behind *that* trigger
+    rather than a blanket taxonomy score (#405).
+
+    Accepts either an :class:`ExtractedTrigger` (attribute access) or the raw
+    ``model_dump()`` dict the assembler walks (key access).
+
+    Scoring:
+
+    - 0.7 — has a non-empty ``metric`` *and* is quantified (numeric threshold or
+      ``non_zero`` direction) — the evaluable core.
+    - 1.0 — additionally carries a non-empty citation (auditable provenance).
+    - 0.35 — has a metric but no quantified threshold (named but not yet
+      evaluable).
+    - 0.0 — no metric.
+    """
+    if isinstance(trigger, dict):
+        metric = (trigger.get("metric") or "").strip()
+        threshold = trigger.get("threshold")
+        direction = (trigger.get("direction") or "").strip()
+        citation = trigger.get("citation")
+    else:
+        metric = (getattr(trigger, "metric", "") or "").strip()
+        threshold = getattr(trigger, "threshold", None)
+        direction = (getattr(trigger, "direction", "") or "").strip()
+        citation = getattr(trigger, "citation", None)
+
+    citation = citation if isinstance(citation, dict) else {}
+    has_citation = any(str(v).strip() for v in citation.values())
+    quantified = threshold is not None or direction == "non_zero"
+
+    if metric and quantified:
+        return 1.0 if has_citation else 0.7
+    if metric:
+        return 0.35
+    return 0.0
+
+
 # ---------------------------------------------------------------------------
 # Gemini extraction
 # ---------------------------------------------------------------------------

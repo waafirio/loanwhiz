@@ -1,0 +1,464 @@
+{
+  "format_version": 1,
+  "deal_id": "green-lion-2024-1",
+  "deal_name": "Green Lion 2024-1 B.V.",
+  "tolerance_eur": 0.01,
+  "periods": [
+    {
+      "reporting_date": "2025-10-23",
+      "period_label": "September 2025",
+      "available_revenue_funds": 13517150.16,
+      "available_principal_funds": 38941270.28,
+      "revenue_pop": [
+        {
+          "priority": "(a)",
+          "amount": 0.0,
+          "recipient": "(a) first, any fees payable to the Security Trustee;"
+        },
+        {
+          "priority": "(1)",
+          "amount": 0.0,
+          "recipient": "(1) the Paying Agent,"
+        },
+        {
+          "priority": "(2)",
+          "amount": 0.0,
+          "recipient": "(2) the Servicer,"
+        },
+        {
+          "priority": "(3)",
+          "amount": 0.0,
+          "recipient": "(3) the Issuer Administrator,"
+        },
+        {
+          "priority": "(4)",
+          "amount": 0.0,
+          "recipient": "(4) the Issuer Account Bank,"
+        },
+        {
+          "priority": "(5)",
+          "amount": 0.0,
+          "recipient": "(5) the Directors,"
+        },
+        {
+          "priority": "(6)",
+          "amount": 0.0,
+          "recipient": "(6) any stock exchange on which the Class A Notes are listed,"
+        },
+        {
+          "priority": "(7)",
+          "amount": 85184.0,
+          "recipient": "(7) the Issuer's auditors, legal counsel and tax advisers,"
+        },
+        {
+          "priority": "(8)",
+          "amount": 0.0,
+          "recipient": "(8) the Credit Rating Agencies,"
+        },
+        {
+          "priority": "(9)",
+          "amount": 0.0,
+          "recipient": "(9) any independent accountant or calculation agent appointed under the Swap Agreement,"
+        },
+        {
+          "priority": "(10)",
+          "amount": 0.0,
+          "recipient": "(10) any custodian,"
+        },
+        {
+          "priority": "(11)",
+          "amount": 0.0,
+          "recipient": "(11) any taxing authority having power and authority to tax the Issuer,"
+        },
+        {
+          "priority": "(12)",
+          "amount": 0.0,
+          "recipient": "(12) any Benchmark Rate Modification Costs (if applicable)"
+        },
+        {
+          "priority": "(13)",
+          "amount": 0.0,
+          "recipient": "( ) the fees and expenses due and payable to the Data Key Trustee under the Deposit Agreement and"
+        },
+        {
+          "priority": "(14)",
+          "amount": 0.0,
+          "recipient": "(14) any other creditor (other than the Swap Counterparty)"
+        },
+        {
+          "priority": "(c)",
+          "amount": 5908495.43,
+          "recipient": "(c) third, any amounts due and payable to the Swap Counterparty other than Subordinated Swap Payments;"
+        },
+        {
+          "priority": "(d)",
+          "amount": 6110333.33,
+          "recipient": "(d) fourth, on a pari passu and pro rata basis, all interest due (or accrued due) and payable on the Class A Notes;"
+        },
+        {
+          "priority": "(e)",
+          "amount": 0.0,
+          "recipient": "(e) fifth, the amount required to replenish any shortfall reflected in the Class A Principal Deficiency Ledger;"
+        },
+        {
+          "priority": "(f)",
+          "amount": 0.0,
+          "recipient": "(f) sixth, the amount required to replenish the Reserve Account up to the Reserve Account Target Level;"
+        },
+        {
+          "priority": "(g)",
+          "amount": 24224.27,
+          "recipient": "(g) seventh, the amount required to replenish the Issuer Expense Account to the Minimum Required Expense Account Amount (if any);"
+        },
+        {
+          "priority": "(h)",
+          "amount": 0.0,
+          "recipient": "(h) eighth, the amount required to replenish any shortfall reflected in the Class B Principal Deficiency Ledger;"
+        },
+        {
+          "priority": "(i)",
+          "amount": 0.0,
+          "recipient": "(i) ninth, Subordinated Swap Payments due and payable under the Swap Agreement;"
+        },
+        {
+          "priority": "(j)",
+          "amount": 0.0,
+          "recipient": "(j) tenth, after (i) the Notes Payment Date on which all amounts of interest on the Class A Notes and principal on the Secured Green Collateralised Notes will have been paid and (ii) the First Optional Redemption Date, in or towards satisfaction of principal amounts due on the Class C Notes; and"
+        },
+        {
+          "priority": "(k)",
+          "amount": 1388913.13,
+          "recipient": "(k) eleventh, any Deferred Purchase Price Instalment to the Seller."
+        }
+      ],
+      "redemption_pop": [
+        {
+          "priority": "(a)",
+          "amount": 38941269.39,
+          "recipient": "(a) first, during the Revolving Period, in or towards satisfaction of the Initial Purchase Price of any New Mortgage Receivables, subject to the Additional Purchase Conditions being met, up to the New Mortgage Receivables Available Amount"
+        },
+        {
+          "priority": "(b)",
+          "amount": 0.0,
+          "recipient": "(b) second, in or towards, on a pari passu and pro rata basis, satisfaction of principal amounts due and payable on the Class A Notes, until fully redeemed"
+        },
+        {
+          "priority": "(c)",
+          "amount": 0.0,
+          "recipient": "(c) third, in or towards, on a pari passu and pro rata basis satisfaction of principal amounts due and payable on the Class B Notes, until fully redeemed"
+        },
+        {
+          "priority": "(d)",
+          "amount": 0.0,
+          "recipient": "(d) fourth, to pay any Deferred Purchase Price Instalment to the Originator."
+        }
+      ],
+      "covenants": [],
+      "pool_stats": {}
+    },
+    {
+      "reporting_date": "2026-01-23",
+      "period_label": "December 2025",
+      "available_revenue_funds": 13750041.27,
+      "available_principal_funds": 41719928.13,
+      "revenue_pop": [
+        {
+          "priority": "(a)",
+          "amount": 0.0,
+          "recipient": "(a) first, any fees payable to the Security Trustee;"
+        },
+        {
+          "priority": "(1)",
+          "amount": 0.0,
+          "recipient": "(1) the Paying Agent,"
+        },
+        {
+          "priority": "(2)",
+          "amount": 0.0,
+          "recipient": "(2) the Servicer,"
+        },
+        {
+          "priority": "(3)",
+          "amount": 0.0,
+          "recipient": "(3) the Issuer Administrator,"
+        },
+        {
+          "priority": "(4)",
+          "amount": 0.0,
+          "recipient": "(4) the Issuer Account Bank,"
+        },
+        {
+          "priority": "(5)",
+          "amount": 0.0,
+          "recipient": "(5) the Directors,"
+        },
+        {
+          "priority": "(6)",
+          "amount": 0.0,
+          "recipient": "(6) any stock exchange on which the Class A Notes are listed,"
+        },
+        {
+          "priority": "(7)",
+          "amount": 0.0,
+          "recipient": "(7) the Issuer's auditors, legal counsel and tax advisers,"
+        },
+        {
+          "priority": "(8)",
+          "amount": 0.0,
+          "recipient": "(8) the Credit Rating Agencies,"
+        },
+        {
+          "priority": "(9)",
+          "amount": 0.0,
+          "recipient": "(9) any independent accountant or calculation agent appointed under the Swap Agreement,"
+        },
+        {
+          "priority": "(10)",
+          "amount": 0.0,
+          "recipient": "(10) any custodian,"
+        },
+        {
+          "priority": "(11)",
+          "amount": 0.0,
+          "recipient": "(11) any taxing authority having power and authority to tax the Issuer,"
+        },
+        {
+          "priority": "(12)",
+          "amount": 0.0,
+          "recipient": "(12) any Benchmark Rate Modification Costs (if applicable)"
+        },
+        {
+          "priority": "(13)",
+          "amount": 0.0,
+          "recipient": "( ) the fees and expenses due and payable to the Data Key Trustee under the Deposit Agreement and"
+        },
+        {
+          "priority": "(14)",
+          "amount": 0.0,
+          "recipient": "(14) any other creditor (other than the Swap Counterparty)"
+        },
+        {
+          "priority": "(c)",
+          "amount": 6054310.34,
+          "recipient": "(c) third, any amounts due and payable to the Swap Counterparty other than Subordinated Swap Payments;"
+        },
+        {
+          "priority": "(d)",
+          "amount": 6281555.56,
+          "recipient": "(d) fourth, on a pari passu and pro rata basis, all interest due (or accrued due) and payable on the Class A Notes;"
+        },
+        {
+          "priority": "(e)",
+          "amount": 0.0,
+          "recipient": "(e) fifth, the amount required to replenish any shortfall reflected in the Class A Principal Deficiency Ledger;"
+        },
+        {
+          "priority": "(f)",
+          "amount": 0.0,
+          "recipient": "(f) sixth, the amount required to replenish the Reserve Account up to the Reserve Account Target Level;"
+        },
+        {
+          "priority": "(g)",
+          "amount": 11283.95,
+          "recipient": "(g) seventh, the amount required to replenish the Issuer Expense Account to the Minimum Required Expense Account Amount (if any);"
+        },
+        {
+          "priority": "(h)",
+          "amount": 0.0,
+          "recipient": "(h) eighth, the amount required to replenish any shortfall reflected in the Class B Principal Deficiency Ledger;"
+        },
+        {
+          "priority": "(i)",
+          "amount": 0.0,
+          "recipient": "(i) ninth, Subordinated Swap Payments due and payable under the Swap Agreement;"
+        },
+        {
+          "priority": "(j)",
+          "amount": 0.0,
+          "recipient": "(j) tenth, after (i) the Notes Payment Date on which all amounts of interest on the Class A Notes and principal on the Secured Green Collateralised Notes will have been paid and (ii) the First Optional Redemption Date, in or towards satisfaction of principal amounts due on the Class C Notes; and"
+        },
+        {
+          "priority": "(k)",
+          "amount": 1402891.43,
+          "recipient": "(k) eleventh, any Deferred Purchase Price Instalment to the Seller."
+        }
+      ],
+      "redemption_pop": [
+        {
+          "priority": "(a)",
+          "amount": 41719928.03,
+          "recipient": "(a) first, during the Revolving Period, in or towards satisfaction of the Initial Purchase Price of any New Mortgage Receivables, subject to the Additional Purchase Conditions being met, up to the New Mortgage Receivables Available Amount"
+        },
+        {
+          "priority": "(b)",
+          "amount": 0.0,
+          "recipient": "(b) second, in or towards, on a pari passu and pro rata basis, satisfaction of principal amounts due and payable on the Class A Notes, until fully redeemed"
+        },
+        {
+          "priority": "(c)",
+          "amount": 0.0,
+          "recipient": "(c) third, in or towards, on a pari passu and pro rata basis satisfaction of principal amounts due and payable on the Class B Notes, until fully redeemed"
+        },
+        {
+          "priority": "(d)",
+          "amount": 0.0,
+          "recipient": "(d) fourth, to pay any Deferred Purchase Price Instalment to the Originator."
+        }
+      ],
+      "covenants": [],
+      "pool_stats": {}
+    },
+    {
+      "reporting_date": "2026-04-23",
+      "period_label": "March 2026",
+      "available_revenue_funds": 13615514.93,
+      "available_principal_funds": 43486011.27,
+      "revenue_pop": [
+        {
+          "priority": "(a)",
+          "amount": 0.0,
+          "recipient": "(a) first, any fees payable to the Security Trustee;"
+        },
+        {
+          "priority": "(1)",
+          "amount": 0.0,
+          "recipient": "(1) the Paying Agent,"
+        },
+        {
+          "priority": "(2)",
+          "amount": 0.0,
+          "recipient": "(2) the Servicer,"
+        },
+        {
+          "priority": "(3)",
+          "amount": 0.0,
+          "recipient": "(3) the Issuer Administrator,"
+        },
+        {
+          "priority": "(4)",
+          "amount": 0.0,
+          "recipient": "(4) the Issuer Account Bank,"
+        },
+        {
+          "priority": "(5)",
+          "amount": 0.0,
+          "recipient": "(5) the Directors,"
+        },
+        {
+          "priority": "(6)",
+          "amount": 0.0,
+          "recipient": "(6) any stock exchange on which the Class A Notes are listed,"
+        },
+        {
+          "priority": "(7)",
+          "amount": 60500.0,
+          "recipient": "(7) the Issuer's auditors, legal counsel and tax advisers,"
+        },
+        {
+          "priority": "(8)",
+          "amount": 0.0,
+          "recipient": "(8) the Credit Rating Agencies,"
+        },
+        {
+          "priority": "(9)",
+          "amount": 0.0,
+          "recipient": "(9) any independent accountant or calculation agent appointed under the Swap Agreement,"
+        },
+        {
+          "priority": "(10)",
+          "amount": 0.0,
+          "recipient": "(10) any custodian,"
+        },
+        {
+          "priority": "(11)",
+          "amount": 0.0,
+          "recipient": "(11) any taxing authority having power and authority to tax the Issuer,"
+        },
+        {
+          "priority": "(12)",
+          "amount": 0.0,
+          "recipient": "(12) any Benchmark Rate Modification Costs (if applicable)"
+        },
+        {
+          "priority": "(13)",
+          "amount": 0.0,
+          "recipient": "( ) the fees and expenses due and payable to the Data Key Trustee under the Deposit Agreement and"
+        },
+        {
+          "priority": "(14)",
+          "amount": 0.0,
+          "recipient": "(14) any other creditor (other than the Swap Counterparty)"
+        },
+        {
+          "priority": "(c)",
+          "amount": 6043550.85,
+          "recipient": "(c) third, any amounts due and payable to the Swap Counterparty other than Subordinated Swap Payments;"
+        },
+        {
+          "priority": "(d)",
+          "amount": 6135000.0,
+          "recipient": "(d) fourth, on a pari passu and pro rata basis, all interest due (or accrued due) and payable on the Class A Notes;"
+        },
+        {
+          "priority": "(e)",
+          "amount": 0.0,
+          "recipient": "(e) fifth, the amount required to replenish any shortfall reflected in the Class A Principal Deficiency Ledger;"
+        },
+        {
+          "priority": "(f)",
+          "amount": 0.0,
+          "recipient": "(f) sixth, the amount required to replenish the Reserve Account up to the Reserve Account Target Level;"
+        },
+        {
+          "priority": "(g)",
+          "amount": 39997.09,
+          "recipient": "(g) seventh, the amount required to replenish the Issuer Expense Account to the Minimum Required Expense Account Amount (if any);"
+        },
+        {
+          "priority": "(h)",
+          "amount": 0.0,
+          "recipient": "(h) eighth, the amount required to replenish any shortfall reflected in the Class B Principal Deficiency Ledger;"
+        },
+        {
+          "priority": "(i)",
+          "amount": 0.0,
+          "recipient": "(i) ninth, Subordinated Swap Payments due and payable under the Swap Agreement;"
+        },
+        {
+          "priority": "(j)",
+          "amount": 0.0,
+          "recipient": "(j) tenth, after (i) the Notes Payment Date on which all amounts of interest on the Class A Notes and principal on the Secured Green Collateralised Notes will have been paid and (ii) the First Optional Redemption Date, in or towards satisfaction of principal amounts due on the Class C Notes; and"
+        },
+        {
+          "priority": "(k)",
+          "amount": 1336466.99,
+          "recipient": "(k) eleventh, any Deferred Purchase Price Instalment to the Seller."
+        }
+      ],
+      "redemption_pop": [
+        {
+          "priority": "(a)",
+          "amount": 43486010.58,
+          "recipient": "(a) first, during the Revolving Period, in or towards satisfaction of the Initial Purchase Price of any New Mortgage Receivables, subject to the Additional Purchase Conditions being met, up to the New Mortgage Receivables Available Amount"
+        },
+        {
+          "priority": "(b)",
+          "amount": 0.0,
+          "recipient": "(b) second, in or towards, on a pari passu and pro rata basis, satisfaction of principal amounts due and payable on the Class A Notes, until fully redeemed"
+        },
+        {
+          "priority": "(c)",
+          "amount": 0.0,
+          "recipient": "(c) third, in or towards, on a pari passu and pro rata basis satisfaction of principal amounts due and payable on the Class B Notes, until fully redeemed"
+        },
+        {
+          "priority": "(d)",
+          "amount": 0.0,
+          "recipient": "(d) fourth, to pay any Deferred Purchase Price Instalment to the Originator."
+        }
+      ],
+      "covenants": [],
+      "pool_stats": {}
+    }
+  ]
+}

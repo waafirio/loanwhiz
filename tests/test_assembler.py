@@ -1511,6 +1511,86 @@ class TestBuildDealRules:
             "prospectus_extractor.build_deal_rules"
         )
 
+    def test_unsupported_step_confidence_below_mapping(self) -> None:
+        """A well-classified step with no extraction support reads strictly below
+        its taxonomy mapping confidence — the #405 honesty fix.
+
+        Two revenue steps share the same deterministically-mapped recipient
+        (identical ``mapping.confidence``); they differ only in extraction
+        support. The fully-supported one keeps ~the mapping confidence; the
+        unsupported one (no amount formula, no citation) drops to mapping × 0.35.
+        """
+        from loanwhiz.extraction.assembler import build_deal_rules
+        from loanwhiz.extraction.taxonomy import map_recipient
+
+        recipient = "class_a_interest"
+        description = "Pay interest on the Class A Notes."
+        mapping = map_recipient(recipient, description, use_llm=False)
+        assert mapping.confidence > 0.0  # deterministic hit — guards the test
+
+        supported = _make_step(
+            priority="(y)", recipient=recipient, description=description
+        ).model_dump()  # default carries amount_formula + citation → support 1.0
+        unsupported = _make_step(
+            priority="(z)", recipient=recipient, description=description
+        ).model_dump()
+        unsupported["amount_formula"] = ""
+        unsupported["citation"] = {"document": "", "page_or_row": "", "excerpt": ""}
+
+        model = _gl_seed_deal_model()
+        model.waterfalls["revenue"]["steps"] = [supported, unsupported]
+        rules = build_deal_rules(model, use_llm=False).output
+
+        sup_conf = rules.provenance["waterfalls.revenue.0.recipient"].confidence
+        unsup_conf = rules.provenance["waterfalls.revenue.1.recipient"].confidence
+
+        # Fully-supported step keeps ~the taxonomy mapping confidence (support 1.0).
+        assert sup_conf == pytest.approx(mapping.confidence)
+        # Unsupported step reads strictly below — no blanket high score.
+        assert unsup_conf < mapping.confidence
+        assert unsup_conf == pytest.approx(mapping.confidence * 0.35)
+
+    def test_unsupported_trigger_confidence_below_mapping(self) -> None:
+        """Same honesty fix on the trigger path: a trigger with a mapped metric
+        but no quantified threshold / no citation reads below its mapping
+        confidence, while a fully-supported trigger keeps it."""
+        from loanwhiz.extraction.assembler import build_deal_rules
+        from loanwhiz.extraction.taxonomy import map_metric
+
+        metric = "class_a_pdl_debit_balance"
+        mapping = map_metric(metric, "", use_llm=False)
+        assert mapping.confidence > 0.0
+
+        supported = {
+            "name": "class_a_pdl_supported",
+            "metric": metric,
+            "threshold": 0.0,
+            "threshold_unit": "eur",
+            "direction": "non_zero",
+            "consequence": "Credit the Class A PDL.",
+            "citation": {"document": "Prospectus", "page_or_row": "5.2", "excerpt": "x"},
+        }
+        unsupported = {
+            "name": "class_a_pdl_unsupported",
+            "metric": metric,
+            "threshold": None,
+            "threshold_unit": None,
+            "direction": "above",
+            "consequence": "Credit the Class A PDL.",
+            "citation": {"document": "", "page_or_row": "", "excerpt": ""},
+        }
+
+        model = _gl_seed_deal_model()
+        model.covenants["triggers"] = [supported, unsupported]
+        rules = build_deal_rules(model, use_llm=False).output
+
+        sup_conf = rules.provenance["triggers.class_a_pdl_supported.metric"].confidence
+        unsup_conf = rules.provenance["triggers.class_a_pdl_unsupported.metric"].confidence
+
+        assert sup_conf == pytest.approx(mapping.confidence)  # support 1.0
+        assert unsup_conf < mapping.confidence
+        assert unsup_conf == pytest.approx(mapping.confidence * 0.35)
+
     def test_condition_becomes_condition_ref(self) -> None:
         from loanwhiz.extraction.assembler import build_deal_rules
 

@@ -39,15 +39,25 @@ from loanwhiz.governance.evidence_pack import GovernanceEvidencePack, ToolCallRe
 # ---------------------------------------------------------------------------
 
 
-def _tool_call(name: str, confidence: float, index: int = 0) -> ToolCallRecord:
-    """Build a minimal ToolCallRecord with the given confidence."""
+def _tool_call(
+    name: str,
+    confidence: float,
+    index: int = 0,
+    citations: list[dict] | None = None,
+) -> ToolCallRecord:
+    """Build a minimal ToolCallRecord with the given confidence.
+
+    ``citations`` defaults to a single source so a grounded test call is
+    *auditable* by default — the missing-citations review trigger (#406) only
+    fires when a test deliberately passes ``citations=[]``.
+    """
     return ToolCallRecord(
         call_index=index,
         tool_name=name,
         input_summary=f"{name} input",
         output_summary="",
         confidence=confidence,
-        citations=[],
+        citations=[{"source": f"{name}.csv"}] if citations is None else citations,
         duration_ms=0.0,
         timestamp="2026-06-03T00:00:00+00:00",
     )
@@ -336,6 +346,87 @@ def test_real_threaded_low_confidence_fires_executor_review() -> None:
     assert result.aggregate_confidence == pytest.approx(0.4)
     assert result.human_review_required is True
     assert result.overall_status == ValidationStatus.NEEDS_REVIEW
+
+
+# ---------------------------------------------------------------------------
+# Review gate (#406) — review_reasons is the machine-readable cause set and
+# human_review_required == bool(review_reasons). Three cuts: FIRE on low
+# confidence, FIRE on a grounded-but-uncited answer (even at high confidence),
+# and PASS (cited, high confidence → flag False, reasons empty).
+# ---------------------------------------------------------------------------
+
+
+def test_review_fires_on_low_confidence_with_reason() -> None:
+    """Low aggregate confidence → flag True and a confidence review_reason."""
+    answer = "Uncertain."
+    pack = _pack("Q?", answer, [_tool_call("check_covenants", 0.3, 0)])
+    ctx, _ = _patched_run_query(pack, answer)
+    with ctx:
+        result = DAGExecutor().execute("Q?")
+
+    assert result.human_review_required is True
+    assert result.review_reasons  # non-empty
+    assert any("confidence" in r.lower() for r in result.review_reasons)
+    # Flag and reasons are kept consistent.
+    assert result.human_review_required == bool(result.review_reasons)
+    # The reasons are threaded into the human-readable trace too.
+    assert any("Routed to human review queue" in line for line in result.reasoning_trace)
+
+
+def test_review_fires_on_ungrounded_with_reason() -> None:
+    """An ungrounded answer names the ungrounded cause in review_reasons."""
+    answer = "No tools used."
+    pack = _pack("Q?", answer, [])
+    ctx, _ = _patched_run_query(pack, answer)
+    with ctx:
+        result = DAGExecutor().execute("Q?")
+
+    assert result.human_review_required is True
+    assert any("ungrounded" in r.lower() for r in result.review_reasons)
+
+
+def test_review_fires_on_missing_citations_even_at_high_confidence() -> None:
+    """A grounded, high-confidence answer with ZERO citations still gates.
+
+    Primitive evidence with no traceable source is unauditable, so the gate
+    fires on the citations trigger even though confidence is well above
+    threshold (the confidence trigger does NOT fire here).
+    """
+    answer = "High confidence but no source."
+    pack = _pack(
+        "Q?",
+        answer,
+        [_tool_call("run_waterfall", 0.99, 0, citations=[])],
+    )
+    ctx, _ = _patched_run_query(pack, answer)
+    with ctx:
+        result = DAGExecutor().execute("Q?")
+
+    assert result.aggregate_confidence == pytest.approx(0.99)
+    assert result.human_review_required is True
+    assert any("citation" in r.lower() for r in result.review_reasons)
+    # Only the citations trigger fired — not the confidence one.
+    assert not any("confidence" in r.lower() for r in result.review_reasons)
+
+
+def test_review_passes_on_high_confidence_cited_answer() -> None:
+    """High confidence AND citations present → flag False, reasons empty."""
+    answer = "Pool balance is €990,000,000."
+    pack = _pack(
+        "What is the pool balance?",
+        answer,
+        [
+            _tool_call("load_esma_tape", 1.0, 0, citations=[{"source": "tape.csv"}]),
+            _tool_call("aggregate_collections", 0.95, 1, citations=[{"source": "coll.csv"}]),
+        ],
+    )
+    ctx, _ = _patched_run_query(pack, answer)
+    with ctx:
+        result = DAGExecutor().execute("What is the pool balance?")
+
+    assert result.human_review_required is False
+    assert result.review_reasons == []
+    assert any("No human review required" in line for line in result.reasoning_trace)
 
 
 # ---------------------------------------------------------------------------
