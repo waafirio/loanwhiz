@@ -1,10 +1,10 @@
 ---
 id: 2026-09-02-re-baseline-before-clo
 title: Re-baseline LoanWhiz before the CLO breadth bet
-status: decomposed
+status: filed
 created: 2026-09-02
 updated: 2026-09-02
-epics: []
+epics: [437]
 ---
 
 # Re-baseline LoanWhiz before the CLO breadth bet
@@ -140,7 +140,7 @@ One epic, four children. Children 1–3 are independent and run in parallel;
 child 4 is sequential and must land after all three, because it documents the
 end state they produce.
 
-### Epic: Re-baseline before the CLO breadth bet   (umbrella #<N>)
+### Epic: Re-baseline before the CLO breadth bet   (umbrella #437)
 
 Bring the committed data and the honesty docs back level with the code that
 shipped in June, so the platform can honestly measure the CLO breadth work that
@@ -183,4 +183,12 @@ in the seeds are real, and `SYSTEM-STATUS.md` contains no claim that is false.
 
 ## Filed issues
 
-_(Filled in phase 4.)_
+- Epic "Re-baseline before the CLO breadth bet" → umbrella **#437**
+  - **#438** Re-extract the Sol-Lion II (ES) seed through the post-#396/#397 pipeline  _(parallel, prio 1)_
+  - **#439** Re-extract the Leone Arancio (IT) seed through the post-#396/#397 pipeline  _(parallel, prio 1)_
+  - **#440** Backfill the Green Lion 2023-1 ground-truth answer key  _(parallel, prio 1)_
+  - **#441** Refresh SYSTEM-STATUS.md against current main  _(sequential, After #440, prio 2)_
+
+All five labelled `liz:enrolled`. #441's `After #440` names the last-filed
+sibling; its real predecessor set is #438 + #439 + #440, carried by the
+`sequential` marker and this plan.
