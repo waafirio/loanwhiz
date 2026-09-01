@@ -1,7 +1,7 @@
 ---
 id: 2026-09-02-re-baseline-before-clo
 title: Re-baseline LoanWhiz before the CLO breadth bet
-status: draft
+status: decomposed
 created: 2026-09-02
 updated: 2026-09-02
 epics: []
@@ -136,7 +136,50 @@ deterministic and should finish well ahead of them.
 
 ## Decomposition
 
-_(Filled in phase 2.)_
+One epic, four children. Children 1–3 are independent and run in parallel;
+child 4 is sequential and must land after all three, because it documents the
+end state they produce.
+
+### Epic: Re-baseline before the CLO breadth bet   (umbrella #<N>)
+
+Bring the committed data and the honesty docs back level with the code that
+shipped in June, so the platform can honestly measure the CLO breadth work that
+follows. Nothing here is new capability — two children re-run pipelines that are
+already merged and tested, one authors ground truth from reports already in the
+registry, and one corrects a doc. The measure of success is that
+`/quality-matrix` grades two deals instead of one, the IT/ES capital structures
+in the seeds are real, and `SYSTEM-STATUS.md` contains no claim that is false.
+
+- **Re-extract the Sol-Lion II (ES) seed through the post-#396/#397 pipeline** —
+  Re-run the full extraction for Sol-Lion II RMBS against current `main` and
+  commit the refreshed seed, so the empty revenue Priority of Payments (0 steps)
+  and the `Class O / size_eur: 42.0 / seniority: 14` tranche artifact are
+  replaced by real extracted structure; if the shipped `#396`/`#397` fixes do
+  not resolve them, fix the responsible extractor path rather than committing a
+  bad seed. Sequencing: parallel. Paths: `src/loanwhiz/data/deals/seed/**`,
+  `src/loanwhiz/extraction/**`.
+- **Re-extract the Leone Arancio (IT) seed through the post-#396/#397
+  pipeline** — Re-run the full extraction for Leone Arancio RMBS 2023-1 against
+  current `main` and commit the refreshed seed, so its single null-size
+  `Class A` tranche is replaced by the deal's real capital structure; same rule
+  if the shipped fixes prove insufficient. Sequencing: parallel. Paths:
+  `src/loanwhiz/data/deals/seed/**`, `src/loanwhiz/extraction/**`.
+- **Backfill the Green Lion 2023-1 ground-truth answer key** — Author
+  `src/loanwhiz/data/deals/answer_keys/green-lion-2023-1-bv.json` from the
+  deal's three published quarterly Notes & Cash reports via
+  `DealAnswerKey.from_notes_cash_report(...)`, so `/quality-matrix` grades a
+  second deal's revenue + redemption Priority of Payments against real published
+  figures instead of only structure. Sequencing: parallel. Paths:
+  `src/loanwhiz/data/deals/answer_keys/**`,
+  `src/loanwhiz/primitives/reconciliation_answer_key.py`, `tests/**`.
+- **Refresh `SYSTEM-STATUS.md` against current `main`** — Re-verify all six
+  known limitations against the code as of this epic's completion, remove the
+  `/compare` "renders no judgement" limitation that `#400` already made false,
+  fold in the refreshed seeds and the second answer key, and re-date the doc;
+  check `README.md` / `docs/model-card.md` / `docs/data-card.md` for the same
+  drift. Sequencing: sequential. After the three children above (file the
+  `After` reference against the answer-key child, the last-filed sibling).
+  Paths: `SYSTEM-STATUS.md`, `README.md`, `docs/**`.
 
 ## Filed issues
 
