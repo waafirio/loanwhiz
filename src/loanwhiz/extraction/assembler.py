@@ -560,7 +560,14 @@ def _extract_tranches(
         ``Expected Ratings``.  Docling renders this as a markdown pipe
         table in ``section_map.full_text``.  This is the only source that
         carries sizes, ratings and coupons, so we parse it when available.
-    2.  **Waterfall class references** (fallback).  When no tranche table
+    2.  **Nominal-amount prose** (#439).  Continental prospectuses often
+        state the capital structure as a sentence or bullet list rather than
+        a table — Leone Arancio's reads ``Euro 480,000,000 for the Class A1
+        Notes`` — and repeat it on the cover page as ``€ 480,000,000 Class A1
+        … Notes due October 2083``.  Docling renders neither as a pipe table,
+        so source 1 finds nothing.  This source carries real sizes, so it
+        ranks above the unsized fallback.
+    3.  **Waterfall class references** (fallback).  When neither of the above
         can be located, derive the class names + seniority order from the
         ``class_a_*`` / ``class_b_*`` / ``class_c_*`` recipients that appear
         in the extracted waterfall steps.  Sizes / ratings / coupons are
@@ -591,6 +598,9 @@ def _extract_tranches(
         tranches = _parse_tranche_table(section_map.full_text)
         if tranches:
             return tranches
+        tranches = _tranches_from_nominal_amount_prose(section_map.full_text)
+        if tranches:
+            return tranches
 
     if waterfalls:
         return _tranches_from_waterfalls(waterfalls)
@@ -598,14 +608,22 @@ def _extract_tranches(
     return []
 
 
-# A class letter is a single A–G (the realistic note-class alphabet: senior
-# Class A down to a deeply-subordinated Class G). Anything past G is not a real
-# note class — it is almost always a stray table cell ("Class O" with no
-# corroborating size column, OCR noise) being mis-read as a tranche. Bounding
-# the alphabet here is what kills the Sol-Lion "Class O = 42 EUR" artifact: an
-# out-of-range letter no longer matches `_CLASS_RE` at all, so it cannot become
-# a phantom tranche or get a junk `ord('O')-ord('A')=14` seniority (#397).
-_MAX_CLASS_LETTER = "G"
+# The note-class alphabet: the letters actually used to name a note class.
+# A–G is the sequential subordination ladder (senior Class A down to a deeply
+# subordinated Class G); J, M, R, X and Z are the conventional *named* classes
+# — J for the junior/residual note, M for mezzanine, R/X/Z for residual and
+# excess-spread notes. A letter outside this set is not a note class: it is
+# almost always a stray table cell ("Class O" with no corroborating size, OCR
+# noise) being mis-read as a tranche, so it never matches `_CLASS_RE` and
+# cannot become a phantom tranche or get a junk `ord('O')-ord('A')=14`
+# seniority. That is what kills the Sol-Lion "Class O = 42 EUR" artifact (#397).
+#
+# #397 originally wrote the set as the *range* A–G, which excluded "O" but also
+# excluded every conventional named class. Leone Arancio's junior note is the
+# Class J — a real, sized tranche the range dropped by construction — so the
+# discriminator is an explicit enumeration, not an upper bound (#439). "O" is
+# still absent, so the artifact #397 removed stays removed.
+_CLASS_LETTERS = "A-GJMRXZ"
 
 
 def _seniority_for(label: str) -> int:
@@ -618,8 +636,18 @@ def _seniority_for(label: str) -> int:
     keeping the senior→junior sort total.
 
     Accepts either a bare letter (``"A"``) or a full label (``"A1"``,
-    ``"Class B"``); only the leading letter + trailing digits are read.
+    ``"Class B"``, ``"Series A6"``); only the class letter + its series digits
+    are read.
+
+    A leading ``Class`` / ``Series`` word is stripped first (#439). Without
+    that, the scan below reads the ``C`` of ``"Class"`` — so every full label
+    scored the same ``ord('C')-ord('A')=2`` rank and the senior→junior sort
+    silently degraded to input order. Every caller keys tranches by the full
+    label (``_class_label`` builds ``"Class A1"``), so that was the live path;
+    it went unnoticed because tables already list classes senior-first, which
+    is what a no-op stable sort preserves.
     """
+    label = re.sub(r"^\s*(?:Class|Series)\s+", "", label, flags=re.IGNORECASE)
     m = re.search(r"([A-Za-z])\s*(\d*)", label)
     if not m:
         return 0
@@ -633,15 +661,15 @@ _AMOUNT_RE = re.compile(
     r"(?:€|EUR\s*)?\s*([0-9][0-9.,]*[0-9]|[0-9])",
 )
 
-# A note-class label. Captures the class *letter* (group 1, bounded to the
-# realistic A–G note-class alphabet — see ``_MAX_CLASS_LETTER``) and the
-# optional *series digit* (group 2), so multi-series stacks like
-# ``Class A1 … Class A6`` are recognised as distinct tranches instead of all
-# collapsing onto ``Class A`` (#397). Matches "Class A", "Class A1",
-# "Class A Notes", and "Series A1" / "Series A6" (RMBS prospectuses use
-# "Series" for the senior multi-series block).
+# A note-class label. Captures the class *letter* (group 1, drawn from the
+# note-class alphabet — see ``_CLASS_LETTERS``) and the optional *series digit*
+# (group 2), so multi-series stacks like ``Class A1 … Class A6`` are recognised
+# as distinct tranches instead of all collapsing onto ``Class A`` (#397).
+# Matches "Class A", "Class A1", "Class A Notes", "Class J Notes", and
+# "Series A1" / "Series A6" (RMBS prospectuses use "Series" for the senior
+# multi-series block).
 _CLASS_RE = re.compile(
-    rf"(?:Class|Series)\s+([A-{_MAX_CLASS_LETTER}])\s*(\d*)",
+    rf"(?:Class|Series)\s+([{_CLASS_LETTERS}])\s*(\d*)",
     re.IGNORECASE,
 )
 
@@ -830,6 +858,76 @@ def _tranches_from_class_row_table(table: list[list[str]]) -> list[dict]:
     return sorted(tranches, key=lambda t: t["seniority"]) if tranches else []
 
 
+# A note-class nominal amount stated in PROSE rather than in a table (#439).
+#
+# Both patterns bind the amount DIRECTLY to the class label, allowing only the
+# fixed connector "for the" in between. That adjacency is the whole safeguard:
+# a prospectus mentions amounts near a class name constantly — risk factors,
+# swap notionals, and (here) the partly-paid "Euro 389,400,000 with respect to
+# the Class A1 Notes", which is the *initial payment*, not the nominal amount.
+# None of those match, so only a genuine "this is the size of this class"
+# statement yields a tranche.
+_PROSE_SIZE_RES = (
+    # The nominal-amount enumeration: "Euro 480,000,000 for the Class A1 Notes".
+    re.compile(
+        rf"(?:€|EUR|Euro)\s*([0-9][0-9.,]*[0-9])\s+for\s+the\s+"
+        rf"Class\s+([{_CLASS_LETTERS}])\s*(\d*)\s+Notes\b",
+        re.IGNORECASE,
+    ),
+    # The cover page: "€ 480,000,000 Class A1 Residential Mortgage-Backed
+    # Floating Rate Notes due October 2083". The bounded word run keeps the
+    # amount and the word "Notes" in the same noun phrase.
+    re.compile(
+        rf"(?:€|EUR|Euro)\s*([0-9][0-9.,]*[0-9])\s+"
+        rf"Class\s+([{_CLASS_LETTERS}])\s*(\d*)\s+(?:[A-Za-z-]+\s+){{0,8}}?Notes\b",
+        re.IGNORECASE,
+    ),
+)
+
+
+def _tranches_from_nominal_amount_prose(markdown_text: str) -> list[dict]:
+    """Derive sized tranches from a capital structure stated in prose (#439).
+
+    Source 2 of :func:`_extract_tranches`. Leone Arancio's prospectus carries
+    no tranche pipe table at all — its capital structure is a bullet list
+    ("``- Euro 920,000,000 for the Class J Notes``") plus the cover-page
+    listing — so source 1 returns nothing and the deal used to degrade to the
+    unsized waterfall fallback, emitting a single null-size ``Class A``.
+
+    Ratings and coupons are deliberately left ``None``: prose states them far
+    from the class label, and inferring them from proximity is how a plausible
+    wrong number gets committed. A sized tranche with an honest ``None`` rating
+    is the correct output, not a degraded one.
+
+    Requires **two or more distinct classes** before accepting the parse. A
+    real capital structure has more than one class, so a lone match is far more
+    likely to be an unlucky sentence than a tranche stack; demanding a second
+    class is what makes this source hard to fool without a corroborating table.
+
+    Returns ``[]`` when no such statement is present, so the caller falls
+    through to the waterfall fallback.
+    """
+    found: dict[str, dict] = {}
+    for pattern in _PROSE_SIZE_RES:
+        for m in pattern.finditer(markdown_text):
+            name = f"Class {m.group(2).upper()}{m.group(3) or ''}"
+            if name in found:
+                continue  # first statement of a class wins
+            size = _parse_euro_amount(m.group(1))
+            if size is None:
+                continue
+            found[name] = {
+                "name": name,
+                "size_eur": size,
+                "rating": None,
+                "rate": None,
+                "seniority": _seniority_for(name),
+            }
+    if len(found) < 2:
+        return []
+    return sorted(found.values(), key=lambda t: t["seniority"])
+
+
 def _tranches_from_waterfalls(waterfalls: dict) -> list[dict]:
     """Fallback: derive class names + seniority from waterfall step recipients.
 
@@ -846,15 +944,15 @@ def _tranches_from_waterfalls(waterfalls: dict) -> list[dict]:
       (+ ``class_b`` / ``class_c``), which the old single-letter pattern dropped
       entirely.
 
-    The class *letter* is bounded to A–G (see ``_MAX_CLASS_LETTER``) so a
-    recipient that happens to contain ``class_x`` for some non-class token never
-    fabricates a phantom tranche.
+    The class *letter* is drawn from the note-class alphabet (see
+    ``_CLASS_LETTERS``) so a recipient that happens to contain ``class_q`` for
+    some non-class token never fabricates a phantom tranche.
     """
     labels: set[str] = set()
     # "class_a" → letter A (single class letter not immediately followed by
     # another letter); "series_a1" → letter A, series 1.
-    class_pat = re.compile(rf"class_([a-{_MAX_CLASS_LETTER.lower()}])(?![a-z])")
-    series_pat = re.compile(rf"series_([a-{_MAX_CLASS_LETTER.lower()}])(\d+)")
+    class_pat = re.compile(rf"class_([{_CLASS_LETTERS.lower()}])(?![a-z])")
+    series_pat = re.compile(rf"series_([{_CLASS_LETTERS.lower()}])(\d+)")
     for waterfall in waterfalls.values():
         for step in waterfall.steps:
             recipient = step.recipient.lower()
