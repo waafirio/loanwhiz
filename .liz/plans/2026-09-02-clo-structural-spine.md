@@ -1,10 +1,10 @@
 ---
 id: 2026-09-02-clo-structural-spine
 title: CLO structural spine — generalise the engine off RMBS
-status: decomposed
+status: filed
 created: 2026-09-02
 updated: 2026-09-02
-epics: []
+epics: [450, 454]
 ---
 
 # CLO structural spine — generalise the engine off RMBS
@@ -232,7 +232,7 @@ need no CLO data. Epic B's sourcing child is also independent and should start
 immediately — it is the long pole — while its extraction and evaluation children
 wait on both the documents and Epic A.
 
-### Epic A: CLO engine foundations   (umbrella #<N>)
+### Epic A: CLO engine foundations   (umbrella #450)
 
 Everything the engine needs to *represent* a CLO, built and testable without a
 single CLO document. Each child is additive to a closed vocabulary or an open
@@ -293,7 +293,7 @@ per-recipient need actually computable for a stack deeper than three classes.
   `src/loanwhiz/domain/rules.py`, `src/loanwhiz/extraction/taxonomy.py`,
   `tests/**`.
 
-### Epic B: CLO deal onboarding   (umbrella #<N>)
+### Epic B: CLO deal onboarding   (umbrella #454)
 
 Take one real CLO from documents to an executable, honestly-graded deal model.
 This epic is where the data gap bites and where the #437 calibration applies:
@@ -345,4 +345,20 @@ failure.
 
 ## Filed issues
 
-_(Filled in phase 4.)_
+- Epic A "CLO engine foundations" → umbrella **#450**
+  - **#451** Multi-annex loan-level schema registry, with the corporate template as its first new member  _(parallel, prio 1)_
+  - **#452** Coverage tests as first-class, per-class covenant metrics  _(parallel, prio 1)_
+  - **#453** Close the recipient-enum vs need-calculator contract gap  _(parallel, prio 1)_
+- Epic B "CLO deal onboarding" → umbrella **#454**
+  - **#455** Source and register a CLO deal document set  _(parallel, prio 1 — the long pole, start first)_
+  - **#456** Extract the CLO prospectus to canonical DealRules  _(sequential, After #455; also needs epic #450)_
+  - **#457** Execute and grade the CLO deal honestly  _(sequential, After #456)_
+
+All eight labelled `liz:enrolled`. Every child body carries the four standing
+constraints verbatim, plus its own Reuse / Contract / Governance / Generality
+notes, so a worker never has to open this plan to know how the work must be done.
+
+**Epic B's umbrella deliberately carries no `After #450`.** A hard cross-epic
+marker there would block #455, the sourcing child — which is the long pole and
+is independent of Epic A. The real dependency is per-child: #456 and #457 need
+#450 landed, and #456's body says so.
