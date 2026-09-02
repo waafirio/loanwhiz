@@ -2,8 +2,8 @@
   "metadata": {
     "deal_name": "Sol-Lion II RMBS Fondo de Titulización",
     "prospectus_url": "https://ing.com/binaries/content/assets/documents/files/sol-lion-ii-rmbs-fondo-de-titulizacion-prospectus-dated-25-november-2020.pdf",
-    "extracted_at": "2026-06-23T13:39:34.060930+00:00",
-    "extraction_duration_sec": 806.4991099834442,
+    "extracted_at": "2026-09-02T09:27:28.734418+00:00",
+    "extraction_duration_sec": 288.145959854126,
     "sections_found": [
       "definitions",
       "revenue_priority_of_payments",
@@ -13,7 +13,7 @@
       "eligibility_criteria",
       "available_funds"
     ],
-    "completeness_score": 0.725,
+    "completeness_score": 0.925,
     "cache_path": "data/deals/sol-lion-ii-rmbs-fondo-de-titulización.json"
   },
   "definitions": {},
@@ -21,120 +21,507 @@
     "revenue": {
       "deal_name": "Sol-Lion II RMBS Fondo de Titulización",
       "waterfall_type": "revenue",
-      "steps": [],
-      "source_section": "3.4.7.4",
-      "extraction_confidence": 0.0
+      "steps": [
+        {
+          "priority": "1",
+          "recipient": "management_company_expenses",
+          "description": "Payment to the Management Company of the Ordinary Expenses and Extraordinary Expenses of the Fund and the Administration Fee if there is a replacement of the Seller as Servicer.",
+          "amount_formula": "as due and payable",
+          "condition": "at any time when due and payable",
+          "is_pari_passu": false,
+          "citation": {
+            "page_or_row": "3.4.7.2.2.1",
+            "document": "Sol-Lion II RMBS Fondo de Titulización Prospectus",
+            "excerpt": "Payment to the Management Company of the Ordinary Expenses and Extraordinary Expenses of the Fund and the Administration Fee if there is a replacement of t"
+          },
+          "condition_terms": []
+        },
+        {
+          "priority": "2",
+          "recipient": "swap_counterparty",
+          "description": "Payment of the amounts due to the Swap Counterparty under the Interest Rate Swap Transaction, as provided in section 3.4.8.1. of the Additional Information below.",
+          "amount_formula": "amounts due",
+          "condition": "at any time when due and payable",
+          "is_pari_passu": false,
+          "citation": {
+            "excerpt": "Payment of the amounts due to the Swap Counterparty under the Interest Rate Swap Transaction, as provided in section 3.4.8.1. of the Additional Informa",
+            "document": "Sol-Lion II RMBS Fondo de Titulización Prospectus",
+            "page_or_row": "3.4.7.2.2.2"
+          },
+          "condition_terms": []
+        },
+        {
+          "priority": "3",
+          "recipient": "class_a_notes_interest",
+          "description": "Payment of, pari passu and pro rata, (a) all amounts of interest due and payable on the Series A1 Notes; and (b) all amounts of interest due and payable on the Series A2 Notes; and (c) all amounts of interest due and payable on the Series A3 Notes; and (d) all amounts of interest due and payable on the Series A4 Notes; and (e) all amounts of interest due and payable on the Series A5 Notes; and (f) all amounts of interest due and payable on the Series A6 Notes.",
+          "amount_formula": "all amounts of interest due and payable",
+          "condition": null,
+          "is_pari_passu": true,
+          "citation": {
+            "page_or_row": "3.4.7.2.2.3",
+            "document": "Sol-Lion II RMBS Fondo de Titulización Prospectus",
+            "excerpt": "Payment of, pari passu and pro rata, (a) all amounts of interest due and payable on the Series A1 Notes; and (b) all amounts of interest due and payab"
+          },
+          "condition_terms": []
+        },
+        {
+          "priority": "4",
+          "recipient": "reserve_fund",
+          "description": "Retention of a sufficient amount to fund the Reserve Fund up to the Reserve Fund Required Level established in section 3.4.2.1.1 of this Additional Information.",
+          "amount_formula": "up to the Reserve Fund Required Level",
+          "condition": null,
+          "is_pari_passu": false,
+          "citation": {
+            "excerpt": "Retention of a sufficient amount to fund the Reserve Fund up to the Reserve Fund Required Level established in section 3.4.2.1.1 of this Additional In",
+            "document": "Sol-Lion II RMBS Fondo de Titulización Prospectus",
+            "page_or_row": "3.4.7.2.2.4"
+          },
+          "condition_terms": []
+        },
+        {
+          "priority": "5",
+          "recipient": "additional_receivables_repurchase",
+          "description": "Principal Target Repurchase Amount to be applied towards payment of the Acquisition Amount of the Additional Receivables, provided that the Seller has enough Additional Receivables to assign to the Fund and Eligibility Criteria are observed.",
+          "amount_formula": "Principal Target Repurchase Amount",
+          "condition": "During the Revolving Period",
+          "is_pari_passu": false,
+          "citation": {
+            "page_or_row": "3.4.7.2.2.5",
+            "excerpt": "During the Revolving Period: Principal Target Repurchase Amount to be applied towards payment of the Acquisition Amount of the Additional Receivables, pro",
+            "document": "Sol-Lion II RMBS Fondo de Titulización Prospectus"
+          },
+          "condition_terms": []
+        },
+        {
+          "priority": "5 - First",
+          "recipient": "class_a1_notes_principal",
+          "description": "First, repayment, pari passu and pro rata among the Notes of each Series, of the Outstanding Principal Balance of the Series A1 Notes by the Series A1 Target Amortisation Amount until all of the Series A1 Notes have been redeemed in full",
+          "amount_formula": "Series A1 Target Amortisation Amount",
+          "condition": "After the Revolving Period",
+          "is_pari_passu": true,
+          "citation": {
+            "document": "Sol-Lion II RMBS Fondo de Titulización Prospectus",
+            "excerpt": "After the Revolving Period: First, repayment, pari passu and pro rata among the Notes of each Series, of the Outstanding Principal Balance of the  Seri",
+            "page_or_row": "3.4.7.2.2.5"
+          },
+          "condition_terms": []
+        },
+        {
+          "priority": "5 - Second",
+          "recipient": "class_a2_notes_principal",
+          "description": "second, repayment, pari passu and pro rata, of the Outstanding Principal Balance of the Series A2 Notes by the Series A2 Target Amortisation Amount until all of the Series A2 Notes have been redeemed in full",
+          "amount_formula": "Series A2 Target Amortisation Amount",
+          "condition": "After the Revolving Period",
+          "is_pari_passu": true,
+          "citation": {
+            "page_or_row": "3.4.7.2.2.5",
+            "excerpt": "second, repayment, pari passu and pro rata, of the Outstanding Principal Balance of the Series A2 Notes by the Series A2 Target Amortisation Amount u",
+            "document": "Sol-Lion II RMBS Fondo de Titulización Prospectus"
+          },
+          "condition_terms": []
+        },
+        {
+          "priority": "5 - Third",
+          "recipient": "class_a3_notes_principal",
+          "description": "third, repayment, pari passu and pro rata, of the Outstanding Principal Balance of the Series A3 Notes by the Series A3 Target Amortisation Amount until all of the Series A3 Notes have been redeemed in full",
+          "amount_formula": "Series A3 Target Amortisation Amount",
+          "condition": "After the Revolving Period",
+          "is_pari_passu": true,
+          "citation": {
+            "page_or_row": "3.4.7.2.2.5",
+            "excerpt": "third, repayment, pari passu and pro rata, of the Outstanding Principal Balance of the Series A3 Notes by the Series A3 Target Amortisation Amount un",
+            "document": "Sol-Lion II RMBS Fondo de Titulización Prospectus"
+          },
+          "condition_terms": []
+        },
+        {
+          "priority": "5 - Fourth",
+          "recipient": "class_a4_notes_principal",
+          "description": "fourth, repayment, pari passu and pro rata, of the Outstanding Principal Balance of the Series A4 Notes by the Series A4 Target Amortisation Amount until all of the Series A4 Notes have been redeemed in full",
+          "amount_formula": "Series A4 Target Amortisation Amount",
+          "condition": "After the Revolving Period",
+          "is_pari_passu": true,
+          "citation": {
+            "document": "Sol-Lion II RMBS Fondo de Titulización Prospectus",
+            "page_or_row": "3.4.7.2.2.5",
+            "excerpt": "fourth, repayment, pari passu and pro rata, of the Outstanding Principal Balance of the  Series A4 Notes by the Series A4 Target Amortisation Amount "
+          },
+          "condition_terms": []
+        },
+        {
+          "priority": "5 - Fifth",
+          "recipient": "class_a5_notes_principal",
+          "description": "fifth, repayment, pari passu and pro rata, of the Outstanding Principal Balance of the Series A5 Notes by the Series A5 Target Amortisation Amount until all of the Series A5 Notes have been redeemed in full",
+          "amount_formula": "Series A5 Target Amortisation Amount",
+          "condition": "After the Revolving Period",
+          "is_pari_passu": true,
+          "citation": {
+            "document": "Sol-Lion II RMBS Fondo de Titulización Prospectus",
+            "excerpt": "fifth, repayment, pari passu and pro rata, of the Outstanding Principal Balance of the  Series A5 Notes by the Series A5 Target Amortisation Amount u",
+            "page_or_row": "3.4.7.2.2.5"
+          },
+          "condition_terms": []
+        },
+        {
+          "priority": "5 - Sixth",
+          "recipient": "class_a6_notes_principal",
+          "description": "sixth, repayment, pari passu and pro rata, of the Outstanding Principal Balance of the Series A6 Notes by the Series A6 Target Amortisation Amount until all of the Series A6 Notes have been redeemed in full",
+          "amount_formula": "Series A6 Target Amortisation Amount",
+          "condition": "After the Revolving Period",
+          "is_pari_passu": true,
+          "citation": {
+            "excerpt": "sixth, repayment, pari passu and pro rata, of the Outstanding Principal Balance of the  Series A6 Notes by the Series A6 Target Amortisation Amount u",
+            "page_or_row": "3.4.7.2.2.5",
+            "document": "Sol-Lion II RMBS Fondo de Titulización Prospectus"
+          },
+          "condition_terms": []
+        },
+        {
+          "priority": "6",
+          "recipient": "class_b_notes_interest",
+          "description": "Payment of, pari passu and pro rata, all amounts of interest due and payable on the Class B Notes.",
+          "amount_formula": "all amounts of interest due and payable",
+          "condition": null,
+          "is_pari_passu": true,
+          "citation": {
+            "excerpt": "Payment of, pari passu and pro rata, all amounts of interest due and payable on the Class B Notes.",
+            "page_or_row": "3.4.7.2.2.6",
+            "document": "Sol-Lion II RMBS Fondo de Titulización Prospectus"
+          },
+          "condition_terms": []
+        },
+        {
+          "priority": "7",
+          "recipient": "class_b_notes_principal",
+          "description": "Upon the full amortisation of all Series of the Class A Notes, repayment of the Outstanding Principal Balance, pari passu and pro rata, of the Class B Notes by the Class B Target Amortisation Amount until all of the Class B Notes have been redeemed in full.",
+          "amount_formula": "Class B Target Amortisation Amount",
+          "condition": "Upon the full amortisation of all Series of the Class A Notes",
+          "is_pari_passu": true,
+          "citation": {
+            "document": "Sol-Lion II RMBS Fondo de Titulización Prospectus",
+            "excerpt": "Upon the full amortisation of all Series of the Class A Notes, repayment of the Outstanding Principal Balance, pari passu and pro rata, of the Class B",
+            "page_or_row": "3.4.7.2.2.7"
+          },
+          "condition_terms": []
+        },
+        {
+          "priority": "8",
+          "recipient": "class_c_notes_interest",
+          "description": "Payment of, pari passu and pro rata, all amounts of interest due and payable on the Class C Notes.",
+          "amount_formula": "all amounts of interest due and payable",
+          "condition": null,
+          "is_pari_passu": true,
+          "citation": {
+            "page_or_row": "3.4.7.2.2.8",
+            "document": "Sol-Lion II RMBS Fondo de Titulización Prospectus",
+            "excerpt": "Payment of, pari passu and pro rata, all amounts of interest due and payable on the Class C Notes."
+          },
+          "condition_terms": []
+        },
+        {
+          "priority": "9",
+          "recipient": "class_c_notes_principal",
+          "description": "Upon the full amortisation of all Series of the Class A Notes and the Class B Notes, repayment of the Outstanding Principal Balance of the Class C Notes by the Class C Target Amortisation Amount until all of the Class C Notes have been redeemed in full.",
+          "amount_formula": "Class C Target Amortisation Amount",
+          "condition": "Upon the full amortisation of all Series of the Class A Notes and the Class B Notes",
+          "is_pari_passu": false,
+          "citation": {
+            "document": "Sol-Lion II RMBS Fondo de Titulización Prospectus",
+            "excerpt": "Upon the full amortisation of all Series of the Class A Notes and the Class B Notes, repayment of the Outstanding Principal Balance of the Class C Not",
+            "page_or_row": "3.4.7.2.2.9"
+          },
+          "condition_terms": []
+        },
+        {
+          "priority": "10",
+          "recipient": "swap_counterparty_subordinated_amount",
+          "description": "Payment of the subordinated amount of the Interest Rate Swap Transaction in those circumstances where termination of the Interest Rate Swap Transaction was due to the default of the Swap Counterparty.",
+          "amount_formula": "subordinated amount",
+          "condition": "termination of the Interest Rate Swap Transaction was due to the default of the Swap Counterparty",
+          "is_pari_passu": false,
+          "citation": {
+            "excerpt": "Payment of the subordinated amount of the Interest Rate Swap Transaction in those circumstances where termination of the Interest Rate Swap Transaction wa",
+            "document": "Sol-Lion II RMBS Fondo de Titulización Prospectus",
+            "page_or_row": "3.4.7.2.2.10"
+          },
+          "condition_terms": []
+        },
+        {
+          "priority": "11",
+          "recipient": "subordinated_loan_interest",
+          "description": "Payment of interest due and payable on the Subordinated Loan Agreement in accordance to section 3.4.4.1.3 of the Additional Information.",
+          "amount_formula": "interest due and payable",
+          "condition": null,
+          "is_pari_passu": false,
+          "citation": {
+            "excerpt": "Payment of interest due and payable on the Subordinated Loan Agreement in accordance to section 3.4.4.1.3 of the Additional Information.",
+            "document": "Sol-Lion II RMBS Fondo de Titulización Prospectus",
+            "page_or_row": "3.4.7.2.2.11"
+          },
+          "condition_terms": []
+        },
+        {
+          "priority": "12",
+          "recipient": "subordinated_loan_principal",
+          "description": "Payment of principal due on the Subordinated Loan Agreement.",
+          "amount_formula": "principal due",
+          "condition": null,
+          "is_pari_passu": false,
+          "citation": {
+            "excerpt": "Payment of principal due on the Subordinated Loan Agreement.",
+            "page_or_row": "3.4.7.2.2.12",
+            "document": "Sol-Lion II RMBS Fondo de Titulización Prospectus"
+          },
+          "condition_terms": []
+        },
+        {
+          "priority": "13",
+          "recipient": "seller_administration_fee",
+          "description": "So long as it acts as Servicer, payment to the Seller of the Administration Fee.",
+          "amount_formula": "Administration Fee",
+          "condition": "So long as it acts as Servicer",
+          "is_pari_passu": false,
+          "citation": {
+            "page_or_row": "3.4.7.2.2.13",
+            "document": "Sol-Lion II RMBS Fondo de Titulización Prospectus",
+            "excerpt": "So long as it acts as Servicer, payment to the Seller of the Administration Fee."
+          },
+          "condition_terms": []
+        },
+        {
+          "priority": "14",
+          "recipient": "seller_remuneration",
+          "description": "Payment of a variable amount to the Seller as remuneration or compensation for financial intermediation.",
+          "amount_formula": "variable amount",
+          "condition": null,
+          "is_pari_passu": false,
+          "citation": {
+            "page_or_row": "3.4.7.2.2.14",
+            "excerpt": "Payment of a variable amount to the Seller as remuneration or compensation for financial intermediation.",
+            "document": "Sol-Lion II RMBS Fondo de Titulización Prospectus"
+          },
+          "condition_terms": []
+        }
+      ],
+      "source_section": "3.4.7.2.2. Application",
+      "extraction_confidence": 1.0
     },
     "redemption": {
       "deal_name": "Sol-Lion II RMBS Fondo de Titulización",
       "waterfall_type": "redemption",
       "steps": [
         {
-          "priority": "(a)",
-          "recipient": "series_a1_notes_redemption",
-          "description": "to the redemption pro rata and pari passu of the Series A1 Notes",
-          "amount_formula": "pro rata and pari passu",
+          "priority": "(1)",
+          "recipient": "management_company_expenses_and_fees",
+          "description": "Payment to the Management Company of the Ordinary Expenses and Extraordinary Expenses of the Fund and the Administration Fee if there is a replacement of the Seller as Servicer.",
+          "amount_formula": "Ordinary Expenses and Extraordinary Expenses of the Fund and the Administration Fee",
+          "condition": "if there is a replacement of the Seller as Servicer",
+          "is_pari_passu": false,
+          "citation": {
+            "page_or_row": "3.4.7.2.2.1",
+            "excerpt": "Payment to the Management Company of the Ordinary Expenses and Extraordinary Expenses of the Fund and the Administration Fee if there is a replacement of t",
+            "document": "Sol-Lion II RMBS Fondo de Titulización Prospectus"
+          },
+          "condition_terms": []
+        },
+        {
+          "priority": "(2)",
+          "recipient": "swap_counterparty",
+          "description": "Payment of the amounts due to the Swap Counterparty under the Interest Rate Swap Transaction, as provided in section 3.4.8.1. of the Additional Information below.",
+          "amount_formula": "amounts due",
+          "condition": null,
+          "is_pari_passu": false,
+          "citation": {
+            "excerpt": "Payment of the amounts due to the Swap Counterparty under the Interest Rate Swap Transaction, as provided in section 3.4.8.1. of the Additional Informati",
+            "page_or_row": "3.4.7.2.2.2",
+            "document": "Sol-Lion II RMBS Fondo de Titulización Prospectus"
+          },
+          "condition_terms": []
+        },
+        {
+          "priority": "(3)",
+          "recipient": "class_a_notes_interest",
+          "description": "Payment of, pari passu and pro rata, (a) all amounts of interest due and payable on the Series A1 Notes; and (b) all amounts of interest due and payable on the Series A2 Notes; and (c) all amounts of interest due and payable on the Series A3 Notes; and (d) all amounts of interest due and payable on the Series A4 Notes; and (e) all amounts of interest due and payable on the Series A5 Notes; and (f) all amounts of interest due and payable on the Series A6 Notes.",
+          "amount_formula": "all amounts of interest due and payable",
           "condition": null,
           "is_pari_passu": true,
           "citation": {
-            "page_or_row": "(ii)(a)",
-            "excerpt": "firstly , to the redemption pro rata and pari passu of the Series A1 Notes;",
-            "document": "prospectus"
-          }
+            "excerpt": "Payment of, pari passu and pro rata, (a) all amounts of interest due and payable on the Series A1 Notes; and (b) all amounts of interest due and payab",
+            "document": "Sol-Lion II RMBS Fondo de Titulización Prospectus",
+            "page_or_row": "3.4.7.2.2.3"
+          },
+          "condition_terms": []
         },
         {
-          "priority": "(b)",
-          "recipient": "series_a2_notes_redemption",
-          "description": "once all Series A1 Notes have been fully redeemed, to the redemption pro rata and pari passu of Series A2 Notes",
-          "amount_formula": "pro rata and pari passu",
-          "condition": "once all Series A1 Notes have been fully redeemed",
-          "is_pari_passu": true,
+          "priority": "(4)",
+          "recipient": "reserve_fund",
+          "description": "Retention of a sufficient amount to fund the Reserve Fund up to the Reserve Fund Required Level established in section 3.4.2.1.1 of this Additional Information.",
+          "amount_formula": "up to the Reserve Fund Required Level",
+          "condition": null,
+          "is_pari_passu": false,
           "citation": {
-            "page_or_row": "(ii)(b)",
-            "excerpt": "secondly ,  once all Series A1 Notes have been fully redeemed, to the redemption  pro rata and pari passu of Series A2 Notes;",
-            "document": "prospectus"
-          }
+            "page_or_row": "3.4.7.2.2.4",
+            "excerpt": "Retention of a sufficient amount to fund the Reserve Fund up to the Reserve Fund Required Level established in section 3.4.2.1.1 of this Additional Info",
+            "document": "Sol-Lion II RMBS Fondo de Titulización Prospectus"
+          },
+          "condition_terms": []
         },
         {
-          "priority": "(c)",
-          "recipient": "series_a3_notes_redemption",
-          "description": "once all Series A2 Notes have been fully redeemed, to the redemption pro rata and pari passu of Series A3 Notes",
-          "amount_formula": "pro rata and pari passu",
-          "condition": "once all Series A2 Notes have been fully redeemed",
-          "is_pari_passu": true,
+          "priority": "(5a)",
+          "recipient": "additional_receivables_acquisition",
+          "description": "Principal Target Repurchase Amount to be applied towards payment of the Acquisition Amount of the Additional Receivables, provided that the Seller has enough Additional Receivables to assign to the Fund and Eligibility Criteria are observed.",
+          "amount_formula": "Principal Target Repurchase Amount",
+          "condition": "During the Revolving Period",
+          "is_pari_passu": false,
           "citation": {
-            "document": "prospectus",
-            "excerpt": "thirdly , once all Series A2 Notes have been fully redeemed, to the redemption pro rata and pari passu of Series A3 Notes;",
-            "page_or_row": "(ii)(c)"
-          }
+            "page_or_row": "3.4.7.2.2.5",
+            "document": "Sol-Lion II RMBS Fondo de Titulización Prospectus",
+            "excerpt": "During the Revolving Period: Principal Target Repurchase Amount to be applied towards payment of the Acquisition Amount of the Additional Receivables, prov"
+          },
+          "condition_terms": []
         },
         {
-          "priority": "(d)",
-          "recipient": "series_a4_notes_redemption",
-          "description": "once all Series A3 Notes have been fully redeemed, to the redemption pro rata and pari passu of Series A4 Notes",
-          "amount_formula": "pro rata and pari passu",
-          "condition": "once all Series A3 Notes have been fully redeemed",
+          "priority": "(5b)",
+          "recipient": "class_a_notes_principal",
+          "description": "First, repayment, pari passu and pro rata among the Notes of each Series, of the Outstanding Principal Balance of the Series A1 Notes by the Series A1 Target Amortisation Amount until all of the Series A1 Notes have been redeemed in full; second, repayment, pari passu and pro rata, of the Outstanding Principal Balance of the Series A2 Notes by the Series A2 Target Amortisation Amount until all of the Series A2 Notes have been redeemed in full; third, repayment, pari passu and pro rata, of the Outstanding Principal Balance of the Series A3 Notes by the Series A3 Target Amortisation Amount until all of the Series A3 Notes have been redeemed in full; fourth, repayment, pari passu and pro rata, of the Outstanding Principal Balance of the Series A4 Notes by the Series A4 Target Amortisation Amount until all of the Series A4 Notes have been redeemed in full; fifth, repayment, pari passu and pro rata, of the Outstanding Principal Balance of the Series A5 Notes by the Series A5 Target Amortisation Amount until all of the Series A5 Notes have been redeemed in full; sixth, repayment, pari passu and pro rata, of the Outstanding Principal Balance of the Series A6 Notes by the Series A6 Target Amortisation Amount until all of the Series A6 Notes have been redeemed in full.",
+          "amount_formula": "Series A Target Amortisation Amount",
+          "condition": "After the Revolving Period",
           "is_pari_passu": true,
           "citation": {
-            "document": "prospectus",
-            "excerpt": "fourthly ,  once all  Series A3 Notes have been fully redeemed, to the redemption  pro rata and pari passu of Series A4 Notes;",
-            "page_or_row": "(ii)(d)"
-          }
+            "document": "Sol-Lion II RMBS Fondo de Titulización Prospectus",
+            "excerpt": "After the Revolving Period: First, repayment, pari passu and pro rata among the Notes of each Series, of the Outstanding Principal Balance of the  Series",
+            "page_or_row": "3.4.7.2.2.5"
+          },
+          "condition_terms": []
         },
         {
-          "priority": "(e)",
-          "recipient": "series_a5_notes_redemption",
-          "description": "once all Series A4 Notes have been fully redeemed, to the redemption pro rata and pari passu of Series A5 Notes",
-          "amount_formula": "pro rata and pari passu",
-          "condition": "once all Series A4 Notes have been fully redeemed",
+          "priority": "(6)",
+          "recipient": "class_b_notes_interest",
+          "description": "Payment of, pari passu and pro rata, all amounts of interest due and payable on the Class B Notes.",
+          "amount_formula": "all amounts of interest due and payable",
+          "condition": null,
           "is_pari_passu": true,
           "citation": {
-            "page_or_row": "(ii)(e)",
-            "excerpt": "fifthly , once all Series A4 Notes have been fully redeemed, to the redemption pro rata and pari passu of Series A5 Notes;",
-            "document": "prospectus"
-          }
+            "page_or_row": "3.4.7.2.2.6",
+            "excerpt": "Payment of, pari passu and pro rata, all amounts of interest due and payable on the Class B Notes.",
+            "document": "Sol-Lion II RMBS Fondo de Titulización Prospectus"
+          },
+          "condition_terms": []
         },
         {
-          "priority": "(f)",
-          "recipient": "series_a6_notes_redemption",
-          "description": "once all Series A5 Notes have been fully redeemed, to the redemption pro rata and pari passu of Series A6 Notes",
-          "amount_formula": "pro rata and pari passu",
-          "condition": "once all Series A5 Notes have been fully redeemed",
+          "priority": "(7)",
+          "recipient": "class_b_notes_principal",
+          "description": "Upon the full amortisation of all Series of the Class A Notes, repayment of the Outstanding Principal Balance, pari passu and pro rata, of the Class B Notes by the Class B Target Amortisation Amount until all of the Class B Notes have been redeemed in full.",
+          "amount_formula": "Class B Target Amortisation Amount",
+          "condition": "Upon the full amortisation of all Series of the Class A Notes",
           "is_pari_passu": true,
           "citation": {
-            "page_or_row": "(ii)(f)",
-            "document": "prospectus",
-            "excerpt": "sixthly , once all Series A5 Notes have been fully redeemed, to the redemption pro rata and pari passu of Series A6 Notes;"
-          }
+            "excerpt": "Upon the full amortisation of all Series of the Class A Notes, repayment of the Outstanding Principal Balance, pari passu and pro rata, of the Class B ",
+            "document": "Sol-Lion II RMBS Fondo de Titulización Prospectus",
+            "page_or_row": "3.4.7.2.2.7"
+          },
+          "condition_terms": []
         },
         {
-          "priority": "(g)",
-          "recipient": "class_b_notes_redemption",
-          "description": "once all Series A6 Notes have been fully redeemed, to the redemption pro rata and pari passu of Class B Notes",
-          "amount_formula": "pro rata and pari passu",
-          "condition": "once all Series A6 Notes have been fully redeemed",
+          "priority": "(8)",
+          "recipient": "class_c_notes_interest",
+          "description": "Payment of, pari passu and pro rata, all amounts of interest due and payable on the Class C Notes.",
+          "amount_formula": "all amounts of interest due and payable",
+          "condition": null,
           "is_pari_passu": true,
           "citation": {
-            "document": "prospectus",
-            "excerpt": "seventhly , once all Series A6 Notes have been fully redeemed, to the redemption pro rata and pari passu of Class B Notes; and",
-            "page_or_row": "(ii)(g)"
-          }
+            "document": "Sol-Lion II RMBS Fondo de Titulización Prospectus",
+            "excerpt": "Payment of, pari passu and pro rata, all amounts of interest due and payable on the Class C Notes.",
+            "page_or_row": "3.4.7.2.2.8"
+          },
+          "condition_terms": []
         },
         {
-          "priority": "(h)",
-          "recipient": "class_c_notes_redemption",
-          "description": "once Class B Notes have been fully redeemed, to the redemption pro rata and pari passu of Class C Notes",
-          "amount_formula": "pro rata and pari passu",
-          "condition": "once Class B Notes have been fully redeemed",
-          "is_pari_passu": true,
+          "priority": "(9)",
+          "recipient": "class_c_notes_principal",
+          "description": "Upon the full amortisation of all Series of the Class A Notes and the Class B Notes, repayment of the Outstanding Principal Balance of the Class C Notes by the Class C Target Amortisation Amount until all of the Class C Notes have been redeemed in full.",
+          "amount_formula": "Class C Target Amortisation Amount",
+          "condition": "Upon the full amortisation of all Series of the Class A Notes and the Class B Notes",
+          "is_pari_passu": false,
           "citation": {
-            "document": "prospectus",
-            "excerpt": "eighthly , once Class B Notes have been fully redeemed, to the redemption pro rata and pari passu of Class C Notes.",
-            "page_or_row": "(ii)(h)"
-          }
+            "page_or_row": "3.4.7.2.2.9",
+            "excerpt": "Upon the full amortisation of all Series of the Class A Notes and the Class B Notes, repayment of the Outstanding Principal Balance of the Class C Note",
+            "document": "Sol-Lion II RMBS Fondo de Titulización Prospectus"
+          },
+          "condition_terms": []
+        },
+        {
+          "priority": "(10)",
+          "recipient": "swap_counterparty_subordinated_amount",
+          "description": "Payment of the subordinated amount of the Interest Rate Swap Transaction in those circumstances where termination of the Interest Rate Swap Transaction was due to the default of the Swap Counterparty.",
+          "amount_formula": "subordinated amount",
+          "condition": "where termination of the Interest Rate Swap Transaction was due to the default of the Swap Counterparty",
+          "is_pari_passu": false,
+          "citation": {
+            "excerpt": "Payment of the subordinated amount of the Interest Rate Swap Transaction in those circumstances where termination of the Interest Rate Swap Transaction was",
+            "document": "Sol-Lion II RMBS Fondo de Titulización Prospectus",
+            "page_or_row": "3.4.7.2.2.10"
+          },
+          "condition_terms": []
+        },
+        {
+          "priority": "(11)",
+          "recipient": "subordinated_loan_interest",
+          "description": "Payment of interest due and payable on the Subordinated Loan Agreement in accordance to section 3.4.4.1.3 of the Additional Information.",
+          "amount_formula": "interest due and payable",
+          "condition": null,
+          "is_pari_passu": false,
+          "citation": {
+            "page_or_row": "3.4.7.2.2.11",
+            "excerpt": "Payment of interest due and payable on the Subordinated Loan Agreement in accordance to section 3.4.4.1.3 of the Additional Information.",
+            "document": "Sol-Lion II RMBS Fondo de Titulización Prospectus"
+          },
+          "condition_terms": []
+        },
+        {
+          "priority": "(12)",
+          "recipient": "subordinated_loan_principal",
+          "description": "Payment of principal due on the Subordinated Loan Agreement.",
+          "amount_formula": "principal due",
+          "condition": null,
+          "is_pari_passu": false,
+          "citation": {
+            "excerpt": "Payment of principal due on the Subordinated Loan Agreement.",
+            "document": "Sol-Lion II RMBS Fondo de Titulización Prospectus",
+            "page_or_row": "3.4.7.2.2.12"
+          },
+          "condition_terms": []
+        },
+        {
+          "priority": "(13)",
+          "recipient": "seller_administration_fee",
+          "description": "So long as it acts as Servicer, payment to the Seller of the Administration Fee.",
+          "amount_formula": "Administration Fee",
+          "condition": "So long as it acts as Servicer",
+          "is_pari_passu": false,
+          "citation": {
+            "document": "Sol-Lion II RMBS Fondo de Titulización Prospectus",
+            "page_or_row": "3.4.7.2.2.13",
+            "excerpt": "So long as it acts as Servicer, payment to the Seller of the Administration Fee."
+          },
+          "condition_terms": []
+        },
+        {
+          "priority": "(14)",
+          "recipient": "seller_remuneration",
+          "description": "Payment of a variable amount to the Seller as remuneration or compensation for financial intermediation.",
+          "amount_formula": "variable amount",
+          "condition": null,
+          "is_pari_passu": false,
+          "citation": {
+            "page_or_row": "3.4.7.2.2.14",
+            "document": "Sol-Lion II RMBS Fondo de Titulización Prospectus",
+            "excerpt": "Payment of a variable amount to the Seller as remuneration or compensation for financial intermediation."
+          },
+          "condition_terms": []
         }
       ],
-      "source_section": "(ii) Once the Revolving Period has ended or has been terminated",
+      "source_section": "3.4.7.2.2",
       "extraction_confidence": 1.0
     },
     "post_enforcement": {
@@ -142,98 +529,175 @@
       "waterfall_type": "post_enforcement",
       "steps": [
         {
-          "priority": "(a)",
-          "recipient": "amendment_expenses",
-          "description": "Expenses, if any, derived from preparation and execution of the amendment of the Deed of Incorporation and/or the Transaction Documents and/or any additional agreements;",
-          "amount_formula": "Expenses, if any",
+          "priority": "(1)",
+          "recipient": "management_company_expenses",
+          "description": "Payment to the Management Company of the Ordinary Expenses, Extraordinary Expenses and Liquidation Expenses of the Fund and the administration fee if there is a replacement of the Seller as Servicer, and any tax, levy, duty or any fee of similar nature.",
+          "amount_formula": "as accrued",
           "condition": null,
           "is_pari_passu": false,
           "citation": {
-            "excerpt": "Expenses, if any, derived from preparation and execution of the amendment of the Deed of Incorporation and/or the Transaction Documents and/or any add",
-            "page_or_row": "3.4.7.6.(a)",
-            "document": "prospectus"
-          }
+            "page_or_row": "3.4.7.4.2.1",
+            "excerpt": "Payment to the Management Company of the Ordinary Expenses, Extraordinary Expenses and Liquidation Expenses of the Fund and the administration fee if there i",
+            "document": "Sol-Lion II RMBS Fondo de Titulización Prospectus"
+          },
+          "condition_terms": []
         },
         {
-          "priority": "(b)",
-          "recipient": "extraordinary_audit_and_legal_expenses",
-          "description": "The extraordinary expenses of audits and legal advice;",
-          "amount_formula": "Extraordinary expenses",
+          "priority": "(2)",
+          "recipient": "swap_counterparty",
+          "description": "Payment of the amounts due to the Swap Counterparty under the Interest Rate Swap Transaction, as provided in section 3.4.8.1. of the Additional Information below.",
+          "amount_formula": "as provided in section 3.4.8.1.",
           "condition": null,
           "is_pari_passu": false,
           "citation": {
-            "document": "prospectus",
-            "page_or_row": "3.4.7.6.(b)",
-            "excerpt": "The extraordinary expenses of audits and legal advice;"
-          }
+            "document": "Sol-Lion II RMBS Fondo de Titulización Prospectus",
+            "page_or_row": "3.4.7.4.2.2",
+            "excerpt": "Payment of the amounts due to the Swap Counterparty under the Interest Rate Swap Transaction, as provided in section 3.4.8.1. of the Additional Informatio"
+          },
+          "condition_terms": []
         },
         {
-          "priority": "(c)",
-          "recipient": "asset_sale_and_liquidation_expenses",
-          "description": "All expenses that may arise from the sale of the Receivables and the remaining assets of the Fund upon liquidation thereof;",
-          "amount_formula": "All expenses",
+          "priority": "(3)",
+          "recipient": "class_a_notes_interest",
+          "description": "Payment of, pari passu and pro rata, (a) all amounts of interest due and payable on the Series A1 Notes; and (b) all amounts of interest due and payable on the Series A2 Notes; and (c) all amounts of interest due and payable on the Series A3 Notes; and (d) all amounts of interest due and payable on the Series A4 Notes; and (e) all amounts of interest due and payable on the Series A5 Notes; and (f) all amounts of interest due and payable on the Series A6 Notes.",
+          "amount_formula": "all amounts of interest due and payable",
           "condition": null,
-          "is_pari_passu": false,
+          "is_pari_passu": true,
           "citation": {
-            "document": "prospectus",
-            "excerpt": "All expenses that may arise from the sale of the Receivables and the remaining assets of the Fund upon liquidation thereof;",
-            "page_or_row": "3.4.7.6.(c)"
-          }
+            "document": "Sol-Lion II RMBS Fondo de Titulización Prospectus",
+            "excerpt": "Payment of, pari passu and pro rata, (a) all amounts of interest due and payable on the Series A1 Notes; and (b) all amounts of interest due and payable",
+            "page_or_row": "3.4.7.4.2.3"
+          },
+          "condition_terms": []
         },
         {
-          "priority": "(d)",
-          "recipient": "creditor_meeting_costs",
-          "description": "All costs related to convening a Meeting of Creditors;",
-          "amount_formula": "All costs",
-          "condition": null,
-          "is_pari_passu": false,
+          "priority": "(4)",
+          "recipient": "class_a_notes_principal",
+          "description": "Payment of, until the Class A Notes have been redeemed in full, in or towards redemption of, pari passu and pro rata, according to the respective amounts thereof, (a) the Outstanding Principal Balance of the Series A1 Notes, and (b) the Outstanding Principal Balance of the Series A2 Notes, (c) the Outstanding Principal Balance of the Series A3 Notes, and (d) the Outstanding Principal Balance of the Series A4 Notes, (e) the Outstanding Principal Balance of the Series A5 Notes, and (f) the Outstanding Principal Balance of the Series A6 Notes.",
+          "amount_formula": "Outstanding Principal Balance",
+          "condition": "until the Class A Notes have been redeemed in full",
+          "is_pari_passu": true,
           "citation": {
-            "document": "prospectus",
-            "page_or_row": "3.4.7.6.(d)",
-            "excerpt": "All costs related to convening a Meeting of Creditors;"
-          }
+            "page_or_row": "3.4.7.4.2.4",
+            "excerpt": "Payment of, until the Class A Notes have been redeemed in full, in or towards redemption of, pari passu and pro rata, according to the respective amount",
+            "document": "Sol-Lion II RMBS Fondo de Titulización Prospectus"
+          },
+          "condition_terms": []
         },
         {
-          "priority": "(e)",
-          "recipient": "mortgage_loan_enforcement_and_recovery_costs",
-          "description": "Those necessary to commence enforcement of the Mortgage Loans and those arising from the required actions for recovery;",
-          "amount_formula": "Necessary costs",
+          "priority": "(5)",
+          "recipient": "class_b_notes_interest",
+          "description": "Payment of, pari passu and pro rata, all amounts of interest due and payable on the Class B Notes.",
+          "amount_formula": "all amounts of interest due and payable",
           "condition": null,
-          "is_pari_passu": false,
+          "is_pari_passu": true,
           "citation": {
-            "document": "prospectus",
-            "page_or_row": "3.4.7.6.(e)",
-            "excerpt": "Those necessary to commence enforcement of the Mortgage Loans and those arising from the required actions for recovery;"
-          }
+            "page_or_row": "3.4.7.4.2.5",
+            "document": "Sol-Lion II RMBS Fondo de Titulización Prospectus",
+            "excerpt": "Payment of, pari passu and pro rata, all amounts of interest due and payable on the Class B Notes."
+          },
+          "condition_terms": []
         },
         {
-          "priority": "(f)",
-          "recipient": "borrower_and_guarantor_notification_costs",
-          "description": "Notification to Borrowers and, when applicable, the guarantors, insurance companies regulated under section 3.7.1.13 of the Additional Information; and",
-          "amount_formula": "Not specified",
+          "priority": "(6)",
+          "recipient": "class_b_notes_principal",
+          "description": "Payment of, pari passu and pro rata, all amounts of principal due or overdue in respect of the Class B Notes.",
+          "amount_formula": "all amounts of principal due or overdue",
           "condition": null,
-          "is_pari_passu": false,
+          "is_pari_passu": true,
           "citation": {
-            "excerpt": "Notification to Borrowers and, when applicable, the guarantors, insurance companies regulated under section 3.7.1.13 of the Additional Information; and",
-            "page_or_row": "3.4.7.6.(f)",
-            "document": "prospectus"
-          }
+            "page_or_row": "3.4.7.4.2.6",
+            "excerpt": "Payment of, pari passu and pro rata, all amounts of principal due or overdue in respect of the Class B Notes.",
+            "document": "Sol-Lion II RMBS Fondo de Titulización Prospectus"
+          },
+          "condition_terms": []
         },
         {
-          "priority": "(g)",
-          "recipient": "general_extraordinary_expenses",
-          "description": "Generally, all other extraordinary expenses borne by the Fund or by the Management Company in representation or on behalf thereof.",
-          "amount_formula": "All other extraordinary expenses",
+          "priority": "(7)",
+          "recipient": "class_c_notes_interest",
+          "description": "Payment of, pari passu and pro rata, all amounts of interest due and payable on the Class C Notes.",
+          "amount_formula": "all amounts of interest due and payable",
+          "condition": null,
+          "is_pari_passu": true,
+          "citation": {
+            "excerpt": "Payment of, pari passu and pro rata, all amounts of interest due and payable on the Class C Notes.",
+            "page_or_row": "3.4.7.4.2.7",
+            "document": "Sol-Lion II RMBS Fondo de Titulización Prospectus"
+          },
+          "condition_terms": []
+        },
+        {
+          "priority": "(8)",
+          "recipient": "class_c_notes_principal",
+          "description": "Payment of, pari passu and pro rata, all amounts of principal due or overdue in respect of the Class C Notes.",
+          "amount_formula": "all amounts of principal due or overdue",
+          "condition": null,
+          "is_pari_passu": true,
+          "citation": {
+            "document": "Sol-Lion II RMBS Fondo de Titulización Prospectus",
+            "excerpt": "Payment of, pari passu and pro rata, all amounts of principal due or overdue in respect of the Class C Notes.",
+            "page_or_row": "3.4.7.4.2.8"
+          },
+          "condition_terms": []
+        },
+        {
+          "priority": "(9)",
+          "recipient": "subordinated_swap_payment",
+          "description": "Payment of the subordinated amount of the Interest Rate Swap Transaction in those circumstances where termination of the Interest Rate Swap Transaction was due to the default of the Swap Counterparty.",
+          "amount_formula": "subordinated amount of the Interest Rate Swap Transaction",
+          "condition": "where termination of the Interest Rate Swap Transaction was due to the default of the Swap Counterparty",
+          "is_pari_passu": false,
+          "citation": {
+            "document": "Sol-Lion II RMBS Fondo de Titulización Prospectus",
+            "page_or_row": "3.4.7.4.2.9",
+            "excerpt": "Payment of the subordinated amount of the Interest Rate Swap Transaction in those circumstances where termination of the Interest Rate Swap Transaction was"
+          },
+          "condition_terms": []
+        },
+        {
+          "priority": "(10)",
+          "recipient": "subordinated_loan_agreement",
+          "description": "Payment of the interest and outstanding principal balance of the Subordinated Loan Agreement in accordance to section 3.4.4.1.3 of the Additional Information.",
+          "amount_formula": "in accordance to section 3.4.4.1.3 of the Additional Information",
           "condition": null,
           "is_pari_passu": false,
           "citation": {
-            "document": "prospectus",
-            "page_or_row": "3.4.7.6.(g)",
-            "excerpt": "Generally, all other extraordinary expenses borne by the Fund or by the Management Company in representation or on behalf thereof."
-          }
+            "document": "Sol-Lion II RMBS Fondo de Titulización Prospectus",
+            "page_or_row": "3.4.7.4.2.10",
+            "excerpt": "Payment of the interest and outstanding principal balance of the Subordinated Loan Agreement in accordance to section 3.4.4.1.3 of the Additional Info"
+          },
+          "condition_terms": []
+        },
+        {
+          "priority": "(11)",
+          "recipient": "seller_administration_fee",
+          "description": "So long as it acts as Servicer, payment to the Seller of the Administration Fee.",
+          "amount_formula": "Administration Fee",
+          "condition": "So long as it acts as Servicer",
+          "is_pari_passu": false,
+          "citation": {
+            "page_or_row": "3.4.7.4.2.11",
+            "excerpt": "So long as it acts as Servicer, payment to the Seller of the Administration Fee.",
+            "document": "Sol-Lion II RMBS Fondo de Titulización Prospectus"
+          },
+          "condition_terms": []
+        },
+        {
+          "priority": "(12)",
+          "recipient": "seller_remuneration",
+          "description": "Payment to the Seller of the remuneration or compensation for financial intermediation.",
+          "amount_formula": "remuneration or compensation for financial intermediation",
+          "condition": null,
+          "is_pari_passu": false,
+          "citation": {
+            "excerpt": "Payment to the Seller of the remuneration or compensation for financial intermediation.",
+            "page_or_row": "3.4.7.4.2.12",
+            "document": "Sol-Lion II RMBS Fondo de Titulización Prospectus"
+          },
+          "condition_terms": []
         }
       ],
-      "source_section": "3.4.7.6. Extraordinary Expenses",
+      "source_section": "3.4.7.4.2",
       "extraction_confidence": 1.0
     }
   },
@@ -241,35 +705,121 @@
     "deal_name": "FONDO DE TITULIZACIÓN",
     "triggers": [
       {
-        "name": "early_liquidation_trigger",
-        "display_name": "Early Liquidation Trigger",
-        "description": "An event that, upon occurring, changes the redemption priority of the Class A notes from sequential by series to pro-rata.",
-        "metric": "unspecified_event",
-        "threshold": null,
+        "name": "reserve_fund_top_up_trigger",
+        "display_name": "Reserve Fund Top-Up Trigger",
+        "description": "Trigger to replenish the Reserve Fund if its balance falls below the required level.",
+        "metric": "reserve_fund_balance",
+        "threshold": -1.0,
+        "threshold_unit": "eur",
+        "direction": "below",
+        "consequence": "Available funds are used to top up the Reserve Fund to the required level.",
+        "section_reference": "3.4.7.2.2",
+        "citation": {
+          "excerpt": "Retention of a sufficient amount to fund the Reserve Fund up to the Reserve Fund Required Level...",
+          "page_or_row": "3.4.7.2.2",
+          "document": "prospectus"
+        },
+        "metric_terms": []
+      },
+      {
+        "name": "sequential_pay_trigger",
+        "display_name": "Sequential Pay Trigger",
+        "description": "End of the Revolving Period, which switches the priority of payments from acquiring new receivables to sequential principal repayment of the notes.",
+        "metric": "revolving_period_status",
+        "threshold": -1.0,
         "threshold_unit": "boolean",
         "direction": "non_zero",
-        "consequence": "Redemption of Class A notes switches from sequential by series (A1 to A6) to pro-rata and pari passu across all Class A series.",
-        "section_reference": "(ii) Once the Revolving Period has ended or has been terminated",
+        "consequence": "Principal distribution switches from acquiring additional receivables to sequential repayment of the notes, starting with Series A1.",
+        "section_reference": "3.4.7.2.2",
         "citation": {
-          "excerpt": "Upon an Early Liquidation of the Fund, the Available Funds will be applied... to the redemption pro rata and pari passu of all Series of Class A Notes",
-          "page_or_row": "(ii) Once the Revolving Period has ended or has been terminated",
+          "page_or_row": "3.4.7.2.2",
+          "excerpt": "After the Revolving Period: First, repayment, pari passu and pro rata among the Notes of each Series, of the Outstanding Principal Balance...",
           "document": "prospectus"
-        }
+        },
+        "metric_terms": []
+      },
+      {
+        "name": "enforcement_event_trigger",
+        "display_name": "Enforcement Event Trigger",
+        "description": "An event that triggers the 'Liquidation Priority of Payments', causing acceleration and sequential repayment of all note classes.",
+        "metric": "enforcement_event_status",
+        "threshold": -1.0,
+        "threshold_unit": "boolean",
+        "direction": "non_zero",
+        "consequence": "The priority of payments switches to the 'Liquidation Priority of Payments'.",
+        "section_reference": "3.4.7.4.2",
+        "citation": {
+          "document": "prospectus",
+          "page_or_row": "3.4.7.4.2",
+          "excerpt": "In the following order of payment priority (the ' Liquidation Priority of Payments '):"
+        },
+        "metric_terms": []
       }
     ],
     "issuer_covenants": [],
-    "extraction_confidence": 0.2
+    "extraction_confidence": 0.7
   },
   "tranche_structure": [
     {
-      "name": "Class O",
-      "size_eur": 42.0,
+      "name": "Class A1",
+      "size_eur": 4696500000.0,
+      "rating": "AAA",
+      "rate": "0.25%",
+      "seniority": 1
+    },
+    {
+      "name": "Class A2",
+      "size_eur": 939300000.0,
+      "rating": "AAA",
+      "rate": "0.35%",
+      "seniority": 2
+    },
+    {
+      "name": "Class A3",
+      "size_eur": 3569300000.0,
+      "rating": "AAA",
+      "rate": "0.45%",
+      "seniority": 3
+    },
+    {
+      "name": "Class A4",
+      "size_eur": 939200000.0,
+      "rating": "AAA",
+      "rate": "0.55%",
+      "seniority": 4
+    },
+    {
+      "name": "Class A5",
+      "size_eur": 751400000.0,
+      "rating": "AAA",
+      "rate": "0.65%",
+      "seniority": 5
+    },
+    {
+      "name": "Class A6",
+      "size_eur": 1141200000.0,
+      "rating": "AAA",
+      "rate": "0.75%",
+      "seniority": 6
+    },
+    {
+      "name": "Class B",
+      "size_eur": 1643800000.0,
       "rating": null,
-      "rate": null,
-      "seniority": 14
+      "rate": "1.00%",
+      "seniority": 100
+    },
+    {
+      "name": "Class C",
+      "size_eur": 375800000.0,
+      "rating": null,
+      "rate": "1.50%",
+      "seniority": 200
     }
   ],
   "trigger_names": [
-    "early_liquidation_trigger"
+    "reserve_fund_top_up_trigger",
+    "sequential_pay_trigger",
+    "enforcement_event_trigger"
   ]
 }
