@@ -40,6 +40,8 @@ from loanwhiz.extraction.assembler import (
     _docling_cache_path,
     _download_and_convert,
     _extract_tranches,
+    _parse_tranche_size,
+    _seniority_for,
     _slug,
     extract_deal_model,
 )
@@ -232,6 +234,53 @@ Some following text.
 """
 
 
+# The Sol-Lion II cover-page capital table **as Docling actually emits it**
+# (#438). Two properties the idealised fixture above does not have, and which
+# together defeated the parser on the real document:
+#   * the header row names only the rating agencies -- there is no "Principal"
+#     / "Amount" / "Nominal" word anywhere in the table, so the keyword gate
+#     skipped it outright; and
+#   * the amounts carry a "€ " prefix and grouped thousands.
+# The balances are the real ones, so A1..A6 must sum to the registry's
+# class_a_balance and B / C must match theirs exactly.
+_SOL_LION_COVER_TABLE_MD = """\
+## SOL LION II RMBS PROSPECTUS
+
+## € 14,056,500,000
+
+|           |                 |                    | FITCH     | DBRS      |
+|-----------|-----------------|--------------------|-----------|-----------|
+| Series A1 | € 4,696,500,000 | Euribor 3M + 0.25% | AAA (sf)  | AAA (sf)  |
+| Series A2 | € 939,300,000   | Euribor 3M + 0.35% | AAA (sf)  | AAA (sf)  |
+| Series A3 | € 3,569,300,000 | Euribor 3M + 0.45% | AAA (sf)  | AAA (sf)  |
+| Series A4 | € 939,200,000   | Euribor 3M + 0.55% | AAA (sf)  | AAA (sf)  |
+| Series A5 | € 751,400,000   | Euribor 3M + 0.65% | AAA (sf)  | AAA (sf)  |
+| Series A6 | € 1,141,200,000 | Euribor 3M + 0.75% | AAA (sf)  | AAA (sf)  |
+| Class B   | € 1,643,800,000 | Euribor 3M + 1.00% | Not Rated | Not Rated |
+| Class C   | € 375,800,000   | Euribor 3M + 1.50% | Not Rated | Not Rated |
+
+## BACKED BY MORTGAGE TRANSFER CERTIFICATES
+"""
+
+
+# A cross-reference table that *is* headed "Principal" but whose cells are the
+# rank of each class within the waterfall, not money (Sol-Lion §4.6.3). The
+# keyword gate accepted this and read a capital structure of EUR 3 / 6 / 8
+# notes off it (#438). It must never yield tranches.
+_RANK_CROSS_REFERENCE_TABLE_MD = """\
+## 4.6.2. Summary of the priority of the payment of interest on the Notes
+
+| Principal  | Place in the application of Available Funds |
+|------------|---------------------------------------------|
+| Series A1  | 3                                           |
+| Series A2  | 3                                           |
+| Class B    | 6                                           |
+| Class C    | 8                                           |
+
+## 4.7 Something else
+"""
+
+
 # A single-class deal (one Class A note only), laid out class-per-row so the
 # parse does not depend on a multi-column header.
 _SINGLE_CLASS_TRANCHE_TABLE_MD = """\
@@ -382,6 +431,75 @@ class TestExtractTranches:
         assert names == ["Class A", "Class B"]
         # And specifically no phantom 42-EUR tranche.
         assert all(t["size_eur"] != 42.0 for t in result)
+
+    # --- #438: real-document table shape, sizes, and seniority -----------
+
+    def test_cover_page_table_without_amount_header_is_parsed(self) -> None:
+        """The real Sol-Lion cover table has no 'principal/amount' word at all.
+
+        The keyword-only gate skipped it, so the parser fell through to a
+        cross-reference table further down the document. Qualifying a table on
+        its currency content instead is what admits the genuine one.
+        """
+        section_map = route_sections(_SOL_LION_COVER_TABLE_MD)
+        result = _extract_tranches(section_map)
+        assert [t["name"] for t in result] == [
+            "Class A1", "Class A2", "Class A3", "Class A4",
+            "Class A5", "Class A6", "Class B", "Class C",
+        ]
+
+    def test_cover_page_table_balances_match_the_registry(self) -> None:
+        """A1..A6 sum to the curated Class A balance; B and C match exactly.
+
+        This is the ground-truth reconciliation: the registry's
+        ``capital_structure`` for ``sol-lion-ii`` is human-curated, so agreeing
+        with it to the euro is what distinguishes a real parse from a
+        plausible-looking one.
+        """
+        section_map = route_sections(_SOL_LION_COVER_TABLE_MD)
+        by_name = {t["name"]: t for t in _extract_tranches(section_map)}
+        class_a = sum(
+            by_name[f"Class A{i}"]["size_eur"] for i in range(1, 7)
+        )
+        assert class_a == 12_036_900_000.0
+        assert by_name["Class B"]["size_eur"] == 1_643_800_000.0
+        assert by_name["Class C"]["size_eur"] == 375_800_000.0
+
+    def test_seniority_is_strictly_increasing_senior_to_junior(self) -> None:
+        """Every tranche gets a DISTINCT seniority, senior to junior.
+
+        ``_seniority_for`` read the first letter of the whole label -- the "C"
+        of "Class", the "S" of "Series" -- so in production every tranche
+        scored an identical 200 and the ordering was inert. Asserting the list
+        is merely ``sorted()`` cannot catch that (a constant list is sorted);
+        asserting strict increase can.
+        """
+        section_map = route_sections(_SOL_LION_COVER_TABLE_MD)
+        seniorities = [t["seniority"] for t in _extract_tranches(section_map)]
+        assert len(set(seniorities)) == len(seniorities), seniorities
+        assert seniorities == sorted(seniorities)
+        assert all(a < b for a, b in zip(seniorities, seniorities[1:])), seniorities
+
+    def test_seniority_ignores_the_class_and_series_label_word(self) -> None:
+        """The label word is not the class letter."""
+        assert _seniority_for("Class A1") == _seniority_for("A1")
+        assert _seniority_for("Series A6") == _seniority_for("A6")
+        assert _seniority_for("Class A1") < _seniority_for("Class A6")
+        assert _seniority_for("Class A6") < _seniority_for("Class B")
+        assert _seniority_for("Class B") < _seniority_for("Class C")
+
+    def test_rank_cross_reference_table_yields_no_tranches(self) -> None:
+        """A 'Principal'-headed table of waterfall ranks is not a capital structure."""
+        section_map = route_sections(_RANK_CROSS_REFERENCE_TABLE_MD)
+        assert _extract_tranches(section_map) == []
+
+    def test_bare_integer_is_never_a_tranche_size(self) -> None:
+        """A size needs a currency marker or grouped thousands."""
+        assert _parse_tranche_size("3") is None
+        assert _parse_tranche_size("42") is None
+        assert _parse_tranche_size("€ 4,696,500,000") == 4_696_500_000.0
+        assert _parse_tranche_size("EUR 53,100,000") == 53_100_000.0
+        assert _parse_tranche_size("500,000,000") == 500_000_000.0
 
     def test_waterfall_fallback_multi_series(self) -> None:
         """series_a1…a6 + class_b/class_c recipients map to the full stack."""

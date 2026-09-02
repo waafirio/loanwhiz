@@ -25,6 +25,8 @@ from loanwhiz.extraction import section_router
 from loanwhiz.extraction.section_router import (
     _LOAD_BEARING_ROLES,
     _has_payment_list,
+    _is_numeric_descendant,
+    _section_number,
     _widen_to_payment_list,
     classify_segments_llm,
     extract_key_sf_sections,
@@ -870,3 +872,117 @@ def test_revenue_priority_section_found() -> None:
     assert rev.start_char > 100_000, (
         f"Section starts suspiciously early at char {rev.start_char}"
     )
+
+
+# ---------------------------------------------------------------------------
+# Flat-level numbered headings — hierarchy lives in the NUMBER (#438)
+# ---------------------------------------------------------------------------
+
+# The real Sol-Lion II (ES) shape. Docling emits EVERY heading of this
+# prospectus at the same markdown level (all ``##``), including logical
+# children: §3.4.7.2.2 is a sibling of §3.4.7.2 as far as ``#`` counting goes.
+# A descendant span computed from levels alone therefore ends at the very next
+# heading, so the parent's span equals its own stub and the #396 widening was a
+# no-op by construction. The hierarchy that does survive is the dotted number.
+_FLAT_NUMBERED_MD = textwrap.dedent("""\
+    ## 3.4.7.2 Revenue Priority of Payments
+
+    The Available Funds will be applied as described below.
+
+    ## 3.4.7.2.1 Source
+
+    The Available Funds consist of collections and swap receipts.
+
+    ## 3.4.7.2.2 Application
+
+    On each Payment Date the Available Funds will be applied:
+
+    - (a) first, fees of the Management Company;
+    - (b) second, interest on the Class A Notes;
+    - (c) third, principal of the Class A Notes;
+
+    ## 3.4.7.3 Exceptional rules
+
+    Unrelated text that must NOT be pulled into the revenue span.
+""")
+
+# Same flat levels, but the headings carry NO numbering. The span must behave
+# exactly as before — this is the guard that the numeric rule cannot widen a
+# span that the level rule alone would have terminated.
+_FLAT_UNNUMBERED_MD = textwrap.dedent("""\
+    ## Revenue Priority of Payments
+
+    The Available Funds will be applied as described below.
+
+    ## Application
+
+    - (a) first, fees;
+    - (b) second, interest;
+
+    ## Exceptional rules
+
+    Unrelated text.
+""")
+
+
+def test_section_number_parses_dotted_headings() -> None:
+    """The dotted prefix is read as a tuple; an unnumbered title yields None."""
+    assert _section_number("3.4.7.2.2. Application") == (3, 4, 7, 2, 2)
+    assert _section_number("3.4.7.2 Revenue Priority of Payments") == (3, 4, 7, 2)
+    assert _section_number("Application of Available Funds") is None
+    assert _section_number("€ 14,056,500,000") is None
+
+
+def test_is_numeric_descendant_is_strict() -> None:
+    """A section extends its parent's number; a sibling and itself do not."""
+    assert _is_numeric_descendant("3.4.7.2.2 Application", (3, 4, 7, 2))
+    assert not _is_numeric_descendant("3.4.7.3 Exceptional rules", (3, 4, 7, 2))
+    # Not its own descendant.
+    assert not _is_numeric_descendant("3.4.7.2 Revenue", (3, 4, 7, 2))
+    # An unnumbered heading is never a numeric descendant, and an unnumbered
+    # parent never claims one.
+    assert not _is_numeric_descendant("Application", (3, 4, 7, 2))
+    assert not _is_numeric_descendant("3.4.7.2.2 Application", None)
+
+
+def test_descendant_span_crosses_same_level_numbered_children() -> None:
+    """A parent's span reaches children emitted at its OWN markdown level.
+
+    Without the numeric rule the span stops at §3.4.7.2.1 and carries no
+    cascade at all — the reason the ES revenue waterfall extracted 0 steps.
+    """
+    sm = route_sections(_FLAT_NUMBERED_MD)
+    parent = next(s for s in sm.sections if s.title.startswith("3.4.7.2 "))
+    # Precondition: all one level, and the narrow text is a stub.
+    assert len({s.level for s in sm.sections}) == 1
+    assert not _has_payment_list(parent.text)
+
+    span = sm.descendant_text(parent)
+    assert _has_payment_list(span)
+    assert re.findall(r"^- \(([a-z])\)", span, re.MULTILINE) == list("abc")
+    # And it still STOPS at the next non-descendant number.
+    assert "Exceptional rules" not in span, (
+        "numeric descendant span leaked past its sibling section"
+    )
+
+
+def test_resolve_sections_widens_flat_numbered_parent() -> None:
+    """The #396 widening now fires on the real flat-level document shape."""
+    sm = route_sections(_FLAT_NUMBERED_MD)
+    rev = resolve_sections(sm, use_llm=False)["revenue_priority_of_payments"]
+    assert rev is not None
+    assert re.findall(r"^- \(([a-z])\)", rev.text, re.MULTILINE) == list("abc")
+    assert "Exceptional rules" not in rev.text
+
+
+def test_unnumbered_flat_headings_keep_the_narrow_span() -> None:
+    """The numeric rule is inert without numbering — it can only ever widen.
+
+    A same-level unnumbered sibling still terminates the span, so a document
+    with no section numbers behaves exactly as it did before (#438).
+    """
+    sm = route_sections(_FLAT_UNNUMBERED_MD)
+    parent = next(s for s in sm.sections if s.title.startswith("Revenue Priority"))
+    span = sm.descendant_text(parent)
+    assert span == parent.text
+    assert not _has_payment_list(span)
