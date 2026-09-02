@@ -69,7 +69,10 @@ _COLD_START_DEALS = {
     "leone-arancio-2023-1": {
         "jurisdiction": "Italy",
         "revenue": 23,
-        "redemption": 5,
+        # 23, not the 5 the pre-#439 seed carried: that seed predated the
+        # post-#396/#397 pipeline, whose redemption extraction reaches the
+        # whole Italian cascade (#439 re-extraction).
+        "redemption": 23,
         "post_enforcement": 12,
     },
     "sol-lion-ii": {
