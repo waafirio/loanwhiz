@@ -136,6 +136,10 @@ def test_leone_arancio_completeness_is_honest_not_false_perfect() -> None:
     The corrupted seed claimed a perfect 1.0 while carrying empty ``definitions``
     and a single all-null stub tranche — higher than any honestly-extracted seed.
     An honest IT extraction is partial; its completeness must be < 1.0.
+
+    The stub tranche itself is gone (#439 re-extracted the real Class A1 / A2 /
+    J stack), but the seed still carries no definitions, so the score remains
+    honestly short of 1.0 and this guard still has something to hold.
     """
     path = _seed_path("leone-arancio-2023-1")
     if not path.exists():

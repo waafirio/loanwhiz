@@ -74,6 +74,21 @@ _GREEN_LION_2024_1_FIXTURES: tuple[tuple[str, str], ...] = (
     ("green-lion-2024-1-march-2026.txt", "March 2026"),
 )
 
+#: The second deal with committed published Notes & Cash ground truth (#440).
+_GREEN_LION_2023_1_SEED_PATH = (
+    _REPO_ROOT / "src" / "loanwhiz" / "data" / "deals" / "seed"
+    / "green-lion-2023-1-bv.json"
+)
+
+#: Green Lion 2023-1's three committed quarterly Notes & Cash fixtures, oldest
+#: first — the same deterministic ``pypdf``-extract discipline as the 2024-1 set,
+#: so its answer key (#440) is reproducible in CI with no network and no LLM.
+_GREEN_LION_2023_1_FIXTURES: tuple[tuple[str, str], ...] = (
+    ("green-lion-2023-1-september-2025.txt", "September 2025"),
+    ("green-lion-2023-1-december-2025.txt", "December 2025"),
+    ("green-lion-2023-1-march-2026.txt", "March 2026"),
+)
+
 #: Reconciliation gate. The proof is "to the cent", so this is an ABSOLUTE EUR
 #: tolerance (one cent) — never a percentage (a percentage gate would let a
 #: multi-thousand-EUR slip through on a billion-EUR pool).
@@ -423,50 +438,91 @@ def reconcile_series(
 # ===========================================================================
 
 
-def load_green_lion_2024_1_model() -> DealModel:
-    """Load the committed Green Lion 2024-1 extracted :class:`DealModel` seed."""
-    return DealModel.model_validate_json(_SEED_PATH.read_text(encoding="utf-8"))
+def _load_seed_model(seed_path: Path) -> DealModel:
+    """Load a committed extracted :class:`DealModel` seed from ``seed_path``."""
+    return DealModel.model_validate_json(seed_path.read_text(encoding="utf-8"))
 
 
-def load_green_lion_2024_1_report() -> NotesCashReport:
-    """Parse the committed Green Lion 2024-1 Notes & Cash fixtures (all 3, offline).
+def _load_committed_report(
+    model: DealModel, fixtures: tuple[tuple[str, str], ...]
+) -> NotesCashReport:
+    """Parse a deal's committed Notes & Cash fixtures into a report (offline).
 
     Each fixture is a deterministic ``pypdf`` text extract of the published
     quarterly PDF, so the report is byte-reproducible in CI with no network and no
-    Gemini. Periods are returned oldest-first (the fold and the reconciler both
-    read them in this order).
+    Gemini. Periods come back in ``fixtures`` order — oldest first, which the fold
+    and the reconciler both rely on.
     """
-    model = load_green_lion_2024_1_model()
     periods = [
         parse_report_text(
             (_FIXTURE_DIR / fixture).read_text(encoding="utf-8"),
             period_label=label,
         )
-        for fixture, label in _GREEN_LION_2024_1_FIXTURES
+        for fixture, label in fixtures
     ]
     return NotesCashReport(deal_name=model.metadata.deal_name, periods=periods)
 
 
-def fold_green_lion_2024_1() -> tuple[DealStateSeries, NotesCashReport]:
-    """Fold Green Lion 2024-1 from its committed reports → ``(series, report)``.
+def _fold_committed(
+    model: DealModel, report: NotesCashReport
+) -> tuple[DealStateSeries, NotesCashReport]:
+    """Fold a committed seed + report pair through ``run_period``.
 
     The offline equivalent of the live cold-start path
-    (``api/main._reconstruct_series_from_reports``): resolve the extracted model,
-    parse the committed reports, run :class:`ReportAdapter` to seed period-0 from
-    the first report's opening balances and build per-period inputs, then fold
-    ``run_period`` over them with the deal's *extracted* waterfall steps. No
-    Green-Lion-2026-1 constant is consulted.
+    (``api/main._reconstruct_series_from_reports``): run :class:`ReportAdapter` to
+    seed period-0 from the first report's opening balances and build per-period
+    inputs, then fold ``run_period`` over them with the deal's *extracted*
+    waterfall steps. No per-deal constant is consulted, so every deal with
+    committed fixtures folds through the identical path.
     """
     # Import here (not at module load) so this pure reader does not pull in the API
     # layer; the shared report-path fold lives there alongside the live cold-start
     # path, so the offline proof and the live endpoints fold IDENTICALLY (no drift).
     from loanwhiz.api.main import fold_report_series
 
-    model = load_green_lion_2024_1_model()
-    report = load_green_lion_2024_1_report()
     adapter = ReportAdapter.from_deal_model(model)
-    series = fold_report_series(model, report, adapter)
-    return series, report
+    return fold_report_series(model, report, adapter), report
+
+
+def load_green_lion_2024_1_model() -> DealModel:
+    """Load the committed Green Lion 2024-1 extracted :class:`DealModel` seed."""
+    return _load_seed_model(_SEED_PATH)
+
+
+def load_green_lion_2024_1_report() -> NotesCashReport:
+    """Parse the committed Green Lion 2024-1 Notes & Cash fixtures (all 3, offline)."""
+    return _load_committed_report(load_green_lion_2024_1_model(), _GREEN_LION_2024_1_FIXTURES)
+
+
+def fold_green_lion_2024_1() -> tuple[DealStateSeries, NotesCashReport]:
+    """Fold Green Lion 2024-1 from its committed reports → ``(series, report)``."""
+    model = load_green_lion_2024_1_model()
+    return _fold_committed(model, _load_committed_report(model, _GREEN_LION_2024_1_FIXTURES))
+
+
+def load_green_lion_2023_1_model() -> DealModel:
+    """Load the committed Green Lion 2023-1 extracted :class:`DealModel` seed."""
+    return _load_seed_model(_GREEN_LION_2023_1_SEED_PATH)
+
+
+def load_green_lion_2023_1_report() -> NotesCashReport:
+    """Parse the committed Green Lion 2023-1 Notes & Cash fixtures (all 3, offline).
+
+    The source of truth the deal's committed answer key (#440) is authored from:
+    three published quarterly reports, read by the same deterministic parser the
+    2024-1 proof uses.
+    """
+    return _load_committed_report(load_green_lion_2023_1_model(), _GREEN_LION_2023_1_FIXTURES)
+
+
+def fold_green_lion_2023_1() -> tuple[DealStateSeries, NotesCashReport]:
+    """Fold Green Lion 2023-1 from its committed reports → ``(series, report)``.
+
+    The offline engine series the quality harness grades against Green Lion
+    2023-1's committed answer key — the exact 2024-1 path, no bespoke code.
+    """
+    model = load_green_lion_2023_1_model()
+    return _fold_committed(model, _load_committed_report(model, _GREEN_LION_2023_1_FIXTURES))
 
 
 def validate_green_lion_2024_1(
