@@ -151,7 +151,9 @@ so neither can be externally validated. They remain honest `ran` cells.
 
 6. **No version history.** The pipeline extracts from a single document version. Amendments, supplements, and side letters are not automatically reconciled with the base prospectus.
 
-7. **LLM non-determinism.** Gemini 2.5 Pro's outputs are non-deterministic. Two extraction runs on the same document may produce marginally different outputs. The pipeline mitigates this by scoping each LLM call to a specific section and using structured output schemas. This reaches the reported numbers: the LLM section router can resolve a different `sections_found` — and hence a different completeness — for the same document, and its caches are gitignored, so **a clean checkout is not reproducible** even though repeated runs on one machine are.
+7. **LLM non-determinism.** Gemini 2.5 Pro's outputs are non-deterministic. Two extraction runs on the same document may produce marginally different *verbatim* outputs. The pipeline mitigates this by scoping each LLM call to a specific section, using structured output schemas, and caching every LLM step's result on disk under `data/extraction_cache/` — the section router, previously the last uncached step, now replays its cached answer rather than re-asking the model (#445). Passing `force_refresh=True` deliberately re-asks every cached step, including the router.
+
+    **This reproducibility is per-machine, not from a clean checkout.** `data/extraction_cache/` is gitignored (`.gitignore:16-17`), so the guarantee is "the same machine with a warm cache returns the same `sections_found`, and hence the same `completeness_score`". A reader starting from a fresh clone has no cache: the router re-asks the model and may resolve a different section set, so **the per-deal completeness figures in the table above still cannot be independently re-derived from scratch** — and doing so would in any case need GCP credentials and a multi-hour extraction run. Treat the published figures as the values the committed seeds recorded, not as numbers a third party can reproduce.
 
 ---
 

@@ -40,17 +40,17 @@ in the #276 engine collapse.
   `tests/test_cross_jurisdiction_cold_start.py` and
   `tests/test_breadth_cross_jurisdiction.py`.
 - **Multi-period projection.** `POST /deal/{deal_id}/project`
-  (`src/loanwhiz/api/main.py:3557`) takes a `months` horizon
+  (`src/loanwhiz/api/main.py:3571`) takes a `months` horizon
   (`ProjectRequest`, `main.py:374`), generates a synthetic CPR / CDR /
   recovery / rate-shift `PeriodInputs` stream per scenario, and folds it
-  through `run_period` one period at a time (`main.py:3624-3632`), returning a
+  through `run_period` one period at a time (`main.py:3646-3651`), returning a
   per-period series and a Class A WAL. `POST /deal/{deal_id}/stress-matrix`
-  (`main.py:3903`) runs the same fold across a CPR × CDR × rate-shift grid,
-  capped at `_MAX_MATRIX_CELLS = 64` (`main.py:3683`).
+  (`main.py:3917`) runs the same fold across a CPR × CDR × rate-shift grid,
+  capped at `_MAX_MATRIX_CELLS = 64` (`main.py:3697`).
 - **Comparison that renders a judgement.** `GET /compare` (`main.py:1226`)
   returns a `RelativeValueScorecard` and a `ComparativeVerdict` with a ranking
   (`src/loanwhiz/api/compare.py:727`, `:801`); the screener is also directly
-  reachable at `GET /relative-value-screener` (`main.py:3091`).
+  reachable at `GET /relative-value-screener` (`main.py:3097`).
 - **Live governance threading.** Agent tools thread each primitive's *real*
   `confidence` / `citations` / audit entry into the FINOS evidence pack
   (`src/loanwhiz/governance/evidence_pack.py`); `finos_compliant` is derived in
@@ -121,9 +121,12 @@ distinct things are being counted, and only the last is external:
   to the cent across all three published periods.
 
 Leone Arancio and Sol-Lion II publish **no** Notes & Cash report, so no answer
-key can be authored for them without inventing one, and none is. Their
-ratings and coupons are also left `null` where the prospectus states them far
-from the class labels. A refreshed seed is not evidence about the world.
+key can be authored for them without inventing one, and none is. Coverage is
+also uneven *within* a seed: Sol-Lion II carries ratings and coupons (A1–A6
+AAA, 0.25%–0.75%; B 1.00%, C 1.50%), while **Leone Arancio's are all `null`** —
+that prospectus states them far from the class labels, and inferring them by
+proximity is how a plausible wrong number gets committed. A refreshed seed is
+not evidence about the world.
 
 ### 2. The on-demand `/extract` job store is in-process and single-instance
 `src/loanwhiz/api/extraction_jobs.py:225` holds jobs in a module-level
@@ -170,11 +173,15 @@ current `_completeness_score` (`assembler.py:240`) scores that same seed
 stored score as "what that extraction run reported", not as a current
 measurement of the seed.
 
-Separately, the LLM section router is not deterministic from a clean checkout:
-its caches are gitignored, so a fresh clone re-runs it and may resolve a
-different `sections_found` — and hence a different completeness — for the same
-document. (#445 caches the router so repeated runs *on one machine* reproduce;
-it does not make a clean checkout reproducible.)
+Separately, the scores are **not reproducible from a clean checkout**. #445
+cached the LLM section router — the last uncached LLM step — so repeated runs
+*on one machine* now replay the same answer. But that cache lives in
+`data/extraction_cache/`, which is gitignored (`.gitignore:16-17`), so a fresh
+clone starts cold: the router re-asks the model and may resolve a different
+`sections_found`, and hence a different completeness, for the same document.
+Per-machine reproducibility is not third-party reproducibility — a reader still
+cannot independently re-derive the published figures, and doing so would need
+GCP credentials and a multi-hour run regardless.
 
 ### 6. Covenant proximity / metric caveats that still genuinely hold
 The covenant monitor enforces a runtime `threshold_unit` guard at the seam

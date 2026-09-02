@@ -280,10 +280,13 @@ On success the model is materialised into the **same** runtime cache the cold-st
 | `portfolio_monitor` | Rolls per-deal covenant early-warning into one cross-deal watchlist, ranked by which deal breaches first | 0.1.0 | Library-only |
 | `relative_value_screener` | Ranks tranches across deals by structural relative value into a comparable scorecard | 1.0.0 | Library-only *(stale — see below)* |
 
-The `cashflow_projector` and `multi_period_waterfall_runner` rows this table used
-to carry were removed: both modules were **deleted** in the #276 engine collapse
-and no longer exist. (`mcp/README.md` still lists them and is not corrected here
-— see the PR's operator actions.)
+The `cashflow_projector` row this table used to carry was removed: that module
+was **deleted** in the #276 engine collapse and no longer exists. The last four
+rows (`pool_stratification`, `proximity_trend_monitor`, `portfolio_monitor`,
+`relative_value_screener`) are registered primitives the table had never listed.
+(`mcp/README.md` still advertises `cashflow_projector` and
+`multi_period_waterfall_runner`, both deleted, and is not corrected here — see
+the PR's operator actions.)
 
 > **One known-stale cell.** `relative_value_screener` reports `library-only`,
 > but it is in fact reached by `GET /relative-value-screener` and by `GET
