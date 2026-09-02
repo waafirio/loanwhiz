@@ -134,6 +134,79 @@ RMBS prospectus tried so far. Epic B's extraction child should be estimated with
 that in mind, and a plan that comes back saying "the extractor needs work first"
 is a success of this discipline, not a failure of the child.
 
+### Standing constraints (operator-set, 2026-09-02) — every child obeys these
+
+Four rules govern *how* each child is built, not what it delivers. They are
+repeated on every filed issue because they are the difference between a CLO
+bolt-on and a platform step.
+
+**1. Reuse and adapt before adding.** LoanWhiz already carries a lot of working
+machinery, and the default is to extend it rather than stand up something
+parallel. Concretely: coverage tests are **triggers**, so they go through the
+existing `TriggerRule` / `covenant_monitor` path rather than a new coverage
+subsystem; a new recipient is a `@register_need` decorated function on the
+existing open registry, not a new execution branch; a new loan-level template is
+another table in the existing `Annex2Field` record shape; obligor and industry
+concentration limits reuse `pool_stratification`'s existing
+`{dimension, bucket, max_pct, basis}` limit shape. A child that proposes a new
+parallel subsystem where an existing seam would serve should say why in its plan
+and expect that to be challenged. The engine collapse of #276 — three duplicate
+execution paths deleted down to one `run_period` fold — is the standing example
+of what this rule exists to prevent recurring.
+
+**2. Create, expose and *enforce* clear contracts — the alternative is
+whack-a-mole.** Reuse alone is not enough; the reason to keep one path is that
+one path can carry one enforced contract. So for each seam a child touches:
+define the contract in exactly one place, expose it as a typed, discoverable
+thing rather than a convention, and **enforce it at the boundary** so a
+violation fails loudly there instead of surfacing as a wrong number three layers
+away. This codebase already has the good examples to copy: the closed
+`RecipientType` / `MetricType` enums with an explicit `unmapped` escape (a
+contract that makes an unknown *representable* rather than silently
+mis-mapped); the `Primitive[Input, Output]` typed envelope; the runtime
+`threshold_unit` guard at the covenant seam (#372) and the `to_canonical_threshold`
+scale discipline, which exist precisely because a percent misread as a fraction
+is a 100× error nobody sees. And it has the counter-example: before the metric
+alias map, an extracted trigger whose `metric` matched no sentinel fell through
+to a silent `0.0` and never fired.
+
+Concretely, a child is not done when the code works — it is done when the
+contract it introduced or extended is **pinned by a test that fails if someone
+violates it later**. A new annex table needs a test asserting every declared
+field resolves and that an unknown column stays unresolved rather than guessing;
+a new metric needs a test that an unmappable string lands `unmapped` rather than
+a default; a new need-calculator needs a test that an unregistered recipient
+yields `not_evaluable` rather than 0. Prefer making an invalid state
+unrepresentable over documenting that it is invalid. Where a contract cannot be
+enforced in types, enforce it with a runtime guard at the seam plus a regression
+test — and say in the plan which of the three you chose and why.
+
+**3. Governance, auditability and visibility are first-class, not follow-ups.**
+Anything new must thread the same evidence the rest of the platform does: the
+`PrimitiveResult` envelope with real `confidence` and `citations` (never a
+hardcoded constant), an `audit_result` entry, per-field provenance via
+`ProvenanceMap`, and regulatory locators where they exist — the way
+`esma_annex2.locator_for` anchors a value to its RREL field code. Honest
+degradation is part of this: an unmappable recipient or metric lands `unmapped`
+/ `not_evaluable` with a real reason, and never a silent `0.0` — the failure
+class the canonical taxonomy exists to kill. Visibility means the result reaches
+a surface a human reads: the capability matrix, `/governance`, the evidence
+pack. A child whose output cannot be traced back to a cited source is not done.
+
+**4. Build the seam, not the special case — this is a multi-asset-class
+platform.** The goal is a platform that handles many securitisation types
+seamlessly, so CLO is the *first* non-RMBS member, not the subject. Prefer the
+generalising change: a multi-annex registry over a hardcoded corporate branch; a
+per-class coverage-test metric over an OC/IC pair pinned to one deal's
+attachment points; an asset-class-neutral stratification dimension over a CLO
+one. The test to apply is *"would adding CMBS or Auto next be cheaper because of
+this change?"* — if the answer is no, the shape is probably wrong. Two existing
+facts make this concrete and cheap to honour: `esma_annex2.py`'s own docstring
+already says its record shape "admits other annexes (Auto/SME) later without
+breaking callers", and `esma_tape_normaliser.py` already *detects* Annex 5 and
+Annex 8 while having no field table for either — so the registry this plan
+builds should close those two gaps as a side effect, not just serve CLO.
+
 ### Cross-epic ordering
 
 Two epics, six children.
@@ -168,29 +241,54 @@ architectural. The epic is done when the canonical schema can express a CLO's
 capital stack, its fee waterfall recipients, and its coverage tests, with
 per-recipient need actually computable for a stack deeper than three classes.
 
-- **Corporate / leveraged-loan loan-level field table** — Add the corporate
-  underlying-exposure field table alongside `esma_annex2.py` in the same
-  `Annex2Field` record shape (which its own docstring says "admits other annexes
-  later without breaking callers"), covering the obligor, industry, facility
-  rating, seniority, spread, and defaulted/PIK/cov-lite attributes CLO
-  collateral reports carry; wire annex detection to it and verify the existing
-  `"Annex 8 (SME)"` label against the actual RTS annex numbering, correcting it
-  if wrong. Sequencing: parallel. Paths: `src/loanwhiz/domain/**`,
+- **Multi-annex loan-level schema registry, with the corporate template as its
+  first new member** — Generalise the single hardcoded `esma_annex2` table into
+  a registry that resolves a tape's columns through *whichever* annex applies,
+  and add the corporate / leveraged-loan template (obligor, industry, facility
+  rating, lien seniority, spread, defaulted / PIK / cov-lite) as its first
+  additional member; close the standing gap where `_ANNEX_SIGNATURES` detects
+  Annex 5 (Auto) and Annex 8 (SME) but no field table exists for either, and
+  verify the `"Annex 8 (SME)"` label against the actual RTS numbering (the
+  corporate template is believed to be Annex 4 / `CRPL`, with Annex 8 leasing),
+  correcting it if wrong. **Reuse:** the existing `Annex2Field` record shape and
+  `canonical_column_for` / `code_for_column` resolution, whose docstring already
+  anticipates this. **Contract:** one registry as the single resolution point;
+  an unknown column stays unresolved rather than guessing, pinned by test.
+  **Governance:** every resolved value keeps its regulatory locator
+  (`locator_for`) so provenance still cites a field code. **Generality:** adding
+  CMBS or Consumer next must be a table, not a code change. Sequencing:
+  parallel. Paths: `src/loanwhiz/domain/**`,
   `src/loanwhiz/primitives/esma_tape_normaliser.py`, `tests/**`.
-- **Coverage-test metrics in the canonical taxonomy** — Add
-  overcollateralisation and interest-coverage ratio metrics to `MetricType` with
-  the alias coverage the taxonomy classifier needs, and make them computable
-  from deal state so an extracted OC/IC trigger resolves to a real value instead
-  of `unmapped`; per-class, since a CLO tests coverage at several attachment
-  points. Explicitly excludes the cash-diversion mechanic. Sequencing: parallel.
-  Paths: `src/loanwhiz/domain/rules.py`, `src/loanwhiz/extraction/taxonomy.py`,
+- **Coverage tests as first-class, per-class covenant metrics** — Add
+  overcollateralisation and interest-coverage ratios to `MetricType` with the
+  alias-table and classifier coverage an extracted trigger needs, and make them
+  resolvable to a real value from deal state, per attachment point rather than
+  as a single OC/IC pair. Explicitly excludes the cash-diversion mechanic — a
+  failing test is *observed* here, not yet acted on. **Reuse:** a coverage test
+  is a trigger, so it rides the existing `TriggerRule` / `covenant_monitor` /
+  `_extract_metric` path — do not stand up a coverage subsystem. **Contract:**
+  respect the existing canonical-scale discipline (`to_canonical_threshold`, the
+  `threshold_unit` runtime guard from #372) so a ratio can never be misread
+  against a percent; an unresolvable coverage metric must land `not_evaluable`
+  with a reason, never `0.0`, pinned by test. **Governance:** the monitor's
+  existing evaluable / proximity reporting must carry these honestly.
+  **Generality:** the metric shape should suit any deal that tests coverage at
+  an attachment point, not only CLOs. Sequencing: parallel. Paths:
+  `src/loanwhiz/domain/rules.py`, `src/loanwhiz/extraction/taxonomy.py`,
   `src/loanwhiz/primitives/covenant_monitor.py`, `tests/**`.
-- **Close the recipient-enum vs need-calculator gap** — `RecipientType` carries
-  23 members while `NEED_CALCULATORS` registers 9, so deeper-stack recipients
-  (`class_d/e/f_*`) and the CLO fee recipients map correctly and then compute
-  need 0; register the missing calculators and add the senior / subordinated
-  management-fee recipients a CLO waterfall pays. Excludes the incentive fee,
-  which needs an equity IRR that is out of scope. Sequencing: parallel. Paths:
+- **Close the recipient-enum vs need-calculator contract gap** — `RecipientType`
+  carries 23 members while `NEED_CALCULATORS` registers 9, so deeper-stack
+  recipients (`class_d/e/f_*`) map correctly and then compute need 0; register
+  the missing calculators and add the senior / subordinated management-fee
+  recipients a CLO waterfall pays. Excludes the incentive fee, which needs an
+  equity IRR that is out of scope. **Reuse:** `@register_need` on the existing
+  open registry — no new execution branch. **Contract:** this child is mostly a
+  contract fix, so close the class of bug rather than the instances — make the
+  enum↔calculator relationship checkable (e.g. a test that every non-`unmapped`
+  `RecipientType` either has a calculator or is explicitly declared
+  report-supplied), so the next vocabulary broadening cannot silently reopen the
+  gap. **Governance:** an unregistered recipient stays `not_evaluable` in the
+  step trace with a real reason. Sequencing: parallel. Paths:
   `src/loanwhiz/primitives/waterfall_interpreter.py`,
   `src/loanwhiz/domain/rules.py`, `src/loanwhiz/extraction/taxonomy.py`,
   `tests/**`.
@@ -208,21 +306,40 @@ failure.
   `deals.json` in the existing deal-context shape, and record honestly in the
   data card which documents are and are not available (in particular whether any
   trustee reports could be obtained, since their absence is what forecloses
-  to-the-cent validation). No extraction. Sequencing: parallel. Paths:
+  to-the-cent validation). No extraction. **Reuse:** the existing deal-context
+  shape and registry — adding a deal is *data*, not code, and must stay that
+  way. **Governance:** the data card records what is and is not available, so
+  the absence of trustee reports is visible now rather than discovered at
+  grading time. Sequencing: parallel. Paths:
   `src/loanwhiz/data/deals.json`, `docs/data-card.md`, `src/loanwhiz/config.py`.
 - **Extract the CLO prospectus to canonical `DealRules`** — Run the extraction
   pipeline against the sourced document and get an honest deal model out: the
   full capital stack, both the interest and principal waterfalls, and the
   coverage-test definitions as extracted triggers; fix the extractor where a CLO
   document defeats it rather than hand-editing a seed, exactly as #438/#439
-  established. Sequencing: sequential. After the sourcing child. Paths:
+  established. **Reuse:** the existing section router, taxonomy classifier and
+  assembler — a CLO document is a harder input to the same pipeline, not a
+  reason for a second one. **Contract:** where a CLO defeats the extractor, fix
+  the general rule and pin it with a test against the shape that broke it (the
+  #438/#439 pattern), rather than special-casing this deal. **Governance:**
+  per-step and per-trigger extraction confidence and citations must be threaded,
+  and anything unmappable stays `unmapped` with the prose retained for audit —
+  never executed. Sequencing: sequential. After the sourcing child. Paths:
   `src/loanwhiz/extraction/**`, `src/loanwhiz/data/deals/seed/**`, `tests/**`.
 - **Execute and grade the CLO deal honestly** — Run the extracted model through
   the engine, evaluate its coverage tests as covenant metrics, and let the
   capability matrix report the result with real per-cell reasons — `ran` where
   it ran, `not-applicable` with a genuine reason where it did not, and never
-  `validated`, since no answer key exists without trustee reports. Sequencing:
-  sequential. After the extraction child. Paths:
+  `validated`, since no answer key exists without trustee reports. **Reuse:**
+  the existing `run_period` fold, covenant monitor and capability matrix — this
+  child wires a deal through machinery that already exists and should add no new
+  execution path. **Contract:** the matrix's three-state vocabulary is not
+  widened for CLO; a cell that cannot be graded is `not-applicable` with a real
+  reason. **Governance:** the run must be traceable end to end — evidence pack,
+  audit entries, and a data/model-card update saying plainly that this deal is
+  unvalidated and why. **Generality:** whatever the matrix needs to describe a
+  non-RMBS deal should be asset-class-neutral, so a CMBS column later needs no
+  further change. Sequencing: sequential. After the extraction child. Paths:
   `src/loanwhiz/primitives/capability_matrix.py`, `src/loanwhiz/api/main.py`,
   `docs/**`, `tests/**`.
 
