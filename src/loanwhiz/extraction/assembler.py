@@ -395,8 +395,14 @@ def extract_deal_model(
     #    so the waterfall / definitions / covenant extractors below receive real
     #    sections to extract from instead of raising on the missing English
     #    headings.
+    #    The router's own LLM step carries a determinism cache like every other
+    #    sub-extractor (#445), so a re-run over an unchanged prospectus reports
+    #    the same ``sections_found`` — and therefore the same
+    #    ``completeness_score``, which is a pure function of it. force_refresh
+    #    busts that cache too, so a genuine refresh never pairs freshly
+    #    extracted content with stale routing.
     section_map = route_sections(markdown_text)
-    key_sections = resolve_sections(section_map)
+    key_sections = resolve_sections(section_map, force_refresh=force_refresh)
     sections_found = [k for k, v in key_sections.items() if v is not None]
 
     # The pre-resolved sections the downstream extractors should use instead of
