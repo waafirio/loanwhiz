@@ -521,6 +521,32 @@ class TestExtractTranches:
         section_map = route_sections(_RANK_CROSS_REFERENCE_TABLE_MD)
         assert _extract_tranches(section_map) == []
 
+    def test_seniority_strips_only_a_whole_label_word(self) -> None:
+        """The label prefix is stripped as a WORD, never as a leading substring.
+
+        A trailing ``\\s*`` on the strip would let "class" be pulled out of the
+        middle of "Classic", leaving "ic A" and scoring the ``i`` as the class
+        letter. Only whole label words may be removed.
+        """
+        assert _seniority_for("Notes B") == _seniority_for("B")
+        assert _seniority_for("Tranche A1") == _seniority_for("A1")
+        # A token that merely STARTS with a label word is left alone, so it can
+        # never be scored off the letter that follows the false prefix.
+        assert _seniority_for("Classic A") != _seniority_for("ic A")
+
+    def test_separatorless_large_amount_is_still_a_size(self) -> None:
+        """The size floor is magnitude, not punctuation.
+
+        Requiring a currency mark or thousands separators would silently drop a
+        real tranche whose cell lost its separators in OCR, so a run of 7+
+        digits (>= 1,000,000) also qualifies — while a rank cell still does not.
+        """
+        assert _parse_tranche_size("500000000") == 500_000_000.0
+        # Below the floor, and the rank cells that started this: still not sizes.
+        assert _parse_tranche_size("999999") is None
+        assert _parse_tranche_size("42") is None
+        assert _parse_tranche_size("3") is None
+
     def test_bare_integer_is_never_a_tranche_size(self) -> None:
         """A size needs a currency marker or grouped thousands."""
         assert _parse_tranche_size("3") is None

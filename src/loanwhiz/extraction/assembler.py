@@ -650,7 +650,7 @@ def _seniority_for(label: str) -> int:
     # Also strips "Tranche"/"Note" and a plural/space-less form, so a label the
     # A-G table parser never emits but a prose parser might ("Notes B", "ClassC")
     # cannot reintroduce the same misread (#438).
-    label = re.sub(r"^\s*(?:class|series|tranche|note)s?\s*", "", label, flags=re.IGNORECASE)
+    label = re.sub(r"^\s*(?:class|series|tranche|note)s?\b\s*", "", label, flags=re.IGNORECASE)
     m = re.search(r"([A-Za-z])\s*(\d*)", label)
     if not m:
         return 0
@@ -703,7 +703,8 @@ _RATING_RE = re.compile(r"\b(AAA|Aaa|AA[+-]?|A[+-]?|BBB[+-]?|BB[+-]?|B[+-]?|NR|U
 # = 42 EUR" shape (#397): a stray "42" no longer parses as a size at all.
 _TRANCHE_AMOUNT_RE = re.compile(
     r"(?:€|EUR)\s*([0-9][0-9.,]*[0-9]|[0-9])"      # explicit currency marker
-    r"|([0-9]{1,3}(?:[.,][0-9]{3})+)",                # grouped thousands
+    r"|([0-9]{1,3}(?:[.,][0-9]{3})+)"                 # grouped thousands
+    r"|([0-9]{7,})",                                  # >= 1,000,000, unpunctuated
     re.IGNORECASE,
 )
 
@@ -734,7 +735,7 @@ def _parse_tranche_size(text: str) -> float | None:
     m = _TRANCHE_AMOUNT_RE.search(text)
     if not m:
         return None
-    return _normalise_amount(m.group(1) or m.group(2))
+    return _normalise_amount(m.group(1) or m.group(2) or m.group(3))
 
 
 def _parse_euro_amount(text: str) -> float | None:
