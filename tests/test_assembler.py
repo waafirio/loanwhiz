@@ -495,6 +495,30 @@ class TestExtractTranches:
         assert [t["name"] for t in result] == ["Class A", "Class B"]
         assert all(t["size_eur"] != 42.0 for t in result)
 
+    def test_prose_refuses_a_european_decimal_rather_than_mis_scaling_it(self) -> None:
+        """An ambiguous decimal amount fails closed, it does not get 100x wrong.
+
+        ``_parse_euro_amount`` strips both "." and "," so "1.234,56" reads as
+        123456. That helper is shared with the table path and left as it is;
+        the prose pattern instead only accepts a whole-euro figure, so an
+        amount it cannot read unambiguously produces no tranche at all.
+        """
+        md = (
+            "Nominal amount:\n\n"
+            "- Euro 1.234,56 for the Class A Notes;\n"
+            "- Euro 2.345,67 for the Class B Notes.\n"
+        )
+        assert _extract_tranches(route_sections(md)) == []
+        # A whole-euro figure is still read, grouped or not.
+        ok = (
+            "Nominal amount:\n\n"
+            "- Euro 500000000 for the Class A Notes;\n"
+            "- Euro 20.000.000 for the Class B Notes.\n"
+        )
+        by_name = {t["name"]: t for t in _extract_tranches(route_sections(ok))}
+        assert by_name["Class A"]["size_eur"] == 500_000_000.0
+        assert by_name["Class B"]["size_eur"] == 20_000_000.0
+
     def test_prose_needs_two_classes_before_it_is_believed(self) -> None:
         """One lone amount-near-a-class sentence is not a capital structure."""
         md = (

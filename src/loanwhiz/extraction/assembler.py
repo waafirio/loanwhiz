@@ -860,6 +860,15 @@ def _tranches_from_class_row_table(table: list[list[str]]) -> list[dict]:
 
 # A note-class nominal amount stated in PROSE rather than in a table (#439).
 #
+# The amount must be either a fully thousands-grouped figure ("480,000,000",
+# "480.000.000") or plain digits. It deliberately will NOT match a European
+# decimal like "1.234,56": ``_parse_euro_amount`` strips both separators, so
+# that would silently read as 123456 — a 100x-wrong tranche size committed into
+# a seed. Refusing the match makes the source fall through to the unsized
+# fallback instead, which is honest rather than wrong. (The helper itself is
+# shared with the table path and left alone here: changing it moves every
+# deal's parse and needs its own re-extraction to validate.)
+#
 # Both patterns bind the amount DIRECTLY to the class label, allowing only the
 # fixed connector "for the" in between. That adjacency is the whole safeguard:
 # a prospectus mentions amounts near a class name constantly — risk factors,
@@ -867,10 +876,15 @@ def _tranches_from_class_row_table(table: list[list[str]]) -> list[dict]:
 # the Class A1 Notes", which is the *initial payment*, not the nominal amount.
 # None of those match, so only a genuine "this is the size of this class"
 # statement yields a tranche.
+# A whole-euro figure: thousands-grouped with a consistent separator, or plain
+# digits. Anything with a trailing 1-2 digit group (a decimal fraction) fails to
+# match in full, so the surrounding pattern fails rather than mis-scaling it.
+_GROUPED_AMOUNT = r"[0-9]{1,3}(?:[.,][0-9]{3})+|[0-9]+"
+
 _PROSE_SIZE_RES = (
     # The nominal-amount enumeration: "Euro 480,000,000 for the Class A1 Notes".
     re.compile(
-        rf"(?:€|EUR|Euro)\s*([0-9][0-9.,]*[0-9])\s+for\s+the\s+"
+        rf"(?:€|EUR|Euro)\s*({_GROUPED_AMOUNT})\s+for\s+the\s+"
         rf"Class\s+([{_CLASS_LETTERS}])\s*(\d*)\s+Notes\b",
         re.IGNORECASE,
     ),
@@ -878,7 +892,7 @@ _PROSE_SIZE_RES = (
     # Floating Rate Notes due October 2083". The bounded word run keeps the
     # amount and the word "Notes" in the same noun phrase.
     re.compile(
-        rf"(?:€|EUR|Euro)\s*([0-9][0-9.,]*[0-9])\s+"
+        rf"(?:€|EUR|Euro)\s*({_GROUPED_AMOUNT})\s+"
         rf"Class\s+([{_CLASS_LETTERS}])\s*(\d*)\s+(?:[A-Za-z-]+\s+){{0,8}}?Notes\b",
         re.IGNORECASE,
     ),
