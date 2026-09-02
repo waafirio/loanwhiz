@@ -43,8 +43,25 @@ from loanwhiz.extraction.assembler import (
     _slug,
     extract_deal_model,
 )
+from loanwhiz.extraction import section_router
 from loanwhiz.extraction.section_router import route_sections
 from loanwhiz.extraction.waterfall_extractor import ExtractedWaterfall, WaterfallStep
+
+
+@pytest.fixture(autouse=True)
+def _isolate_router_cache(tmp_path, monkeypatch):
+    """Keep the section-router determinism cache (#445) out of the repo.
+
+    Several tests in this module drive ``extract_deal_model`` with the
+    sub-extractors mocked but the section router real, so on a machine that has
+    Vertex credentials they reach the live router — and would otherwise write
+    its cache entries into the developer's ``data/extraction_cache/``. Redirect
+    it per test so a suite run leaves no trace and cannot be influenced by a
+    previous one.
+    """
+    monkeypatch.setattr(
+        section_router, "DEFAULT_ROUTER_CACHE_DIR", tmp_path / "router-cache"
+    )
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -1621,7 +1638,7 @@ class TestClassifySegmentsLlm:
         result = classify_segments_llm(route_sections(""))
         assert all(v is None for v in result.values())
 
-    def test_maps_llm_indices_to_sections(self) -> None:
+    def test_maps_llm_indices_to_sections(self, tmp_path) -> None:
         from unittest.mock import MagicMock, patch
 
         from loanwhiz.extraction.section_router import (
@@ -1646,10 +1663,147 @@ class TestClassifySegmentsLlm:
         fake_client = MagicMock()
         fake_client.models.generate_content.return_value = fake_response
 
+        # cache_dir=tmp_path keeps the determinism cache (#445) out of the
+        # repo's data/extraction_cache/ and out of the next test run.
         with patch("google.genai.Client", return_value=fake_client):
-            result = classify_segments_llm(section_map)
+            result = classify_segments_llm(section_map, cache_dir=tmp_path)
 
         assert result["definitions"].title == "Definizioni"
         assert result["revenue_priority_of_payments"].title.startswith("Ordine")
         assert result["redemption_priority_of_payments"].title.startswith("Ordine")
         assert result["post_enforcement_priority"] is None
+
+
+# ---------------------------------------------------------------------------
+# Extraction determinism (#445)
+# ---------------------------------------------------------------------------
+
+
+class TestExtractionDeterminism:
+    """#445's acceptance bar, at the surface the issue names.
+
+    Two ``extract_deal_model`` runs over the same prospectus, with the same
+    code, must report the same ``sections_found`` and ``completeness_score``.
+    Those are the numbers published per-deal in ``docs/model-card.md`` and
+    ``docs/data-card.md``, so a run-to-run wobble makes them non-reproducible.
+
+    Everything expensive is stubbed to a fixed value, which is the point: the
+    ONLY thing left free to vary between the two runs is the LLM section
+    router, and the scripted client below makes it vary on purpose. If the
+    router's answer is not pinned, run two loses the priority-of-payments roles
+    and both assertions move together — exactly the failure PR #444 observed.
+    """
+
+    _NON_ENGLISH_MD = (
+        "# Definizioni\n"
+        '"Fondi Disponibili" indica la somma dei seguenti importi.\n'
+        "# Ordine di Priorita dei Pagamenti\n"
+        "- (a) commissioni del fiduciario;\n"
+        "- (b) interessi Classe A;\n"
+        "- (c) capitale Classe A.\n"
+        "# Priorita Post-Escussione\n"
+        "- (a) commissioni del fiduciario.\n"
+    )
+
+    _ANSWER_FULL = (
+        '{"definitions": 0, "revenue_priority_of_payments": 1, '
+        '"redemption_priority_of_payments": 1, "post_enforcement_priority": 2, '
+        '"triggers_covenants": -1, "tranche_table": -1}'
+    )
+    _ANSWER_DEGRADED = (
+        '{"definitions": 0, "revenue_priority_of_payments": -1, '
+        '"redemption_priority_of_payments": -1, "post_enforcement_priority": -1, '
+        '"triggers_covenants": -1, "tranche_table": -1}'
+    )
+
+    def _run_twice(self, router_cache_dir, responses):
+        """Run extract_deal_model twice; return both metadata objects."""
+        from types import SimpleNamespace
+
+        from google import genai as _real_genai
+
+        from loanwhiz.extraction import section_router
+
+        calls = {"n": 0}
+
+        class _Models:
+            def generate_content(self, *, model, contents, config):  # noqa: ARG002
+                idx = min(calls["n"], len(responses) - 1)
+                calls["n"] += 1
+                return SimpleNamespace(text=responses[idx])
+
+        class _Client:
+            def __init__(self, *a, **k):
+                self.models = _Models()
+
+        fake_defs_graph = MagicMock()
+        fake_defs_graph.terms = {}
+
+        fake_covenants = MagicMock()
+        fake_covenants.model_dump.return_value = {
+            "deal_name": "Leone",
+            "triggers": [],
+            "issuer_covenants": [],
+            "extraction_confidence": 0.0,
+        }
+        fake_covenants.triggers = []
+
+        results = []
+        with tempfile.TemporaryDirectory() as tmpdir, patch.object(
+            section_router, "DEFAULT_ROUTER_CACHE_DIR", router_cache_dir
+        ), patch.object(_real_genai, "Client", _Client), patch(
+            "loanwhiz.extraction.assembler._download_and_convert",
+            return_value=self._NON_ENGLISH_MD,
+        ), patch(
+            "loanwhiz.extraction.assembler.extract_definitions",
+            return_value=fake_defs_graph,
+        ), patch(
+            "loanwhiz.extraction.assembler.extract_all_waterfalls",
+            return_value={"revenue": _make_waterfall("revenue", n_steps=2)},
+        ), patch(
+            "loanwhiz.extraction.assembler.extract_covenants",
+            return_value=fake_covenants,
+        ):
+            # A fresh deal-model cache dir per run, so run two genuinely
+            # re-assembles rather than replaying the whole DealModel. Note this
+            # cannot use force_refresh: that (correctly, #445) busts the router
+            # cache too, which is the thing under test here.
+            for run in range(2):
+                model = extract_deal_model(
+                    prospectus_url="https://example.com/leone.pdf",
+                    deal_name="Leone Arancio RMBS 2023-1 S.r.l.",
+                    cache_dir=str(Path(tmpdir) / f"run{run}"),
+                )
+                results.append(model.metadata)
+        return results, calls
+
+    def test_two_runs_agree_on_sections_found_and_completeness(self, tmp_path) -> None:
+        first, second = self._run_twice(
+            tmp_path, [self._ANSWER_FULL, self._ANSWER_DEGRADED]
+        )[0]
+
+        assert sorted(first.sections_found) == sorted(second.sections_found)
+        assert first.completeness_score == second.completeness_score
+        # Not vacuously equal on an empty routing: the PoP roles were located.
+        assert "revenue_priority_of_payments" in first.sections_found
+
+    def test_the_second_run_does_not_re_ask_the_router(self, tmp_path) -> None:
+        _, calls = self._run_twice(
+            tmp_path, [self._ANSWER_FULL, self._ANSWER_DEGRADED]
+        )
+        assert calls["n"] == 1, "run two re-asked the section router"
+
+    def test_completeness_moves_when_the_routing_genuinely_differs(
+        self, tmp_path
+    ) -> None:
+        """The control: the score is *sensitive* to routing, so the pin is real.
+
+        Without this, the equality above could hold simply because
+        ``completeness_score`` ignores ``sections_found`` — it does not.
+        """
+        full = self._run_twice(tmp_path, [self._ANSWER_FULL])[0][0]
+        other = tmp_path / "degraded"
+        degraded = self._run_twice(other, [self._ANSWER_DEGRADED])[0][0]
+
+        assert degraded.completeness_score < full.completeness_score
+        assert set(degraded.sections_found) < set(full.sections_found)

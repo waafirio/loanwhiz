@@ -7,8 +7,14 @@ output: every line matching ``^#{1,6}\\s+`` is a section boundary.
 
 from __future__ import annotations
 
+import hashlib
+import json
+import logging
 import re
 from dataclasses import dataclass, field
+from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
@@ -269,12 +275,113 @@ CANONICAL_SECTION_ROLES: tuple[str, ...] = (
 )
 
 
+# ---------------------------------------------------------------------------
+# Determinism cache (#445)
+# ---------------------------------------------------------------------------
+#
+# Every other LLM step in the extraction pipeline (waterfalls, covenants,
+# definitions, collateral ledger) writes a durable cache under
+# ``data/extraction_cache/``; the section router was the one that did not. That
+# made ``sections_found`` — and therefore ``completeness_score``, which is a
+# pure function of it (``assembler._completeness_score``) — move between runs
+# over an unchanged prospectus, so the figures published in ``docs/model-card.md``
+# and ``docs/data-card.md`` were not reproducible. ``temperature=0.0`` was
+# already set on the call below and did not deliver it; ``docs/governance.md``
+# §4 says as much ("reduces but does not eliminate variance"). Caching is the
+# lever the other five sub-extractors already use, and this follows the shape of
+# ``primitives/report_extractor.py``'s "determinism cache".
+#
+# The key is the SHA-256 of the **fully rendered prompt** plus the model id. The
+# prompt is derived from the segment map (titles, body snippets, the
+# ``has_payment_list`` signal) and the role list, so hashing it keys on document
+# content *and* prompt revision at once — editing the prompt, the role set or
+# the snippet budget changes the key and re-asks the model, with no hand-bumped
+# revision constant to forget.
+
+_REPO_ROOT = Path(__file__).resolve().parents[3]
+DEFAULT_ROUTER_CACHE_DIR = _REPO_ROOT / "data" / "extraction_cache"
+
+
+def _router_cache_key(prompt: str, model: str) -> str:
+    """Stable cache key — SHA-256 of the model id + the rendered prompt."""
+    return hashlib.sha256(f"{model}\x00{prompt}".encode()).hexdigest()
+
+
+def _router_cache_path(key: str, cache_dir: str | Path) -> Path:
+    return Path(cache_dir) / f"section-router-{key}.json"
+
+
+def _load_router_cache(path: Path) -> dict[str, int] | None:
+    """Read a cached ``{role: segment index}`` map, or ``None`` on any problem.
+
+    Indices are returned as stored and are **not** bounds-checked here — they are
+    validated against the freshly-segmented map by :func:`_sections_for_indices`,
+    so a cache written against a different segmentation degrades to "role not
+    located" rather than to an out-of-range section.
+    """
+    if not path.exists():
+        return None
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8"))
+    except (ValueError, OSError) as exc:
+        logger.warning("Section-router cache read failed (%s): %s", path, exc)
+        return None
+    if not isinstance(raw, dict):
+        logger.warning("Section-router cache malformed (%s): not an object", path)
+        return None
+    out: dict[str, int] = {}
+    for role, idx in raw.items():
+        try:
+            out[str(role)] = int(idx)
+        except (TypeError, ValueError):
+            logger.warning("Section-router cache malformed (%s): bad index for %r", path, role)
+            return None
+    return out
+
+
+def _write_router_cache(indices: dict[str, int], path: Path) -> None:
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(indices, indent=2, sort_keys=True), encoding="utf-8")
+    except OSError as exc:
+        logger.warning("Section-router cache write failed (%s): %s", path, exc)
+
+
+def _sections_for_indices(
+    section_map: SectionMap,
+    roles: tuple[str, ...],
+    indices: dict[str, int],
+) -> dict[str, Section | None]:
+    """Resolve ``{role: index}`` against *section_map*'s current segmentation.
+
+    Bounds-checking lives here rather than at cache-write time on purpose: the
+    cached artifact is a set of indices into the segmentation the prompt was
+    rendered from, and this is the single place that turns them back into
+    :class:`Section` objects — so the cache-hit and cache-miss paths cannot
+    diverge in how they interpret an index.
+    """
+    result: dict[str, Section | None] = {}
+    for role in roles:
+        idx = indices.get(role, -1)
+        if 0 <= idx < len(section_map.sections):
+            # Return the routed section widened to its descendant span, so a
+            # generically-titled parent feeds the waterfall extractor the steps
+            # that live in its child sub-sections (#316).
+            result[role] = section_map.with_descendant_text(section_map.sections[idx])
+        else:
+            result[role] = None
+    return result
+
+
 def classify_segments_llm(
     section_map: SectionMap,
     *,
     roles: tuple[str, ...] = CANONICAL_SECTION_ROLES,
     max_title_chars: int = 120,
     body_snippet_chars: int = 280,
+    use_cache: bool = True,
+    force_refresh: bool = False,
+    cache_dir: str | Path | None = None,
 ) -> dict[str, Section | None]:
     """Classify the header segments into canonical section roles via the LLM.
 
@@ -303,6 +410,22 @@ def classify_segments_llm(
     the keyword result rather than crashing — never raises into the extraction
     path.
 
+    **The answer is cached on disk (#445).** A repeat call over the same segment
+    map replays the first run's routing instead of re-asking the model, which is
+    what makes ``sections_found`` — and the ``completeness_score`` derived from
+    it — reproducible across runs. Two properties matter and are pinned by tests:
+
+    - **A failed call is never cached.** The bare ``except`` below also swallows
+      a credentials/network/quota blip, and caching that would freeze a deal at
+      a silently-degraded coverage forever. Only a parsed answer is written; a
+      failure returns all-``None`` and leaves the cache untouched, so the next
+      run retries. This is a second, independent source of run-to-run drift and
+      the reason the failure branch is distinguished from an LLM that genuinely
+      answered "no fitting section" (all ``-1``) — the latter *is* cached,
+      because it is a reproducible answer.
+    - **Cached indices are re-resolved against the live map**
+      (:func:`_sections_for_indices`), never stored as :class:`Section` objects.
+
     Parameters
     ----------
     section_map:
@@ -315,16 +438,29 @@ def classify_segments_llm(
         How many characters of each segment's descendant span to show the LLM as
         a body snippet (after the heading line) so it can judge content, not just
         the title.
+    use_cache:
+        When ``False``, neither read nor write the determinism cache.
+    force_refresh:
+        Skip the cache *read* and re-ask the model, then overwrite the entry —
+        the same semantics ``force_refresh`` carries in every sibling extractor.
+    cache_dir:
+        Directory holding the cache entries. ``None`` (the default) resolves to
+        :data:`DEFAULT_ROUTER_CACHE_DIR` **at call time**, alongside the other
+        sub-extractor caches — resolved late rather than as a default argument
+        so a caller that cannot reach this parameter (the assembler reaches it
+        only through :func:`resolve_sections`) can still redirect the cache by
+        patching the module constant.
     """
     sections = section_map.sections
     if not sections:
         return {role: None for role in roles}
 
+    # Only the model id is needed to build the cache key, so ``loanwhiz.config``
+    # is imported here while the ``google.genai`` import stays inside
+    # :func:`_route_via_llm`. A cache hit therefore needs no SDK and no
+    # credentials — which is what lets the determinism regression run offline.
     try:
-        from google import genai
-        from google.genai import types as genai_types
-
-        from loanwhiz.config import GCP_LOCATION, GCP_PROJECT, MODEL_FLASH
+        from loanwhiz.config import MODEL_FLASH
     except Exception:
         return {role: None for role in roles}
 
@@ -374,42 +510,79 @@ def classify_segments_llm(
         "Use -1 for a role with no matching section."
     )
 
+    resolved_cache_dir = DEFAULT_ROUTER_CACHE_DIR if cache_dir is None else cache_dir
+    cache_path = _router_cache_path(
+        _router_cache_key(prompt, MODEL_FLASH), resolved_cache_dir
+    )
+    if use_cache and not force_refresh:
+        cached = _load_router_cache(cache_path)
+        if cached is not None:
+            return _sections_for_indices(section_map, roles, cached)
+
+    indices = _route_via_llm(prompt, roles, model=MODEL_FLASH)
+    if indices is None:
+        # The call itself failed (no SDK, no credentials, network, quota, or an
+        # unparseable response). Degrade exactly as before — and write nothing,
+        # so a transient failure cannot freeze this deal at degraded coverage.
+        return {role: None for role in roles}
+
+    if use_cache:
+        _write_router_cache(indices, cache_path)
+    return _sections_for_indices(section_map, roles, indices)
+
+
+def _route_via_llm(
+    prompt: str,
+    roles: tuple[str, ...],
+    *,
+    model: str,
+) -> dict[str, int] | None:
+    """Ask the model to route the segments; return ``{role: index}`` or ``None``.
+
+    ``None`` means the *call* did not produce an answer — import failure, no
+    credentials, network/quota error, or a response with no parseable JSON
+    object. It is deliberately distinct from a dict of all ``-1``, which is the
+    model genuinely answering "no fitting section" and is a reproducible result
+    worth caching. Only this distinction stops a transient outage being
+    memoised as a permanent coverage regression (#445).
+    """
+    try:
+        from google import genai
+        from google.genai import types as genai_types
+
+        from loanwhiz.config import GCP_LOCATION, GCP_PROJECT
+    except Exception:
+        return None
+
     try:
         client = genai.Client(vertexai=True, project=GCP_PROJECT, location=GCP_LOCATION)
         response = client.models.generate_content(
-            model=MODEL_FLASH,
+            model=model,
             contents=prompt,
             config=genai_types.GenerateContentConfig(temperature=0.0),
         )
         text = (response.text or "").strip()
     except Exception:
-        return {role: None for role in roles}
-
-    import json
+        return None
 
     match = re.search(r"\{.*\}", text, re.DOTALL)
     if not match:
-        return {role: None for role in roles}
+        return None
     try:
         mapping = json.loads(match.group(0))
     except (ValueError, json.JSONDecodeError):
-        return {role: None for role in roles}
+        return None
+    if not isinstance(mapping, dict):
+        return None
 
-    result: dict[str, Section | None] = {}
+    indices: dict[str, int] = {}
     for role in roles:
-        idx = mapping.get(role, -1)
+        raw = mapping.get(role, -1)
         try:
-            idx = int(idx)
+            indices[role] = int(raw)
         except (TypeError, ValueError):
-            idx = -1
-        if 0 <= idx < len(sections):
-            # Return the routed section widened to its descendant span, so a
-            # generically-titled parent feeds the waterfall extractor the steps
-            # that live in its child sub-sections (#316).
-            result[role] = section_map.with_descendant_text(sections[idx])
-        else:
-            result[role] = None
-    return result
+            indices[role] = -1
+    return indices
 
 
 # ---------------------------------------------------------------------------
@@ -483,6 +656,7 @@ def resolve_sections(
     section_map: SectionMap,
     *,
     use_llm: bool = True,
+    force_refresh: bool = False,
 ) -> dict[str, Section | None]:
     """Resolve the load-bearing sections, keyword-first with an LLM fallback.
 
@@ -521,6 +695,12 @@ def resolve_sections(
     ----------
     section_map:
         The header-segmented :class:`SectionMap`.
+    force_refresh:
+        Busts the LLM router's determinism cache (#445), matching what
+        ``force_refresh`` already does for the docling, waterfall, covenant and
+        definitions caches. Without this the router would be the one sub-step a
+        refresh does not reach, so a re-extraction would mix freshly-extracted
+        content with stale routing.
     use_llm:
         When ``False`` (offline / tests), the LLM fallback is skipped entirely —
         the result is the deterministic keyword router's output verbatim, with
@@ -539,7 +719,7 @@ def resolve_sections(
 
     missing = [r for r in _LOAD_BEARING_ROLES if keyword.get(r) is None]
     if missing and use_llm:
-        llm = classify_segments_llm(section_map)
+        llm = classify_segments_llm(section_map, force_refresh=force_refresh)
         for role in missing:
             if llm.get(role) is not None:
                 keyword[role] = llm[role]

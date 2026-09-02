@@ -14,9 +14,11 @@ Two test layers:
 
 from __future__ import annotations
 
+import json
 import re
 import textwrap
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import patch
 
 import pytest
@@ -599,7 +601,7 @@ def test_has_payment_list_signal() -> None:
     assert _has_payment_list(prose) is False
 
 
-def test_classify_prefers_payment_list_over_summary_title() -> None:
+def test_classify_prefers_payment_list_over_summary_title(tmp_path) -> None:
     """classify_segments_llm feeds the LLM the has_payment_list signal + body
     snippet, and returns the routed section widened to its descendant span (#316).
 
@@ -645,8 +647,11 @@ def test_classify_prefers_payment_list_over_summary_title() -> None:
     # fake transport — only the network boundary is stubbed.
     from google import genai as _real_genai
 
+    # ``cache_dir=tmp_path`` keeps this hermetic: the determinism cache (#445)
+    # would otherwise replay a previous run's answer and the fake transport
+    # would never be reached, so ``captured["prompt"]`` below would be empty.
     with patch.object(_real_genai, "Client", _FakeClient):
-        result = classify_segments_llm(sm)
+        result = classify_segments_llm(sm, cache_dir=tmp_path)
 
     # Prompt carried the signal for the child step-list segment.
     assert "has_payment_list=true" in captured["prompt"]
@@ -870,3 +875,290 @@ def test_revenue_priority_section_found() -> None:
     assert rev.start_char > 100_000, (
         f"Section starts suspiciously early at char {rev.start_char}"
     )
+
+
+# ---------------------------------------------------------------------------
+# Determinism cache (#445)
+# ---------------------------------------------------------------------------
+#
+# The acceptance bar for #445: two runs over the same prospectus, with the same
+# code, produce the same ``sections_found`` and ``completeness_score``. The
+# score is a pure function of the sections (``assembler._completeness_score``),
+# so the property to pin here is that the router's answer is replayed rather
+# than re-asked. Each test stubs only the genai transport, so the real
+# prompt-building, cache-keying and response-parsing paths all run.
+
+_ROUTER_MD = (
+    "# Definizioni\n"
+    '"Fondi Disponibili" indica la somma dei seguenti importi.\n'
+    "# Ordine di Priorita dei Pagamenti\n"
+    "- (a) commissioni del fiduciario;\n"
+    "- (b) interessi Classe A;\n"
+    "- (c) capitale Classe A.\n"
+    "# Priorita Post-Escussione\n"
+    "- (a) commissioni del fiduciario.\n"
+)
+
+
+class _ScriptedClient:
+    """genai.Client stand-in returning a different answer on every call.
+
+    This is the falsifier the issue describes: an LLM that disagrees with itself
+    over identical input. Without a cache the router propagates that
+    disagreement into ``sections_found``; with one, only the first answer is
+    ever observed.
+    """
+
+    def __init__(self, *responses: str):
+        self._responses = list(responses)
+        self.calls = 0
+        outer = self
+
+        class _Models:
+            def generate_content(self, *, model, contents, config):  # noqa: ARG002
+                idx = min(outer.calls, len(outer._responses) - 1)
+                outer.calls += 1
+                resp = SimpleNamespace(text=outer._responses[idx])
+                return resp
+
+        self.models = _Models()
+
+    def __call__(self, *a, **k):  # genai.Client(...) → this same instance
+        return self
+
+
+class _RaisingClient:
+    """genai.Client stand-in whose call always fails (credentials/network/quota)."""
+
+    def __init__(self):
+        self.calls = 0
+        outer = self
+
+        class _Models:
+            def generate_content(self, *, model, contents, config):  # noqa: ARG002
+                outer.calls += 1
+                raise RuntimeError("vertex unavailable")
+
+        self.models = _Models()
+
+    def __call__(self, *a, **k):
+        return self
+
+
+_ANSWER_FULL = (
+    '{"definitions": 0, "revenue_priority_of_payments": 1, '
+    '"redemption_priority_of_payments": 1, "post_enforcement_priority": 2, '
+    '"triggers_covenants": -1, "tranche_table": -1}'
+)
+# The same document routed differently — the observed #444 failure mode: the
+# priority-of-payments sections simply stop being located.
+_ANSWER_DEGRADED = (
+    '{"definitions": 0, "revenue_priority_of_payments": -1, '
+    '"redemption_priority_of_payments": -1, "post_enforcement_priority": -1, '
+    '"triggers_covenants": -1, "tranche_table": -1}'
+)
+
+
+def _located(result: dict) -> list[str]:
+    """The ``sections_found`` shape: the roles the router actually located."""
+    return sorted(k for k, v in result.items() if v is not None)
+
+
+def test_router_cache_replays_first_answer_when_llm_diverges(tmp_path) -> None:
+    """Two runs over one section map agree even when the model does not.
+
+    This is #445's acceptance bar at the router level: the scripted client
+    answers fully on call 1 and degrades on call 2, so a second live call would
+    drop all three priority-of-payments roles. The cache means there is no
+    second call.
+    """
+    from google import genai as _real_genai
+
+    sm = route_sections(_ROUTER_MD)
+    client = _ScriptedClient(_ANSWER_FULL, _ANSWER_DEGRADED)
+
+    with patch.object(_real_genai, "Client", client):
+        first = classify_segments_llm(sm, cache_dir=tmp_path)
+        second = classify_segments_llm(sm, cache_dir=tmp_path)
+
+    assert client.calls == 1, "second run re-asked the model instead of replaying"
+    assert _located(first) == _located(second)
+    assert "revenue_priority_of_payments" in _located(first)
+    # And the resolved sections are equivalent, not merely equally many.
+    for role in first:
+        a, b = first[role], second[role]
+        assert (a is None) == (b is None)
+        if a is not None:
+            assert (a.title, a.start_char, a.end_char, a.text) == (
+                b.title,
+                b.start_char,
+                b.end_char,
+                b.text,
+            )
+
+
+def test_router_cache_not_written_on_llm_failure(tmp_path) -> None:
+    """A failed call degrades to all-None and leaves the cache empty.
+
+    Caching a failure would freeze the deal at silently-degraded coverage for
+    every future run — a second, independent source of the same defect.
+    """
+    from google import genai as _real_genai
+
+    sm = route_sections(_ROUTER_MD)
+    client = _RaisingClient()
+
+    with patch.object(_real_genai, "Client", client):
+        result = classify_segments_llm(sm, cache_dir=tmp_path)
+
+    assert all(v is None for v in result.values())
+    assert list(tmp_path.glob("section-router-*.json")) == []
+    assert client.calls == 1
+
+    # The next run retries rather than replaying the failure.
+    good = _ScriptedClient(_ANSWER_FULL)
+    with patch.object(_real_genai, "Client", good):
+        retried = classify_segments_llm(sm, cache_dir=tmp_path)
+    assert good.calls == 1
+    assert "revenue_priority_of_payments" in _located(retried)
+
+
+def test_router_caches_a_genuine_no_match_answer(tmp_path) -> None:
+    """All-``-1`` is a reproducible answer, so it IS cached (unlike a failure)."""
+    from google import genai as _real_genai
+
+    sm = route_sections(_ROUTER_MD)
+    client = _ScriptedClient(_ANSWER_DEGRADED, _ANSWER_FULL)
+
+    with patch.object(_real_genai, "Client", client):
+        first = classify_segments_llm(sm, cache_dir=tmp_path)
+        second = classify_segments_llm(sm, cache_dir=tmp_path)
+
+    assert client.calls == 1
+    assert _located(first) == _located(second) == ["definitions"]
+
+
+def test_router_cache_recomputes_after_delete(tmp_path) -> None:
+    """Round-trip: deleting the entry returns the router to re-deriving it."""
+    from google import genai as _real_genai
+
+    sm = route_sections(_ROUTER_MD)
+    client = _ScriptedClient(_ANSWER_FULL)
+
+    with patch.object(_real_genai, "Client", client):
+        classify_segments_llm(sm, cache_dir=tmp_path)
+        entries = list(tmp_path.glob("section-router-*.json"))
+        assert len(entries) == 1
+        entries[0].unlink()
+        again = classify_segments_llm(sm, cache_dir=tmp_path)
+
+    assert client.calls == 2, "cache miss after delete did not re-ask the model"
+    assert "revenue_priority_of_payments" in _located(again)
+
+
+def test_router_force_refresh_reasks_and_overwrites(tmp_path) -> None:
+    """force_refresh busts the entry, matching every sibling extractor's cache."""
+    from google import genai as _real_genai
+
+    sm = route_sections(_ROUTER_MD)
+    client = _ScriptedClient(_ANSWER_FULL, _ANSWER_DEGRADED)
+
+    with patch.object(_real_genai, "Client", client):
+        classify_segments_llm(sm, cache_dir=tmp_path)
+        refreshed = classify_segments_llm(sm, cache_dir=tmp_path, force_refresh=True)
+        # The refreshed (degraded) answer is what a third, ordinary run replays.
+        third = classify_segments_llm(sm, cache_dir=tmp_path)
+
+    assert client.calls == 2
+    assert _located(refreshed) == ["definitions"]
+    assert _located(third) == ["definitions"]
+
+
+def test_router_use_cache_false_neither_reads_nor_writes(tmp_path) -> None:
+    from google import genai as _real_genai
+
+    sm = route_sections(_ROUTER_MD)
+    client = _ScriptedClient(_ANSWER_FULL, _ANSWER_DEGRADED)
+
+    with patch.object(_real_genai, "Client", client):
+        first = classify_segments_llm(sm, cache_dir=tmp_path, use_cache=False)
+        second = classify_segments_llm(sm, cache_dir=tmp_path, use_cache=False)
+
+    assert client.calls == 2
+    assert list(tmp_path.glob("section-router-*.json")) == []
+    assert _located(first) != _located(second)
+
+
+def test_router_cache_key_tracks_document_and_prompt_inputs() -> None:
+    """A different document — or a different prompt shape — is a different key.
+
+    The key is the hash of the rendered prompt, which is what makes it cover the
+    document content *and* the prompt revision without a hand-maintained
+    version constant. If the key ignored either, one deal's routing would be
+    served for another, or a prompt edit would keep serving stale routing.
+    """
+    from loanwhiz.extraction.section_router import _router_cache_key
+
+    other_md = _ROUTER_MD.replace("Definizioni", "Definiciones")
+    k_a = _router_cache_key("prompt-a", "gemini-2.5-flash")
+    k_b = _router_cache_key("prompt-b", "gemini-2.5-flash")
+    k_model = _router_cache_key("prompt-a", "gemini-2.5-pro")
+
+    assert k_a != k_b, "prompt text is not in the key"
+    assert k_a != k_model, "model id is not in the key"
+    assert k_a == _router_cache_key("prompt-a", "gemini-2.5-flash"), "key unstable"
+    assert route_sections(other_md).sections[0].title != (
+        route_sections(_ROUTER_MD).sections[0].title
+    )
+
+
+def test_cached_indices_are_revalidated_against_the_live_map(tmp_path) -> None:
+    """A stale index resolves to "not located", never to the wrong section.
+
+    The cache stores indices into the segmentation the prompt was rendered from,
+    so resolution must be bounds-checked against the map in hand rather than
+    trusted. A hand-written entry with an out-of-range index stands in for a
+    cache written against a different segmentation.
+    """
+    from google import genai as _real_genai
+
+    from loanwhiz.extraction.section_router import (
+        _router_cache_key,
+        _router_cache_path,
+    )
+
+    sm = route_sections(_ROUTER_MD)
+    client = _ScriptedClient(_ANSWER_FULL)
+    with patch.object(_real_genai, "Client", client):
+        classify_segments_llm(sm, cache_dir=tmp_path)
+
+    entry = next(iter(tmp_path.glob("section-router-*.json")))
+    stale = json.loads(entry.read_text())
+    stale["revenue_priority_of_payments"] = 999
+    entry.write_text(json.dumps(stale))
+
+    with patch.object(_real_genai, "Client", client):
+        result = classify_segments_llm(sm, cache_dir=tmp_path)
+
+    assert result["revenue_priority_of_payments"] is None
+    assert result["definitions"] is not None
+    assert _router_cache_path(_router_cache_key("x", "y"), tmp_path).parent == tmp_path
+
+
+def test_router_cache_corrupt_entry_falls_through_to_the_model(tmp_path) -> None:
+    """Unreadable JSON is a miss, not a crash and not a silent all-None."""
+    from google import genai as _real_genai
+
+    sm = route_sections(_ROUTER_MD)
+    client = _ScriptedClient(_ANSWER_FULL)
+    with patch.object(_real_genai, "Client", client):
+        classify_segments_llm(sm, cache_dir=tmp_path)
+
+    entry = next(iter(tmp_path.glob("section-router-*.json")))
+    entry.write_text("{not json")
+
+    with patch.object(_real_genai, "Client", client):
+        result = classify_segments_llm(sm, cache_dir=tmp_path)
+
+    assert client.calls == 2
+    assert "revenue_priority_of_payments" in _located(result)

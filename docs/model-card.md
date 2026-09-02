@@ -141,7 +141,9 @@ reasons for their gaps.
 
 6. **No version history.** The pipeline extracts from a single document version. Amendments, supplements, and side letters are not automatically reconciled with the base prospectus.
 
-7. **LLM non-determinism.** Gemini 2.5 Pro's outputs are non-deterministic. Two extraction runs on the same document may produce marginally different outputs. The pipeline mitigates this by scoping each LLM call to a specific section and using structured output schemas.
+7. **LLM non-determinism.** Gemini 2.5 Pro's outputs are non-deterministic. Two extraction runs on the same document may produce marginally different *verbatim* outputs. The pipeline mitigates this by scoping each LLM call to a specific section, using structured output schemas, and caching every LLM step's result on disk under `data/extraction_cache/`.
+
+    The **coverage** figures this card publishes are the part that is pinned rather than merely mitigated: `sections_found` and the `completeness_score` derived from it are reproducible across runs over an unchanged prospectus, because the section router — the last uncached LLM step — now replays its cached answer instead of re-asking the model (#445). Before that fix the per-deal completeness numbers in the table above could move between runs with no change in extraction quality, so a reader could not re-derive them. Passing `force_refresh=True` deliberately re-asks every cached step, including the router.
 
 ---
 
