@@ -75,7 +75,6 @@ _GREEN_LION_2024_1_FIXTURES: tuple[tuple[str, str], ...] = (
 )
 
 #: The second deal with committed published Notes & Cash ground truth (#440).
-GREEN_LION_2023_1_NAME = "Green Lion 2023-1 B.V."
 _GREEN_LION_2023_1_SEED_PATH = (
     _REPO_ROOT / "src" / "loanwhiz" / "data" / "deals" / "seed"
     / "green-lion-2023-1-bv.json"
