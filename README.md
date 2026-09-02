@@ -2,9 +2,9 @@
 
 Structured finance agent framework — SF-native primitives, deal model extraction, waterfall execution, and LangGraph orchestration. Built for the Barcelona AI Tinkerers Structured Finance Hackathon 2026 (demo day: 10 June).
 
-The same governed primitives run **end-to-end across 5 deals in 3 jurisdictions** — Dutch (Green Lion 2023-1 / 2024-1 / 2026-1), Italian (Leone Arancio RMBS 2023-1), and Spanish (Sol-Lion II RMBS) — and the model-driven waterfall engine has been **validated to the cent against a real published deal** (Green Lion 2024-1's own Notes & Cash Priority of Payments). What is *validated* vs merely *ran* vs *not-applicable* is tracked honestly in a per-cell capability matrix (`GET /capability-matrix` and the **Showcase** view) — the source of truth is **1 validated / 9 ran / 15 not-applicable**, never a blanket "validated everywhere". Extraction on the non-English prospectuses is honestly **partial** (see the data/model cards). The 8 primitives are also packaged as a governed **MCP server** (`mcp/`) for third-party consumption.
+The same governed primitives run **end-to-end across 5 deals in 3 jurisdictions** — Dutch (Green Lion 2023-1 / 2024-1 / 2026-1), Italian (Leone Arancio RMBS 2023-1), and Spanish (Sol-Lion II RMBS) — and the model-driven waterfall engine has been **validated to the cent against a real published deal** (Green Lion 2024-1's own Notes & Cash Priority of Payments). What is *validated* vs merely *ran* vs *not-applicable* is tracked honestly in a per-cell capability matrix (`GET /capability-matrix` and the **Showcase** view) — the source of truth is **1 validated / 12 ran / 12 not-applicable**, never a blanket "validated everywhere". A second deal (Green Lion 2023-1) now has a committed ground-truth answer key, so `GET /quality-matrix` **grades two deals** to the cent; extraction *coverage* on the non-English prospectuses is no longer thin, but coverage is not validation (see the data/model cards). The primitives are also packaged as a governed **MCP server** (`mcp/`) for third-party consumption.
 
-> **Honest boundaries.** For the current capability picture and the real limitations — e.g. "Projection" is a single-period stress sensitivity (not a forward CPR/CDR projection); deal comparison is aligned-display + median-deviation (not an automated "which deal is better" verdict — the relative-value screener is deferred, #307); IT/ES extraction is partial (Sol-Lion II's revenue waterfall is empty); the on-demand `/extract` job store is in-process/single-instance; a brand-new deal still needs a seed or a (long) extraction run before its Overview is populated — see [SYSTEM-STATUS.md](SYSTEM-STATUS.md).
+> **Honest boundaries.** For the current capability picture and the real limitations — e.g. extraction coverage is high on all five deals but only **one** is externally validated against a published report; "Projection" folds a real multi-period horizon but from *supplied* CPR/CDR assumptions, not speeds estimated from the deal's own tape; the on-demand `/extract` job store is in-process/single-instance; a brand-new deal still needs a seed or a (long) extraction run before its Overview is populated, with no inline cold-extract on first view; PDL/reserve proximity is computed but ungraded; and the repo has **no CI** — see [SYSTEM-STATUS.md](SYSTEM-STATUS.md).
 
 ---
 
@@ -40,7 +40,7 @@ CLIENTS
 CROSS-DEAL / FRAMEWORK SURFACE
       capability matrix  (primitives x 5 deals, validated/ran/not-applicable; /capability-matrix + Showcase)
       engine validation  (Green Lion 2024-1 Notes & Cash, to the cent; /validation)
-      governed MCP server  (mcp/ — the 8 primitives as MCP tools, evidence pack travels with each call)
+      governed MCP server  (mcp/ — the primitives as MCP tools, evidence pack travels with each call)
       governance surface  (FINOS evidence pack + direct-read tape provenance; /governance)
 ```
 
@@ -98,11 +98,11 @@ Then open http://localhost:3000. The sidebar groups the views into two sections 
 2. **Pool & Performance** — 3-period pool analytics and arrears / EPC / geographic distributions.
 3. **Waterfall** — the revenue priority cascade and per-tranche distributions for the latest period.
 4. **Compliance** — the live covenant monitor across reporting periods.
-5. **Projection** — a single-period **stress sensitivity**: the waterfall re-run on the base-case capital structure under base vs stressed collection factors, with Class A WAL. (This is a sensitivity, not a multi-month CPR/CDR projection — the dedicated forward `cashflow_projector` is not yet wired.)
+5. **Projection** — a **multi-period forward fold**: `POST /deal/{id}/project` takes a `months` horizon, generates a CPR / CDR / recovery / rate-shift stream per scenario, and folds it through the waterfall kernel one period at a time, returning a per-period series and Class A WAL. (The assumptions are *supplied* — from named presets or a caller override — not estimated from the deal's own tape history, so read it as "what the structure does under these assumptions", not as a forecast.)
 
 **Platform & Governance** — the reusable-framework / trust / cross-deal layer:
 
-6. **Showcase** — the primitives × 5 deals **capability matrix** (Dutch / Italian / Spanish RMBS), each cell `validated` / `ran` / `not-applicable` with the honest reason behind it (tally **1 validated / 9 ran / 15 not-applicable**).
+6. **Showcase** — the primitives × 5 deals **capability matrix** (Dutch / Italian / Spanish RMBS), each cell `validated` / `ran` / `not-applicable` with the honest reason behind it (tally **1 validated / 12 ran / 12 not-applicable**).
 7. **Validation** — the seasoned-deal proof: the waterfall engine reproduced against **Green Lion 2024-1's own published Notes & Cash Priority of Payments, to the cent** (revenue 11/11, redemption 4/4; Class A interest engine-computed).
 8. **Framework** — the typed primitive-registry catalogue.
 9. **Governance** — the FINOS evidence pack (audit trail, confidence, citations, `finos_compliant`) plus per-tape direct-read `data_source` provenance.
@@ -155,17 +155,24 @@ The framework is **data-driven by design**: adding a deal is *data*, not code. T
 >   engine reproduces **Green Lion 2024-1's own published Notes & Cash Priority
 >   of Payments to the cent** (revenue 11/11, redemption 4/4; Class A interest
 >   engine-computed from the capital structure, not the report). See the
->   **Validation** view / `engine_validation_harness.py`. Green Lion 2023-1 is
->   registered but has no Notes & Cash fixture yet, so its validation reports
->   `available=false` rather than a false pass.
-> - **Extraction is honestly partial on the non-English prospectuses.** Real
->   *cited* triggers and issuer covenants extract from the Italian deal
->   (completeness ≈ 0.38, no waterfall); the Spanish deal is minimal
->   (≈ 0.30). These are not clean extractions and are not presented as such.
+>   **Validation** view / `engine_validation_harness.py`.
+> - **A second deal is graded, but not through that view.** Green Lion 2023-1
+>   now has a committed ground-truth answer key (#440), so `GET /quality-matrix`
+>   reconciles its revenue and redemption Priority of Payments to the cent
+>   across all three published periods. The `/deal/{id}/validation` view still
+>   reports `available=false` for it — no validation *builder* is registered —
+>   so that endpoint understates what is actually graded.
+> - **Extraction coverage on the non-English prospectuses is no longer thin.**
+>   After the #438/#439 re-extractions both the Italian and Spanish seeds carry
+>   a full waterfall, real triggers and a real capital structure, at
+>   completeness 0.925. Their tranche sizes independently reconcile to the
+>   curated `deals.json` registry. But neither deal publishes a Notes & Cash
+>   report, so neither can be externally validated, and none of this is
+>   presented as validation.
 > - **The capability matrix is the source of truth.** `GET /capability-matrix`
 >   and the **Showcase** view tally every primitive × deal cell as
->   `validated` / `ran` / `not-applicable` — currently **1 validated / 9 ran /
->   15 not-applicable** — each with a real reason. Never read this as
+>   `validated` / `ran` / `not-applicable` — currently **1 validated / 12 ran /
+>   12 not-applicable** — each with a real reason. Never read this as
 >   "validated across all deals": exactly one cell is validated.
 
 Create `src/loanwhiz/data/deals.json` as a JSON object mapping each `deal_id` to a deal-context dict (same shape as the in-code `GREEN_LION`):
@@ -267,10 +274,24 @@ On success the model is materialised into the **same** runtime cache the cold-st
 | `waterfall_runner` | Executes the model-driven waterfall against a period's tape collections; returns computed distributions per tranche with full audit trace | 0.1.0 | Live |
 | `covenant_monitor` | Checks tape metrics against extracted trigger thresholds; tracks breach proximity over time | 0.1.0 | Live |
 | `audit_logger` | Wraps every primitive call with provenance: input hash, output, confidence score, citations, timestamp, model version, human review flag | 0.1.0 | Live |
-| `report_verifier` | Compares waterfall-computed distributions against investor-report actuals; flags discrepancies | 0.1.0 | Library-only |
-| `cashflow_projector` | Iterates the waterfall runner forward under base/stress scenarios (a future dedicated projector; the live `/project` route uses the waterfall runner as a single-period stress sensitivity) | 0.1.0 | Library-only |
+| `report_verifier` | Compares waterfall-computed distributions against investor-report actuals; flags discrepancies | 0.1.0 | Live |
+| `pool_stratification` | Multi-dimensional pool stratification (LTV × seasoning × region × rate-type) with concentration-limit checks and cross-period migration | 0.1.0 | Library-only |
+| `proximity_trend_monitor` | Projects covenant-trigger periods-to-breach from the proximity trend across the reporting series, ranked by time-to-breach | 0.1.0 | Library-only |
+| `portfolio_monitor` | Rolls per-deal covenant early-warning into one cross-deal watchlist, ranked by which deal breaches first | 0.1.0 | Library-only |
+| `relative_value_screener` | Ranks tranches across deals by structural relative value into a comparable scorecard | 1.0.0 | Library-only *(stale — see below)* |
 
-The same primitives are also packaged as a governed **MCP server** under [`mcp/`](mcp/README.md): each `live` primitive is exposed as an MCP tool whose input is the primitive's own typed Pydantic schema, and every call returns the full `PrimitiveResult` envelope (output **plus** the governance evidence pack — confidence, citations, audit entry). A `primitives://catalogue` resource lists all 8 registered primitives (live + library-only) with honest reachability, so a third party (e.g. the waafir platform, Claude Desktop) can consume the framework without rewriting any primitive.
+The `cashflow_projector` and `multi_period_waterfall_runner` rows this table used
+to carry were removed: both modules were **deleted** in the #276 engine collapse
+and no longer exist. (`mcp/README.md` still lists them and is not corrected here
+— see the PR's operator actions.)
+
+> **One known-stale cell.** `relative_value_screener` reports `library-only`,
+> but it is in fact reached by `GET /relative-value-screener` and by `GET
+> /compare` (which returns its scorecard and a ranked verdict). The registry
+> metadata has not been updated to match; the reachability column above mirrors
+> `GET /primitives` verbatim rather than silently disagreeing with it.
+
+The same primitives are also packaged as a governed **MCP server** under [`mcp/`](mcp/README.md): each `live` primitive is exposed as an MCP tool whose input is the primitive's own typed Pydantic schema, and every call returns the full `PrimitiveResult` envelope (output **plus** the governance evidence pack — confidence, citations, audit entry). A `primitives://catalogue` resource lists every registered primitive (live + library-only) with its reachability, so a third party (e.g. the waafir platform, Claude Desktop) can consume the framework without rewriting any primitive. `GET /primitives` is the source of truth for what is registered and how it is reached.
 
 ---
 
@@ -278,7 +299,7 @@ The same primitives are also packaged as a governed **MCP server** under [`mcp/`
 
 **Green Lion 2026-1** — the primary demo deal: a publicly available structured finance deal package built around a synthetic Dutch RMBS (~EUR 1bn pool). The deal reports **three monthly ESMA Annex 2 loan tapes** from `Algoritmica/green-lion-2026`: February, March, and April 2026, accompanied by the prospectus PDF (Green Lion 2026-1 B.V.) and 3 monthly investor reports. January 2026 (`202601`) is an intentional gap in the chronology.
 
-**The full deal set — 5 deals across 3 jurisdictions.** Alongside 2026-1, the registry (`src/loanwhiz/data/deals.json`) carries four more deals the *same* primitives run on end-to-end: the seasoned Dutch deals **Green Lion 2023-1** and **2024-1** (the latter is the engine's to-the-cent validation target), the Italian **Leone Arancio RMBS 2023-1 S.r.l.**, and the Spanish **Sol-Lion II RMBS Fondo de Titulización**. Extraction completeness is honest per deal — clean on the Dutch prospectuses, **partial on the Italian (≈ 0.38, cited triggers but no waterfall) and minimal on the Spanish (≈ 0.30)**. The capability matrix (`/capability-matrix`, Showcase view) is the per-deal source of truth. See [docs/data-card.md](docs/data-card.md) and [docs/model-card.md](docs/model-card.md) for the full per-deal breakdown.
+**The full deal set — 5 deals across 3 jurisdictions.** Alongside 2026-1, the registry (`src/loanwhiz/data/deals.json`) carries four more deals the *same* primitives run on end-to-end: the seasoned Dutch deals **Green Lion 2023-1** and **2024-1** (the latter is the engine's to-the-cent validation target), the Italian **Leone Arancio RMBS 2023-1 S.r.l.**, and the Spanish **Sol-Lion II RMBS Fondo de Titulización**. Extraction completeness is honest per deal and, after the #438/#439 re-extractions, is **0.925 on both the Italian and the Spanish** prospectuses — comparable to the Dutch deals. That is *coverage*: neither publishes a Notes & Cash report, so neither can be externally validated. The capability matrix (`/capability-matrix`, Showcase view) is the per-deal source of truth. See [docs/data-card.md](docs/data-card.md) and [docs/model-card.md](docs/model-card.md) for the full per-deal breakdown.
 
 > **A note on the other Green Lion datasets.** `Algoritmica/green-lion-2024-2025` (and the real ING `green-lion-2023-1` / `green-lion-2024-1` deals) are **separate deals**, not Green Lion 2026-1's pre-history — different deals' loan tapes are not interchangeable (the 2024-2025 dataset is a ~EUR 139bn pool, ~130× this deal). They are therefore not chained into 2026-1's `tape_urls`. Validating the engine against the real seasoned deals' published Notes & Cash reports is tracked separately.
 

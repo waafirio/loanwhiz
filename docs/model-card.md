@@ -64,7 +64,7 @@ The following uses are explicitly **out of scope** and are not supported:
 - **Legal advice or legal document interpretation.** The pipeline extracts text and structure; it does not provide legal analysis or legal opinions.
 - **Investment decisions.** Extracted deal models are analytical inputs, not investment recommendations. The pipeline does not assess creditworthiness, risk appetite, or suitability.
 - **Regulatory compliance certification.** The pipeline is not a compliance tool. Outputs have not been validated against any regulatory reporting standard. They must not be used as evidence of regulatory compliance without independent review.
-- **Cross-deal generalisation without validation.** The pipeline *runs* on 5 deals across 3 jurisdictions, but extraction quality varies and only the downstream waterfall engine on **Green Lion 2024-1** is validated to the cent against external published actuals. Extracted outputs on every other deal — especially the partially-extracted Italian (≈ 0.38) and Spanish (≈ 0.30) prospectuses — must be treated as unvalidated until independently verified.
+- **Cross-deal generalisation without validation.** The pipeline *runs* on 5 deals across 3 jurisdictions, but only the downstream waterfall engine on **Green Lion 2024-1** is validated to the cent against external published actuals (**Green Lion 2023-1** is additionally graded to the cent by `GET /quality-matrix` against its own committed answer key). Extracted outputs on every other deal must be treated as unvalidated until independently verified — the Italian and Spanish prospectuses now extract at high *coverage* (0.925), but neither publishes a Notes & Cash report, so no published actuals exist to check them against.
 - **Autonomous decision-making.** The pipeline is a decision-support tool. No output should be used to take automated financial action without human review.
 
 ---
@@ -115,46 +115,62 @@ where it is partial.
 | Green Lion 2023-1 B.V. | Netherlands | **1.0** | Full waterfall (revenue/redemption/post-enforcement), 4 triggers |
 | Green Lion 2024-1 B.V. | Netherlands | **0.925** | Full waterfall, 3 triggers (the deal the downstream engine validates to the cent) |
 | Green Lion 2026-1 B.V. | Netherlands | **0.75** | Full waterfall, 3 triggers, **0 definitions** |
-| Leone Arancio RMBS 2023-1 S.r.l. | Italy | **≈ 0.38** | Real *cited* triggers (performance trigger, PDL shortfall) + issuer covenants; **no waterfall** |
-| Sol-Lion II RMBS Fondo de Titulización | Spain | **≈ 0.30** | Minimal — **no waterfall, no triggers** resolved into the model |
+| Leone Arancio RMBS 2023-1 S.r.l. | Italy | **0.925** | Full waterfall (23/23/12 steps), 3 triggers, 3 note classes (A1 480m / A2 6,600m / J 920m) |
+| Sol-Lion II RMBS Fondo de Titulización | Spain | **0.925** | Full waterfall (20/15/12 steps), 3 triggers, 8 note classes (A1–A6, B, C) |
+
+The Italian and Spanish figures are the **post-#438/#439 re-extractions**; the
+earlier "≈ 0.38 / ≈ 0.30, no waterfall" entries described seeds that predated
+those fixes. Note that Green Lion 2026-1's stored `0.75` is itself a
+point-in-time artifact recorded before the completeness formula changed — under
+the current `_completeness_score` that same seed scores `0.925`. A stored score
+is what an extraction run reported, not a live measurement.
 
 These map directly onto the capability matrix's `validated` / `ran` /
 `not-applicable` cells (`GET /capability-matrix`, Showcase view): the cross-deal
 story is "the same governed primitives ran on every deal", **not** "every deal was
 validated". Exactly one cell is validated (Green Lion 2024-1's engine vs. its own
-published Notes & Cash); the non-English deals are honest `ran` cells with real
-reasons for their gaps.
+published Notes & Cash). **Higher completeness on the non-English deals is
+coverage, not correctness** — it means the extractor found and populated the
+expected sections, and their tranche sizes independently reconcile to the
+curated `deals.json` registry, but neither deal publishes a Notes & Cash report,
+so neither can be externally validated. They remain honest `ran` cells.
 
 ---
 
 ## Limitations
 
-1. **Partial cross-deal coverage.** The pipeline runs on 5 deals across 3 jurisdictions (Dutch / Italian / Spanish RMBS), but extraction completeness ranges from clean (Dutch, 0.75–1.0) to partial (Italian ≈ 0.38) to minimal (Spanish ≈ 0.30), and only Green Lion 2024-1 is externally validated (engine to the cent). Other asset classes (CLOs, CMBS, US RMBS, ABS) are untested. The capability matrix (1 validated / 9 ran / 15 not-applicable) is the honest source of truth — never read the coverage as "validated across all deals".
+1. **Coverage is broad; external validation is not.** The pipeline runs on 5 deals across 3 jurisdictions (Dutch / Italian / Spanish RMBS) and extraction completeness is now 0.75–1.0 across all of them, but only **Green Lion 2024-1** is externally validated (engine to the cent against its published Notes & Cash). **Green Lion 2023-1** is also graded to the cent by `GET /quality-matrix` against a committed answer key (#440) — two deals graded, one `validated` capability cell. The Italian and Spanish deals publish no Notes & Cash report, so they cannot be graded at all without inventing ground truth, and none is invented. Other asset classes (CLOs, CMBS, US RMBS, ABS) are untested. The capability matrix (1 validated / 12 ran / 12 not-applicable) is the honest source of truth — never read the coverage as "validated across all deals".
 
 2. **Cross-reference resolution.** Prospectus definitions frequently reference other defined terms. The pipeline resolves one level of cross-reference; deeply nested chains (term A → term B → term C) may not resolve fully and require human review.
 
 3. **Table extraction from scanned PDFs.** Docling's table extraction degrades significantly on scanned (image-based) PDFs. Deal models extracted from scanned documents should be treated as low-confidence and reviewed line-by-line.
 
-4. **Jurisdiction- and language-specific extraction.** Extraction is strongest on the Dutch (English-language) prospectuses. The Italian (Leone Arancio) and Spanish (Sol-Lion II) prospectuses extract only partially — cited triggers at best, no waterfall — confirming that civil-law drafting style and non-English source text materially degrade extraction quality. The Definitions section resolves 0 terms even on the Dutch deals.
+4. **Document *structure*, not language, was the real extraction constraint.** This card previously reported that the Italian and Spanish prospectuses extracted only partially and read that as evidence that civil-law drafting and non-English source text degrade extraction quality. That conclusion was **wrong**, and the #438/#439 re-extractions falsified it: both deals now extract a full waterfall at 0.925 completeness with no change to the language handling. The actual causes were structural defects in the extractor — Docling emitting every heading at one markdown level (so the section router never reached the priority-of-payments body), a tranche parser that only read markdown pipe tables when the document stated its capital structure in prose, and a note-class alphabet capped at A–G that made a real Class J unseeable. Treat a thin extraction as a routing/parsing question first, not as a fact about the document or its language. The Definitions section still resolves 0 terms even on the Dutch deals.
 
 5. **Conditional waterfall logic.** Complex conditional branches in payment waterfalls (e.g. "subject to the PDL being zero") are extracted as natural language strings rather than executable boolean logic unless explicitly parsed.
 
 6. **No version history.** The pipeline extracts from a single document version. Amendments, supplements, and side letters are not automatically reconciled with the base prospectus.
 
-7. **LLM non-determinism.** Gemini 2.5 Pro's outputs are non-deterministic. Two extraction runs on the same document may produce marginally different outputs. The pipeline mitigates this by scoping each LLM call to a specific section and using structured output schemas.
+7. **LLM non-determinism.** Gemini 2.5 Pro's outputs are non-deterministic. Two extraction runs on the same document may produce marginally different outputs. The pipeline mitigates this by scoping each LLM call to a specific section and using structured output schemas. This reaches the reported numbers: the LLM section router can resolve a different `sections_found` — and hence a different completeness — for the same document, and its caches are gitignored, so **a clean checkout is not reproducible** even though repeated runs on one machine are.
 
 ---
 
 ## Confidence Scoring
 
 Every extraction primitive produces a confidence score in `[0.0, 1.0]`. The
-score is a **real coverage metric** over what was actually extracted, not a
-fixed weighted blend:
+score is a **real coverage metric** over what was actually extracted — never an
+LLM self-rating:
 
 | Signal | Computed as | What it measures |
 |---|---|---|
-| **Deal-model completeness** | `‖expected ∩ found‖ / ‖expected‖` (`extraction/assembler.py`) | Fraction of the expected key sections (waterfall, definitions, triggers, tranches) located and extracted. On Green Lion 2026-1 this is **0.75** (3 of 4; the definitions graph extracts 0 terms). |
+| **Deal-model completeness** | a weighted blend of four coverage dimensions — `0.30·sections + 0.40·waterfalls + 0.15·triggers + 0.15·tranches` (`_completeness_score`, `extraction/assembler.py`) | `sections`: fraction of the expected key sections found. `waterfalls`: fraction of the expected waterfall types that extracted **≥ 1 step**. `triggers` / `tranches`: 1.0 when the extraction produced any, else 0.0. |
 | **Per-waterfall coverage** | `non_empty_recipients / len(steps)` (`extraction/waterfall_extractor.py`) | Fraction of a waterfall's ordered steps that resolved to a concrete recipient. |
+
+The `waterfalls` dimension is why the score is a blend and not the older plain
+section-header ratio: a model could locate every expected section header and
+still extract **zero** steps from them, scoring `1.0` while being structurally
+empty. Crediting only waterfalls that produced at least one step is what makes
+that case score below 1.0.
 
 The pipeline does **not** apply a `0.40·coverage + 0.30·resolution +
 0.30·llm_self_score` weighting, and does not fold an LLM self-rating into the
