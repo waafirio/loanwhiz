@@ -647,7 +647,10 @@ def _seniority_for(label: str) -> int:
     it went unnoticed because tables already list classes senior-first, which
     is what a no-op stable sort preserves.
     """
-    label = re.sub(r"^\s*(?:Class|Series)\s+", "", label, flags=re.IGNORECASE)
+    # Also strips "Tranche"/"Note" and a plural/space-less form, so a label the
+    # A-G table parser never emits but a prose parser might ("Notes B", "ClassC")
+    # cannot reintroduce the same misread (#438).
+    label = re.sub(r"^\s*(?:class|series|tranche|note)s?\b\s*", "", label, flags=re.IGNORECASE)
     m = re.search(r"([A-Za-z])\s*(\d*)", label)
     if not m:
         return 0
@@ -690,6 +693,51 @@ _RATE_RE = re.compile(
 _RATING_RE = re.compile(r"\b(AAA|Aaa|AA[+-]?|A[+-]?|BBB[+-]?|BB[+-]?|B[+-]?|NR|Unrated)\b")
 
 
+# A *tranche size* amount. Deliberately stricter than ``_AMOUNT_RE``: it demands
+# either an explicit currency marker ("EUR 53,100,000", "€ 4,696,500,000") or
+# grouped thousands ("4,696,500,000"). A bare small integer is NOT a size (#438).
+# This is what stops a cross-reference table -- e.g. Sol-Lion's §4.6.3 "Summary
+# of the priority of the payment of interest", whose cells hold the rank of each
+# class in the waterfall (3, 5, 7, 9) -- from being read as a capital structure
+# of EUR 5 / EUR 7 / EUR 9 notes. It is also an independent guard on the "Class O
+# = 42 EUR" shape (#397): a stray "42" no longer parses as a size at all.
+_TRANCHE_AMOUNT_RE = re.compile(
+    r"(?:€|EUR)\s*([0-9][0-9.,]*[0-9]|[0-9])"      # explicit currency marker
+    r"|([0-9]{1,3}(?:[.,][0-9]{3})+)"                 # grouped thousands
+    r"|([0-9]{7,})",                                  # >= 1,000,000, unpunctuated
+    re.IGNORECASE,
+)
+
+# A currency-denominated amount anywhere in a table. Presence of one is what
+# marks a pipe table as a capital structure when its header carries no
+# "principal"/"amount"/"nominal" word at all -- the real Sol-Lion cover-page
+# table is headed only by the rating agencies ("| | | | FITCH | DBRS |") (#438).
+_CURRENCY_CELL_RE = re.compile(r"(?:€|EUR)\s*[0-9]", re.IGNORECASE)
+
+
+def _normalise_amount(raw: str) -> float | None:
+    """Turn a matched amount string into a float, or ``None``."""
+    stripped = raw.replace(".", "").replace(",", "")
+    if stripped.isdigit():
+        return float(stripped)
+    try:
+        return float(raw.replace(",", ""))
+    except ValueError:
+        return None
+
+
+def _parse_tranche_size(text: str) -> float | None:
+    """Parse a tranche's size from a cell, requiring a currency-denominated amount.
+
+    Returns ``None`` for a bare integer, so a rank/ordinal cell can never become
+    a note size (#438).
+    """
+    m = _TRANCHE_AMOUNT_RE.search(text)
+    if not m:
+        return None
+    return _normalise_amount(m.group(1) or m.group(2) or m.group(3))
+
+
 def _parse_euro_amount(text: str) -> float | None:
     """Parse the first EUR amount in *text* into a float, or ``None``."""
     m = _AMOUNT_RE.search(text)
@@ -726,7 +774,17 @@ def _parse_tranche_table(markdown_text: str) -> list[dict]:
         flat = "\n".join(" ".join(row) for row in table)
         if not _CLASS_RE.search(flat):
             continue
-        if not re.search(r"principal|amount|nominal", flat, re.IGNORECASE):
+        # A table qualifies on a "principal"/"amount"/"nominal" header word OR on
+        # holding currency-denominated amounts. The keyword alone was both too
+        # narrow and too broad on the real Sol-Lion prospectus (#438): it
+        # REJECTED the actual cover-page capital table (headed only "| | | |
+        # FITCH | DBRS |", amounts written "€ 4,696,500,000") and ACCEPTED a
+        # §4.6.3 cross-reference table headed "Principal" whose cells are
+        # waterfall ranks, not money.
+        if not (
+            re.search(r"principal|amount|nominal", flat, re.IGNORECASE)
+            or _CURRENCY_CELL_RE.search(flat)
+        ):
             continue
 
         tranches = _tranches_from_class_column_table(table)
@@ -799,7 +857,7 @@ def _tranches_from_class_column_table(table: list[list[str]]) -> list[dict]:
             cell = row[col]
             if re.search(r"principal|amount|nominal", label):
                 if attrs[name]["size_eur"] is None:
-                    attrs[name]["size_eur"] = _parse_euro_amount(cell)
+                    attrs[name]["size_eur"] = _parse_tranche_size(cell)
             elif "rating" in label:
                 m = _RATING_RE.search(cell)
                 if m and attrs[name]["rating"] is None:
@@ -838,7 +896,7 @@ def _tranches_from_class_row_table(table: list[list[str]]) -> list[dict]:
         # Exclude the cell holding the "Class X" label so its letter isn't
         # misread as a rating (e.g. "Class A Notes" -> rating "A").
         attr_cells = [c for c in row if not _CLASS_RE.search(c)]
-        size = next((a for a in (_parse_euro_amount(c) for c in attr_cells) if a), None)
+        size = next((a for a in (_parse_tranche_size(c) for c in attr_cells) if a), None)
         rating = next(
             (r.group(1) for c in attr_cells if (r := _RATING_RE.search(c))), None
         )

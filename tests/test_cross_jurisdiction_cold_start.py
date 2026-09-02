@@ -62,9 +62,16 @@ client = TestClient(app)
 
 # The two non-Dutch deals and their jurisdiction, plus the per-section extracted
 # step counts the committed seeds carry today. These counts ARE the contract:
-# they encode the honest extraction reality (IT richer than ES; ES has no
-# enumerable revenue PoP), so a re-seed that silently inflated or deleted steps
-# trips this test.
+# a re-seed that silently inflated or deleted steps trips this test.
+#
+# The ES counts were refreshed in #438. The previous "revenue: 0" was NOT an
+# honest extraction fact about the prospectus -- it was an extractor defect.
+# Docling emits every heading of the Sol-Lion document at one markdown level, so
+# the descendant-span walk stopped at the next heading and every candidate
+# section presented to the LLM router as an empty stub; the router picked
+# §3.4.7.4 "Liquidation Priority of Payments" for revenue on its title alone and
+# found no steps there. The real Pre-Enforcement cascade lives in §3.4.7.2.2
+# "Application"; its length is pinned below, not restated here.
 _COLD_START_DEALS = {
     "leone-arancio-2023-1": {
         "jurisdiction": "Italy",
@@ -77,9 +84,9 @@ _COLD_START_DEALS = {
     },
     "sol-lion-ii": {
         "jurisdiction": "Spain",
-        "revenue": 0,  # honest: no enumerable revenue-PoP steps extracted
-        "redemption": 8,
-        "post_enforcement": 7,
+        "revenue": 20,
+        "redemption": 15,
+        "post_enforcement": 12,
     },
 }
 
@@ -191,8 +198,8 @@ def test_extracted_waterfall_executes_through_generalised_engine(
 
     For each section the extracted steps drive ``interpret`` to a deterministic,
     governed 1:1 audit trace (one StepResult per extracted step), with the
-    extracted ordering preserved. ES's empty revenue PoP yields an empty trace —
-    the honest 0-step fact, not an error.
+    extracted ordering preserved. Every section of both deals now carries steps,
+    so each yields a non-empty governed trace.
     """
     model = _model_for(deal_id)
     for section in _WATERFALL_SECTIONS:
@@ -207,27 +214,40 @@ def test_extracted_waterfall_executes_through_generalised_engine(
         ]
 
 
-def test_spanish_revenue_pop_is_honestly_empty() -> None:
-    """ES has 0 enumerable revenue-PoP steps — an honest empty trace, not a fail.
+def test_spanish_revenue_pop_comes_from_the_pre_enforcement_section() -> None:
+    """ES revenue is the §3.4.7.2.2 Pre-Enforcement cascade, not an empty trace.
 
-    The Spanish prospectus income section yielded no enumerable steps. We assert
-    the empty fact directly so a future re-seed that silently fabricated revenue
-    steps would trip here (the #193 honesty guard).
+    This assertion is the inverse of the one it replaces (#438). The seed used to
+    pin ``revenue == []`` as an honest extraction fact; it was an extractor
+    defect. The guard is kept but pointed at the truth: the cascade is sourced
+    from the Pre-Enforcement "Application" section, and its senior-most step is
+    the Management Company's expenses — so a regression back to the Liquidation
+    section (or to zero steps) trips here.
     """
     model = _model_for("sol-lion-ii")
-    assert _extracted_steps(model, "revenue") == []
+    steps = _extracted_steps(model, "revenue")
+    assert len(steps) == _COLD_START_DEALS["sol-lion-ii"]["revenue"]
+    # Sourced from the Pre-Enforcement application section, NOT the Liquidation
+    # one (§3.4.7.4), which is what the router used to pick.
+    source = model.waterfalls["revenue"].get("source_section", "")
+    assert "3.4.7.2.2" in source, source
+    # The senior-most step of this deal's Pre-Enforcement cascade.
+    assert steps[0]["recipient"] == "management_company_expenses"
     specs, execution = _cold_start_section(model, "revenue")
-    assert specs == []
-    assert execution.steps == []
-    assert execution.total_distributed == 0.0
+    assert len(specs) == len(execution.steps) == len(steps)
 
 
-def test_italian_waterfall_is_the_richest_cold_start() -> None:
-    """IT carries the fullest extracted cascade — all three sections non-empty.
+def test_italian_waterfall_cold_starts_every_section() -> None:
+    """IT carries a non-empty extracted cascade in all three sections.
 
-    Pins the honest asymmetry the seeds encode: the Italian extraction is richer
-    than the Spanish one (which has no revenue PoP), and the engine cold-starts
-    all of it.
+    Formerly named "…is_the_richest_cold_start". That comparative rested on the
+    ES revenue PoP being empty, which was an extractor defect rather than a fact
+    about the prospectus (#438); with both seeds refreshed, neither deal is
+    stably the richer one and pinning an ordering between them would assert
+    something no reader re-derives. The property actually under test — every IT
+    section cold-starts through the engine — is unchanged, so only the
+    comparative is dropped. The per-section counts stay pinned in
+    ``_COLD_START_DEALS``.
     """
     model = _model_for("leone-arancio-2023-1")
     for section in _WATERFALL_SECTIONS:
@@ -333,30 +353,22 @@ def test_thin_es_model_does_not_fabricate_report_path_cold_start() -> None:
     """The Spanish deal's thin extracted model cannot silently produce a
     report-driven cold-start.
 
-    ``ReportAdapter.from_deal_model`` requires both a ``revenue`` and a
-    ``redemption`` waterfall in the extracted model. The Sol-Lion II seed has an
-    empty revenue PoP (0 steps) — and the report path additionally needs an
-    actual Notes & Cash report, which this deal does not ship. The adapter seam
-    therefore refuses to manufacture a seed/distribution from nothing: building
-    on a model without both waterfalls raises, and ``to_inputs`` on an empty
-    report raises a deal-named ``ValueError`` — the honest cold-start boundary at
-    the adapter layer, complementing the engine-level not_evaluable trace and the
-    API-level 422 above.
+    The report path needs an actual Notes & Cash report, which this deal does not
+    ship. The adapter seam therefore refuses to manufacture a seed/distribution
+    from nothing: ``to_inputs`` on an empty report raises a deal-named
+    ``ValueError`` — the honest cold-start boundary at the adapter layer,
+    complementing the engine-level not_evaluable trace and the API-level 422
+    above.
+
+    The "thin model" half of this test's original premise (an empty ES revenue
+    PoP) was an extractor defect and is gone (#438); the deal still ships no
+    investor report, so the boundary this test actually guards is unchanged.
     """
     from loanwhiz.primitives import ReportAdapter
     from loanwhiz.primitives.notes_cash_parser import NotesCashReport
 
-    model = _model_for("sol-lion-ii")
-    # The ES model has no enumerable revenue PoP (and ships no redemption either
-    # in the report-path shape the adapter consumes), so the adapter refuses to
-    # build rather than fabricating an empty waterfall.
-    revenue = model.waterfalls.get("revenue")
-    assert not (isinstance(revenue, dict) and revenue.get("steps")), (
-        "ES revenue PoP unexpectedly non-empty — the thin-model premise changed"
-    )
-
-    # Even given a (synthetic) adapter for it, a report-driven cold-start with no
-    # report periods fails honestly with the deal named — it does not invent a seed.
+    # A report-driven cold-start with no report periods fails honestly with the
+    # deal named — it does not invent a seed.
     adapter = ReportAdapter(revenue_steps=[], redemption_steps=[])
     with pytest.raises(ValueError, match="sol-lion"):
         adapter.to_inputs(NotesCashReport(deal_name="sol-lion-ii", periods=[]))

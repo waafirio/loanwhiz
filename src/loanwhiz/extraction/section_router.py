@@ -11,6 +11,54 @@ import re
 from dataclasses import dataclass, field
 
 
+
+# ---------------------------------------------------------------------------
+# Heading-number hierarchy (#438)
+# ---------------------------------------------------------------------------
+#
+# Docling frequently emits *every* heading of a prospectus at the same markdown
+# level (all ``##``) regardless of its logical depth: in the Sol-Lion II (ES)
+# prospectus ``3.4.7.2`` and its child ``3.4.7.2.2`` are both level 2. The
+# markdown level therefore carries no hierarchy at all, and a descendant span
+# computed from levels alone stops at the very next heading — so a parent's
+# span equals its own heading stub and the #396 payment-list widening became a
+# no-op by construction.
+#
+# When a heading is numbered, the number IS the hierarchy: ``3.4.7.2.2`` is a
+# descendant of ``3.4.7.2``. Reading it back is what lets the descendant span
+# cross same-level children.
+_SECTION_NUMBER_RE = re.compile(r"^\s*(\d+(?:\.\d+)*)\.?(?:\s|$)")
+
+
+def _section_number(title: str) -> tuple[int, ...] | None:
+    """Return a heading's leading dotted number as a tuple, else ``None``.
+
+    ``"3.4.7.2.2. Application"`` -> ``(3, 4, 7, 2, 2)``; an unnumbered title
+    (``"Application of Available Funds"``) -> ``None``.
+    """
+    m = _SECTION_NUMBER_RE.match(title)
+    if not m:
+        return None
+    try:
+        return tuple(int(part) for part in m.group(1).split("."))
+    except ValueError:  # pragma: no cover — regex already constrains to digits
+        return None
+
+
+def _is_numeric_descendant(child_title: str, parent_number: tuple[int, ...] | None) -> bool:
+    """True when ``child_title``'s number strictly extends ``parent_number``.
+
+    ``3.4.7.2.2`` is a descendant of ``3.4.7.2``; ``3.4.7.3`` is not, and neither
+    is an unnumbered title. Strict: a section is not its own descendant.
+    """
+    if not parent_number:
+        return False
+    child_number = _section_number(child_title)
+    if child_number is None or len(child_number) <= len(parent_number):
+        return False
+    return child_number[:len(parent_number)] == parent_number
+
+
 # ---------------------------------------------------------------------------
 # Data model
 # ---------------------------------------------------------------------------
@@ -87,8 +135,17 @@ class SectionMap:
             # Section not part of this map — fall back to its own narrow end.
             return section.end_char
 
+        # A following heading ends the span only when it is a sibling-or-shallower
+        # heading *and* its number does not mark it as a child of this section.
+        # The numeric clause is what rescues a document whose headings are all
+        # emitted at one markdown level (#438): without it, a same-level child
+        # like ``3.4.7.2.2`` terminates ``3.4.7.2``'s span immediately. It can
+        # only ever *widen* the span — a heading that is not a numeric
+        # descendant still terminates exactly as before — so an unnumbered or
+        # genuinely-nested document is unaffected.
+        parent_number = _section_number(section.title)
         for s in self.sections[idx + 1:]:
-            if s.level <= section.level:
+            if s.level <= section.level and not _is_numeric_descendant(s.title, parent_number):
                 return s.start_char
         return len(self.full_text)
 

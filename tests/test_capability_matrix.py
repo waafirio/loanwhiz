@@ -164,11 +164,12 @@ def test_sol_lion_spanish_is_mostly_not_applicable() -> None:
     matrix = _real_matrix()
     deal_id = "sol-lion-ii"
     cells = {c.capability_key: c.state for c in matrix.cells if c.deal_id == deal_id}
-    # After the #368 re-extraction the Spanish seed carries a real extracted
-    # trigger and an executable redemption/post-enforcement waterfall cascade, so
-    # covenant_monitoring + waterfall_execution run. The tape-driven capabilities
-    # stay not-applicable (no published loan tapes), so the deal is still *mostly*
-    # not-applicable — but no longer a uniform wall of N/A.
+    # After the #438 re-extraction the Spanish seed carries three real extracted
+    # triggers and an executable cascade in ALL THREE waterfall sections
+    # (revenue included, which #368's seed lacked), so covenant_monitoring +
+    # waterfall_execution run. The tape-driven capabilities stay not-applicable
+    # (no published loan tapes), so the deal is still *mostly* not-applicable —
+    # but no longer a uniform wall of N/A.
     assert cells["covenant_monitoring"] == STATE_RAN
     assert cells["waterfall_execution"] == STATE_RAN
     assert cells["tape_analytics"] == STATE_NOT_APPLICABLE

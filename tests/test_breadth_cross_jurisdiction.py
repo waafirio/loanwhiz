@@ -53,7 +53,7 @@ _COVENANT_RUN_DEALS = {
     "green-lion-2023-1",
     "green-lion-2024-1",
     "leone-arancio-2023-1",  # Italy — real extracted triggers (#274 refreshed seed)
-    "sol-lion-ii",  # Spain — real extracted trigger (#368 re-extraction)
+    "sol-lion-ii",  # Spain — real extracted triggers (#438 re-extraction)
 }
 # Every breadth deal now carries at least one extracted covenant trigger, so
 # none are covenant-N/A. (Kept as an explicit empty set so the parametrised N/A
