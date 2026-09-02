@@ -19,14 +19,29 @@ Green Lion 2024-1 B.V.  ->  green-lion-2024-1-bv.json
 `loanwhiz.primitives.notes_cash_parser._slug`.)
 
 A deal with no committed answer key resolves to `None` via `load_answer_key(...)`
-and the caller degrades honestly (no fabricated ground truth). The #429 backfill
-committed the first real key — `green-lion-2024-1-bv.json`, authored from Green
-Lion 2024-1's published Notes & Cash report via
-`DealAnswerKey.from_notes_cash_report(...)` — so `/quality-matrix` grades its
-revenue + redemption Priority-of-Payments to the cent. Only deals with genuine
-published ground truth get a key (the #193 honesty discipline): Green Lion 2024-1
-is the only deal today with committed Notes & Cash report fixtures, so it is the
-only committed key.
+and the caller degrades honestly (no fabricated ground truth). Two keys are
+committed, each authored from its deal's published quarterly Notes & Cash reports
+via `DealAnswerKey.from_notes_cash_report(...)`, so `/quality-matrix` grades both
+deals' revenue + redemption Priority-of-Payments to the cent:
+
+| key | source | issue |
+|---|---|---|
+| `green-lion-2024-1-bv.json` | Green Lion 2024-1's 3 published quarterly reports | #429 |
+| `green-lion-2023-1-bv.json` | Green Lion 2023-1's 3 published quarterly reports | #440 |
+
+**Only deals with genuine published ground truth get a key** (the #193 honesty
+discipline). The two Green Lion vintages above are the only deals in
+`DEAL_REGISTRY` carrying `notes_cash_report_urls`; Leone Arancio 2023-1 and
+Sol-Lion II publish investor reports but **no Notes & Cash report**, so there is
+nothing for `from_notes_cash_report(...)` to read and inventing a key for them is
+forbidden. They stay honestly `not-applicable` across every graded check.
+
+Authoring a key is offline and deterministic end to end — a `pypdf` text extract
+of the published PDF (committed under `tests/fixtures/notes_cash/`), the
+`notes_cash_parser` regex parser, then `from_notes_cash_report(...)`. No LLM, no
+Vertex, no network in the committed path. Never hand-edit a key: regenerate it
+from the fixtures, which is what the faithfulness regressions in
+`tests/test_quality_harness.py` assert.
 
 ## Format
 
