@@ -8,10 +8,13 @@ full below). The deal registry additionally carries **four more deals across two
 further jurisdictions** that the *same* primitives run on end-to-end — see
 [The full deal set](#the-full-deal-set--5-deals-3-jurisdictions) for the honest
 per-deal breakdown. "Runs on" is not "validated against": the only deal validated
-to the cent against external published actuals is **Green Lion 2024-1**, and
-extraction on the non-English prospectuses is **partial**. The capability matrix
+to the cent against external published actuals is **Green Lion 2024-1** (a
+second, **Green Lion 2023-1**, is graded to the cent against a committed answer
+key), and while extraction *coverage* on the non-English prospectuses is now
+high, neither of those deals publishes a report to validate against. The
+capability matrix
 (`GET /capability-matrix`, Showcase view) is the source of truth, tallying
-**1 validated / 9 ran / 15 not-applicable**.
+**1 validated / 12 ran / 12 not-applicable**.
 
 ---
 
@@ -49,25 +52,32 @@ Green Lion 2026-1 is the headline demo deal, but the deal registry
 carries **five deals across three jurisdictions** that the *unmodified* pipeline
 runs on end-to-end. This demonstrates the primitives are deal-agnostic — but
 **"the pipeline ran" is reported separately from "the output was validated"**,
-and extraction completeness is stated honestly per deal (it is *not* clean
-everywhere). The capability matrix (`GET /capability-matrix`, Showcase view) is
-the per-cell source of truth: **1 validated / 9 ran / 15 not-applicable**.
+and extraction completeness is stated honestly per deal. High completeness is a
+*coverage* measure over what the extractor populated; it is not a claim that the
+extracted numbers are correct. The capability matrix (`GET /capability-matrix`, Showcase view) is
+the per-cell source of truth: **1 validated / 12 ran / 12 not-applicable**.
 
 | Deal | Jurisdiction | Documents | Extraction completeness | What extracted | Validation |
 |---|---|---|---|---|---|
 | **Green Lion 2026-1 B.V.** | Netherlands | Prospectus (real) + 3 synthetic Annex 2 tapes + 3 investor reports (real) | **0.75** | Full waterfall (revenue/redemption/post-enforcement), 3 triggers, 0 definitions | Collateral reconciled to investor reports to the cent; liabilities prospectus-derived & invariant-checked (no in-window Notes & Cash) |
 | **Green Lion 2024-1 B.V.** | Netherlands | Prospectus (real) + investor reports + **quarterly Notes & Cash (real)** | **0.925** | Full waterfall, 3 triggers | **Validated to the cent** — engine reproduces the published Notes & Cash Priority of Payments (revenue 11/11, redemption 4/4; Class A interest engine-computed). This is the single `validated` cell. |
-| **Green Lion 2023-1 B.V.** | Netherlands | Prospectus (real) + investor reports + Notes & Cash | **1.0** | Full waterfall, 4 triggers | Registered; **no Notes & Cash fixture committed yet**, so the validation endpoint returns `available=false` with an honest note rather than a false pass |
-| **Leone Arancio RMBS 2023-1 S.r.l.** | Italy | Prospectus (real, Italian) + investor reports | **≈ 0.38** | **Partial** — real *cited* triggers (performance trigger, PDL shortfall) and issuer covenants; **no waterfall extracted** | Pipeline ran; outputs not externally validated |
-| **Sol-Lion II RMBS Fondo de Titulización** | Spain | Prospectus (real, Spanish) + investor reports | **≈ 0.30** | **Minimal** — no waterfall, no triggers resolved into the model | Pipeline ran; outputs not externally validated |
+| **Green Lion 2023-1 B.V.** | Netherlands | Prospectus (real) + investor reports + **quarterly Notes & Cash (real)** | **1.0** | Full waterfall, 4 triggers | **Graded to the cent** by `GET /quality-matrix` against a committed answer key (#440) — revenue + redemption PoP across all three published periods. The `/deal/{id}/validation` endpoint still returns `available=false`: the fixtures and key are committed, but no validation *builder* is registered, so that endpoint understates what is graded. |
+| **Leone Arancio RMBS 2023-1 S.r.l.** | Italy | Prospectus (real, Italian) + investor reports | **0.925** | Full waterfall (23/23/12 steps), 3 triggers, 3 note classes — A1 480m / A2 6,600m / J 920m | Pipeline ran; tranche sizes reconcile to the curated `deals.json` registry, but **no** Notes & Cash report is published, so no external validation is possible |
+| **Sol-Lion II RMBS Fondo de Titulización** | Spain | Prospectus (real, Spanish) + investor reports | **0.925** | Full waterfall (20/15/12 steps), 3 triggers, 8 note classes — A1–A6, B, C | Pipeline ran; tranche sizes reconcile to the curated `deals.json` registry, but **no** Notes & Cash report is published, so no external validation is possible |
 
-**Honesty note on the non-English deals.** Extraction on the Italian and Spanish
-prospectuses is **partial by design of reality, not by claim**: the Leone Arancio
-model carries real, cited triggers but no waterfall, and the Sol-Lion II model is
-minimal. These are surfaced as `ran` (not `validated`) cells in the capability
-matrix, each with the real reason. Nothing about the cross-jurisdiction coverage
-should be read as "validated across all deals" — exactly one deal (Green Lion
-2024-1) is validated against external published actuals.
+**Honesty note on the non-English deals.** The Italian and Spanish figures above
+are the **post-#438/#439 re-extractions**; this card previously reported them as
+"≈ 0.38 / ≈ 0.30, no waterfall", which described seeds extracted before those
+fixes landed. Their coverage is now comparable to the Dutch deals — **but
+coverage is not validation.** Their capital structures reconcile independently
+to the curated `deals.json` registry, which no part of the extractor reads; that
+is a real check, and it is internal. Neither deal publishes a Notes & Cash
+report, so neither can be graded against published actuals, and no answer key is
+invented for them. They remain `ran` (not `validated`) cells in the capability
+matrix. Nothing about the cross-jurisdiction coverage should be read as
+"validated across all deals" — exactly one deal (Green Lion 2024-1) is validated
+against external published actuals, and one more (Green Lion 2023-1) is graded
+against a committed answer key.
 
 The four non-2026 deals carry a `jurisdiction` field in the registry where they
 are non-Dutch (`"Italy"`, `"Spain"`). Their loan tapes follow the same
@@ -190,8 +200,9 @@ The dataset is **not intended** for:
 
 | Limitation | Description |
 |---|---|
-| **One validated deal** | The pipeline *runs* on 5 deals across 3 jurisdictions, but only **Green Lion 2024-1** is validated to the cent against external published actuals (its Notes & Cash report). Every other cell is `ran` or `not-applicable` in the capability matrix — outputs there are unvalidated and do not generalise without re-validation. |
-| **Partial non-English extraction** | Extraction on the Italian (Leone Arancio, ≈ 0.38) and Spanish (Sol-Lion II, ≈ 0.30) prospectuses is partial — cited triggers at best on the Italian, minimal on the Spanish, no waterfall on either. These are honest `ran` cells, not clean extractions. |
+| **One validated deal, two graded** | The pipeline *runs* on 5 deals across 3 jurisdictions, but only **Green Lion 2024-1** is validated to the cent against external published actuals (its Notes & Cash report) — the single `validated` capability cell. **Green Lion 2023-1** is additionally graded to the cent by `GET /quality-matrix` against a committed answer key. Every other cell is `ran` or `not-applicable` — outputs there are unvalidated and do not generalise without re-validation. |
+| **Coverage without external truth on the non-English deals** | Extraction on the Italian (Leone Arancio) and Spanish (Sol-Lion II) prospectuses now reaches 0.925 completeness with a full waterfall on both — this card's earlier "≈ 0.38 / ≈ 0.30, no waterfall" described pre-#438/#439 seeds. Neither deal publishes a Notes & Cash report, so neither can ever be graded against published actuals without inventing ground truth. High coverage on these two is not evidence that their numbers are right. |
+| **Ungraded PDL / reserve proximity** | Principal-deficiency-ledger and reserve-account proximity are computed and surfaced, but both committed answer keys carry empty `covenants` and `pool_stats` for every period, so those checks grade `not-applicable` for every deal and no PDL or reserve check key exists. A flat or zero proximity there means "not evaluable from current inputs", not "healthy". |
 | **Single asset class** | RMBS only (Dutch, Italian, Spanish). CLOs, CMBS, US RMBS, ABS, and other asset classes are not represented. |
 | **Synthetic loan performance** | No real default history in the synthetic tapes. Arrears rates, default rates, and prepayment rates reflect synthetic generation assumptions, not observed market behaviour. |
 | **Three jurisdictions, not arbitrary** | The deal set spans Dutch, Italian, and Spanish RMBS only — three legal regimes, three EPC/market conventions. Coverage of other European or non-European RMBS markets is untested. |

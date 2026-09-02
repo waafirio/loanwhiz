@@ -141,7 +141,7 @@ What this does, in order:
 
 6. **Monitors covenants** using the `covenant_monitor` primitive. Checks each extracted trigger threshold (Class A/B PDL, reserve-fund shortfall) per period and reports proximity to breach.
 
-7. **Runs a forward stress sensitivity.** The waterfall is re-run on the base-case capital structure under base vs stressed collection factors (a single-period sensitivity, exposed via `POST /deal/{id}/project`). This is a stress sensitivity, not a multi-month CPR/CDR projection — the dedicated `cashflow_projector` is implemented as a library primitive but not yet wired into the route.
+7. **Runs a multi-period forward projection.** `POST /deal/{id}/project` takes a `months` horizon, generates a CPR / CDR / recovery / rate-shift `PeriodInputs` stream per scenario, and folds it through the waterfall kernel one period at a time, returning a per-period series and Class A WAL. `POST /deal/{id}/stress-matrix` runs the same fold across a CPR × CDR × rate-shift grid. The assumptions are *supplied* — from named presets or a caller override — not estimated from the deal's own tape history.
 
 8. **Prints a structured summary** of each stage to stdout, with citations back to the prospectus for extracted values.
 
@@ -149,7 +149,7 @@ What this does, in order:
 
 ## Running Against a New Deal
 
-The framework is **data-driven by design** — adding a deal is *data*, not code (the waterfall interpreter executes each deal's extracted model rather than hardcoded logic). Drop a `src/loanwhiz/data/deals.json` file next to `config.py`; it is a JSON object mapping each `deal_id` to a deal-context dict and is merged over the in-code Green Lion default at import time (no Python edit required). End-to-end validation so far covers exactly one deal — Green Lion 2026-1; multi-deal validation is in progress (epic #206):
+The framework is **data-driven by design** — adding a deal is *data*, not code (the waterfall interpreter executes each deal's extracted model rather than hardcoded logic). Drop a `src/loanwhiz/data/deals.json` file next to `config.py`; it is a JSON object mapping each `deal_id` to a deal-context dict and is merged over the in-code Green Lion default at import time (no Python edit required). The unmodified pipeline now runs end-to-end on five deals across three jurisdictions, but "ran" is not "validated": exactly one deal — **Green Lion 2024-1** — is validated to the cent against its own published Notes & Cash report, and one more — Green Lion 2023-1 — is graded to the cent by `GET /quality-matrix` against a committed answer key. See [SYSTEM-STATUS.md](../SYSTEM-STATUS.md) for the current boundaries:
 
 ```json
 {
@@ -187,10 +187,12 @@ Endpoints:
 - `POST /query` — natural language query against a loaded deal (returns a governance evidence pack)
 - `GET /deal/{id}/model` — retrieve the extracted deal model JSON
 - `GET /deal/{id}/compliance` — covenant monitor results across periods
-- `POST /deal/{id}/project` — single-period waterfall stress sensitivity under base/stress scenarios
+- `POST /deal/{id}/project` — multi-period forward fold over a `months` horizon under base/stress scenarios
+- `POST /deal/{id}/stress-matrix` — the same fold across a CPR × CDR × rate-shift grid (capped at 64 cells)
 - `GET /primitives` — the primitive catalogue with per-primitive reachability (`live` / `library-only`)
-- `GET /capability-matrix` — the primitives × 5 deals capability matrix: each cell `validated` / `ran` / `not-applicable` with a real reason, plus the tally (**1 validated / 9 ran / 15 not-applicable**)
-- `GET /deal/{id}/validation` — the engine-validation report for a deal; returns `available=false` with an honest note for a deal without a Notes & Cash fixture (e.g. Green Lion 2023-1), `available=true` with the to-the-cent reconciliation for Green Lion 2024-1
+- `GET /capability-matrix` — the primitives × 5 deals capability matrix: each cell `validated` / `ran` / `not-applicable` with a real reason, plus the tally (**1 validated / 12 ran / 12 not-applicable**)
+- `GET /quality-matrix` — the *graded* extension: each (deal × check) cell reconciled against the deal's committed ground-truth answer key. Two deals have one — Green Lion 2024-1 and Green Lion 2023-1 — and both grade their revenue/redemption PoP to the cent
+- `GET /deal/{id}/validation` — the engine-validation report for a deal; `available=true` with the to-the-cent reconciliation for Green Lion 2024-1, `available=false` with an honest note otherwise. Note this understates Green Lion 2023-1: it has committed fixtures and an answer key and is graded by `/quality-matrix`, but no validation *builder* is registered, so this endpoint still reports `available=false`
 
 See `src/loanwhiz/api/README.md` for the full endpoint reference and curl examples.
 
@@ -205,7 +207,7 @@ The capability matrix is the honest source of truth for what is validated vs ran
 
 ### MCP server
 
-The 8 primitives are also consumable as a governed MCP server (`mcp/`) — each `live` primitive becomes an MCP tool that returns the full `PrimitiveResult` evidence pack. See [mcp/README.md](../mcp/README.md) for wiring it into an MCP client.
+The primitives are also consumable as a governed MCP server (`mcp/`) — each `live` primitive becomes an MCP tool that returns the full `PrimitiveResult` evidence pack. See [mcp/README.md](../mcp/README.md) for wiring it into an MCP client.
 
 ---
 

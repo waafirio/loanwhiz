@@ -64,19 +64,28 @@ Confidence scoring is mandatory on all LoanWhiz primitives. A primitive that doe
 ### Scoring Method (Extraction Pipeline)
 
 Extraction confidence is a **real coverage metric**, derived directly from
-what the pipeline actually resolved against the source document — not a
-synthetic blend or a bare LLM self-rating.
+what the pipeline actually resolved against the source document — never a bare
+LLM self-rating.
 
 | Signal | Where it is computed | What it measures |
 |---|---|---|
-| **Deal-model completeness** | `extraction/assembler.py` — `completeness_score = ‖expected ∩ found‖ / ‖expected‖` | Fraction of the expected key SF sections (waterfall, definitions, triggers, tranches) actually located and extracted from the prospectus. |
+| **Deal-model completeness** | `extraction/assembler.py` — `_completeness_score`, a weighted blend `0.30·sections + 0.40·waterfalls + 0.15·triggers + 0.15·tranches` | `sections`: fraction of the expected key SF sections located. `waterfalls`: fraction of the expected waterfall types that extracted **≥ 1 step**. `triggers` / `tranches`: presence signals, 1.0 or 0.0. |
 | **Per-waterfall coverage** | `extraction/waterfall_extractor.py` — `extraction_confidence = non_empty_recipients / len(steps)` | Fraction of a waterfall's ordered steps that resolved to a concrete recipient (rather than an unparsed prose stub). |
 
 These are concrete ratios over the extracted artefact, so a thin extraction
-scores low *because it is thin*. On the validated Green Lion 2026-1 deal the
-deal-model `completeness_score` is **0.75** (3 of the 4 expected sections
-resolved; the definitions graph extracts 0 terms — see the model card's
-extraction-results table).
+scores low *because it is thin*. The blend replaced an earlier plain
+section-header ratio (`‖expected ∩ found‖ / ‖expected‖`) precisely because that
+metric could read `1.0` for a model whose waterfall sections were all located
+but yielded **zero** steps — structurally empty, yet scored complete. Weighting
+`waterfalls` highest, and crediting a waterfall only when it produced at least
+one step, is what closes that hole.
+
+**A stored score is a point-in-time record, not a live measurement.** Each
+seed's `completeness_score` is written at extraction time and never recomputed
+on read, so a seed extracted before a scoring change keeps the old number.
+Green Lion 2026-1's committed `0.75` is exactly that — the old 3-of-4
+section-header ratio; under the current `_completeness_score` the same seed
+scores `0.925`.
 
 > The pipeline does **not** apply a fixed `0.40·coverage + 0.30·resolution +
 > 0.30·llm_self_score` weighting. Confidence is the coverage ratios above; the

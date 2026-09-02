@@ -3035,11 +3035,15 @@ def capability_matrix() -> CapabilityMatrix:
 # reconciler the /deal/{id}/validation proof uses), folding each deal's committed
 # offline engine series through run_period — so the grade reflects the real engine.
 #
-# Honesty (#193 discipline): Green Lion 2024-1's answer key is committed (#429,
-# authored from its published Notes & Cash report), so over the live registry the
-# honest verdict is mixed — GL-2024-1's revenue + redemption PoP grade to the
-# cent, deals with no committed published ground truth stay `not-applicable` —
-# never a fabricated wall of green. The grader is
+# Honesty (#193 discipline): two answer keys are committed — Green Lion 2024-1
+# (#429) and Green Lion 2023-1 (#440), each authored from that deal's own
+# published Notes & Cash reports — so over the live registry the honest verdict
+# is mixed: both deals' revenue + redemption PoP grade to the cent, while their
+# covenant / pool-stat checks (the reports publish no such figures) and every
+# deal with no committed published ground truth stay `not-applicable` — never a
+# fabricated wall of green. Leone Arancio and Sol-Lion II publish no Notes &
+# Cash report at all, so no key can be authored for them without inventing one.
+# The grader is
 # dependency-injected with the live DEAL_REGISTRY / seed loader / answer-key loader
 # so it is both deal-generic and unit-testable. Offline & deterministic: it reads
 # committed seed + answer-key data and the committed offline series fold; no loan
@@ -3055,8 +3059,10 @@ def quality_matrix() -> QualityMatrix:
     output against the deal's committed ground-truth answer key (#427) to
     tolerance — `passed` / `failed` / `not-applicable` with a score, evidence and
     an honest reason. Runs offline and deterministically; a deal with no committed
-    answer key (every deal except Green Lion 2024-1, whose key the #429 backfill
-    committed) grades honestly not-applicable rather than a fabricated pass.
+    answer key grades honestly not-applicable rather than a fabricated pass. Two
+    deals currently have one — Green Lion 2024-1 (#429) and Green Lion 2023-1
+    (#440) — and their PoP checks reconcile to the cent; the remaining deals
+    publish no Notes & Cash report, so they carry no key.
     """
     return build_quality_matrix(
         DEALS,
@@ -3129,10 +3135,15 @@ def relative_value_screener() -> RelativeValueScorecard:
 # `unapplied_rounding`, not hidden. Nothing is presented as a blanket 100%.
 #
 # Deal-genericity: only deals with a committed offline validation builder return
-# a full proof; a registered deal without one (e.g. Green Lion 2023-1, which has
-# a seed model but no committed Notes & Cash fixture) returns HTTP 200 with
+# a full proof; a registered deal without one returns HTTP 200 with
 # `available=false` and an honest note — never a 500. `_VALIDATION_BUILDERS` is
 # patchable in tests, mirroring the other module-level seams.
+#
+# Note that "no builder" is not the same as "no ground truth" (#441). Green Lion
+# 2023-1 has committed Notes & Cash fixtures AND a committed answer key (#440) —
+# `GET /quality-matrix` grades it to the cent — but no `validate_green_lion_2023_1`
+# builder is registered here, so this endpoint still reports `available=false`
+# for it. That is a wiring gap, not an absence of published ground truth.
 
 #: Per-deal offline validation builders. Each returns an
 #: :class:`ReconciliationReport` from committed fixtures (no network/LLM).
@@ -3143,10 +3154,13 @@ _VALIDATION_BUILDERS: dict[str, Callable[[], ReconciliationReport]] = {
 }
 
 _VALIDATION_UNAVAILABLE_NOTE = (
-    "No published validation proof for this deal. The engine-vs-published "
-    "Notes & Cash Priority of Payments reconciliation requires a committed "
-    "report fixture, which this deal does not yet have. See Green Lion 2024-1 "
-    "for the headline proof."
+    "No published validation proof is wired up for this deal. The "
+    "engine-vs-published Notes & Cash Priority of Payments reconciliation needs "
+    "both a committed report fixture and a registered validation builder, and "
+    "this deal is missing at least one of them — which is not the same as the "
+    "deal having no published ground truth. See Green Lion 2024-1 for the "
+    "headline proof, and GET /quality-matrix for every deal graded against a "
+    "committed answer key."
 )
 
 
