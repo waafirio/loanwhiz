@@ -30,12 +30,13 @@ Honesty discipline (#193 — no wall of green). This harness is the *opposite* o
 green-painting exercise:
 
 - A deal with **no committed answer key** grades every check ``not-applicable``
-  with the real reason — never a fabricated pass. The backfill (#429) committed
-  Green Lion 2024-1's answer key (authored from its published Notes & Cash
-  report), so over the live registry the honest verdict is now mixed: GL-2024-1's
-  revenue + redemption PoP grade ``passed`` to the cent, while deals with no
-  committed published ground truth stay honestly ``not-applicable``. The grading
-  machinery is also proven against injected/synthetic keys.
+  with the real reason — never a fabricated pass. The backfills committed Green
+  Lion 2024-1's (#429) and Green Lion 2023-1's (#440) answer keys, authored from
+  their published Notes & Cash reports, so over the live registry the honest
+  verdict is mixed: those two deals' revenue + redemption PoP grade ``passed`` to
+  the cent, while deals with no committed published ground truth (no Notes & Cash
+  report exists to read) stay honestly ``not-applicable``. The grading machinery
+  is also proven against injected/synthetic keys.
 - A check whose answer-key section is empty, or whose engine series could not be
   folded, is ``not-applicable`` with that reason — not silently passed.
 - A genuine miss is ``failed`` with the delta, surfaced, never hidden.
@@ -167,9 +168,10 @@ class QualityMatrix(BaseModel):
             "answer key (#427), to the key's EUR tolerance: 'passed' = reconciled to "
             "tolerance; 'failed' = a real miss (with the delta); 'not-applicable' = no "
             "answer key / empty section / unfoldable series, with the real reason. "
-            "Green Lion 2024-1's answer key is committed (#429, from its published Notes "
-            "& Cash report), so its revenue + redemption PoP grade to the cent; deals "
-            "with no committed published ground truth stay honestly not-applicable. "
+            "The Green Lion 2024-1 (#429) and 2023-1 (#440) answer keys are committed "
+            "from their published Notes & Cash reports, so their revenue + redemption "
+            "PoP grade to the cent; deals with no committed published ground truth "
+            "stay honestly not-applicable. "
             "Honesty over a wall of green."
         ),
         description="Standing honesty disclosure for the quality matrix.",
@@ -614,10 +616,10 @@ def _default_series_provider() -> SeriesProvider:
     """The default per-deal offline engine-series provider.
 
     Mirrors the API's per-deal ``_VALIDATION_BUILDERS`` precedent: a small map of
-    committed offline folds keyed by deal id. Today only Green Lion 2024-1 has a
-    committed offline series (its Notes & Cash fixtures + seed model, folded
-    through ``run_period`` by :func:`reconciler.fold_green_lion_2024_1`); a deal
-    absent from the map has no offline series, so its execution checks grade
+    committed offline folds keyed by deal id. A deal earns an entry by having
+    committed Notes & Cash fixtures + a seed model, folded through ``run_period``
+    (:func:`reconciler.fold_green_lion_2024_1`, :func:`reconciler.fold_green_lion_2023_1`);
+    a deal absent from the map has no offline series, so its execution checks grade
     ``not-applicable`` with that honest reason. The fold is deferred-imported so
     this reader stays offline-importable.
     """
@@ -629,7 +631,14 @@ def _default_series_provider() -> SeriesProvider:
         series, _ = fold_green_lion_2024_1()
         return series
 
+    def _green_lion_2023_1() -> DealStateSeries:
+        from loanwhiz.primitives.reconciler import fold_green_lion_2023_1
+
+        series, _ = fold_green_lion_2023_1()
+        return series
+
     builders["green-lion-2024-1"] = _green_lion_2024_1
+    builders["green-lion-2023-1"] = _green_lion_2023_1
 
     def provider(
         deal_id: str, deal_ctx: Mapping[str, Any], model: DealModel | None
@@ -707,7 +716,7 @@ def build_quality_matrix(
     series_provider:
         Yields a deal's offline-folded engine :class:`DealStateSeries` (or
         ``None`` when none is committed). Defaults to the per-deal offline builders
-        (today: Green Lion 2024-1's fixtures fold). The answer key is NOT used to
+        (today: the Green Lion 2024-1 and 2023-1 fixture folds). The answer key is NOT used to
         fold — it carries ground truth, not the opening balances the fold seeds
         from. Tests inject a real or synthetic series.
     triggers_loader:

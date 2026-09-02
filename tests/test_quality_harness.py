@@ -38,6 +38,7 @@ from loanwhiz.primitives.base import Citation
 from loanwhiz.primitives.covenant_monitor import TriggerDefinition
 from loanwhiz.primitives.reconciler import (
     fold_green_lion_2024_1,
+    load_green_lion_2023_1_report,
     load_green_lion_2024_1_report,
     validate_green_lion_2024_1,
 )
@@ -60,6 +61,11 @@ client = TestClient(app)
 
 GL_DEAL_ID = "green-lion-2024-1"
 GL_DEAL_NAME = "Green Lion 2024-1 B.V."
+GL23_DEAL_ID = "green-lion-2023-1"
+GL23_DEAL_NAME = "Green Lion 2023-1 B.V."
+#: Every deal whose published Notes & Cash ground truth is committed as an answer
+#: key, so the harness genuinely grades it (#429 GL-2024-1, #440 GL-2023-1).
+GRADED_DEAL_IDS = {GL_DEAL_ID, GL23_DEAL_ID}
 _EXPECTED_CHECK_KEYS = ["revenue_pop", "redemption_pop", "covenants", "pool_stats"]
 
 
@@ -87,6 +93,13 @@ def _real_matrix() -> QualityMatrix:
 def _gl_key_from_report() -> DealAnswerKey:
     """A GL-2024-1 answer key authored from its committed Notes & Cash report."""
     return DealAnswerKey.from_notes_cash_report(load_green_lion_2024_1_report(), deal_id=GL_DEAL_ID)
+
+
+def _gl_2023_key_from_report() -> DealAnswerKey:
+    """A GL-2023-1 answer key authored from its committed Notes & Cash report."""
+    return DealAnswerKey.from_notes_cash_report(
+        load_green_lion_2023_1_report(), deal_id=GL23_DEAL_ID
+    )
 
 
 def _single_loader(deal_name: str, key: DealAnswerKey | None):
@@ -133,35 +146,44 @@ def test_matrix_shape_covers_every_deal_x_check() -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_live_registry_reflects_the_backfilled_answer_key_honestly() -> None:
-    """The #429 backfill committed Green Lion 2024-1's answer key (from its
-    published Notes & Cash report), so the honest verdict over the *live* registry
-    is now mixed: GL-2024-1's revenue + redemption PoP grade `passed` to the cent,
-    every other (deal × check) — including GL-2024-1's covenants / pool stats,
-    which have no committed published figures — grades `not-applicable` with a real
-    reason. Nothing is fabricated and nothing fails."""
+def test_live_registry_reflects_the_backfilled_answer_keys_honestly() -> None:
+    """The backfills committed Green Lion 2024-1's (#429) and Green Lion 2023-1's
+    (#440) answer keys from their published Notes & Cash reports, so the honest
+    verdict over the *live* registry is mixed: both deals' revenue + redemption PoP
+    grade `passed` to the cent, every other (deal × check) — including those two
+    deals' covenants / pool stats, which have no committed published figures —
+    grades `not-applicable` with a real reason. Nothing is fabricated and nothing
+    fails.
+
+    Leone Arancio and Sol-Lion II publish no Notes & Cash report at all, so they
+    have no ground truth to author a key from and stay wholly not-applicable —
+    the #193 discipline, pinned here so a future backfill cannot fabricate one."""
     m = _real_matrix()
 
-    # The only deal with a committed answer key is GL-2024-1.
-    assert {d.deal_id for d in m.deals if d.has_answer_key} == {GL_DEAL_ID}
+    # Exactly the deals with committed published ground truth carry an answer key.
+    assert {d.deal_id for d in m.deals if d.has_answer_key} == GRADED_DEAL_IDS
 
-    # GL-2024-1's two PoP checks are the only graded cells, and they passed.
-    rev = _cell(m, GL_DEAL_ID, "revenue_pop")
-    red = _cell(m, GL_DEAL_ID, "redemption_pop")
-    assert rev.grade == GRADE_PASSED and rev.score == pytest.approx(1.0)
-    assert red.grade == GRADE_PASSED and red.score == pytest.approx(1.0)
+    # Each graded deal's two PoP checks passed to the cent.
+    for deal_id in GRADED_DEAL_IDS:
+        rev = _cell(m, deal_id, "revenue_pop")
+        red = _cell(m, deal_id, "redemption_pop")
+        assert rev.grade == GRADE_PASSED and rev.score == pytest.approx(1.0)
+        assert red.grade == GRADE_PASSED and red.score == pytest.approx(1.0)
 
-    # Honest, not green-painted: exactly those two pass, nothing fails, and every
-    # other cell (incl. GL-2024-1 covenants/pool_stats with no published figures)
-    # is not-applicable.
-    assert m.tally[GRADE_PASSED] == 2
+    # Honest, not green-painted: exactly those pass, nothing fails, and every other
+    # cell (incl. their covenants/pool_stats with no published figures) is
+    # not-applicable.
+    graded_cells = 2 * len(GRADED_DEAL_IDS)
+    assert m.tally[GRADE_PASSED] == graded_cells
     assert m.tally.get(GRADE_FAILED, 0) == 0
-    assert m.tally[GRADE_NOT_APPLICABLE] == len(m.cells) - 2
-    for ck in ("covenants", "pool_stats"):
-        assert _cell(m, GL_DEAL_ID, ck).grade == GRADE_NOT_APPLICABLE
+    assert m.tally[GRADE_NOT_APPLICABLE] == len(m.cells) - graded_cells
+    for deal_id in GRADED_DEAL_IDS:
+        for ck in ("covenants", "pool_stats"):
+            assert _cell(m, deal_id, ck).grade == GRADE_NOT_APPLICABLE
     for d in m.deals:
-        if d.deal_id == GL_DEAL_ID:
+        if d.deal_id in GRADED_DEAL_IDS:
             continue
+        assert not d.has_answer_key
         for ck in _EXPECTED_CHECK_KEYS:
             assert _cell(m, d.deal_id, ck).grade == GRADE_NOT_APPLICABLE
 
@@ -180,6 +202,35 @@ def test_committed_gl_answer_key_loads_and_matches_its_published_report() -> Non
     # The committed key equals one freshly authored from the published report: it
     # was authored via from_notes_cash_report and never hand-tweaked.
     assert loaded == _gl_key_from_report()
+
+
+def test_committed_gl_2023_1_key_matches_its_published_report() -> None:
+    """Regression for the #440 backfill: the *committed* GL-2023-1 answer key
+    resolves through the real loader (from ``ANSWER_KEY_DATA_DIR``, so the slug
+    must match the seed) and is byte-faithful to its source published report —
+    proving the on-disk key is genuine ground truth, not hand-edited drift."""
+    loaded = load_answer_key(DEAL_REGISTRY[GL23_DEAL_ID])
+    assert loaded is not None, "committed green-lion-2023-1-bv.json must resolve"
+    assert loaded.deal_id == GL23_DEAL_ID
+    assert loaded.deal_name == GL23_DEAL_NAME
+    assert loaded.format_version == 1
+    assert len(loaded.periods) == 3
+    # Authored via from_notes_cash_report from the committed fixtures, never tweaked.
+    assert loaded == _gl_2023_key_from_report()
+
+
+def test_no_answer_key_for_deals_without_published_notes_cash_reports() -> None:
+    """The #193 honesty discipline, pinned as a test: a deal whose registry entry
+    carries no Notes & Cash report has no ground truth to read, so it must have no
+    committed answer key. Fabricating one to light up the matrix is the failure
+    this guards against."""
+    for deal_id, ctx in DEAL_REGISTRY.items():
+        if ctx.get("notes_cash_report_urls"):
+            continue
+        assert load_answer_key(ctx) is None, (
+            f"{deal_id} publishes no Notes & Cash report, so its answer key would "
+            "have to be fabricated"
+        )
 
 
 def test_every_not_applicable_cell_carries_a_real_reason() -> None:
@@ -465,8 +516,10 @@ def test_quality_matrix_endpoint_returns_graded_matrix_offline() -> None:
     assert len(body["cells"]) == len(body["deals"]) * len(body["checks"])
     assert sum(body["tally"].values()) == len(body["cells"])
     assert body["note"]
-    # Offline + the committed GL-2024-1 answer key (#429): the honest verdict is
-    # GL-2024-1's two PoP checks pass, nothing fails, the rest are not-applicable.
-    assert body["tally"][GRADE_PASSED] == 2
+    # Offline + the committed GL-2024-1 (#429) and GL-2023-1 (#440) answer keys:
+    # the honest verdict is each graded deal's two PoP checks pass, nothing fails,
+    # the rest are not-applicable.
+    graded_cells = 2 * len(GRADED_DEAL_IDS)
+    assert body["tally"][GRADE_PASSED] == graded_cells
     assert body["tally"].get(GRADE_FAILED, 0) == 0
-    assert body["tally"][GRADE_NOT_APPLICABLE] == len(body["cells"]) - 2
+    assert body["tally"][GRADE_NOT_APPLICABLE] == len(body["cells"]) - graded_cells
