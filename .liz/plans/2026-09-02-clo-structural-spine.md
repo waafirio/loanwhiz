@@ -1,7 +1,7 @@
 ---
 id: 2026-09-02-clo-structural-spine
 title: CLO structural spine — generalise the engine off RMBS
-status: draft
+status: decomposed
 created: 2026-09-02
 updated: 2026-09-02
 epics: []
@@ -154,7 +154,77 @@ only with real, honest per-cell reasons.
 
 ## Decomposition
 
-_(Filled in phase 2.)_
+Two epics, six children. Epic A's three children are mutually independent and
+need no CLO data. Epic B's sourcing child is also independent and should start
+immediately — it is the long pole — while its extraction and evaluation children
+wait on both the documents and Epic A.
+
+### Epic A: CLO engine foundations   (umbrella #<N>)
+
+Everything the engine needs to *represent* a CLO, built and testable without a
+single CLO document. Each child is additive to a closed vocabulary or an open
+registry, in the style those modules already establish — none of this is
+architectural. The epic is done when the canonical schema can express a CLO's
+capital stack, its fee waterfall recipients, and its coverage tests, with
+per-recipient need actually computable for a stack deeper than three classes.
+
+- **Corporate / leveraged-loan loan-level field table** — Add the corporate
+  underlying-exposure field table alongside `esma_annex2.py` in the same
+  `Annex2Field` record shape (which its own docstring says "admits other annexes
+  later without breaking callers"), covering the obligor, industry, facility
+  rating, seniority, spread, and defaulted/PIK/cov-lite attributes CLO
+  collateral reports carry; wire annex detection to it and verify the existing
+  `"Annex 8 (SME)"` label against the actual RTS annex numbering, correcting it
+  if wrong. Sequencing: parallel. Paths: `src/loanwhiz/domain/**`,
+  `src/loanwhiz/primitives/esma_tape_normaliser.py`, `tests/**`.
+- **Coverage-test metrics in the canonical taxonomy** — Add
+  overcollateralisation and interest-coverage ratio metrics to `MetricType` with
+  the alias coverage the taxonomy classifier needs, and make them computable
+  from deal state so an extracted OC/IC trigger resolves to a real value instead
+  of `unmapped`; per-class, since a CLO tests coverage at several attachment
+  points. Explicitly excludes the cash-diversion mechanic. Sequencing: parallel.
+  Paths: `src/loanwhiz/domain/rules.py`, `src/loanwhiz/extraction/taxonomy.py`,
+  `src/loanwhiz/primitives/covenant_monitor.py`, `tests/**`.
+- **Close the recipient-enum vs need-calculator gap** — `RecipientType` carries
+  23 members while `NEED_CALCULATORS` registers 9, so deeper-stack recipients
+  (`class_d/e/f_*`) and the CLO fee recipients map correctly and then compute
+  need 0; register the missing calculators and add the senior / subordinated
+  management-fee recipients a CLO waterfall pays. Excludes the incentive fee,
+  which needs an equity IRR that is out of scope. Sequencing: parallel. Paths:
+  `src/loanwhiz/primitives/waterfall_interpreter.py`,
+  `src/loanwhiz/domain/rules.py`, `src/loanwhiz/extraction/taxonomy.py`,
+  `tests/**`.
+
+### Epic B: CLO deal onboarding   (umbrella #<N>)
+
+Take one real CLO from documents to an executable, honestly-graded deal model.
+This epic is where the data gap bites and where the #437 calibration applies:
+the extraction child is expected to be hard, and a plan that concludes the
+extractor needs work before the deal can be modelled is the right outcome, not a
+failure.
+
+- **Source and register a CLO deal document set** — Identify a European CLO with
+  a publicly obtainable prospectus / offering memorandum, register it in
+  `deals.json` in the existing deal-context shape, and record honestly in the
+  data card which documents are and are not available (in particular whether any
+  trustee reports could be obtained, since their absence is what forecloses
+  to-the-cent validation). No extraction. Sequencing: parallel. Paths:
+  `src/loanwhiz/data/deals.json`, `docs/data-card.md`, `src/loanwhiz/config.py`.
+- **Extract the CLO prospectus to canonical `DealRules`** — Run the extraction
+  pipeline against the sourced document and get an honest deal model out: the
+  full capital stack, both the interest and principal waterfalls, and the
+  coverage-test definitions as extracted triggers; fix the extractor where a CLO
+  document defeats it rather than hand-editing a seed, exactly as #438/#439
+  established. Sequencing: sequential. After the sourcing child. Paths:
+  `src/loanwhiz/extraction/**`, `src/loanwhiz/data/deals/seed/**`, `tests/**`.
+- **Execute and grade the CLO deal honestly** — Run the extracted model through
+  the engine, evaluate its coverage tests as covenant metrics, and let the
+  capability matrix report the result with real per-cell reasons — `ran` where
+  it ran, `not-applicable` with a genuine reason where it did not, and never
+  `validated`, since no answer key exists without trustee reports. Sequencing:
+  sequential. After the extraction child. Paths:
+  `src/loanwhiz/primitives/capability_matrix.py`, `src/loanwhiz/api/main.py`,
+  `docs/**`, `tests/**`.
 
 ## Filed issues
 
