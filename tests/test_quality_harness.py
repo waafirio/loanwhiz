@@ -219,17 +219,35 @@ def test_committed_gl_2023_1_key_matches_its_published_report() -> None:
     assert loaded == _gl_2023_key_from_report()
 
 
-def test_no_answer_key_for_deals_without_published_notes_cash_reports() -> None:
-    """The #193 honesty discipline, pinned as a test: a deal whose registry entry
-    carries no Notes & Cash report has no ground truth to read, so it must have no
-    committed answer key. Fabricating one to light up the matrix is the failure
-    this guards against."""
-    for deal_id, ctx in DEAL_REGISTRY.items():
-        if ctx.get("notes_cash_report_urls"):
-            continue
-        assert load_answer_key(ctx) is None, (
-            f"{deal_id} publishes no Notes & Cash report, so its answer key would "
-            "have to be fabricated"
+def test_answer_keys_exist_exactly_where_published_reports_do() -> None:
+    """The #193 honesty discipline, pinned as a test: a committed answer key exists
+    for exactly those deals that publish a Notes & Cash report to author it from.
+
+    Asserted in BOTH directions on purpose. A one-way "report-less deals have no
+    key" loop passes by finding nothing, so it would go quiet if the registry ever
+    lost its report-less deals; the equality below cannot, and the explicit
+    non-empty guard makes the vacuous case a failure rather than a silent pass."""
+    with_reports = {
+        deal_id
+        for deal_id, ctx in DEAL_REGISTRY.items()
+        if ctx.get("notes_cash_report_urls")
+    }
+    without_reports = set(DEAL_REGISTRY) - with_reports
+    assert with_reports and without_reports, (
+        "this guard is only meaningful while the registry holds deals of both "
+        "kinds; it must never pass vacuously"
+    )
+
+    # Publishing a report is exactly what earns a key — no more, no less.
+    assert with_reports == GRADED_DEAL_IDS
+    for deal_id in with_reports:
+        assert load_answer_key(DEAL_REGISTRY[deal_id]) is not None, (
+            f"{deal_id} publishes a Notes & Cash report but has no committed key"
+        )
+    for deal_id in without_reports:
+        assert load_answer_key(DEAL_REGISTRY[deal_id]) is None, (
+            f"{deal_id} publishes no Notes & Cash report, so its answer key could "
+            "only be fabricated"
         )
 
 
