@@ -71,12 +71,15 @@ client = TestClient(app)
 # section presented to the LLM router as an empty stub; the router picked
 # §3.4.7.4 "Liquidation Priority of Payments" for revenue on its title alone and
 # found no steps there. The real Pre-Enforcement cascade lives in §3.4.7.2.2
-# "Application" and is 20 steps long.
+# "Application"; its length is pinned below, not restated here.
 _COLD_START_DEALS = {
     "leone-arancio-2023-1": {
         "jurisdiction": "Italy",
         "revenue": 23,
-        "redemption": 5,
+        # 23, not the 5 the pre-#439 seed carried: that seed predated the
+        # post-#396/#397 pipeline, whose redemption extraction reaches the
+        # whole Italian cascade (#439 re-extraction).
+        "redemption": 23,
         "post_enforcement": 12,
     },
     "sol-lion-ii": {
@@ -237,11 +240,14 @@ def test_spanish_revenue_pop_comes_from_the_pre_enforcement_section() -> None:
 def test_italian_waterfall_cold_starts_every_section() -> None:
     """IT carries a non-empty extracted cascade in all three sections.
 
-    Formerly named "…is_the_richest_cold_start": that claim rested on the ES
-    revenue PoP being empty and is no longer true (#438 refreshed ES to 47 steps
-    against IT's 40). The property actually under test — every IT section
-    cold-starts through the engine — is unchanged, so only the false comparative
-    is dropped.
+    Formerly named "…is_the_richest_cold_start". That comparative rested on the
+    ES revenue PoP being empty, which was an extractor defect rather than a fact
+    about the prospectus (#438); with both seeds refreshed, neither deal is
+    stably the richer one and pinning an ordering between them would assert
+    something no reader re-derives. The property actually under test — every IT
+    section cold-starts through the engine — is unchanged, so only the
+    comparative is dropped. The per-section counts stay pinned in
+    ``_COLD_START_DEALS``.
     """
     model = _model_for("leone-arancio-2023-1")
     for section in _WATERFALL_SECTIONS:

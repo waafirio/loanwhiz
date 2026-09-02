@@ -334,6 +334,34 @@ def _waterfall_with_series_recipients() -> dict:
     return {"post_enforcement": wf}
 
 
+# A Leone Arancio-shaped prospectus (#439): the capital structure is stated in
+# PROSE — a cover-page listing plus a "nominal amounts" bullet list — and the
+# document carries no tranche pipe table at all. The junior note is the
+# **Class J**, the conventional European label for the residual tranche.
+#
+# The last paragraph is the decoy that matters: the partly-paid Notes Initial
+# Payment quotes a *different* figure against the very same class. It is not
+# the nominal amount, so a parser that merely finds an amount near a class name
+# would commit a wrong capital structure.
+_PROSE_CAPITAL_STRUCTURE_MD = """\
+## PROSPECTUS DATED 12 SEPTEMBER 2023
+
+## LEONE ARANCIO RMBS S.R.L.
+
+EUR 480,000,000 Class A1 Residential Mortgage-Backed Floating Rate Notes due October 2083 EUR 6,600,000,000 Class A2 Residential Mortgage-Backed Floating Rate Notes due October 2083
+
+## Terms and Conditions
+
+Nominal amount The Notes will be entirely issued on the Issue Date for the following nominal amounts:
+
+- Euro  480,000,000  for  the  Class  A1  Notes  (the " Class A1 Notes Nominal Amount ");
+- Euro 6,600,000,000 for the Class A2 Notes (the " Class A2 Notes Nominal Amount "); and
+- Euro  920,000,000  for  the  Class  J  Notes  (the " Class J Notes Nominal Amount ").
+
+The Notes Initial Payment will be paid on the Issue Date to the Issuer in the amount of: (i) Euro 389,400,000 with respect to the Class A1 Notes, (ii) Euro 5,354,200,000 with respect to the Class A2 Notes, and (iii) Euro 746,400,000 with respect to the Class J Notes.
+"""
+
+
 class TestExtractTranches:
     def test_no_sources_returns_empty_list(self) -> None:
         assert _extract_tranches(None, None) == []
@@ -511,6 +539,135 @@ class TestExtractTranches:
         ]
         # Fallback supplies no sizes.
         assert all(t["size_eur"] is None for t in result)
+
+    # --- #439: prose capital structure + the note-class alphabet -----------
+
+    def test_prose_nominal_amounts_parse_when_no_table(self) -> None:
+        """A capital structure stated in prose yields real sized tranches.
+
+        Leone Arancio's prospectus has no tranche table, so before #439 this
+        markdown degraded to the unsized single-``Class A`` waterfall fallback.
+        """
+        section_map = route_sections(_PROSE_CAPITAL_STRUCTURE_MD)
+        result = _extract_tranches(section_map, _waterfall_with_class_recipients())
+        assert [t["name"] for t in result] == ["Class A1", "Class A2", "Class J"]
+        by_name = {t["name"]: t for t in result}
+        assert by_name["Class A1"]["size_eur"] == 480_000_000.0
+        assert by_name["Class A2"]["size_eur"] == 6_600_000_000.0
+        assert by_name["Class J"]["size_eur"] == 920_000_000.0
+        # Senior→junior, and the prose source outranks the waterfall fallback
+        # (which would have supplied names but no sizes).
+        assert [t["seniority"] for t in result] == sorted(
+            t["seniority"] for t in result
+        )
+
+    def test_prose_ignores_amounts_not_bound_to_the_class(self) -> None:
+        """An amount merely NEAR a class name never becomes a tranche size.
+
+        A prospectus quotes figures against a class constantly — here the
+        partly-paid Notes Initial Payment, "Euro 389,400,000 with respect to
+        the Class J Notes". Only the "for the Class X Notes" binding is a
+        nominal amount.
+
+        The Class J decoy is deliberately the *only* mention of that class, so
+        a parser that allowed filler words between the amount and the label
+        would invent a third tranche at the wrong size. Asserting this against
+        a class that also has a real nominal amount would pass for the wrong
+        reason — the correct figure appears first and wins on its own.
+        """
+        md = (
+            "Nominal amount:\n\n"
+            "- Euro 500,000,000 for the Class A Notes;\n"
+            "- Euro 20,000,000 for the Class B Notes.\n\n"
+            "The Notes Initial Payment will be paid on the Issue Date in the "
+            "amount of Euro 389,400,000 with respect to the Class J Notes.\n"
+        )
+        result = _extract_tranches(route_sections(md))
+        assert [t["name"] for t in result] == ["Class A", "Class B"]
+        assert all(t["size_eur"] != 389_400_000.0 for t in result)
+
+    def test_junior_class_j_is_not_dropped_by_the_alphabet(self) -> None:
+        """Class J is a real junior note, not an out-of-range artifact (#439).
+
+        #397 bounded the class alphabet to A–G to kill the Sol-Lion "Class O"
+        phantom; that also excluded every conventional named class, silently
+        dropping this deal's EUR 920m junior tranche.
+        """
+        section_map = route_sections(_PROSE_CAPITAL_STRUCTURE_MD)
+        by_name = {t["name"]: t for t in _extract_tranches(section_map)}
+        assert "Class J" in by_name
+        assert by_name["Class J"]["size_eur"] == 920_000_000.0
+        # Junior ranks below the senior series.
+        assert by_name["Class J"]["seniority"] > by_name["Class A2"]["seniority"]
+
+    def test_prose_class_o_artifact_still_rejected(self) -> None:
+        """#397's Class O artifact stays dead on the prose path too."""
+        md = (
+            "Nominal amount:\n\n"
+            "- Euro 500,000,000 for the Class A Notes;\n"
+            "- Euro 42 for the Class O Notes;\n"
+            "- Euro 20,000,000 for the Class B Notes.\n"
+        )
+        result = _extract_tranches(route_sections(md))
+        assert [t["name"] for t in result] == ["Class A", "Class B"]
+        assert all(t["size_eur"] != 42.0 for t in result)
+
+    def test_prose_refuses_a_european_decimal_rather_than_mis_scaling_it(self) -> None:
+        """An ambiguous decimal amount fails closed, it does not get 100x wrong.
+
+        ``_parse_euro_amount`` strips both "." and "," so "1.234,56" reads as
+        123456. That helper is shared with the table path and left as it is;
+        the prose pattern instead only accepts a whole-euro figure, so an
+        amount it cannot read unambiguously produces no tranche at all.
+        """
+        md = (
+            "Nominal amount:\n\n"
+            "- Euro 1.234,56 for the Class A Notes;\n"
+            "- Euro 2.345,67 for the Class B Notes.\n"
+        )
+        assert _extract_tranches(route_sections(md)) == []
+        # A whole-euro figure is still read, grouped or not.
+        ok = (
+            "Nominal amount:\n\n"
+            "- Euro 500000000 for the Class A Notes;\n"
+            "- Euro 20.000.000 for the Class B Notes.\n"
+        )
+        by_name = {t["name"]: t for t in _extract_tranches(route_sections(ok))}
+        assert by_name["Class A"]["size_eur"] == 500_000_000.0
+        assert by_name["Class B"]["size_eur"] == 20_000_000.0
+
+    def test_prose_needs_two_classes_before_it_is_believed(self) -> None:
+        """One lone amount-near-a-class sentence is not a capital structure."""
+        md = (
+            "# Risk Factors\n\n"
+            "The Issuer may be required to pay Euro 12,000,000 for the "
+            "Class A Notes in certain circumstances.\n"
+        )
+        section_map = route_sections(md)
+        # No second class corroborates it, so the parse is refused and the
+        # unsized waterfall fallback is used instead.
+        result = _extract_tranches(section_map, _waterfall_with_class_recipients())
+        assert all(t["size_eur"] is None for t in result)
+
+    def test_table_is_preferred_over_prose(self) -> None:
+        """A real tranche table still outranks prose when both are present."""
+        md = _GREEN_LION_TRANCHE_TABLE_MD + _PROSE_CAPITAL_STRUCTURE_MD
+        result = _extract_tranches(route_sections(md))
+        assert [t["name"] for t in result] == ["Class A", "Class B", "Class C"]
+
+    def test_seniority_reads_the_class_letter_not_the_word_class(self) -> None:
+        """``_seniority_for`` must not score the ``C`` of ``"Class"`` (#439).
+
+        Every caller keys tranches by the full label, so a scan that read the
+        first letter of the string gave every class the same rank and the
+        senior→junior sort silently degraded to input order.
+        """
+        assert _seniority_for("Class A") == _seniority_for("A")
+        assert _seniority_for("Class B") == _seniority_for("B")
+        assert _seniority_for("Series A6") == _seniority_for("A6")
+        ranks = [_seniority_for(n) for n in ("Class A1", "Class A2", "Class B", "Class J")]
+        assert ranks == sorted(ranks)
+        assert len(set(ranks)) == len(ranks)
 
 
 # ---------------------------------------------------------------------------
