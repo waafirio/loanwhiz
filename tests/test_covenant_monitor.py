@@ -1701,3 +1701,102 @@ class TestCoverageDoesNotDisturbExistingTriggers:
         assert _canonical_metric("reserve_fund_balance") == "reserve_fund_ratio"
         assert _canonical_metric("wa_ltv") == "wtd_ltv"
         assert _canonical_metric("some_unknown_metric") == "some_unknown_metric"
+
+    def test_every_alias_row_still_resolves_to_its_declared_sentinel(self) -> None:
+        """Sweep, not spot-check: `_canonical_metric` gained a fallback branch,
+        so every row of the map it sits in front of must be re-proved."""
+        from loanwhiz.primitives.covenant_monitor import _METRIC_ALIASES
+
+        for raw, expected in _METRIC_ALIASES.items():
+            assert _canonical_metric(raw) == expected, f"alias {raw!r} changed meaning"
+
+    def test_no_canonical_sentinel_is_captured_as_a_coverage_metric(self) -> None:
+        """A sentinel swallowed by the coverage branch would silently redirect a
+        working trigger onto a coverage ratio it was never about."""
+        from loanwhiz.primitives.covenant_monitor import _METRIC_ALIASES
+
+        for sentinel in set(_METRIC_ALIASES.values()):
+            resolved = _canonical_metric(sentinel)
+            assert not resolved.endswith(("_oc_ratio", "_ic_ratio")), (
+                f"sentinel {sentinel!r} was captured as coverage ({resolved})"
+            )
+
+    def test_shipped_trigger_lists_resolve_exactly_as_before(self) -> None:
+        """Every metric the shipped trigger lists name keeps its resolution."""
+        expected = {
+            "default_pct": "cumulative_loss_rate_pct",
+            "pdl_class_a": "pdl_class_a",
+            "pdl_class_b": "pdl_class_b",
+            "reserve_fund_ratio": "reserve_fund_ratio",
+            "pool_balance_pct": "pool_balance_pct",
+            "arrears_severe_pct": "arrears_180d_plus_pct",
+            "tape_default_pct": "default_pct",
+            "wa_ltv": "wtd_ltv",
+        }
+        shipped = [
+            t.metric
+            for t in CovenantMonitor.DEFAULT_TRIGGERS
+            + CovenantMonitor.TAPE_NATIVE_TRIGGERS
+        ]
+        assert set(shipped) == set(expected), "shipped trigger metrics changed"
+        for metric, canonical in expected.items():
+            assert _canonical_metric(metric) == canonical
+
+
+class TestExtractedCoverageTriggerEndToEnd:
+    """An extracted coverage covenant survives the whole seam intact.
+
+    The two halves are pinned separately above — the free-string metric
+    resolves, and the threshold is unit-converted — but only this test proves
+    they compose. ``api.main._map_extracted_trigger`` passes the metric string
+    through **raw** while converting the threshold, so a break in either half
+    shows up here as a trigger that silently cannot fire.
+    """
+
+    def _extracted(self, threshold: float, unit: str) -> dict:
+        return {
+            "name": "class_b_oc_test",
+            "display_name": "Class B Overcollateralisation Test",
+            "description": "Class B OC test, quoted as a coverage multiple.",
+            "metric": "Class B Overcollateralisation Test",
+            "threshold": threshold,
+            "threshold_unit": unit,
+            "direction": "below",
+            "consequence": "Coverage shortfall observed.",
+            "section_reference": "Section 5.1",
+            "citation": {},
+        }
+
+    def test_extracted_oc_trigger_evaluates_against_deal_state(self) -> None:
+        from loanwhiz.api.main import _map_extracted_trigger
+        from loanwhiz.primitives.covenant_monitor import _evaluate_one
+
+        state = _coverage_state()  # Class B OC = 125%
+        input = CovenantInput(periods=[{}], period_states=[state])
+
+        # The same test quoted three ways by three prospectuses.
+        for threshold, unit in ((1.20, "fraction"), (120.0, "percent"), (12_000.0, "bps")):
+            td = _map_extracted_trigger(self._extracted(threshold, unit))
+            assert td.threshold == pytest.approx(120.0), f"{unit} not canonicalised"
+            status = _evaluate_one(td, {}, input, state, None, "2026-04-30")
+            assert status.evaluable is True, status.not_evaluable_reason
+            assert status.metric_value == pytest.approx(125.0)
+            assert status.is_triggered is False
+
+    def test_extracted_oc_trigger_fires_when_coverage_erodes(self) -> None:
+        """The guard's whole point: the trigger must actually be able to fire.
+
+        A dropped unit conversion leaves the threshold at 1.20, which a
+        percent-scaled ratio clears at any level — the covenant would be
+        permanently, silently compliant.
+        """
+        from loanwhiz.api.main import _map_extracted_trigger
+        from loanwhiz.primitives.covenant_monitor import _evaluate_one
+
+        eroded = _coverage_state(pool_balance=850_000_000.0)  # Class B OC = 106.25%
+        input = CovenantInput(periods=[{}], period_states=[eroded])
+        td = _map_extracted_trigger(self._extracted(1.20, "fraction"))
+        status = _evaluate_one(td, {}, input, eroded, None, "2026-04-30")
+        assert status.evaluable is True
+        assert status.metric_value == pytest.approx(106.25)
+        assert status.is_triggered is True
