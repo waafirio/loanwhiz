@@ -8,4 +8,5 @@ triage by opening the entry, not by reading the line.
 - [Extraction guards & false-positive filters](extraction-guards.md) — keywords: _CLASS_LETTERS, tranche, note class, Class J, Class O, false positive, guard, proxy range
 - [Extraction: locating the right section](extraction-section-routing.md) — keywords: descendant span, heading level, section number, Docling, has_payment_list, LLM router, empty result
 - [Published figures & doc drift](published-figures.md) — keywords: stale tally, completeness_score, capability matrix, re-derive, stored metric, published figure
+- [Metrics computed over a capital structure](structural-metrics.md) — keywords: attachment point, senior-or-equal walk, denominator, coverage ratio, OC, IC, silent health, unplaceable tranche
 - [Extraction determinism & LLM caching](extraction-determinism.md) — keywords: classify_segments_llm, section router, determinism cache, prompt hash, force_refresh, sections_found, completeness_score, degrade-to-default
