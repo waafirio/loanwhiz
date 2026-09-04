@@ -1,0 +1,309 @@
+"""Tests for the CLO deal registered in ``data/deals.json`` (#455, epic #454).
+
+**Cairn CLO XVII DAC** is the registry's first NON-RMBS deal — an Irish
+collateralised loan obligation, listed on Euronext Dublin's Global Exchange
+Market, trustee U.S. Bank Global Corporate Trust, Class A ISIN ``XS2650750537``
+(page 395 of the 420-page Listing Particulars). Like every deal since #207 it is
+registered as *data*, not code, via ``src/loanwhiz/data/deals.json``, which
+``loanwhiz.config._load_deal_registry`` merges into ``DEAL_REGISTRY`` at import.
+
+**This is registration only — no extraction (#456) and no engine wiring (#457).**
+The deal therefore has no committed seed model, no answer key and no validation
+builder, and these tests exist to pin exactly that: what is *absent* is asserted
+as hard as what is present, so a later change that quietly fabricates a green
+cell for this deal reds here.
+
+What the sourcing established, and what these tests pin
+-------------------------------------------------------
+* **Obtainable, unauthenticated** (verified ``200 application/pdf``, no redirect,
+  no cookies): the 420pp Listing Particulars, three 74pp U.S. Bank monthly
+  trustee reports (as-of 16/12/2024, 18/02/2025, 18/03/2025) and the 83pp Note
+  Valuation Report (as-of 08/01/2025).
+* **The Note Valuation Report is the CLO analogue of an RMBS Notes & Cash
+  report** — it is the only one of the five documents carrying both an *Interest
+  Priority of Payments* and a *Principal Priority of Payments*, so it is
+  registered under ``notes_cash_report_urls`` while the monthly trustee reports
+  (collateral-side: Current Asset Characteristics, Defaulted Collateral
+  Obligation Detail, Assets Purchased/Sold — but no PoP) go under
+  ``investor_report_urls``. That split mirrors the Green Lion deals' and is the
+  reason no new CLO-shaped registry key was added.
+* **No machine-readable loan tape exists**, so ``tape_urls`` is empty by design.
+  Loan-level collateral detail *is* published — as PDF tables inside the trustee
+  reports — but that is not an ESMA Annex tape and the normaliser cannot read it.
+
+The tests load the *real shipped* ``deals.json`` (via ``DEALS_DATA_FILE``), not a
+fixture, so a regression in the data file is caught here.
+"""
+
+from __future__ import annotations
+
+import json
+from pathlib import Path
+
+import pytest
+from fastapi import HTTPException
+
+from loanwhiz.config import (
+    ANSWER_KEY_DATA_DIR,
+    DEAL_REGISTRY,
+    DEALS_DATA_FILE,
+    GREEN_LION,
+    _load_deal_registry,
+)
+
+CLO_DEAL_ID = "cairn-clo-xvii"
+CLO_DEAL_NAME = "Cairn CLO XVII DAC"
+
+#: Euronext Dublin's public document store. Every Cairn document is a plain,
+#: unauthenticated object here — no investor portal, no login.
+EURONEXT_DOC_HOST = (
+    "https://ise-prodnr-eu-west-1-data-integration.s3-eu-west-1.amazonaws.com/"
+)
+
+#: The trustee-report periods registered under ``investor_report_urls``. Euronext's
+#: listing for this issuer carries exactly these three monthly reports — January
+#: 2025 is absent from the exchange's filing, so the series is deliberately NOT
+#: contiguous and nothing is interpolated to make it look complete.
+EXPECTED_REPORT_PERIODS = ["December 2024", "February 2025", "March 2025"]
+
+#: The single Note Valuation Report period.
+EXPECTED_NVR_PERIODS = ["January 2025"]
+
+#: The four RMBS deals that predate this one. The CLO must not become the
+#: registry's special case: every one of them carries ``asset_class`` too.
+PRE_EXISTING_RMBS_DEAL_IDS = [
+    "green-lion-2023-1",
+    "green-lion-2024-1",
+    "leone-arancio-2023-1",
+    "sol-lion-ii",
+]
+
+#: Per-deal STRUCTURAL config keys (config.py). Sourcing a deal does not license
+#: inventing its capital structure — #456/#457 derive these from the documents.
+STRUCTURAL_KEYS = (
+    "capital_structure",
+    "reserve_account_target",
+    "original_pool_balance",
+    "projection_base",
+)
+
+
+def _shipped_data_file() -> dict[str, dict]:
+    """The raw shipped ``deals.json`` object (deal_id -> context)."""
+    return json.loads(DEALS_DATA_FILE.read_text(encoding="utf-8"))
+
+
+# ---------------------------------------------------------------------------
+# Positives — the deal is registered, as data, with the documents that exist.
+# ---------------------------------------------------------------------------
+
+
+def test_clo_resolves_from_live_registry() -> None:
+    assert CLO_DEAL_ID in DEAL_REGISTRY, f"{CLO_DEAL_ID} missing from DEAL_REGISTRY"
+    assert DEAL_REGISTRY[CLO_DEAL_ID]["deal_name"] == CLO_DEAL_NAME
+    # The in-code Green Lion 2026-1 default is never displaced by the new entry.
+    assert "green-lion-2026-1" in DEAL_REGISTRY
+
+
+def test_clo_resolves_from_shipped_data_file() -> None:
+    # Loading the real data file directly yields the CLO — proving the
+    # registration lives in ``data/deals.json`` (data, not code).
+    assert CLO_DEAL_ID in _load_deal_registry(DEALS_DATA_FILE)
+
+
+def test_clo_registration_required_no_config_code_change() -> None:
+    """The CLO exists *only* in the data file — nothing was added to config.py.
+
+    The in-code default registry is the single ``GREEN_LION`` entry; if a future
+    change smuggles a CLO-shaped special case into ``config.py`` this reds.
+    """
+    assert CLO_DEAL_ID not in _load_deal_registry(Path("/nonexistent-deals.json"))
+    assert GREEN_LION["deal_name"] != CLO_DEAL_NAME
+
+
+def test_clo_is_irish_and_declares_its_asset_class() -> None:
+    deal = DEAL_REGISTRY[CLO_DEAL_ID]
+    assert deal["jurisdiction"] == "Ireland"
+    # The deal says what it IS, rather than the registry inferring non-RMBS from
+    # the absence of RMBS-shaped keys.
+    assert deal["asset_class"] == "CLO"
+
+
+def test_clo_prospectus_is_a_euronext_pdf() -> None:
+    prospectus = DEAL_REGISTRY[CLO_DEAL_ID]["prospectus_url"]
+    assert prospectus.startswith(EURONEXT_DOC_HOST)
+    assert prospectus.endswith(".pdf")
+    # Not an ING-portal or HuggingFace document like every prior deal's.
+    assert "ing.com" not in prospectus
+    assert "huggingface" not in prospectus.lower()
+
+
+def test_clo_trustee_reports_registered_as_investor_reports() -> None:
+    """The three monthly trustee reports use the standard ``{period, url}`` shape."""
+    entries = DEAL_REGISTRY[CLO_DEAL_ID]["investor_report_urls"]
+    assert [e["period"] for e in entries] == EXPECTED_REPORT_PERIODS
+    for entry in entries:
+        assert set(entry) >= {"period", "url"}
+        assert entry["url"].startswith(EURONEXT_DOC_HOST)
+        assert entry["url"].endswith(".pdf")
+
+
+def test_clo_note_valuation_report_registered_as_notes_cash() -> None:
+    """The NVR — the only Cairn document carrying both Priorities of Payments —
+    is registered under the generic liability-report key, not a CLO-shaped one."""
+    entries = DEAL_REGISTRY[CLO_DEAL_ID]["notes_cash_report_urls"]
+    assert [e["period"] for e in entries] == EXPECTED_NVR_PERIODS
+    for entry in entries:
+        assert set(entry) >= {"period", "url"}
+        assert entry["url"].startswith(EURONEXT_DOC_HOST)
+        assert entry["url"].endswith(".pdf")
+
+
+def test_every_registered_document_url_is_distinct() -> None:
+    """Five distinct documents — no URL copy-pasted across two slots."""
+    deal = DEAL_REGISTRY[CLO_DEAL_ID]
+    urls = [
+        deal["prospectus_url"],
+        *(e["url"] for e in deal["investor_report_urls"]),
+        *(e["url"] for e in deal["notes_cash_report_urls"]),
+    ]
+    assert len(urls) == 5
+    assert len(set(urls)) == 5
+
+
+def test_the_clo_is_not_the_registry_special_case() -> None:
+    """``asset_class`` is on EVERY shipped entry, not bolted onto the CLO alone.
+
+    The point of the key is the seam, not the exception: the four RMBS deals
+    declare their asset class as explicitly as the CLO declares its own, so a
+    reader (#457) can dispatch on the key rather than on "is this Cairn?".
+    """
+    shipped = _shipped_data_file()
+    assert all("asset_class" in ctx for ctx in shipped.values())
+    for deal_id in PRE_EXISTING_RMBS_DEAL_IDS:
+        assert shipped[deal_id]["asset_class"] == "RMBS"
+    assert shipped[CLO_DEAL_ID]["asset_class"] == "CLO"
+
+
+def test_asset_class_is_optional_like_jurisdiction_on_the_in_code_default() -> None:
+    """``asset_class`` is an ADDITIVE, optional key — exactly like ``jurisdiction``.
+
+    The in-code Green Lion 2026-1 default carries neither, because adding one
+    would be a ``config.py`` code change and registering a deal must stay data.
+    A reader resolves a default for the absent key, the way
+    ``capability_matrix._resolve_jurisdiction`` already does for jurisdiction.
+    Pinned so the gap is visible rather than silently assumed away.
+    """
+    assert "jurisdiction" not in GREEN_LION
+    assert "asset_class" not in GREEN_LION
+
+
+# ---------------------------------------------------------------------------
+# Negatives — what is absent, asserted as hard as what is present.
+# ---------------------------------------------------------------------------
+
+
+def test_clo_has_no_loan_tape() -> None:
+    """No machine-readable ESMA loan tape is published for this deal.
+
+    Loan-level collateral detail IS obtainable — as PDF tables inside the monthly
+    trustee reports — but the ESMA tape normaliser cannot read those, so claiming
+    a tape here would be a lie the pool analytics would then act on.
+    """
+    assert DEAL_REGISTRY[CLO_DEAL_ID]["tape_urls"] == []
+
+
+@pytest.mark.parametrize("key", STRUCTURAL_KEYS)
+def test_clo_carries_no_invented_structural_config(key: str) -> None:
+    """Sourcing a deal is not licence to invent its capital structure.
+
+    These keys are derived from the documents by #456/#457. Absent them the
+    engine fails loudly (see the not-modelable test below) rather than borrowing
+    another deal's numbers.
+    """
+    assert key not in DEAL_REGISTRY[CLO_DEAL_ID]
+
+
+def test_clo_has_no_committed_seed_model() -> None:
+    """No extraction has run for this deal — #456's job, not this one's."""
+    from loanwhiz.api.main import _load_cached_deal_model
+
+    assert _load_cached_deal_model(DEAL_REGISTRY[CLO_DEAL_ID]) is None
+
+
+def test_clo_has_no_committed_answer_key() -> None:
+    """No ground truth is authored for the CLO.
+
+    The Note Valuation Report publishes both Priorities of Payments, so an answer
+    key is *feasible* here in a way it never was for the Italian and Spanish
+    deals — but feasible is not authored, and inventing one would poison every
+    grading claim downstream.
+    """
+    assert not (ANSWER_KEY_DATA_DIR / "cairn-clo-xvii-dac.json").exists()
+
+
+def test_clo_has_no_validation_builder() -> None:
+    """No committed engine-validation builder ⇒ the CLO cannot reach ``validated``."""
+    from loanwhiz.api.main import _VALIDATION_BUILDERS
+
+    assert CLO_DEAL_ID not in _VALIDATION_BUILDERS
+
+
+def test_clo_is_registered_but_not_modelable() -> None:
+    """Registered ≠ modelable: the engine degrades to a labelled 422.
+
+    The CLO has reports listed but no extracted model, so ``_reconstruct_series``
+    raises rather than serving an empty cascade that would read as a real,
+    all-clear result. Offline: the model lookup fails before any network fetch.
+    """
+    from loanwhiz.api.main import _reconstruct_series
+
+    with pytest.raises(HTTPException) as exc:
+        _reconstruct_series(CLO_DEAL_ID, DEAL_REGISTRY[CLO_DEAL_ID])
+    assert exc.value.status_code == 422
+    assert CLO_DEAL_ID in str(exc.value.detail)
+
+
+# ---------------------------------------------------------------------------
+# Capability matrix — registering a deal must not fabricate a green cell.
+# ---------------------------------------------------------------------------
+
+
+def _live_matrix():
+    from loanwhiz.api.main import _load_cached_deal_model, _VALIDATION_BUILDERS
+    from loanwhiz.primitives.capability_matrix import build_capability_matrix
+
+    return build_capability_matrix(
+        deals=DEAL_REGISTRY,
+        seed_loader=_load_cached_deal_model,
+        validators=_VALIDATION_BUILDERS,
+    )
+
+
+def test_every_clo_capability_cell_is_not_applicable_with_a_reason() -> None:
+    from loanwhiz.primitives.capability_matrix import STATE_NOT_APPLICABLE
+
+    cells = [c for c in _live_matrix().cells if c.deal_id == CLO_DEAL_ID]
+    assert cells, "CLO produced no capability cells"
+    for cell in cells:
+        assert cell.state == STATE_NOT_APPLICABLE, f"{cell.capability_key} is {cell.state}"
+        assert cell.reason, f"{cell.capability_key} has no reason"
+
+
+def test_registering_the_clo_added_no_validated_cell() -> None:
+    """The single ``validated`` cell stays Green Lion 2024-1's, and only its."""
+    from loanwhiz.primitives.capability_matrix import STATE_VALIDATED
+
+    matrix = _live_matrix()
+    validated = [c for c in matrix.cells if c.state == STATE_VALIDATED]
+    assert [c.deal_id for c in validated] == ["green-lion-2024-1"]
+    assert matrix.tally[STATE_VALIDATED] == 1
+
+
+def test_matrix_covers_every_registered_deal() -> None:
+    """One column per registry deal, one cell per (capability × deal) pair —
+    so a newly registered deal is never silently omitted from the honest tally."""
+    matrix = _live_matrix()
+    assert {d.deal_id for d in matrix.deals} == set(DEAL_REGISTRY)
+    assert len(matrix.cells) == len(matrix.capabilities) * len(DEAL_REGISTRY)
+    assert sum(matrix.tally.values()) == len(matrix.cells)
