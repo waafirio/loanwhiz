@@ -124,8 +124,16 @@ def test_clo_registration_required_no_config_code_change() -> None:
 
     The in-code default registry is the single ``GREEN_LION`` entry; if a future
     change smuggles a CLO-shaped special case into ``config.py`` this reds.
+
+    Both file arguments are pinned at non-existent paths on purpose: the runtime
+    overlay (``data/deals.runtime.json``) is gitignored, so leaving it defaulted
+    would let a stray local file decide this negative's result.
     """
-    assert CLO_DEAL_ID not in _load_deal_registry(Path("/nonexistent-deals.json"))
+    bare = _load_deal_registry(
+        Path("/nonexistent-deals.json"), Path("/nonexistent-runtime.json")
+    )
+    assert CLO_DEAL_ID not in bare
+    assert set(bare) == {"green-lion-2026-1"}
     assert GREEN_LION["deal_name"] != CLO_DEAL_NAME
 
 
@@ -254,8 +262,16 @@ def test_clo_has_no_committed_answer_key() -> None:
     key is *feasible* here in a way it never was for the Italian and Spanish
     deals — but feasible is not authored, and inventing one would poison every
     grading claim downstream.
+
+    Resolved through the real ``load_answer_key`` rather than by testing one
+    hardcoded filename: a key committed under any other slug would slip past a
+    filename check, making the negative pass for the wrong reason.
     """
-    assert not (ANSWER_KEY_DATA_DIR / "cairn-clo-xvii-dac.json").exists()
+    from loanwhiz.primitives.reconciliation_answer_key import load_answer_key
+
+    assert load_answer_key(DEAL_REGISTRY[CLO_DEAL_ID]) is None
+    # And no committed key file names this deal under any slug.
+    assert not list(ANSWER_KEY_DATA_DIR.glob("*cairn*"))
 
 
 def test_clo_has_no_validation_builder() -> None:

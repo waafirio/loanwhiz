@@ -147,10 +147,11 @@ finding, not a blank.**
   registered trustee reports are **not contiguous** — Euronext's listing for this
   issuer carries exactly six records and January 2025's monthly report is not
   among them. Nothing is interpolated to make the series look complete.
-- **No open loan-level corpus.** European DataWarehouse, the ESMA-registered
-  securitisation repository, gates loan-level data behind registration /
-  subscription rather than open download. No free, bulk source of CLO collateral
-  tapes was found.
+- **No open loan-level corpus found.** No free, bulk, machine-readable source of
+  CLO collateral data surfaced for this deal. European DataWarehouse, the
+  ESMA-registered securitisation repository, is the obvious candidate; its data
+  portal is account-gated and its terms were **not** established here, so treat
+  this bullet as "not found by open search", not as a determination about EDW.
 
 **Redistribution caveat (Reg S / Rule 144A).** The notes were offered under
 Regulation S and Rule 144A and listed on a professional-investor exchange market,
