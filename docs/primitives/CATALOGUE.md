@@ -589,19 +589,56 @@ Citation(
 
 ---
 
-## 6. ESMA Annex 2 field-code mapping & tape-native (B7) covenants
+## 6. ESMA annex field-code mapping & tape-native (B7) covenants
 
 The tape side of LoanWhiz has a regulatory canonical schema — the **ESMA
-Securitisation RTS Annex 2** loan-level template for residential real estate
-(RMBS). The canonical mapping between the regulatory **RREL field code**, the
-semantic field, and the LoanWhiz canonical column lives in one module:
-`src/loanwhiz/domain/esma_annex2.py`.
+Securitisation RTS** loan-level templates (Commission Delegated Regulation (EU)
+2020/1224). The RTS defines one template *per asset class*, each in its own annex
+with its own field-code prefix, so a tape's columns are only meaningful relative
+to the annex it was published under.
 
-### The mapping table (`esma_annex2.ANNEX2_RMBS_FIELDS`)
+### The registry (`domain/esma_annex_registry.py`, loaded by `domain/esma_annexes.py`)
 
-Each record (`Annex2Field`) carries `code` (e.g. `RREL18`), `field_name`,
-`description`, `canonical_column`, and issuer/vintage `synonyms`. The load-bearing
-RMBS fields the normaliser and covenant signals consume:
+One `AnnexSpec` per annex carries its detection signature **and** its field table
+on a single record, so the two cannot drift apart. Registered today:
+
+| Annex | Asset class | Prefixes | Module | Detected on |
+|---|---|---|---|---|
+| Annex 2 (RMBS) | RMBS | `RREL` | `esma_annex2.py` | `epc_label` + `property_type` |
+| Annex 4 (Corporate) | Corporate | `CRPL`, `CRPC` | `esma_annex4_corporate.py` | `enterprise_size` |
+| Annex 5 (Auto) | Auto | `AUTL` | `esma_annex5_auto.py` | `vehicle_type` |
+
+**Resolution is scoped to the detected annex.** `current_balance` is `RREL18` on
+an RMBS tape and `CRPL39` on a corporate one; a column absent from the detected
+annex's table stays **unresolved rather than guessed**, and a tape matching no
+signature resolves nothing and cites no codes (degrading via the unknown-annex
+confidence deduction). `AnnexRegistry.register` refuses a spec whose signature its
+own table cannot resolve — the drift that previously let a corporate tape be
+detected correctly and then cited as `RREL18`.
+
+**Adding an asset class is a table, not a code change**: a new module with its
+`AnnexSpec`, plus one import in `esma_annexes.py`. `esma_tape_normaliser` owns no
+annex list and needs no edit.
+
+> **Annex numbering.** Corporate is **Annex IV** (`CRPL`), and it covers SMEs *and*
+> leveraged loans — Art. 2(1)(c) of 2020/1224 assigns Annex IV to corporate
+> exposures "including underlying exposures to micro, small- and medium-sized
+> enterprises". There is no standalone SME annex; **Annex VIII is leasing**. An
+> earlier `"Annex 8 (SME)"` label in the normaliser was wrong on both counts.
+
+`AnnexField.code` is `str | None`. `None` marks an **extension field** — a column
+LoanWhiz resolves that the RTS does not define (the Annex 5 `vehicle_type`
+sentinel; the automobile template has no vehicle-type field). It resolves its
+column but yields no locator, so provenance is visibly absent rather than
+carrying a fabricated code. Annex IV likewise defines **no credit-rating and no
+covenant-lite field**, so neither is mapped.
+
+### The Annex 2 mapping table (`esma_annex2.ANNEX2_RMBS_FIELDS`)
+
+Each record (`AnnexField`, still exported as `Annex2Field`) carries `code` (e.g.
+`RREL18`), `field_name`, `description`, `canonical_column`, and issuer/vintage
+`synonyms`. The load-bearing RMBS fields the normaliser and covenant signals
+consume:
 
 | RREL code | Field | Canonical column |
 |---|---|---|
@@ -625,10 +662,12 @@ RMBS fields the normaliser and covenant signals consume:
 Accessors: `field_for_code(code)`, `field_for_name(name)`, `code_for_column(col)`,
 `canonical_column_for(col)` (resolves a synonym to its canonical name), and
 `locator_for(field_name)` (the `"<RREL code> · <description>"` string for a
-`Citation.page_or_row`). `esma_tape_normaliser` uses the table to resolve
-issuer/vintage column-name drift onto canonical names (a tape spelled
-`outstanding_balance` still resolves to `current_balance`) and anchors its output
-`Citation` to the matched RREL codes. Columns already in canonical form resolve to
+`Citation.page_or_row`). These are module-level for Annex 2 and delegate to
+`ANNEX2_RMBS`; the same methods exist on every `AnnexSpec`, so other annexes
+resolve through their own spec. `esma_tape_normaliser` resolves issuer/vintage
+column-name drift onto canonical names (a tape spelled `outstanding_balance` still
+resolves to `current_balance`) and anchors its output `Citation` to the matched
+codes of the detected annex. Columns already in canonical form resolve to
 themselves, so a Green-Lion tape is unchanged.
 
 ### Tape-native (B7) covenant triggers (`covenant_monitor.TAPE_NATIVE_TRIGGERS`)

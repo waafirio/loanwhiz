@@ -91,44 +91,49 @@ APRIL_TAPE_URL = next(
 
 
 class TestDetectAnnex:
-    """Unit tests for the column-based Annex detection logic."""
+    """Unit tests for the column-based Annex detection logic.
+
+    ``_detect_annex`` returns the matched ``AnnexSpec`` (or ``None``) rather than
+    a ``(label, certain)`` pair: the caller needs the spec itself, because column
+    resolution is scoped to the detected annex.
+    """
 
     def test_rmbs_detected_on_epc_and_property_type(self) -> None:
         cols = {"epc_label", "property_type", "current_balance", "arrears_bucket"}
-        label, certain = _detect_annex(cols)
-        assert label == "Annex 2 (RMBS)"
-        assert certain is True
+        spec = _detect_annex(cols)
+        assert spec is not None
+        assert spec.label == "Annex 2 (RMBS)"
+        assert spec.asset_class == "RMBS"
 
     def test_auto_detected_on_vehicle_type(self) -> None:
         cols = {"vehicle_type", "current_balance", "arrears_bucket"}
-        label, certain = _detect_annex(cols)
-        assert label == "Annex 5 (Auto)"
-        assert certain is True
+        spec = _detect_annex(cols)
+        assert spec is not None
+        assert spec.label == "Annex 5 (Auto)"
+        assert spec.asset_class == "Auto"
 
-    def test_sme_detected_on_company_size(self) -> None:
+    def test_company_size_detects_corporate_not_sme(self) -> None:
+        # The company-size sentinel used to be labelled "Annex 8 (SME)". Under
+        # the ESMA RTS (Reg. (EU) 2020/1224) Annex VIII is *leasing*, and there
+        # is no standalone SME annex: Art. 2(1)(c) puts corporate exposures
+        # "including ... micro, small- and medium-sized enterprises" in Annex IV.
+        # The column itself is CRPL16 Enterprise Size.
         cols = {"company_size", "current_balance", "arrears_bucket"}
-        label, certain = _detect_annex(cols)
-        assert label == "Annex 8 (SME)"
-        assert certain is True
+        spec = _detect_annex(cols)
+        assert spec is not None
+        assert spec.label == "Annex 4 (Corporate)"
+        assert spec.asset_class == "Corporate"
+        assert spec.code_for_column("company_size") == "CRPL16"
 
     def test_unknown_abs_when_no_signature_matches(self) -> None:
         cols = {"current_balance", "borrower_id", "maturity_date"}
-        label, certain = _detect_annex(cols)
-        assert label == "Unknown ABS"
-        assert certain is False
+        assert _detect_annex(cols) is None
 
     def test_rmbs_requires_both_epc_and_property_type(self) -> None:
         # epc_label alone without property_type should NOT trigger RMBS
-        cols_epc_only = {"epc_label", "current_balance"}
-        label, certain = _detect_annex(cols_epc_only)
-        assert label == "Unknown ABS"
-        assert certain is False
-
+        assert _detect_annex({"epc_label", "current_balance"}) is None
         # property_type alone without epc_label should NOT trigger RMBS
-        cols_prop_only = {"property_type", "current_balance"}
-        label, certain = _detect_annex(cols_prop_only)
-        assert label == "Unknown ABS"
-        assert certain is False
+        assert _detect_annex({"property_type", "current_balance"}) is None
 
 
 # ---------------------------------------------------------------------------
@@ -480,3 +485,140 @@ class TestAnnex2ColumnResolution:
         assert "RREL" in citation.page_or_row
         assert "RREL18" in citation.excerpt  # current_balance
         assert "RREL40" in citation.excerpt  # cltomv_current (LTV)
+
+
+# ---------------------------------------------------------------------------
+# Annex-scoped resolution (#451) — resolution follows the DETECTED annex
+# ---------------------------------------------------------------------------
+
+
+class TestAnnexScopedResolution:
+    """Columns resolve through the detected annex's table, or not at all.
+
+    Previously the normaliser resolved and cited every tape through the Annex 2
+    (RMBS) table whatever it had detected, so a corporate tape's balance was
+    reported as ``RREL18``. These tests pin the corrected behaviour end to end.
+    """
+
+    def test_corporate_tape_cites_crpl_codes_not_rrel(self, tmp_path: Path) -> None:
+        df = pd.DataFrame(
+            {
+                "company_size": ["SMAE", "LARE"],          # → enterprise_size (CRPL16)
+                "outstanding_balance": [1_000_000.0, 3_000_000.0],  # → CRPL39
+                "current_interest_rate": [5.0, 7.0],       # → CRPL53
+                "nace_code": ["C25", "J62"],               # → CRPL14
+                "leveraged_transaction": ["Y", "N"],       # → CRPL29
+                "data_cut_off_date": ["2026-04-30", "2026-04-30"],
+            }
+        )
+        csv = tmp_path / "corporate.csv"
+        df.to_csv(csv, index=False)
+        result = EsmaTapeNormaliser().execute(EsmaTapeInput(file_url=f"file://{csv}"))
+        out = result.output
+
+        assert out.annex_detected == "Annex 4 (Corporate)"
+        assert out.asset_class == "Corporate"
+        # The balance synonym resolved through the CORPORATE table.
+        assert out.pool_balance_eur == 4_000_000.0
+        # Balance-weighted coupon: (1m*5 + 3m*7)/4m = 6.5
+        assert out.pool_stats["wtd_coupon_pct"] == 6.5
+
+        excerpt = result.citations[0].excerpt
+        assert "CRPL39" in excerpt
+        assert "CRPL16" in excerpt
+        # The whole point: no residential-mortgage codes on a corporate tape.
+        assert "RREL" not in excerpt
+        assert "RREL" not in result.citations[0].page_or_row
+
+    def test_unidentified_tape_resolves_nothing_and_cites_no_codes(
+        self, tmp_path: Path
+    ) -> None:
+        # Matches no registered signature. ``outstanding_balance`` is an Annex 2
+        # synonym, but with no annex detected there is no table to resolve it
+        # through — resolving it anyway would attach RREL18 to a tape whose asset
+        # class is unknown. It must degrade honestly instead.
+        df = pd.DataFrame(
+            {
+                "outstanding_balance": [100_000.0, 300_000.0],
+                "borrower_id": ["A", "B"],
+                "maturity_date": ["2030-01-01", "2031-01-01"],
+            }
+        )
+        csv = tmp_path / "mystery.csv"
+        df.to_csv(csv, index=False)
+        result = EsmaTapeNormaliser().execute(
+            EsmaTapeInput(file_url=f"file://{csv}", reporting_date="2026-04-30")
+        )
+        out = result.output
+
+        assert out.annex_detected == "Unknown ABS"
+        assert out.asset_class == "ABS"
+        # Unresolved rather than guessed: no balance is claimed.
+        assert out.pool_balance_eur == 0.0
+        # No regulatory codes are cited for a tape of unknown provenance.
+        citation = result.citations[0]
+        assert "RREL" not in citation.excerpt
+        assert "CRPL" not in citation.excerpt
+        assert "·" not in citation.page_or_row
+        # And the degradation is visible in the confidence, not silent.
+        assert result.confidence < 1.0
+
+    def test_auto_tape_extension_sentinel_carries_no_fabricated_code(
+        self, tmp_path: Path
+    ) -> None:
+        # ``vehicle_type`` detects Annex 5 but has no RTS field code, so it must
+        # contribute no code to the citation while AUTL-coded columns do.
+        df = pd.DataFrame(
+            {
+                "vehicle_type": ["Car", "Van"],
+                "outstanding_balance": [10_000.0, 20_000.0],  # → AUTL30
+                "data_cut_off_date": ["2026-04-30", "2026-04-30"],  # → AUTL6
+            }
+        )
+        csv = tmp_path / "auto.csv"
+        df.to_csv(csv, index=False)
+        result = EsmaTapeNormaliser().execute(EsmaTapeInput(file_url=f"file://{csv}"))
+        out = result.output
+
+        assert out.annex_detected == "Annex 5 (Auto)"
+        assert out.asset_class == "Auto"
+        assert out.pool_balance_eur == 30_000.0
+        excerpt = result.citations[0].excerpt
+        assert "AUTL30" in excerpt
+        assert "RREL" not in excerpt
+
+    def test_corporate_default_status_is_not_a_silent_zero(self, tmp_path: Path) -> None:
+        # Annex 4 / Annex 5 carry no default flag: default is a value of
+        # account_status (CRPL79 / AUTL70). Reading only the RMBS
+        # default_crr_flag would report default_pct 0.0 on a corporate tape whose
+        # obligors are marked DFLT — a silent zero indistinguishable from a clean
+        # pool, which is the failure mode this engine must never produce.
+        df = pd.DataFrame(
+            {
+                "company_size": ["SMAE", "LARE", "MEDE", "LARE"],
+                "outstanding_balance": [1_000.0] * 4,
+                "account_status": ["PERF", "DFLT", "PERF", "DFLT"],
+                "data_cut_off_date": ["2026-04-30"] * 4,
+            }
+        )
+        csv = tmp_path / "corp_default.csv"
+        df.to_csv(csv, index=False)
+        out = EsmaTapeNormaliser().execute(
+            EsmaTapeInput(file_url=f"file://{csv}")
+        ).output
+        assert out.annex_detected == "Annex 4 (Corporate)"
+        assert out.arrears_breakdown["default_pct"] == 50.0
+        assert out.arrears_breakdown["current_pct"] == 50.0
+
+    def test_rmbs_default_flag_path_is_unchanged(self, tmp_path: Path) -> None:
+        # The Annex 2 tape has no account_status column, so the added branch must
+        # leave the validated Green-Lion-shaped behaviour exactly as it was.
+        df = _rmbs_frame("2026-04-30", balances=[100_000.0, 300_000.0])
+        df.loc[0, "default_crr_flag"] = "Y"
+        csv = tmp_path / "rmbs_default.csv"
+        df.to_csv(csv, index=False)
+        out = EsmaTapeNormaliser().execute(
+            EsmaTapeInput(file_url=f"file://{csv}")
+        ).output
+        assert out.annex_detected == "Annex 2 (RMBS)"
+        assert out.arrears_breakdown["default_pct"] == 50.0

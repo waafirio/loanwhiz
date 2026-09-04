@@ -2,8 +2,8 @@
 
 Loads a loan tape from a URL (HuggingFace or local) in either **CSV or
 parquet** format — the loader is format-agnostic and dispatches on the URL
-extension — auto-detects the ESMA Annex schema (Annex 2 RMBS, Annex 5 Auto,
-Annex 8 SME, etc.), and computes a comprehensive set of pool analytics:
+extension — auto-detects the ESMA Annex schema (Annex 2 RMBS, Annex 4 Corporate,
+Annex 5 Auto, etc.), and computes a comprehensive set of pool analytics:
 
 - Balance-weighted averages: coupon, LTV, seasoning, remaining term.
 - Multi-bucket arrears breakdown: current, <29 days, 180+ days, default.
@@ -12,20 +12,30 @@ Annex 8 SME, etc.), and computes a comprehensive set of pool analytics:
 Implements the ``Primitive[EsmaTapeInput, EsmaTapeOutput]`` contract so it can
 be composed with other LoanWhiz primitives by the LangGraph agent.
 
-Canonical column resolution (ESMA Annex 2 RREL field codes)
+Canonical column resolution (scoped to the detected annex)
 -----------------------------------------------------------
 Tape column names vary across issuers and vintages, but each maps to a stable
-ESMA RTS Annex 2 **RREL field code**. The canonical code → field → column table
-lives in :mod:`loanwhiz.domain.esma_annex2`; the normaliser resolves each tape's
-columns onto LoanWhiz canonical names through that single source
-(:func:`~loanwhiz.domain.esma_annex2.canonical_column_for`), so an issuer that
-spells a column ``outstanding_balance`` still resolves to ``current_balance``.
-A column already in canonical form resolves to itself, so the validated Green
-Lion 2026-1 behaviour is preserved byte-for-byte. The output ``Citation`` is
-anchored to the matched RREL codes for governance traceability.
+ESMA RTS field code — and *which* code depends on the annex the tape was
+published under: ``current_balance`` is ``RREL18`` on an Annex 2 (RMBS) tape but
+``CRPL39`` on an Annex 4 (Corporate) one. The annex tables and the registry that
+holds them live in :mod:`loanwhiz.domain.esma_annexes`.
 
-Canonical names the pool analytics key on (each backed by an Annex 2 RREL code
-in ``esma_annex2.ANNEX2_RMBS_FIELDS``):
+**This module owns no annex list.** It detects the tape's annex through the
+registry, then resolves that tape's columns through *only* the matched
+:class:`~loanwhiz.domain.esma_annex_registry.AnnexSpec`. An issuer spelling a
+column ``outstanding_balance`` still resolves to ``current_balance``, and a
+column already in canonical form resolves to itself, so the validated Green Lion
+2026-1 behaviour is preserved byte-for-byte. The output ``Citation`` is anchored
+to the matched field codes *of that annex*, so provenance never attributes a
+value to another asset class's template.
+
+A tape matching **no** registered signature resolves nothing and cites no field
+codes: it degrades honestly (with the unknown-annex confidence deduction) rather
+than being resolved through an arbitrary table. Adding an asset class is a new
+table module plus one import in ``esma_annexes`` — no edit here.
+
+Canonical names the pool analytics key on (Annex 2 codes shown; the equivalent
+column on another annex carries that annex's own code):
 
 - ``current_balance`` (RREL18), ``current_interest_rate_pct`` (RREL22),
   ``remaining_term_months`` (RREL30), ``seasoning_months`` (RREL31),
@@ -43,7 +53,7 @@ from typing import Any
 import pandas as pd
 from pydantic import BaseModel, Field
 
-from loanwhiz.domain.esma_annex2 import canonical_column_for, code_for_column
+from loanwhiz.domain.esma_annexes import ANNEX_REGISTRY, AnnexSpec
 from loanwhiz.primitives.base import (
     AuditEntry,
     BaseInput,
@@ -57,16 +67,17 @@ from loanwhiz.primitives.registry import register_primitive
 # Annex detection constants
 # ---------------------------------------------------------------------------
 
-# Sentinel columns used to identify ESMA Annex schemas.
-# The sets are ordered from most-specific to least-specific so we test in a
-# single pass.
-_ANNEX_SIGNATURES: list[tuple[set[str], str]] = [
-    ({"epc_label", "property_type"}, "Annex 2 (RMBS)"),
-    ({"vehicle_type"}, "Annex 5 (Auto)"),
-    ({"company_size"}, "Annex 8 (SME)"),
-]
+# The annex list itself lives in ``loanwhiz.domain.esma_annexes``: each
+# registered ``AnnexSpec`` carries its detection signature, its labels and its
+# field table on one record. This module deliberately holds no annex list of its
+# own — a second list here is exactly what let detection and resolution drift
+# apart, so that an Auto or Corporate tape was detected correctly and then
+# resolved (and cited) through the RMBS table.
 
 _UNKNOWN_ANNEX = "Unknown ABS"
+
+# Asset-class label for a tape whose columns match no registered signature.
+_UNKNOWN_ASSET_CLASS = "ABS"
 
 # Confidence deductions (see module docstring).
 _DEDUCT_DATE_OVERRIDE = 0.1
@@ -255,24 +266,28 @@ class EsmaTapeOutput(BaseModel):
 # ---------------------------------------------------------------------------
 
 
-def _detect_annex(columns: set[str]) -> tuple[str, bool]:
-    """Return ``(annex_label, certain)`` for the given column set.
+def _detect_annex(columns: set[str]) -> AnnexSpec | None:
+    """Return the registered :class:`AnnexSpec` this tape's columns match.
+
+    Detection is delegated to the annex registry, which walks its specs in
+    registration order and asks each whether *its own* signature is satisfied —
+    resolving signature columns through that spec's own synonyms, so an issuer
+    spelling EPC ``epc_rating`` is still detected as Annex 2 without any other
+    annex's vocabulary leaking into the match.
 
     Parameters
     ----------
     columns:
-        Lower-cased column names present in the CSV.
+        Column names present in the tape (matched case-insensitively).
 
     Returns
     -------
-    (annex_label, certain)
-        ``certain`` is ``True`` when a signature matched, ``False`` for the
-        unknown-ABS fallback.
+    AnnexSpec | None
+        The matched annex, or ``None`` when no registered signature matches.
+        ``None`` is the honest answer, and the caller must then resolve nothing
+        rather than falling back to an arbitrary table.
     """
-    for required_cols, label in _ANNEX_SIGNATURES:
-        if required_cols.issubset(columns):
-            return label, True
-    return _UNKNOWN_ANNEX, False
+    return ANNEX_REGISTRY.detect(columns)
 
 
 def _pct_distribution(series: pd.Series) -> dict[str, float]:
@@ -284,15 +299,35 @@ def _pct_distribution(series: pd.Series) -> dict[str, float]:
     return {str(k): round(float(v) / total * 100, 4) for k, v in counts.items()}
 
 
-def _default_mask(df: pd.DataFrame) -> pd.Series:
-    """Boolean mask of defaulted loans (``default_crr_flag == "Y"``).
+#: ESMA account-status code for a defaulted exposure. ``CRPL79`` (Annex 4) and
+#: ``AUTL70`` (Annex 5) share one status enum, of which ``DFLT`` is default.
+_ACCOUNT_STATUS_DEFAULTED = "DFLT"
 
-    Falls back to an all-``False`` mask when the ``default_crr_flag`` column is
-    absent. Expects lower-cased column names (the ``df_lower`` frame).
+
+def _default_mask(df: pd.DataFrame) -> pd.Series:
+    """Boolean mask of defaulted loans.
+
+    Two annexes express default differently, and both are read here so the mask
+    is not silently empty on a tape that states default in the other form:
+
+    - **Annex 2 (RMBS)** carries an explicit ``default_crr_flag`` (``RREL66``).
+    - **Annex 4 (Corporate) / Annex 5 (Auto)** carry no default flag at all;
+      default is a value of ``account_status`` (``CRPL79`` / ``AUTL70``).
+
+    Reading only the RMBS flag would report ``default_pct = 0.0`` for a corporate
+    tape whose obligors are marked ``DFLT`` — a silent zero indistinguishable
+    from a clean pool. Falls back to an all-``False`` mask only when the tape
+    states default in neither form. Expects lower-cased column names (the
+    ``df_lower`` frame).
     """
+    mask = pd.Series([False] * len(df), index=df.index)
     if "default_crr_flag" in df.columns:
-        return df["default_crr_flag"].astype(str).str.upper() == "Y"
-    return pd.Series([False] * len(df), index=df.index)
+        mask = mask | (df["default_crr_flag"].astype(str).str.upper() == "Y")
+    if "account_status" in df.columns:
+        mask = mask | (
+            df["account_status"].astype(str).str.upper() == _ACCOUNT_STATUS_DEFAULTED
+        )
+    return mask
 
 
 def _arrears_180d_mask(df: pd.DataFrame) -> pd.Series:
@@ -389,30 +424,41 @@ def _optional_breakdown(df: pd.DataFrame, col: str) -> dict[str, float] | None:
     return _pct_distribution(df[col])
 
 
-def _resolve_columns(columns: list[str]) -> dict[str, str]:
+def _resolve_columns(columns: list[str], spec: AnnexSpec | None) -> dict[str, str]:
     """Build a ``canonical-column → original-column`` map for a tape.
 
-    Each tape column name is looked up in the canonical **ESMA Annex 2**
-    field-code table (:func:`loanwhiz.domain.esma_annex2.canonical_column_for`).
+    Each tape column name is looked up in **the detected annex's** field table.
     When a column is a known canonical name *or* a registered issuer/vintage
-    synonym, its canonical name maps to the original column header — so the
-    normaliser's downstream lookups (which use canonical names like
+    synonym of that annex, its canonical name maps to the original column header
+    — so the normaliser's downstream lookups (which use canonical names like
     ``"current_balance"`` / ``"cltomv_current"``) still find the data even when
     the tape spells the column differently across issuers.
 
-    A column already in canonical form maps to itself (the historical
-    Green-Lion behaviour is preserved byte-for-byte: every Green-Lion column is
-    its own canonical name, so this map is the identity on that tape). The first
+    A column already in canonical form maps to itself (the historical Green-Lion
+    behaviour is preserved byte-for-byte: every Green-Lion column is its own
+    canonical name, so this map is the identity on that tape). The first
     occurrence of a canonical target wins, so a synonym never overrides a column
     that is already present under its canonical name.
 
-    Returns a dict keyed by **lower-cased canonical column name**; columns not
-    in the Annex 2 table are simply absent (callers keep their existing
-    fallbacks).
+    Parameters
+    ----------
+    columns:
+        The tape's original column headers.
+    spec:
+        The detected annex, or ``None`` when the tape matched no signature.
+        **``None`` resolves nothing.** Resolving an unidentified tape through
+        some default table is the guessing this seam exists to prevent: it would
+        silently rename columns and cite them with a field code from an asset
+        class the tape may not belong to.
+
+    Returns a dict keyed by **lower-cased canonical column name**; columns not in
+    that annex's table are simply absent (callers keep their existing fallbacks).
     """
+    if spec is None:
+        return {}
     resolved: dict[str, str] = {}
     for orig in columns:
-        canonical = canonical_column_for(orig)
+        canonical = spec.canonical_column_for(orig)
         if canonical is None:
             continue
         # A column present under its own canonical name always wins; a synonym
@@ -475,21 +521,27 @@ class EsmaTapeNormaliser(Primitive[EsmaTapeInput, EsmaTapeOutput]):
         cols: set[str] = set(df.columns)
 
         # -----------------------------------------------------------------
-        # Annex detection
+        # Annex detection — before resolution, because resolution is scoped to
+        # whichever annex is detected. Each spec resolves its own signature
+        # through its own synonyms, so detection needs no pre-resolved columns.
         # -----------------------------------------------------------------
+        annex_spec = _detect_annex(cols)
+        annex_certain = annex_spec is not None
+        annex_detected = annex_spec.label if annex_spec else _UNKNOWN_ANNEX
+
         cols_lower = {c.lower() for c in df.columns}
         # Map original -> lower for column lookup
         col_map = {c.lower(): c for c in df.columns}
-        # Overlay ESMA Annex 2 canonical-name resolution so issuer/vintage
-        # column-name variants resolve onto the canonical names the lookups
-        # below expect (e.g. ``outstanding_balance`` → ``current_balance``).
+        # Overlay the detected annex's canonical-name resolution so issuer/
+        # vintage column-name variants resolve onto the canonical names the
+        # lookups below expect (e.g. ``outstanding_balance`` → ``current_balance``).
         # ``setdefault`` keeps a column already present under its canonical name
         # authoritative — so Green-Lion tapes (already canonical) are unchanged.
-        for canonical, orig in _resolve_columns(list(df.columns)).items():
+        # An unidentified tape resolves nothing (``_resolve_columns`` returns an
+        # empty map), so its columns are only lower-cased.
+        for canonical, orig in _resolve_columns(list(df.columns), annex_spec).items():
             col_map.setdefault(canonical, orig)
             cols_lower.add(canonical)
-
-        annex_detected, annex_certain = _detect_annex(cols_lower)
 
         # -----------------------------------------------------------------
         # Reporting date
@@ -570,15 +622,15 @@ class EsmaTapeNormaliser(Primitive[EsmaTapeInput, EsmaTapeOutput]):
         # -----------------------------------------------------------------
         # Arrears breakdown — build normalised df with lower-case cols
         # -----------------------------------------------------------------
-        # Lower-case all columns, then rename any ESMA Annex 2 synonym columns
-        # onto their canonical names so the arrears / categorical extractors
-        # (which key on canonical names like ``arrears_bucket`` /
+        # Lower-case all columns, then rename any synonym columns of the detected
+        # annex onto their canonical names so the arrears / categorical
+        # extractors (which key on canonical names like ``arrears_bucket`` /
         # ``default_crr_flag`` / ``epc_label``) resolve issuer-variant spellings.
         # ``setdefault`` semantics in ``_resolve_columns`` guarantee a column
         # already present under its canonical name is never overwritten, so a
         # Green-Lion tape is renamed to itself (identity).
         lower_rename = {c: c.lower() for c in df.columns}
-        for canonical, orig in _resolve_columns(list(df.columns)).items():
+        for canonical, orig in _resolve_columns(list(df.columns), annex_spec).items():
             lower_rename[orig] = canonical
         df_lower = df.rename(columns=lower_rename)
         arrears_breakdown = _extract_arrears(df_lower)
@@ -594,7 +646,7 @@ class EsmaTapeNormaliser(Primitive[EsmaTapeInput, EsmaTapeOutput]):
         # -----------------------------------------------------------------
         # Asset class label
         # -----------------------------------------------------------------
-        asset_class = _annex_to_asset_class(annex_detected)
+        asset_class = annex_spec.asset_class if annex_spec else _UNKNOWN_ASSET_CLASS
 
         # -----------------------------------------------------------------
         # Confidence scoring
@@ -609,21 +661,28 @@ class EsmaTapeNormaliser(Primitive[EsmaTapeInput, EsmaTapeOutput]):
         confidence = max(0.0, round(confidence, 4))
 
         # -----------------------------------------------------------------
-        # Citation — anchored to ESMA RTS Annex 2 RREL field codes
+        # Citation — anchored to the DETECTED annex's field codes
         # -----------------------------------------------------------------
-        # Surface which regulatory Annex 2 fields the loaded tape's columns map
-        # to, so the governance view can trace pool analytics back to the RREL
-        # codes they came from (the locator mechanism fixed in the schema design,
-        # decision D8). Codes are de-duplicated and sorted for a stable string.
-        matched_codes = sorted(
-            {
-                code
-                for c in df.columns
-                if (code := code_for_column(c)) is not None
-            }
+        # Surface which regulatory fields the loaded tape's columns map to, so
+        # the governance view can trace pool analytics back to the codes they
+        # came from (the locator mechanism fixed in the schema design, decision
+        # D8). Codes come from the detected annex only: citing an Annex 4
+        # corporate balance as ``RREL18`` would attribute the value to a
+        # residential-mortgage template it does not belong to. An unidentified
+        # tape yields no codes at all rather than borrowed ones.
+        matched_codes = (
+            sorted(
+                {
+                    code
+                    for c in df.columns
+                    if (code := annex_spec.code_for_column(c)) is not None
+                }
+            )
+            if annex_spec is not None
+            else []
         )
-        annex2_anchor = (
-            f" ESMA Annex 2 fields: {', '.join(matched_codes)}."
+        annex_anchor = (
+            f" ESMA {annex_detected} fields: {', '.join(matched_codes)}."
             if matched_codes
             else ""
         )
@@ -636,7 +695,7 @@ class EsmaTapeNormaliser(Primitive[EsmaTapeInput, EsmaTapeOutput]):
             excerpt=(
                 f"ESMA {annex_detected} tape with {loan_count} loans "
                 f"(ingested via {data_source})."
-                f"{annex2_anchor}"
+                f"{annex_anchor}"
             ),
         )
 
@@ -675,17 +734,8 @@ class EsmaTapeNormaliser(Primitive[EsmaTapeInput, EsmaTapeOutput]):
         )
 
 
-# ---------------------------------------------------------------------------
-# Annex → asset class label
-# ---------------------------------------------------------------------------
-
-_ANNEX_TO_ASSET_CLASS: dict[str, str] = {
-    "Annex 2 (RMBS)": "RMBS",
-    "Annex 5 (Auto)": "Auto",
-    "Annex 8 (SME)": "SME",
-}
-
-
-def _annex_to_asset_class(annex: str) -> str:
-    """Map annex label to a short asset class string."""
-    return _ANNEX_TO_ASSET_CLASS.get(annex, "ABS")
+# The annex → asset-class map that used to live here is gone: each registered
+# ``AnnexSpec`` carries its own ``asset_class``, so a new asset class is a table
+# in ``loanwhiz.domain.esma_annexes`` rather than an edit to this module. (The
+# old map was also where ``"Annex 8 (SME)"`` was mislabelled — Annex VIII is
+# leasing; the corporate template, which covers SMEs, is Annex IV.)
