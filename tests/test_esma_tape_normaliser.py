@@ -91,44 +91,49 @@ APRIL_TAPE_URL = next(
 
 
 class TestDetectAnnex:
-    """Unit tests for the column-based Annex detection logic."""
+    """Unit tests for the column-based Annex detection logic.
+
+    ``_detect_annex`` returns the matched ``AnnexSpec`` (or ``None``) rather than
+    a ``(label, certain)`` pair: the caller needs the spec itself, because column
+    resolution is scoped to the detected annex.
+    """
 
     def test_rmbs_detected_on_epc_and_property_type(self) -> None:
         cols = {"epc_label", "property_type", "current_balance", "arrears_bucket"}
-        label, certain = _detect_annex(cols)
-        assert label == "Annex 2 (RMBS)"
-        assert certain is True
+        spec = _detect_annex(cols)
+        assert spec is not None
+        assert spec.label == "Annex 2 (RMBS)"
+        assert spec.asset_class == "RMBS"
 
     def test_auto_detected_on_vehicle_type(self) -> None:
         cols = {"vehicle_type", "current_balance", "arrears_bucket"}
-        label, certain = _detect_annex(cols)
-        assert label == "Annex 5 (Auto)"
-        assert certain is True
+        spec = _detect_annex(cols)
+        assert spec is not None
+        assert spec.label == "Annex 5 (Auto)"
+        assert spec.asset_class == "Auto"
 
-    def test_sme_detected_on_company_size(self) -> None:
+    def test_company_size_detects_corporate_not_sme(self) -> None:
+        # The company-size sentinel used to be labelled "Annex 8 (SME)". Under
+        # the ESMA RTS (Reg. (EU) 2020/1224) Annex VIII is *leasing*, and there
+        # is no standalone SME annex: Art. 2(1)(c) puts corporate exposures
+        # "including ... micro, small- and medium-sized enterprises" in Annex IV.
+        # The column itself is CRPL16 Enterprise Size.
         cols = {"company_size", "current_balance", "arrears_bucket"}
-        label, certain = _detect_annex(cols)
-        assert label == "Annex 8 (SME)"
-        assert certain is True
+        spec = _detect_annex(cols)
+        assert spec is not None
+        assert spec.label == "Annex 4 (Corporate)"
+        assert spec.asset_class == "Corporate"
+        assert spec.code_for_column("company_size") == "CRPL16"
 
     def test_unknown_abs_when_no_signature_matches(self) -> None:
         cols = {"current_balance", "borrower_id", "maturity_date"}
-        label, certain = _detect_annex(cols)
-        assert label == "Unknown ABS"
-        assert certain is False
+        assert _detect_annex(cols) is None
 
     def test_rmbs_requires_both_epc_and_property_type(self) -> None:
         # epc_label alone without property_type should NOT trigger RMBS
-        cols_epc_only = {"epc_label", "current_balance"}
-        label, certain = _detect_annex(cols_epc_only)
-        assert label == "Unknown ABS"
-        assert certain is False
-
+        assert _detect_annex({"epc_label", "current_balance"}) is None
         # property_type alone without epc_label should NOT trigger RMBS
-        cols_prop_only = {"property_type", "current_balance"}
-        label, certain = _detect_annex(cols_prop_only)
-        assert label == "Unknown ABS"
-        assert certain is False
+        assert _detect_annex({"property_type", "current_balance"}) is None
 
 
 # ---------------------------------------------------------------------------

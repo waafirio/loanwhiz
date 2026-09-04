@@ -2,13 +2,13 @@
 
 The tape side of LoanWhiz already has a *canonical schema* — the regulatory
 **ESMA Securitisation RTS Annex 2** loan-level template for residential real
-estate (RMBS) underlying exposures. Every column in an ESMA Annex 2 loan tape
-carries a stable **RREL field code** (``RREL1`` … ``RRELnn``); a real loan tape
-(e.g. the HuggingFace CSV/parquet tapes LoanWhiz reads directly) exposes those
-as human-readable column names that vary subtly across issuers and vintages.
-This module is the **single canonical mapping**
-between the regulatory RREL code, the semantic meaning of the field, and the
-``canonical_column`` name LoanWhiz normalises to.
+estate (RMBS). Every column in an ESMA Annex 2 loan tape carries a stable
+**RREL field code** (``RREL1`` … ``RRELnn``); a real loan tape (e.g. the
+HuggingFace CSV/parquet tapes LoanWhiz reads directly) exposes those as
+human-readable column names that vary subtly across issuers and vintages. This
+module is the **canonical mapping** between the regulatory RREL code, the
+semantic meaning of the field, and the ``canonical_column`` name LoanWhiz
+normalises to.
 
 Why this module exists (Phase 4 of the EDW design)
 --------------------------------------------------
@@ -18,62 +18,45 @@ decision D8 / "ESMA Annex 2 anchoring") fixed the *mechanism* — RREL field cod
 live in :class:`loanwhiz.primitives.base.Citation`'s ``page_or_row`` as citation
 *locators* on ``RiskSignals`` / ``CollectionLegs`` provenance — but deferred
 "Full ESMA Annex 2 field-code mapping table → Phase 4." This module is that
-table. It is the one place the RREL↔field↔column relationship is declared, so:
-
-- the tape normaliser resolves issuer column names onto canonical names through
-  one source rather than ad-hoc per-column ``col_map`` lookups, and
-- covenant / provenance code can cite the regulatory locator for a value via
-  :func:`locator_for` rather than hand-writing ``"RREL… <field>"`` strings.
+table: the one place the RREL↔field↔column relationship is declared.
 
 Scope: **Annex 2 (RMBS)** specifically — the load-bearing fields the LoanWhiz
-tape normaliser and the tape-native (B7) covenant signals consume. The record
-shape admits other annexes (Auto/SME) later without breaking callers; this
-module ships the RMBS table the current deal model needs.
+tape normaliser and the tape-native (B7) covenant signals consume, not the full
+~120-field template. This module's original docstring said its record shape
+"admits other annexes (Auto/SME) later without breaking callers"; that is now
+:mod:`loanwhiz.domain.esma_annex_registry`, which owns the shared
+:class:`~loanwhiz.domain.esma_annex_registry.AnnexField` record and the
+:class:`~loanwhiz.domain.esma_annex_registry.AnnexSpec` this module registers.
+The RMBS table itself is unchanged.
 
-The mapping is intentionally *additive and forgiving*: a tape column that is not
-in the table simply does not resolve (callers keep their existing behaviour),
-and a field can carry ``synonyms`` so issuer/vintage column-name drift resolves
-onto one canonical name.
+Resolution is **scoped to this annex**. The module-level accessors below
+delegate to :data:`ANNEX2_RMBS`, so a caller that asks this module to resolve a
+column gets an Annex 2 answer or ``None`` — never another asset class's field
+code. The mapping stays *additive and forgiving*: a column not in the table
+simply does not resolve, and a field can carry ``synonyms`` so issuer/vintage
+column-name drift resolves onto one canonical name.
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from loanwhiz.domain.esma_annex_registry import (
+    Annex2Field,
+    AnnexField,
+    AnnexSpec,
+    register_annex,
+)
 
-# ---------------------------------------------------------------------------
-# Record shape
-# ---------------------------------------------------------------------------
-
-
-@dataclass(frozen=True)
-class Annex2Field:
-    """One ESMA RTS Annex 2 (RMBS) field-code mapping record.
-
-    Attributes:
-        code:
-            The ESMA RTS Annex 2 RREL field code, e.g. ``"RREL18"``. Stable
-            across issuers and vintages — the regulatory anchor.
-        field_name:
-            The semantic field name LoanWhiz uses to refer to this datum
-            (snake_case), e.g. ``"current_balance"``.
-        description:
-            One-line human-readable description of what the field carries.
-        canonical_column:
-            The canonical (lower-cased) tape column name LoanWhiz normalises
-            this field to. Often equals ``field_name`` but differs where the
-            historical Green-Lion column name is the canonical one
-            (e.g. ``"cltomv_current"`` for current LTV).
-        synonyms:
-            Alternative (lower-cased) column names seen across issuers/vintages
-            that resolve onto the same canonical column. Empty when the
-            canonical column is the only spelling.
-    """
-
-    code: str
-    field_name: str
-    description: str
-    canonical_column: str
-    synonyms: tuple[str, ...] = field(default=())
+__all__ = [
+    "ANNEX2_RMBS",
+    "ANNEX2_RMBS_FIELDS",
+    "Annex2Field",
+    "AnnexField",
+    "canonical_column_for",
+    "code_for_column",
+    "field_for_code",
+    "field_for_name",
+    "locator_for",
+]
 
 
 # ---------------------------------------------------------------------------
@@ -86,23 +69,23 @@ class Annex2Field:
 # load-bearing slice, not the full ~120-field template. Add a row here rather
 # than scattering column-name handling across the normaliser/covenant code.
 
-ANNEX2_RMBS_FIELDS: tuple[Annex2Field, ...] = (
+ANNEX2_RMBS_FIELDS: tuple[AnnexField, ...] = (
     # --- Identifiers & deal-level ---
-    Annex2Field(
+    AnnexField(
         code="RREL1",
         field_name="loan_identifier",
         description="Unique identifier for the underlying exposure (loan).",
         canonical_column="loan_identifier",
         synonyms=("loan_id", "underlying_exposure_identifier", "rrel1"),
     ),
-    Annex2Field(
+    AnnexField(
         code="RREL3",
         field_name="transaction_name",
         description="Name of the securitisation / transaction the loan belongs to.",
         canonical_column="transaction_name",
         synonyms=("deal_name", "rrel3"),
     ),
-    Annex2Field(
+    AnnexField(
         code="RREL5",
         field_name="reporting_date",
         description="Data cut-off / reporting reference date for the tape.",
@@ -110,21 +93,21 @@ ANNEX2_RMBS_FIELDS: tuple[Annex2Field, ...] = (
         synonyms=("data_cut_off_date", "pool_cut_off_date", "rrel5"),
     ),
     # --- Geography & collateral attributes ---
-    Annex2Field(
+    AnnexField(
         code="RREL15",
         field_name="geographic_region",
         description="Geographic region (NUTS-2 / province) of the property.",
         canonical_column="province",
         synonyms=("geographic_region", "region", "nuts2", "rrel15"),
     ),
-    Annex2Field(
+    AnnexField(
         code="RREL16",
         field_name="property_type",
         description="Type of the residential property securing the loan.",
         canonical_column="property_type",
         synonyms=("rrel16",),
     ),
-    Annex2Field(
+    AnnexField(
         code="RREL17",
         field_name="energy_performance_certificate",
         description="Energy Performance Certificate (EPC) rating of the property.",
@@ -132,7 +115,7 @@ ANNEX2_RMBS_FIELDS: tuple[Annex2Field, ...] = (
         synonyms=("epc", "epc_rating", "energy_performance_certificate_value", "rrel17"),
     ),
     # --- Loan economics ---
-    Annex2Field(
+    AnnexField(
         code="RREL18",
         field_name="current_balance",
         description="Current outstanding principal balance of the loan (EUR).",
@@ -144,7 +127,7 @@ ANNEX2_RMBS_FIELDS: tuple[Annex2Field, ...] = (
             "rrel18",
         ),
     ),
-    Annex2Field(
+    AnnexField(
         code="RREL22",
         field_name="current_interest_rate",
         description="Current interest rate / coupon of the loan (%).",
@@ -156,21 +139,21 @@ ANNEX2_RMBS_FIELDS: tuple[Annex2Field, ...] = (
             "rrel22",
         ),
     ),
-    Annex2Field(
+    AnnexField(
         code="RREL24",
         field_name="interest_rate_type",
         description="Interest-rate type (Fixed / Floating).",
         canonical_column="rate_type",
         synonyms=("interest_rate_type", "rrel24"),
     ),
-    Annex2Field(
+    AnnexField(
         code="RREL30",
         field_name="remaining_term",
         description="Remaining contractual term to maturity (months).",
         canonical_column="remaining_term_months",
         synonyms=("remaining_term", "remaining_maturity_months", "rrel30"),
     ),
-    Annex2Field(
+    AnnexField(
         code="RREL31",
         field_name="seasoning",
         description="Seasoning — months elapsed since loan origination.",
@@ -178,7 +161,7 @@ ANNEX2_RMBS_FIELDS: tuple[Annex2Field, ...] = (
         synonyms=("seasoning", "loan_age_months", "rrel31"),
     ),
     # --- LTV / valuation ---
-    Annex2Field(
+    AnnexField(
         code="RREL40",
         field_name="current_loan_to_value",
         description="Current loan-to-value ratio (current balance / current valuation, %).",
@@ -192,28 +175,28 @@ ANNEX2_RMBS_FIELDS: tuple[Annex2Field, ...] = (
         ),
     ),
     # --- Arrears / performance / default ---
-    Annex2Field(
+    AnnexField(
         code="RREL62",
         field_name="arrears_balance",
         description="Current balance of arrears on the loan (EUR).",
         canonical_column="arrears_balance",
         synonyms=("current_arrears_balance", "arrears_amount", "rrel62"),
     ),
-    Annex2Field(
+    AnnexField(
         code="RREL63",
         field_name="number_of_days_in_arrears",
         description="Number of days the loan is currently in arrears.",
         canonical_column="days_in_arrears",
         synonyms=("number_of_days_in_arrears", "arrears_days", "rrel63"),
     ),
-    Annex2Field(
+    AnnexField(
         code="RREL64",
         field_name="arrears_bucket",
         description="Arrears severity bucket (Performing / <29d / 180+d, etc.).",
         canonical_column="arrears_bucket",
         synonyms=("arrears_status", "delinquency_bucket", "rrel64"),
     ),
-    Annex2Field(
+    AnnexField(
         code="RREL66",
         field_name="default_status",
         description="Default / credit-impaired status flag for the loan.",
@@ -223,56 +206,49 @@ ANNEX2_RMBS_FIELDS: tuple[Annex2Field, ...] = (
 )
 
 
-# ---------------------------------------------------------------------------
-# Derived lookup indices (built once at import)
-# ---------------------------------------------------------------------------
-
-
-def _build_indices() -> (
-    tuple[dict[str, Annex2Field], dict[str, Annex2Field], dict[str, Annex2Field]]
-):
-    """Build the code / field-name / column lookup indices.
-
-    The column index maps both each record's ``canonical_column`` and every
-    ``synonym`` onto that record, all lower-cased, so issuer/vintage column-name
-    drift resolves onto one canonical field. A synonym that collides with an
-    existing canonical column never shadows it (canonical columns are indexed
-    last and win).
-    """
-    by_code: dict[str, Annex2Field] = {}
-    by_field: dict[str, Annex2Field] = {}
-    by_column: dict[str, Annex2Field] = {}
-    for rec in ANNEX2_RMBS_FIELDS:
-        by_code[rec.code.lower()] = rec
-        by_field[rec.field_name.lower()] = rec
-        for syn in rec.synonyms:
-            # Don't let a synonym shadow a canonical column added in another row.
-            by_column.setdefault(syn.lower(), rec)
-    # Index canonical columns last so they always win over a synonym collision.
-    for rec in ANNEX2_RMBS_FIELDS:
-        by_column[rec.canonical_column.lower()] = rec
-    return by_code, by_field, by_column
-
-
-_BY_CODE, _BY_FIELD, _BY_COLUMN = _build_indices()
 
 
 # ---------------------------------------------------------------------------
-# Accessors
+# The registered annex specification
 # ---------------------------------------------------------------------------
 
+#: Annex 2 (RMBS) — residential real estate underlying exposures, ``RREL`` codes.
+#: A tape is identified as Annex 2 by carrying both an EPC label and a property
+#: type; both resolve within the table above, so detection and resolution cannot
+#: come apart (the registry enforces this at registration).
+ANNEX2_RMBS: AnnexSpec = register_annex(
+    AnnexSpec(
+        annex_id="annex_2",
+        label="Annex 2 (RMBS)",
+        asset_class="RMBS",
+        code_prefixes=("RREL",),
+        signature_columns=frozenset({"epc_label", "property_type"}),
+        fields=ANNEX2_RMBS_FIELDS,
+    )
+)
 
-def field_for_code(code: str) -> Annex2Field | None:
-    """Return the :class:`Annex2Field` for an RREL code, or ``None`` if unknown.
+
+# ---------------------------------------------------------------------------
+# Accessors — thin delegations to the registered spec
+# ---------------------------------------------------------------------------
+#
+# These are the module's original public surface, kept so existing callers
+# (``covenant_monitor``, the tape normaliser's Annex 2 paths, and their tests)
+# are unaffected by the registry generalisation. Each answers *for Annex 2*;
+# code needing a different annex resolves through that annex's own spec.
+
+
+def field_for_code(code: str) -> AnnexField | None:
+    """Return the :class:`AnnexField` for an RREL code, or ``None`` if unknown.
 
     Matched case-insensitively (``"rrel18"`` and ``"RREL18"`` both resolve).
     """
-    return _BY_CODE.get(code.strip().lower())
+    return ANNEX2_RMBS.field_for_code(code)
 
 
-def field_for_name(field_name: str) -> Annex2Field | None:
-    """Return the :class:`Annex2Field` for a semantic field name, or ``None``."""
-    return _BY_FIELD.get(field_name.strip().lower())
+def field_for_name(field_name: str) -> AnnexField | None:
+    """Return the :class:`AnnexField` for a semantic field name, or ``None``."""
+    return ANNEX2_RMBS.field_for_name(field_name)
 
 
 def code_for_column(column: str) -> str | None:
@@ -282,8 +258,7 @@ def code_for_column(column: str) -> str | None:
     ``canonical_column`` and its ``synonyms``, so an issuer/vintage column-name
     variant resolves onto the same regulatory code as the canonical spelling.
     """
-    rec = _BY_COLUMN.get(column.strip().lower())
-    return rec.code if rec is not None else None
+    return ANNEX2_RMBS.code_for_column(column)
 
 
 def canonical_column_for(column: str) -> str | None:
@@ -293,8 +268,7 @@ def canonical_column_for(column: str) -> str | None:
     a registered synonym; ``None`` when the column is not in the Annex 2 table.
     A column already in canonical form resolves to itself.
     """
-    rec = _BY_COLUMN.get(column.strip().lower())
-    return rec.canonical_column if rec is not None else None
+    return ANNEX2_RMBS.canonical_column_for(column)
 
 
 def locator_for(field_name: str) -> str | None:
@@ -305,7 +279,4 @@ def locator_for(field_name: str) -> str | None:
     value (a ``RiskSignals`` field, a covenant metric) is traceable to the
     regulatory Annex 2 field it came from. ``None`` when the field is not mapped.
     """
-    rec = _BY_FIELD.get(field_name.strip().lower())
-    if rec is None:
-        return None
-    return f"{rec.code} · {rec.description}"
+    return ANNEX2_RMBS.locator_for(field_name)
