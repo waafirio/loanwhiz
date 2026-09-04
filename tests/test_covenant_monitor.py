@@ -1800,3 +1800,61 @@ class TestExtractedCoverageTriggerEndToEnd:
         assert status.evaluable is True
         assert status.metric_value == pytest.approx(106.25)
         assert status.is_triggered is True
+
+
+class TestUnquantifiedCoverageThreshold:
+    """A coverage test with no threshold has nothing to test against.
+
+    `_is_triggered`'s `threshold is None` convention — "any positive balance
+    fires" — is a PDL/balance rule. Applied to a ratio it inverts the meaning:
+    a perfectly healthy 125% coverage test is a positive number, so an
+    unquantified coverage covenant would report as permanently BREACHED.
+    """
+
+    def test_coverage_trigger_without_threshold_is_not_evaluable(self) -> None:
+        state = _coverage_state()
+        input = CovenantInput(periods=[{}], period_states=[state])
+        status = _status("class_b_oc_ratio", state, input)  # threshold 120
+        assert status.is_triggered is False  # 125% clears it
+
+        unquantified = _coverage_trigger("class_b_oc_ratio", threshold=None)
+        from loanwhiz.primitives.covenant_monitor import _evaluate_one
+
+        result = _evaluate_one(
+            unquantified, {}, input, state, None, "2026-04-30"
+        )
+        assert result.is_triggered is False, "a healthy 125% OC must not read as breached"
+        assert result.evaluable is False
+        assert result.proximity_pct is None
+        assert result.not_evaluable_reason
+        assert "no quantified threshold" in result.not_evaluable_reason
+        # The resolved value is still reported — we measured it, we just have
+        # nothing to compare it to.
+        assert result.metric_value == pytest.approx(125.0)
+
+    def test_pdl_any_positive_balance_convention_is_untouched(self) -> None:
+        """The None-threshold rule still fires for the balance metrics it exists for."""
+        state = DealState(
+            reporting_date="2026-04-30",
+            class_a_balance=600_000_000.0,
+            class_a_pdl=5_000_000.0,
+            pool_balance=1_000_000_000.0,
+            original_pool_balance=1_000_000_000.0,
+        )
+        input = CovenantInput(periods=[{}], period_states=[state])
+        pdl = TriggerDefinition(
+            name="pdl_class_a",
+            description="Class A PDL debit balance.",
+            metric="pdl_class_a",
+            threshold=None,
+            direction="above",
+            consequence="Divert to cure the PDL.",
+            citation=Citation(
+                document="Prospectus", page_or_row="5.3", excerpt="PDL debit."
+            ),
+        )
+        from loanwhiz.primitives.covenant_monitor import _evaluate_one
+
+        result = _evaluate_one(pdl, {}, input, state, None, "2026-04-30")
+        assert result.evaluable is True
+        assert result.is_triggered is True

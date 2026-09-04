@@ -267,12 +267,27 @@ def _resolve_coverage(
 
     - **OC** = collateral pool balance / notes at-or-senior-to the point × 100.
       Resolves from ``DealState`` alone.
+
+      **The numerator is the un-haircut pool balance.** A rating-agency CLO par
+      value test carries the collateral at adjusted par — CCC-excess at market
+      value, discount obligations at purchase price, defaulted obligations at
+      the lower of recovery estimate and market — and every one of those
+      adjustments *reduces* the numerator. This ratio is therefore an upper
+      bound on the contractual test for a stressed pool, and reads as more
+      coverage than the deal documents would. The haircut rules need
+      collateral-level data ``DealState`` does not carry; they belong with the
+      diversion increment, which is where the number starts driving cash.
     - **IC** = period interest collections / interest due on those same notes
       × 100. The numerator is ``state.collections.interest``; the denominator
       comes from ``CovenantInput.interest_due_by_tranche``, because coupon rates
       are deliberately not tracked on ``DealState`` (see
       ``period_state_machine``) and the engine already owns the interest-accrual
       calculator — the monitor must not grow a second one.
+
+      **The numerator is gross interest collected**, not interest proceeds net
+      of senior fees, expenses and swap payments, which is what the contractual
+      test uses. Like OC above, this errs high — the same direction, for the
+      same reason: the deductions are not in the inputs available here.
     """
     names, reason = _notes_at_or_senior_to(state, letter)
     if names is None:
@@ -854,6 +869,30 @@ def _evaluate_one(
             evaluable=False,
             not_evaluable_reason=_metric_not_evaluable_reason(
                 trigger.metric, input, state
+            ),
+        )
+
+    if trigger.threshold is None and _COVERAGE_METRIC_RE.match(
+        _canonical_metric(trigger.metric)
+    ):
+        # ``_is_triggered``'s None-threshold convention — "any positive balance
+        # fires" — is a PDL/balance rule and is meaningless for a ratio: a
+        # perfectly healthy 125% coverage test is a positive number, so an
+        # unquantified coverage covenant would report as permanently BREACHED.
+        # A test with no threshold has nothing to test against; say so.
+        return TriggerStatus(
+            trigger_name=trigger.name,
+            period=label,
+            metric_value=metric_value,
+            threshold=None,
+            is_triggered=False,
+            proximity_pct=None,
+            direction="n/a",
+            evaluable=False,
+            not_evaluable_reason=(
+                f"metric '{trigger.metric}' resolved to {metric_value}, but the "
+                "coverage test carries no quantified threshold to compare it "
+                "against"
             ),
         )
 
