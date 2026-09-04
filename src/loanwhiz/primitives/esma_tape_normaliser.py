@@ -299,15 +299,35 @@ def _pct_distribution(series: pd.Series) -> dict[str, float]:
     return {str(k): round(float(v) / total * 100, 4) for k, v in counts.items()}
 
 
-def _default_mask(df: pd.DataFrame) -> pd.Series:
-    """Boolean mask of defaulted loans (``default_crr_flag == "Y"``).
+#: ESMA account-status code for a defaulted exposure. ``CRPL79`` (Annex 4) and
+#: ``AUTL70`` (Annex 5) share one status enum, of which ``DFLT`` is default.
+_ACCOUNT_STATUS_DEFAULTED = "DFLT"
 
-    Falls back to an all-``False`` mask when the ``default_crr_flag`` column is
-    absent. Expects lower-cased column names (the ``df_lower`` frame).
+
+def _default_mask(df: pd.DataFrame) -> pd.Series:
+    """Boolean mask of defaulted loans.
+
+    Two annexes express default differently, and both are read here so the mask
+    is not silently empty on a tape that states default in the other form:
+
+    - **Annex 2 (RMBS)** carries an explicit ``default_crr_flag`` (``RREL66``).
+    - **Annex 4 (Corporate) / Annex 5 (Auto)** carry no default flag at all;
+      default is a value of ``account_status`` (``CRPL79`` / ``AUTL70``).
+
+    Reading only the RMBS flag would report ``default_pct = 0.0`` for a corporate
+    tape whose obligors are marked ``DFLT`` — a silent zero indistinguishable
+    from a clean pool. Falls back to an all-``False`` mask only when the tape
+    states default in neither form. Expects lower-cased column names (the
+    ``df_lower`` frame).
     """
+    mask = pd.Series([False] * len(df), index=df.index)
     if "default_crr_flag" in df.columns:
-        return df["default_crr_flag"].astype(str).str.upper() == "Y"
-    return pd.Series([False] * len(df), index=df.index)
+        mask = mask | (df["default_crr_flag"].astype(str).str.upper() == "Y")
+    if "account_status" in df.columns:
+        mask = mask | (
+            df["account_status"].astype(str).str.upper() == _ACCOUNT_STATUS_DEFAULTED
+        )
+    return mask
 
 
 def _arrears_180d_mask(df: pd.DataFrame) -> pd.Series:

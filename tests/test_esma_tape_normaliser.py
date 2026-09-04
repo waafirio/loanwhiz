@@ -586,3 +586,39 @@ class TestAnnexScopedResolution:
         excerpt = result.citations[0].excerpt
         assert "AUTL30" in excerpt
         assert "RREL" not in excerpt
+
+    def test_corporate_default_status_is_not_a_silent_zero(self, tmp_path: Path) -> None:
+        # Annex 4 / Annex 5 carry no default flag: default is a value of
+        # account_status (CRPL79 / AUTL70). Reading only the RMBS
+        # default_crr_flag would report default_pct 0.0 on a corporate tape whose
+        # obligors are marked DFLT — a silent zero indistinguishable from a clean
+        # pool, which is the failure mode this engine must never produce.
+        df = pd.DataFrame(
+            {
+                "company_size": ["SMAE", "LARE", "MEDE", "LARE"],
+                "outstanding_balance": [1_000.0] * 4,
+                "account_status": ["PERF", "DFLT", "PERF", "DFLT"],
+                "data_cut_off_date": ["2026-04-30"] * 4,
+            }
+        )
+        csv = tmp_path / "corp_default.csv"
+        df.to_csv(csv, index=False)
+        out = EsmaTapeNormaliser().execute(
+            EsmaTapeInput(file_url=f"file://{csv}")
+        ).output
+        assert out.annex_detected == "Annex 4 (Corporate)"
+        assert out.arrears_breakdown["default_pct"] == 50.0
+        assert out.arrears_breakdown["current_pct"] == 50.0
+
+    def test_rmbs_default_flag_path_is_unchanged(self, tmp_path: Path) -> None:
+        # The Annex 2 tape has no account_status column, so the added branch must
+        # leave the validated Green-Lion-shaped behaviour exactly as it was.
+        df = _rmbs_frame("2026-04-30", balances=[100_000.0, 300_000.0])
+        df.loc[0, "default_crr_flag"] = "Y"
+        csv = tmp_path / "rmbs_default.csv"
+        df.to_csv(csv, index=False)
+        out = EsmaTapeNormaliser().execute(
+            EsmaTapeInput(file_url=f"file://{csv}")
+        ).output
+        assert out.annex_detected == "Annex 2 (RMBS)"
+        assert out.arrears_breakdown["default_pct"] == 50.0
