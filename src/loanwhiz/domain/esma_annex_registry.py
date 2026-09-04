@@ -276,11 +276,26 @@ class AnnexRegistry:
 
         seen_codes: set[str] = set()
         seen_names: set[str] = set()
+        seen_columns: set[str] = set()
         for rec in spec.fields:
             name = rec.field_name.lower()
             if name in seen_names:
                 raise ValueError(f"{spec.annex_id}: duplicate field_name {name!r}")
             seen_names.add(name)
+
+            # Two rows resolving to one canonical column would make
+            # ``code_for_column`` order-dependent: the same tape column would
+            # silently carry whichever field code happened to be indexed last.
+            # That is the ambiguity this registry exists to make impossible, so
+            # it is refused rather than resolved by convention.
+            column = rec.canonical_column.lower()
+            if column in seen_columns:
+                raise ValueError(
+                    f"{spec.annex_id}: duplicate canonical_column {column!r} — two "
+                    "fields resolving to one column make code resolution ambiguous"
+                )
+            seen_columns.add(column)
+
             if rec.code is None:
                 continue
             code = rec.code.lower()

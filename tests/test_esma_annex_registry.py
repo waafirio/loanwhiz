@@ -195,10 +195,14 @@ class TestExtensionFields:
         # Guards against a future edit "tidying up" a None code by inventing a
         # plausible-looking one. An extension field is identified by code=None
         # and must stay that way unless the RTS actually defines the field.
-        for spec in ALL_SPECS:
-            for rec in spec.fields:
-                if rec.code is None:
-                    assert spec.locator_for(rec.field_name) is None
+        extension_fields = [
+            (spec, rec) for spec in ALL_SPECS for rec in spec.fields if rec.code is None
+        ]
+        # Guard the guard: if the shipped tables ever carry no extension field,
+        # the sweep below would pass by having nothing to check.
+        assert extension_fields, "no extension fields registered — sweep is vacuous"
+        for spec, rec in extension_fields:
+            assert spec.locator_for(rec.field_name) is None
 
 
 # ---------------------------------------------------------------------------
@@ -309,6 +313,30 @@ class TestRegistrationGuards:
             )
         )
         with pytest.raises(ValueError, match="duplicate field code"):
+            registry.register(dupe)
+
+    def test_duplicate_canonical_column_is_refused(self) -> None:
+        # Two rows resolving to one column would make code_for_column depend on
+        # index order — the same tape column silently carrying whichever code
+        # was written last. Ambiguity is refused, not resolved by convention.
+        registry = AnnexRegistry()
+        dupe = _spec(
+            fields=(
+                AnnexField(
+                    code="TSTL1",
+                    field_name="sentinel",
+                    description="A.",
+                    canonical_column="sentinel_column",
+                ),
+                AnnexField(
+                    code="TSTL2",
+                    field_name="other",
+                    description="B.",
+                    canonical_column="sentinel_column",
+                ),
+            )
+        )
+        with pytest.raises(ValueError, match="duplicate canonical_column"):
             registry.register(dupe)
 
     def test_duplicate_field_name_is_refused(self) -> None:
