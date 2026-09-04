@@ -34,7 +34,7 @@ from loanwhiz.primitives.covenant_monitor import (
     evaluate_triggers,
     to_canonical_threshold,
 )
-from loanwhiz.primitives.deal_state import DealState
+from loanwhiz.primitives.deal_state import DealState, PeriodCollections
 from loanwhiz.primitives.registry import PRIMITIVE_REGISTRY
 
 
@@ -1404,3 +1404,300 @@ class TestMapExtractedTriggerUnitGuard:
         td = _map_extracted_trigger(raw)
         assert td.threshold == -1.0
         assert td.direction == "below"
+
+
+# ---------------------------------------------------------------------------
+# Coverage tests (OC / IC), per attachment point — #452
+# ---------------------------------------------------------------------------
+
+
+def _coverage_state(
+    *,
+    class_a: float = 600_000_000.0,
+    class_b: float = 200_000_000.0,
+    class_c: float = 100_000_000.0,
+    pool_balance: float = 1_000_000_000.0,
+    interest: float | None = 30_000_000.0,
+) -> DealState:
+    """A three-class stack with a period's interest collections recorded."""
+    return DealState(
+        reporting_date="2026-04-30",
+        class_a_balance=class_a,
+        class_b_balance=class_b,
+        class_c_balance=class_c,
+        pool_balance=pool_balance,
+        original_pool_balance=1_000_000_000.0,
+        collections=(
+            None if interest is None else PeriodCollections(interest=interest)
+        ),
+    )
+
+
+_INTEREST_DUE = {
+    "class_a": 15_000_000.0,
+    "class_b": 6_000_000.0,
+    "class_c": 4_000_000.0,
+}
+
+
+def _coverage_trigger(
+    metric: str, threshold: float | None = 120.0
+) -> TriggerDefinition:
+    """An OC/IC-shaped trigger: coverage falling BELOW the threshold fires."""
+    return TriggerDefinition(
+        name=f"{metric}_trigger",
+        description=f"Coverage test on {metric}.",
+        metric=metric,
+        threshold=threshold,
+        direction="below",
+        consequence="Observed only — diversion is deliberately not implemented.",
+        citation=Citation(
+            document="Synthetic CLO Prospectus",
+            page_or_row="Section 5.1",
+            excerpt="Coverage test at the stated attachment point.",
+        ),
+    )
+
+
+def _status(metric: str, state: DealState, input: CovenantInput) -> TriggerStatus:
+    """Evaluate one coverage trigger against one state."""
+    from loanwhiz.primitives.covenant_monitor import _evaluate_one
+
+    return _evaluate_one(
+        _coverage_trigger(metric), {}, input, state, None, "2026-04-30"
+    )
+
+
+class TestCoverageRatioResolution:
+    """OC and IC resolve to real values from structural state, per point."""
+
+    def test_oc_ratio_is_pool_over_notes_at_or_senior_to_the_point(self) -> None:
+        state = _coverage_state()
+        input = CovenantInput(periods=[{}], period_states=[state])
+        # Class A: 1000m collateral / 600m Class A notes.
+        assert _extract_metric({}, "class_a_oc_ratio", input, state) == pytest.approx(
+            166.6667
+        )
+        # Class B: over Class A + B (800m) — the attachment point INCLUDES the
+        # notes senior to it, which is what makes it a per-point test.
+        assert _extract_metric({}, "class_b_oc_ratio", input, state) == pytest.approx(
+            125.0
+        )
+        # Class C: over A + B + C (900m).
+        assert _extract_metric({}, "class_c_oc_ratio", input, state) == pytest.approx(
+            111.1111
+        )
+
+    def test_oc_ratio_falls_as_the_attachment_point_goes_junior(self) -> None:
+        """More notes in the denominator means less coverage — a real ordering."""
+        state = _coverage_state()
+        input = CovenantInput(periods=[{}], period_states=[state])
+        a = _extract_metric({}, "class_a_oc_ratio", input, state)
+        b = _extract_metric({}, "class_b_oc_ratio", input, state)
+        c = _extract_metric({}, "class_c_oc_ratio", input, state)
+        assert a is not None and b is not None and c is not None
+        assert a > b > c
+
+    def test_ic_ratio_is_interest_collected_over_interest_due(self) -> None:
+        state = _coverage_state()
+        input = CovenantInput(
+            periods=[{}],
+            period_states=[state],
+            interest_due_by_tranche=_INTEREST_DUE,
+        )
+        # Class A: 30m collected / 15m due.
+        assert _extract_metric({}, "class_a_ic_ratio", input, state) == pytest.approx(
+            200.0
+        )
+        # Class B: 30m / (15m + 6m).
+        assert _extract_metric({}, "class_b_ic_ratio", input, state) == pytest.approx(
+            142.8571
+        )
+
+    def test_coverage_resolves_from_an_extracted_free_string(self) -> None:
+        """The extractor's own vocabulary reaches a value, not `unmapped`.
+
+        ``api.main._map_extracted_trigger`` passes the raw extracted metric
+        string straight through, so this is the shape the monitor really sees.
+        """
+        state = _coverage_state()
+        input = CovenantInput(periods=[{}], period_states=[state])
+        assert _extract_metric(
+            {}, "Class B Overcollateralisation Test", input, state
+        ) == pytest.approx(125.0)
+
+    def test_coverage_trigger_fires_when_coverage_falls_below_threshold(self) -> None:
+        """A failing test is OBSERVED — breach is reported, nothing is diverted."""
+        healthy = _coverage_state()
+        eroded = _coverage_state(pool_balance=850_000_000.0)
+        input_ok = CovenantInput(periods=[{}], period_states=[healthy])
+        input_bad = CovenantInput(periods=[{}], period_states=[eroded])
+        # Class B OC threshold 120%: 125% passes, 106.25% breaches.
+        assert _status("class_b_oc_ratio", healthy, input_ok).is_triggered is False
+        breached = _status("class_b_oc_ratio", eroded, input_bad)
+        assert breached.is_triggered is True
+        assert breached.evaluable is True
+        assert breached.metric_value == pytest.approx(106.25)
+
+
+class TestCoverageNotEvaluableNeverZero:
+    """Every unresolvable coverage test lands not-evaluable WITH a reason.
+
+    This is the contract the issue exists to protect: the sibling's corporate
+    tape reported ``default_pct: 0.0`` for a pool with defaulted obligors
+    because an input the code could not read was rendered as a clean result. A
+    coverage metric must never do that — `0.0` coverage would read as a
+    catastrophic breach, and a *silently narrowed denominator* reads as
+    health. Both are wrong; not-evaluable is right.
+    """
+
+    def _assert_refused(self, status: TriggerStatus, *, mentions: str) -> None:
+        assert status.evaluable is False
+        assert status.metric_value is None, "not-evaluable must never carry a value"
+        assert status.metric_value != 0.0
+        assert status.proximity_pct is None
+        assert status.is_triggered is False
+        assert status.not_evaluable_reason
+        assert mentions in status.not_evaluable_reason
+
+    def test_attachment_point_absent_from_the_stack_is_not_evaluable(self) -> None:
+        """A Class D test on a deal that stops at C must not report C's number.
+
+        Without the attachment-point check the walk would sum the same
+        A+B+C denominator and publish a Class C figure under a Class D name.
+        """
+        state = _coverage_state()
+        input = CovenantInput(periods=[{}], period_states=[state])
+        status = _status("class_d_oc_ratio", state, input)
+        self._assert_refused(status, mentions="no class D tranche")
+        # And it is NOT merely equal to the Class C answer by accident.
+        assert _extract_metric({}, "class_c_oc_ratio", input, state) is not None
+
+    def test_unplaceable_tranche_name_refuses_rather_than_dropping_it(self) -> None:
+        """The falsely-healthy guard: an unreadable tranche voids the test.
+
+        Skipping the tranche would shrink the denominator and inflate the
+        ratio — the deal would look better covered than it is.
+        """
+        mixed = DealState(
+            reporting_date="2026-04-30",
+            tranches=[
+                {"name": "class_a", "balance": 600_000_000.0, "pdl_balance": 0.0},
+                {"name": "senior_notes", "balance": 200_000_000.0, "pdl_balance": 0.0},
+            ],
+            pool_balance=1_000_000_000.0,
+            original_pool_balance=1_000_000_000.0,
+        )
+        input = CovenantInput(periods=[{}], period_states=[mixed])
+        status = _status("class_a_oc_ratio", mixed, input)
+        self._assert_refused(status, mentions="senior_notes")
+        # The inflated answer the guard prevents would have been 166.67%.
+        assert status.metric_value is None
+
+    def test_ic_without_interest_due_is_not_evaluable(self) -> None:
+        """A missing interest-due figure must not default to zero.
+
+        ``.get(name, 0.0)`` here would shrink the denominator and inflate IC.
+        """
+        state = _coverage_state()
+        input = CovenantInput(periods=[{}], period_states=[state])
+        status = _status("class_b_ic_ratio", state, input)
+        self._assert_refused(status, mentions="interest due was not supplied")
+
+    def test_ic_with_partial_interest_due_is_not_evaluable(self) -> None:
+        """Partial inputs are refused too — a partial denominator is a wrong one."""
+        state = _coverage_state()
+        input = CovenantInput(
+            periods=[{}],
+            period_states=[state],
+            interest_due_by_tranche={"class_a": 15_000_000.0},
+        )
+        status = _status("class_b_ic_ratio", state, input)
+        self._assert_refused(status, mentions="class_b")
+
+    def test_ic_without_recorded_collections_is_not_evaluable(self) -> None:
+        state = _coverage_state(interest=None)
+        input = CovenantInput(
+            periods=[{}],
+            period_states=[state],
+            interest_due_by_tranche=_INTEREST_DUE,
+        )
+        status = _status("class_b_ic_ratio", state, input)
+        self._assert_refused(status, mentions="collections")
+
+    def test_fully_repaid_senior_notes_make_oc_undefined_not_infinite(self) -> None:
+        state = _coverage_state(class_a=0.0, class_b=0.0, class_c=0.0)
+        input = CovenantInput(periods=[{}], period_states=[state])
+        status = _status("class_b_oc_ratio", state, input)
+        self._assert_refused(status, mentions="no outstanding note balance")
+
+    def test_unevaluable_coverage_is_excluded_from_the_all_clear_tally(self) -> None:
+        """Governance: a test we could not compute must not read as compliant."""
+        state = _coverage_state()
+        result = CovenantMonitor().execute(
+            CovenantInput(
+                periods=[{"reporting_date": "2026-04-30"}],
+                triggers=[_coverage_trigger("class_d_oc_ratio")],
+                period_states=[state],
+            )
+        )
+        out = result.output
+        assert out.unevaluable_triggers == ["class_d_oc_ratio_trigger"]
+        assert out.active_triggers == []
+        assert out.near_miss_triggers == []
+        assert "NOT EVALUABLE" in out.summary
+
+
+class TestCoverageThresholdScale:
+    """A coverage ratio can never be misread against a percent (the #372 guard)."""
+
+    def test_fraction_and_percent_thresholds_evaluate_identically(self) -> None:
+        """1.20 as a `fraction` and 120.0 as a `percent` are the same test.
+
+        Coverage metrics resolve on the monitor's percent canonical, so the
+        unit conversion at the mapping seam is what keeps a prospectus quoting
+        "1.20x" and one quoting "120%" from differing by 100x.
+        """
+        state = _coverage_state()
+        input = CovenantInput(periods=[{}], period_states=[state])
+        as_fraction = to_canonical_threshold(1.20, "fraction")
+        as_percent = to_canonical_threshold(120.0, "percent")
+        as_bps = to_canonical_threshold(12_000.0, "bps")
+        assert as_fraction == as_percent == as_bps == pytest.approx(120.0)
+
+        value = _extract_metric({}, "class_b_oc_ratio", input, state)
+        assert value == pytest.approx(125.0)
+        # Same verdict under either quoted unit: 125% clears a 120% test.
+        for threshold in (as_fraction, as_percent):
+            status = _status("class_b_oc_ratio", state, input)
+            assert status.threshold == pytest.approx(120.0)
+            assert threshold is not None
+            assert (value < threshold) is status.is_triggered
+
+    def test_unconverted_fraction_threshold_would_have_misread(self) -> None:
+        """Pins WHY the conversion matters: the raw fraction is 100x off."""
+        state = _coverage_state()
+        input = CovenantInput(periods=[{}], period_states=[state])
+        value = _extract_metric({}, "class_b_oc_ratio", input, state)
+        assert value is not None
+        raw_fraction_threshold = 1.20
+        # Unconverted, a healthy 125% would clear a 1.2 "threshold" trivially and
+        # a genuinely breaching deal would too — the test could never fire.
+        assert value > raw_fraction_threshold
+        assert to_canonical_threshold(raw_fraction_threshold, "fraction") == 120.0
+
+
+class TestCoverageDoesNotDisturbExistingTriggers:
+    def test_default_triggers_carry_no_coverage_metric(self) -> None:
+        """Coverage thresholds are deal-specific; none is invented as a default."""
+        metrics = {t.metric for t in CovenantMonitor.DEFAULT_TRIGGERS}
+        metrics |= {t.metric for t in CovenantMonitor.TAPE_NATIVE_TRIGGERS}
+        assert not any("_oc_ratio" in m or "_ic_ratio" in m for m in metrics)
+
+    def test_existing_metric_names_are_unaffected_by_coverage_resolution(self) -> None:
+        """The coverage fallback must not capture unrelated metric names."""
+        assert _canonical_metric("default_pct") == "cumulative_loss_rate_pct"
+        assert _canonical_metric("pdl_debit_balance") == "pdl_class_a"
+        assert _canonical_metric("reserve_fund_balance") == "reserve_fund_ratio"
+        assert _canonical_metric("wa_ltv") == "wtd_ltv"
+        assert _canonical_metric("some_unknown_metric") == "some_unknown_metric"

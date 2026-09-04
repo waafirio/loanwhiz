@@ -252,6 +252,29 @@ _METRIC_ALIASES: dict[str, MetricType] = {
     "arrears_180d_ratio": MetricType.arrears_180d_ratio,
     "wa_ltv": MetricType.wa_ltv,
     "weighted_average_ltv": MetricType.wa_ltv,
+    # ---- Coverage tests (#452) ----
+    # Only the CLASSLESS forms live here. The per-class forms
+    # (``class_b_oc_test``, ``Class C Interest Coverage Ratio``, …) are resolved
+    # generically by ``_refine_coverage_metric`` so every phrasing need not be
+    # enumerated — the same division of labour as
+    # ``_refine_class_recipient`` on the recipient side.
+    #
+    # A classless coverage test names no attachment point, so it cannot say
+    # WHICH point it measured. It resolves to the Class A (senior) test, the
+    # same senior-default convention the classless PDL string takes, and
+    # ``map_metric`` reports the lower confidence that guess deserves.
+    "overcollateralisation_ratio": MetricType.class_a_oc_ratio,
+    "overcollateralization_ratio": MetricType.class_a_oc_ratio,
+    "overcollateralisation_test": MetricType.class_a_oc_ratio,
+    "overcollateralization_test": MetricType.class_a_oc_ratio,
+    "oc_ratio": MetricType.class_a_oc_ratio,
+    "oc_test": MetricType.class_a_oc_ratio,
+    "par_value_test": MetricType.class_a_oc_ratio,
+    "par_value_ratio": MetricType.class_a_oc_ratio,
+    "interest_coverage_ratio": MetricType.class_a_ic_ratio,
+    "interest_coverage_test": MetricType.class_a_ic_ratio,
+    "ic_ratio": MetricType.class_a_ic_ratio,
+    "ic_test": MetricType.class_a_ic_ratio,
 }
 
 _METRIC_SUBSTRINGS: list[tuple[str, MetricType]] = [
@@ -381,6 +404,77 @@ _CLASS_PRINCIPAL_BY_LETTER: dict[str, RecipientType] = {
 }
 _CLASS_LETTER_RE = re.compile(r"class_([a-f])(?![a-z])")
 
+# Coverage metrics by attachment point (#452) — the metric-side counterpart of
+# the recipient tables above. A coverage test is named for the point in the
+# stack it measures, so the class letter IS the metric's identity.
+_CLASS_OC_BY_LETTER: dict[str, MetricType] = {
+    "a": MetricType.class_a_oc_ratio,
+    "b": MetricType.class_b_oc_ratio,
+    "c": MetricType.class_c_oc_ratio,
+    "d": MetricType.class_d_oc_ratio,
+    "e": MetricType.class_e_oc_ratio,
+    "f": MetricType.class_f_oc_ratio,
+}
+_CLASS_IC_BY_LETTER: dict[str, MetricType] = {
+    "a": MetricType.class_a_ic_ratio,
+    "b": MetricType.class_b_ic_ratio,
+    "c": MetricType.class_c_ic_ratio,
+    "d": MetricType.class_d_ic_ratio,
+    "e": MetricType.class_e_ic_ratio,
+    "f": MetricType.class_f_ic_ratio,
+}
+
+# The coverage values a CLASSLESS alias row lands on. Membership here means
+# "this was a senior-default guess, not an exact identification", which is what
+# ``map_metric`` reports as confidence — an honest 0.7 rather than a 1.0 the
+# input never earned.
+_CLASSLESS_COVERAGE_DEFAULTS: frozenset[MetricType] = frozenset(
+    {MetricType.class_a_oc_ratio, MetricType.class_a_ic_ratio}
+)
+
+# Cues that a metric string names a coverage test. "par value" is the CLO
+# prospectus's own name for the overcollateralisation test; "principal
+# coverage" is the same test again under a third name.
+# A standalone a-f letter token — the second class of a combined coverage test.
+_BARE_LETTER_RE = re.compile(r"(?<![a-z])([a-f])(?![a-z])")
+
+_OC_CUE_RE = re.compile(r"overcollateral|over_collateral|par_value|principal_coverage|(?<![a-z])oc(?![a-z])")
+_IC_CUE_RE = re.compile(r"interest_coverage|interest_cover(?![a-z])|(?<![a-z])ic(?![a-z])")
+
+
+def _refine_coverage_metric(normalised: str) -> MetricType | None:
+    """Resolve a ``class_<letter>`` overcollateralisation / interest-coverage metric.
+
+    Returns ``None`` when the string carries no coverage cue, no class letter,
+    or **more than one distinct class letter** — each of which is a case the
+    caller should pass to the LLM / ``unmapped`` escape rather than guess at.
+
+    The multi-letter refusal is the load-bearing one. A combined "Class A/B
+    Overcollateralisation Test" measures the A+B attachment point, so guessing
+    the first letter would understate the denominator and therefore **overstate**
+    the ratio — a coverage test reported as healthier than it is. Refusing to
+    place an ambiguous string is the honest failure direction; a confident wrong
+    attachment point is the silent one.
+    """
+    letters = set(_CLASS_LETTER_RE.findall(normalised))
+    # A combined test names its further classes as BARE letter tokens, which the
+    # ``class_``-prefixed pattern cannot see: "Class A/B Overcollateralisation
+    # Test" normalises to ``class_a_b_...`` and "Class C and D Par Value Test"
+    # to ``class_c_and_d_...``. Scanning for standalone a-f tokens catches both.
+    # A single-class string is unaffected — in ``class_e_par_value_test`` the
+    # only standalone letter is the class letter itself.
+    letters |= set(_BARE_LETTER_RE.findall(normalised))
+    if len(letters) != 1:
+        return None
+    letter = letters.pop()
+    # Interest coverage is checked first: an "interest coverage" string carries
+    # no OC cue, but a bare "oc"/"ic" token is short enough that order matters.
+    if _IC_CUE_RE.search(normalised):
+        return _CLASS_IC_BY_LETTER.get(letter)
+    if _OC_CUE_RE.search(normalised):
+        return _CLASS_OC_BY_LETTER.get(letter)
+    return None
+
 
 def _refine_class_recipient(normalised: str) -> RecipientType | None:
     """Resolve a generic ``class_<letter>_...`` interest/principal recipient.
@@ -488,11 +582,24 @@ def map_metric(raw: str, description: str = "", *, use_llm: bool = True) -> Taxo
 
     hit = _METRIC_ALIASES.get(normalised)
     if hit is not None:
+        # A classless coverage alias names no attachment point, so the Class A
+        # landing is a senior-default guess, not an exact match — report it at
+        # the same confidence the classless PDL default carries rather than
+        # claiming certainty the string does not support.
+        if hit in _CLASSLESS_COVERAGE_DEFAULTS:
+            return TaxonomyMapping(hit, 0.7, "deterministic")
         return TaxonomyMapping(hit, 1.0, "deterministic")
 
     # A bare "pdl_debit_balance" with no class — default to class A (senior).
     if "pdl" in normalised and "class" not in normalised:
         return TaxonomyMapping(MetricType.class_a_pdl, 0.7, "deterministic")
+
+    # A per-attachment-point coverage test (#452). Checked before the generic
+    # substring pass so the class letter — which is the metric's identity — is
+    # read rather than discarded.
+    coverage = _refine_coverage_metric(normalised)
+    if coverage is not None:
+        return TaxonomyMapping(coverage, 0.9, "deterministic")
 
     for pattern, value in _METRIC_SUBSTRINGS:
         if pattern in normalised:
@@ -512,6 +619,30 @@ def map_metric(raw: str, description: str = "", *, use_llm: bool = True) -> Taxo
                 pass
 
     return TaxonomyMapping(MetricType.unmapped, 0.0, "deterministic")
+
+
+#: Every per-attachment-point coverage metric, as one set.
+_COVERAGE_METRICS: frozenset[MetricType] = frozenset(
+    list(_CLASS_OC_BY_LETTER.values()) + list(_CLASS_IC_BY_LETTER.values())
+)
+
+
+def coverage_metric_for(raw: str) -> MetricType | None:
+    """The coverage :class:`MetricType` a free string names, or ``None``.
+
+    The single classification point for coverage vocabulary, shared by the
+    extraction path and the covenant monitor (#452). The monitor keeps its own
+    alias map for the *tape* vocabulary, but routing coverage strings back
+    through :func:`map_metric` means the two sides cannot drift into two
+    vocabularies for one concept — a row added to the tables above is
+    understood by the monitor with no second edit.
+
+    Deterministic only: ``use_llm=False``, so this never makes a network call on
+    the monitor's evaluation path. A string naming no coverage test returns
+    ``None`` and the caller falls back to its own resolution.
+    """
+    mapped = map_metric(raw, use_llm=False)
+    return mapped.value if mapped.value in _COVERAGE_METRICS else None  # type: ignore[return-value]
 
 
 # ---------------------------------------------------------------------------

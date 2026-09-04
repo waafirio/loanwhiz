@@ -15,13 +15,14 @@ Green Lion 2026-1 known triggers (from prospectus):
 
 from __future__ import annotations
 
+import re
 import time
 from typing import Any
 
 from pydantic import BaseModel, Field
 
 from loanwhiz.domain.esma_annex2 import locator_for
-from loanwhiz.extraction.taxonomy import normalize_threshold_unit
+from loanwhiz.extraction.taxonomy import coverage_metric_for, normalize_threshold_unit
 from loanwhiz.primitives.base import (
     AuditEntry,
     BaseInput,
@@ -152,6 +153,170 @@ def _tranche_pdl(state: DealState, name: str) -> float:
     return 0.0
 
 
+# ---------------------------------------------------------------------------
+# Coverage tests (OC / IC), per attachment point — #452
+# ---------------------------------------------------------------------------
+#
+# A coverage test IS a trigger, so it rides this same path: the metric resolves
+# to a number here, and everything downstream (proximity, breach, the honest
+# not-evaluable reporting) is unchanged. What makes coverage different from the
+# other structural sentinels is that it is measured **at a point in the capital
+# stack** — "the Class B OC test" means collateral over the notes at or senior
+# to Class B — so the sentinel carries the attachment point and resolution has
+# to walk the stack.
+#
+# Both ratios resolve on the monitor's percent canonical
+# (``CANONICAL_THRESHOLD_UNIT``), exactly like ``reserve_fund_ratio``. That is
+# what lets ``to_canonical_threshold`` do its job: a prospectus quoting a Class
+# B OC trigger as ``1.20`` with unit ``fraction`` and one quoting ``120.0`` with
+# unit ``percent`` describe the same test, and both must evaluate identically
+# against the value computed here.
+#
+# Deliberately NOT here: the cash-diversion mechanic. A failing OC/IC test in a
+# real CLO redirects proceeds to redeem notes until it cures, which is a
+# solve-to-target calculator plus a cross-waterfall interlock. Here a failing
+# test is OBSERVED, not acted on.
+
+#: A canonical coverage sentinel: ``class_<letter>_<oc|ic>_ratio``.
+_COVERAGE_METRIC_RE = re.compile(r"^class_([a-f])_(oc|ic)_ratio$")
+
+#: The class letter inside a ``DealState`` tranche name (``"class_b"``).
+_TRANCHE_CLASS_RE = re.compile(r"class[_\s]*([a-z])(?![a-z])")
+
+
+def _tranche_class_rank(name: str) -> int | None:
+    """0-based seniority rank for a tranche name, or ``None`` if unplaceable.
+
+    Mirrors ``extraction.assembler._seniority_for``: the class letter is the
+    rank (``A`` = 0, most senior), so the conventional named classes the repo's
+    note-class alphabet allows (``J`` junior, ``M`` mezzanine, ``R``/``X``/``Z``
+    residual) rank below the lettered ladder by construction, with no separate
+    table to keep in step.
+
+    ``None`` means the name carries no class letter at all (``"senior_notes"``,
+    ``"mezz"``) — the caller must refuse to compute rather than drop it.
+    """
+    m = _TRANCHE_CLASS_RE.search(name.strip().lower())
+    if m is None:
+        return None
+    return ord(m.group(1)) - ord("a")
+
+
+def _notes_at_or_senior_to(
+    state: DealState, letter: str
+) -> tuple[list[str] | None, str | None]:
+    """Names of the tranches at or senior to an attachment point.
+
+    Returns ``(names, None)`` or ``(None, reason)``. The reason branch is the
+    load-bearing half: **a tranche this cannot place makes the whole test
+    not-evaluable**, it is never skipped.
+
+    Skipping it would be a silent wrong number in the dangerous direction. The
+    unplaceable tranche is dropped from the denominator, the denominator comes
+    out too small, and the ratio therefore too **large** — a coverage test
+    reported as healthier than it is. That is the same shape as the
+    ``default_pct: 0.0`` silent zero: an input the code could not read,
+    reported as a clean result rather than as a gap. Refusing is the honest
+    failure direction.
+    """
+    target = ord(letter) - ord("a")
+    at_or_senior: list[str] = []
+    attachment_present = False
+    for t in state.tranches:
+        rank = _tranche_class_rank(t.name)
+        if rank is None:
+            return None, (
+                f"tranche '{t.name}' carries no recognisable class letter, so it "
+                "cannot be placed in the capital structure and the coverage "
+                "denominator cannot be trusted"
+            )
+        if rank == target:
+            attachment_present = True
+        if rank <= target:
+            at_or_senior.append(t.name)
+    if not attachment_present:
+        # Without this the test would quietly measure the next point UP the
+        # stack: a Class D test against a deal that stops at Class C sums the
+        # same A+B+C denominator and reports a Class C number under a Class D
+        # name. A test for a tranche the deal does not have is not a passing
+        # test, it is an unanswerable one.
+        return None, (
+            f"deal state carries no class {letter.upper()} tranche, so there is "
+            f"no class {letter.upper()} attachment point to measure"
+        )
+    if not at_or_senior:
+        return None, (
+            f"deal state carries no tranche at or senior to class "
+            f"{letter.upper()}"
+        )
+    return at_or_senior, None
+
+
+def _resolve_coverage(
+    state: DealState,
+    input: "CovenantInput",
+    letter: str,
+    kind: str,
+) -> tuple[float | None, str | None]:
+    """Compute an OC or IC ratio at one attachment point, on the percent scale.
+
+    Returns ``(value, None)`` when the ratio is computable from the state, and
+    ``(None, reason)`` when it is not — **never** ``(0.0, None)``. Every branch
+    that cannot produce a real number produces a reason naming the input it
+    lacked, so the monitor can report an honest not-evaluable status.
+
+    - **OC** = collateral pool balance / notes at-or-senior-to the point × 100.
+      Resolves from ``DealState`` alone.
+    - **IC** = period interest collections / interest due on those same notes
+      × 100. The numerator is ``state.collections.interest``; the denominator
+      comes from ``CovenantInput.interest_due_by_tranche``, because coupon rates
+      are deliberately not tracked on ``DealState`` (see
+      ``period_state_machine``) and the engine already owns the interest-accrual
+      calculator — the monitor must not grow a second one.
+    """
+    names, reason = _notes_at_or_senior_to(state, letter)
+    if names is None:
+        return None, reason
+
+    if kind == "oc":
+        denominator = sum(
+            t.balance for t in state.tranches if t.name in set(names)
+        )
+        if denominator <= 0.0:
+            return None, (
+                f"no outstanding note balance at or senior to class "
+                f"{letter.upper()} — the overcollateralisation ratio is undefined"
+            )
+        return round(float(state.pool_balance) / float(denominator) * 100.0, 4), None
+
+    # kind == "ic"
+    if state.collections is None:
+        return None, (
+            "period collections are not recorded on this deal state, so "
+            "interest collected is unknown"
+        )
+    due_by_name = {k.strip().lower(): v for k, v in input.interest_due_by_tranche.items()}
+    missing = [n for n in names if n.strip().lower() not in due_by_name]
+    if missing:
+        # NOT `.get(name, 0.0)`: defaulting a missing tranche's interest due to
+        # zero shrinks the denominator and inflates the ratio — the falsely
+        # healthy direction again.
+        return None, (
+            "interest due was not supplied for "
+            + ", ".join(f"'{n}'" for n in missing)
+            + f", so the class {letter.upper()} interest-coverage denominator "
+            "is incomplete"
+        )
+    denominator = sum(float(due_by_name[n.strip().lower()]) for n in names)
+    if denominator <= 0.0:
+        return None, (
+            f"no interest due at or senior to class {letter.upper()} — the "
+            "interest-coverage ratio is undefined"
+        )
+    numerator = float(state.collections.interest)
+    return round(numerator / denominator * 100.0, 4), None
+
+
 def _canonical_metric(metric: str) -> str:
     """Resolve an extracted/synonym metric name to its canonical sentinel.
 
@@ -159,8 +324,23 @@ def _canonical_metric(metric: str) -> str:
     that is already canonical, or that has no alias, is returned unchanged — so
     period-dict tape metrics (``default_pct`` and friends) and the canonical
     sentinels pass straight through.
+
+    Coverage tests (#452) are resolved by
+    :func:`~loanwhiz.extraction.taxonomy.coverage_metric_for` rather than by
+    rows here. The monitor receives the extractor's own free string (see
+    ``api.main._map_extracted_trigger``, which passes ``raw["metric"]``
+    through), and coverage vocabulary is per-attachment-point — enumerating
+    every class × phrasing in this map would fork a second vocabulary from the
+    taxonomy's. Delegating keeps one classification point; the lookup is
+    deterministic and makes no LLM call.
     """
-    return _METRIC_ALIASES.get(metric.strip().lower(), metric)
+    hit = _METRIC_ALIASES.get(metric.strip().lower())
+    if hit is not None:
+        return hit
+    coverage = coverage_metric_for(metric)
+    if coverage is not None:
+        return coverage.value
+    return metric
 
 
 # ---------------------------------------------------------------------------
@@ -340,6 +520,10 @@ class CovenantInput(BaseInput):
         reserve_account_target:    Target / required reserve level (EUR).
         original_pool_balance:     Original pool balance at closing (EUR). Used
                                    to compute clean-up call proximity.
+        interest_due_by_tranche:   Per-tranche interest due this period, keyed
+                                   by ``DealState`` tranche name — the
+                                   denominator of the interest-coverage tests.
+                                   Empty means every IC test is not-evaluable.
     """
 
     periods: list[dict[str, Any]]
@@ -357,6 +541,21 @@ class CovenantInput(BaseInput):
     # rather than permanently 0 / 100% (the audit's structural-plumbing gap).
     # When absent the scalar fields are used (backward compatible).
     period_states: list[DealState] | None = None
+    # Per-tranche interest due for the period, keyed by ``DealState`` tranche
+    # name (``{"class_a": 1_250_000.0, ...}``), in deal currency. The
+    # denominator of the interest-coverage tests (#452).
+    #
+    # It lives here rather than on ``DealState`` for the same reason coupon
+    # rates do (``period_state_machine``): ``DealState`` tracks balances, not
+    # rates, and the engine already owns the ``interest_accrual`` calculator —
+    # re-deriving interest due inside the monitor would be a second
+    # implementation of a formula that already has one. A caller holding engine
+    # output passes those figures straight through.
+    #
+    # Empty by default, which makes every IC test honestly not-evaluable rather
+    # than silently zero — a missing tranche is a refusal, never a 0.0 that
+    # would shrink the denominator and inflate the ratio.
+    interest_due_by_tranche: dict[str, float] = Field(default_factory=dict)
 
     @classmethod
     def from_deal_states(
@@ -507,6 +706,10 @@ def _extract_metric(
     - ``"pool_balance_pct"``   → current pool / original pool * 100
     - ``"cumulative_loss_rate_pct"`` → ``state.cumulative_loss_rate_pct`` else
       the value from the period dict (the ``default_pct`` loss proxy).
+    - ``"class_<x>_oc_ratio"`` / ``"class_<x>_ic_ratio"`` → the coverage ratio
+      at that attachment point, via :func:`_resolve_coverage` (percent-scaled).
+      With no ``DealState`` these fall through to the period-dict lookup, so a
+      report that publishes the ratio directly still resolves.
 
     Returns ``None`` (NOT ``0.0``) when the metric genuinely cannot be resolved
     — unknown name, or a structural sentinel with neither a ``DealState`` nor a
@@ -548,6 +751,15 @@ def _extract_metric(
             return round(state.cumulative_loss_rate_pct, 4)
         # fall through to the period-dict lookup below (the default_pct proxy)
 
+    coverage = _COVERAGE_METRIC_RE.match(canonical)
+    if coverage is not None and state is not None:
+        # ``_resolve_coverage`` returns None (never 0.0) when it cannot compute
+        # the ratio; ``_metric_not_evaluable_reason`` re-reads the same resolver
+        # for the specific reason. With no ``DealState`` we fall through to the
+        # period-dict lookup instead — a published report may carry the ratio
+        # directly — and to an honest not-evaluable if it does not.
+        return _resolve_coverage(state, input, coverage.group(1), coverage.group(2))[0]
+
     # Generic tape metric — expected to live in the period dict directly
     # or nested under "arrears_breakdown" / "pool_stats". We look up BOTH the
     # canonical name and the original (pre-alias) name so a tape that uses the
@@ -580,6 +792,32 @@ def _is_triggered(
         return metric_value > threshold
     else:  # "below"
         return metric_value < threshold
+
+
+def _metric_not_evaluable_reason(
+    metric: str,
+    input: CovenantInput,
+    state: DealState | None,
+) -> str:
+    """Why a metric could not be resolved — the specific reason where one exists.
+
+    "Not evaluable" is only useful to an operator if it says what was missing.
+    A coverage test knows precisely which input it lacked (an unplaceable
+    tranche, an absent interest-due figure, an undefined denominator), so it
+    reports that instead of the generic fallback. Everything else keeps the
+    original wording.
+    """
+    canonical = _canonical_metric(metric)
+    coverage = _COVERAGE_METRIC_RE.match(canonical)
+    if coverage is not None and state is not None:
+        _, reason = _resolve_coverage(
+            state, input, coverage.group(1), coverage.group(2)
+        )
+        if reason is not None:
+            return f"metric '{metric}': {reason}"
+    return (
+        f"metric '{metric}' not resolvable from period data or structural state"
+    )
 
 
 def _evaluate_one(
@@ -615,9 +853,8 @@ def _evaluate_one(
             proximity_pct=None,
             direction="n/a",
             evaluable=False,
-            not_evaluable_reason=(
-                f"metric '{trigger.metric}' not resolvable from period data "
-                "or structural state"
+            not_evaluable_reason=_metric_not_evaluable_reason(
+                trigger.metric, input, state
             ),
         )
 
