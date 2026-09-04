@@ -21,12 +21,16 @@ What the sourcing established, and what these tests pin
   Valuation Report (as-of 08/01/2025).
 * **The Note Valuation Report is the CLO analogue of an RMBS Notes & Cash
   report** — it is the only one of the five documents carrying both an *Interest
-  Priority of Payments* and a *Principal Priority of Payments*, so it is
-  registered under ``notes_cash_report_urls`` while the monthly trustee reports
-  (collateral-side: Current Asset Characteristics, Defaulted Collateral
-  Obligation Detail, Assets Purchased/Sold — but no PoP) go under
-  ``investor_report_urls``. That split mirrors the Green Lion deals' and is the
-  reason no new CLO-shaped registry key was added.
+  Priority of Payments* and a *Principal Priority of Payments*. It is nevertheless
+  **deliberately NOT registered under** ``notes_cash_report_urls`` yet: that key is
+  a *routing promise*, not a URL slot. ``_reconstruct_series`` dispatches on it and
+  ``test_quality_harness.test_answer_keys_exist_exactly_where_published_reports_do``
+  treats its presence as an assertion that a committed answer key exists. Setting
+  it for a deal with nothing extracted, no parser for the CLO report format and no
+  key would assert a promise this deal cannot keep. The key is earned at extraction
+  (#456), not at sourcing. The NVR's URL is recorded in ``docs/data-card.md`` so
+  nothing has to be re-sourced, and ``NVR_URL_NOT_YET_REGISTERED`` below keeps the
+  omission deliberate and greppable rather than an oversight.
 * **No machine-readable loan tape exists**, so ``tape_urls`` is empty by design.
   Loan-level collateral detail *is* published — as PDF tables inside the trustee
   reports — but that is not an ESMA Annex tape and the normaliser cannot read it.
@@ -66,8 +70,12 @@ EURONEXT_DOC_HOST = (
 #: contiguous and nothing is interpolated to make it look complete.
 EXPECTED_REPORT_PERIODS = ["December 2024", "February 2025", "March 2025"]
 
-#: The single Note Valuation Report period.
-EXPECTED_NVR_PERIODS = ["January 2025"]
+#: The Note Valuation Report (as-of 08/01/2025, 83pp) — sourced and verified
+#: obtainable, but **deliberately not registered** (see the module docstring).
+#: Held here so the finding is machine-visible and #456 need not re-source it.
+NVR_URL_NOT_YET_REGISTERED = (
+    EURONEXT_DOC_HOST + "202502/12423666-a060-4e34-b3e8-f5510297ac6f.pdf"
+)
 
 #: The four RMBS deals that predate this one. The CLO must not become the
 #: registry's special case: every one of them carries ``asset_class`` too.
@@ -148,27 +156,35 @@ def test_clo_trustee_reports_registered_as_investor_reports() -> None:
         assert entry["url"].endswith(".pdf")
 
 
-def test_clo_note_valuation_report_registered_as_notes_cash() -> None:
-    """The NVR — the only Cairn document carrying both Priorities of Payments —
-    is registered under the generic liability-report key, not a CLO-shaped one."""
-    entries = DEAL_REGISTRY[CLO_DEAL_ID]["notes_cash_report_urls"]
-    assert [e["period"] for e in entries] == EXPECTED_NVR_PERIODS
-    for entry in entries:
-        assert set(entry) >= {"period", "url"}
-        assert entry["url"].startswith(EURONEXT_DOC_HOST)
-        assert entry["url"].endswith(".pdf")
+def test_clo_note_valuation_report_is_obtainable_but_not_yet_registered() -> None:
+    """A **not-yet**, not a never — and the distinction is the whole finding.
+
+    Leone Arancio and Sol-Lion II carry no ``notes_cash_report_urls`` because no
+    such report is published *at all*. Cairn carries none for the opposite reason:
+    its Note Valuation Report **is** published, free and unauthenticated, and
+    carries both an Interest and a Principal Priority of Payments — it simply has
+    not been extracted, parsed or graded, so claiming the key would assert a
+    routing promise the deal cannot keep (see the module docstring). Flattening
+    those two absences into "another deal with no report" would understate what
+    was found, which is as dishonest as overstating it.
+    """
+    assert "notes_cash_report_urls" not in DEAL_REGISTRY[CLO_DEAL_ID]
+    # The document exists and its location is known — recorded, not registered.
+    assert NVR_URL_NOT_YET_REGISTERED.startswith(EURONEXT_DOC_HOST)
+    assert NVR_URL_NOT_YET_REGISTERED.endswith(".pdf")
+    registered = {
+        DEAL_REGISTRY[CLO_DEAL_ID]["prospectus_url"],
+        *(e["url"] for e in DEAL_REGISTRY[CLO_DEAL_ID]["investor_report_urls"]),
+    }
+    assert NVR_URL_NOT_YET_REGISTERED not in registered
 
 
 def test_every_registered_document_url_is_distinct() -> None:
-    """Five distinct documents — no URL copy-pasted across two slots."""
+    """Four distinct registered documents — no URL copy-pasted across two slots."""
     deal = DEAL_REGISTRY[CLO_DEAL_ID]
-    urls = [
-        deal["prospectus_url"],
-        *(e["url"] for e in deal["investor_report_urls"]),
-        *(e["url"] for e in deal["notes_cash_report_urls"]),
-    ]
-    assert len(urls) == 5
-    assert len(set(urls)) == 5
+    urls = [deal["prospectus_url"], *(e["url"] for e in deal["investor_report_urls"])]
+    assert len(urls) == 4
+    assert len(set(urls)) == 4
 
 
 def test_the_clo_is_not_the_registry_special_case() -> None:
@@ -252,9 +268,9 @@ def test_clo_has_no_validation_builder() -> None:
 def test_clo_is_registered_but_not_modelable() -> None:
     """Registered ≠ modelable: the engine degrades to a labelled 422.
 
-    The CLO has reports listed but no extracted model, so ``_reconstruct_series``
-    raises rather than serving an empty cascade that would read as a real,
-    all-clear result. Offline: the model lookup fails before any network fetch.
+    The CLO has neither a loan tape nor a report the engine can fold, so
+    ``_reconstruct_series`` raises rather than serving an empty cascade that would
+    read as a real, all-clear result. Offline — no network fetch is attempted.
     """
     from loanwhiz.api.main import _reconstruct_series
 
