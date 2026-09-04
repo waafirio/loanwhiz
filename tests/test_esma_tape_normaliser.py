@@ -485,3 +485,104 @@ class TestAnnex2ColumnResolution:
         assert "RREL" in citation.page_or_row
         assert "RREL18" in citation.excerpt  # current_balance
         assert "RREL40" in citation.excerpt  # cltomv_current (LTV)
+
+
+# ---------------------------------------------------------------------------
+# Annex-scoped resolution (#451) — resolution follows the DETECTED annex
+# ---------------------------------------------------------------------------
+
+
+class TestAnnexScopedResolution:
+    """Columns resolve through the detected annex's table, or not at all.
+
+    Previously the normaliser resolved and cited every tape through the Annex 2
+    (RMBS) table whatever it had detected, so a corporate tape's balance was
+    reported as ``RREL18``. These tests pin the corrected behaviour end to end.
+    """
+
+    def test_corporate_tape_cites_crpl_codes_not_rrel(self, tmp_path: Path) -> None:
+        df = pd.DataFrame(
+            {
+                "company_size": ["SMAE", "LARE"],          # → enterprise_size (CRPL16)
+                "outstanding_balance": [1_000_000.0, 3_000_000.0],  # → CRPL39
+                "current_interest_rate": [5.0, 7.0],       # → CRPL53
+                "nace_code": ["C25", "J62"],               # → CRPL14
+                "leveraged_transaction": ["Y", "N"],       # → CRPL29
+                "data_cut_off_date": ["2026-04-30", "2026-04-30"],
+            }
+        )
+        csv = tmp_path / "corporate.csv"
+        df.to_csv(csv, index=False)
+        result = EsmaTapeNormaliser().execute(EsmaTapeInput(file_url=f"file://{csv}"))
+        out = result.output
+
+        assert out.annex_detected == "Annex 4 (Corporate)"
+        assert out.asset_class == "Corporate"
+        # The balance synonym resolved through the CORPORATE table.
+        assert out.pool_balance_eur == 4_000_000.0
+        # Balance-weighted coupon: (1m*5 + 3m*7)/4m = 6.5
+        assert out.pool_stats["wtd_coupon_pct"] == 6.5
+
+        excerpt = result.citations[0].excerpt
+        assert "CRPL39" in excerpt
+        assert "CRPL16" in excerpt
+        # The whole point: no residential-mortgage codes on a corporate tape.
+        assert "RREL" not in excerpt
+        assert "RREL" not in result.citations[0].page_or_row
+
+    def test_unidentified_tape_resolves_nothing_and_cites_no_codes(
+        self, tmp_path: Path
+    ) -> None:
+        # Matches no registered signature. ``outstanding_balance`` is an Annex 2
+        # synonym, but with no annex detected there is no table to resolve it
+        # through — resolving it anyway would attach RREL18 to a tape whose asset
+        # class is unknown. It must degrade honestly instead.
+        df = pd.DataFrame(
+            {
+                "outstanding_balance": [100_000.0, 300_000.0],
+                "borrower_id": ["A", "B"],
+                "maturity_date": ["2030-01-01", "2031-01-01"],
+            }
+        )
+        csv = tmp_path / "mystery.csv"
+        df.to_csv(csv, index=False)
+        result = EsmaTapeNormaliser().execute(
+            EsmaTapeInput(file_url=f"file://{csv}", reporting_date="2026-04-30")
+        )
+        out = result.output
+
+        assert out.annex_detected == "Unknown ABS"
+        assert out.asset_class == "ABS"
+        # Unresolved rather than guessed: no balance is claimed.
+        assert out.pool_balance_eur == 0.0
+        # No regulatory codes are cited for a tape of unknown provenance.
+        citation = result.citations[0]
+        assert "RREL" not in citation.excerpt
+        assert "CRPL" not in citation.excerpt
+        assert "·" not in citation.page_or_row
+        # And the degradation is visible in the confidence, not silent.
+        assert result.confidence < 1.0
+
+    def test_auto_tape_extension_sentinel_carries_no_fabricated_code(
+        self, tmp_path: Path
+    ) -> None:
+        # ``vehicle_type`` detects Annex 5 but has no RTS field code, so it must
+        # contribute no code to the citation while AUTL-coded columns do.
+        df = pd.DataFrame(
+            {
+                "vehicle_type": ["Car", "Van"],
+                "outstanding_balance": [10_000.0, 20_000.0],  # → AUTL30
+                "data_cut_off_date": ["2026-04-30", "2026-04-30"],  # → AUTL6
+            }
+        )
+        csv = tmp_path / "auto.csv"
+        df.to_csv(csv, index=False)
+        result = EsmaTapeNormaliser().execute(EsmaTapeInput(file_url=f"file://{csv}"))
+        out = result.output
+
+        assert out.annex_detected == "Annex 5 (Auto)"
+        assert out.asset_class == "Auto"
+        assert out.pool_balance_eur == 30_000.0
+        excerpt = result.citations[0].excerpt
+        assert "AUTL30" in excerpt
+        assert "RREL" not in excerpt
