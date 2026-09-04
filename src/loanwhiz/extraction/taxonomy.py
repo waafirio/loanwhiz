@@ -432,14 +432,19 @@ _CLASSLESS_COVERAGE_DEFAULTS: frozenset[MetricType] = frozenset(
     {MetricType.class_a_oc_ratio, MetricType.class_a_ic_ratio}
 )
 
-# Cues that a metric string names a coverage test. "par value" is the CLO
-# prospectus's own name for the overcollateralisation test; "principal
-# coverage" is the same test again under a third name.
 # A standalone a-f letter token — the second class of a combined coverage test.
 _BARE_LETTER_RE = re.compile(r"(?<![a-z])([a-f])(?![a-z])")
 
-_OC_CUE_RE = re.compile(r"overcollateral|over_collateral|par_value|principal_coverage|(?<![a-z])oc(?![a-z])")
-_IC_CUE_RE = re.compile(r"interest_coverage|interest_cover(?![a-z])|(?<![a-z])ic(?![a-z])")
+# Cues that a metric string names a coverage test. "par value" is the CLO
+# prospectus's own name for the overcollateralisation test; "principal
+# coverage" is the same test again under a third name.
+_OC_CUE_RE = re.compile(
+    r"overcollateral|over_collateral|par_value|principal_coverage"
+    r"|(?<![a-z])oc(?![a-z])"
+)
+_IC_CUE_RE = re.compile(
+    r"interest_coverage|interest_cover(?![a-z])|(?<![a-z])ic(?![a-z])"
+)
 
 
 def _refine_coverage_metric(normalised: str) -> MetricType | None:
@@ -641,8 +646,10 @@ def coverage_metric_for(raw: str) -> MetricType | None:
     the monitor's evaluation path. A string naming no coverage test returns
     ``None`` and the caller falls back to its own resolution.
     """
-    mapped = map_metric(raw, use_llm=False)
-    return mapped.value if mapped.value in _COVERAGE_METRICS else None  # type: ignore[return-value]
+    value = map_metric(raw, use_llm=False).value
+    if isinstance(value, MetricType) and value in _COVERAGE_METRICS:
+        return value
+    return None
 
 
 # ---------------------------------------------------------------------------

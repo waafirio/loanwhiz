@@ -279,9 +279,8 @@ def _resolve_coverage(
         return None, reason
 
     if kind == "oc":
-        denominator = sum(
-            t.balance for t in state.tranches if t.name in set(names)
-        )
+        covered = set(names)
+        denominator = sum(t.balance for t in state.tranches if t.name in covered)
         if denominator <= 0.0:
             return None, (
                 f"no outstanding note balance at or senior to class "
