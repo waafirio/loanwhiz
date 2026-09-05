@@ -698,6 +698,16 @@ _COVERAGE_METRICS: frozenset[MetricType] = frozenset(
 )
 
 
+def is_coverage_metric(metric: MetricType) -> bool:
+    """True for a per-attachment-point overcollateralisation / interest-coverage metric.
+
+    The one place that answers "is this metric a ratio measured at a point in
+    the capital structure?", so a caller reasoning about coverage thresholds
+    does not re-derive the membership from the enum's spelling.
+    """
+    return metric in _COVERAGE_METRICS
+
+
 def coverage_metric_for(raw: str) -> MetricType | None:
     """The coverage :class:`MetricType` a free string names, or ``None``.
 

@@ -23,6 +23,7 @@ Usage
 
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 from pathlib import Path
@@ -123,27 +124,49 @@ _EXTRACT_TOOL_DESCRIPTION = (
 )
 
 _PROMPT_TEMPLATE = """\
-You are a structured finance document analyst specialising in RMBS/ABS prospectuses.
+You are a structured finance document analyst. The document may be an RMBS, ABS
+or CLO prospectus / offering circular, and the trigger vocabulary differs by
+asset class — extract what THIS document defines, not what a familiar deal has.
 
 The text below comes from three sections of a structured finance prospectus:
 1. Priority of Payments — triggers are referenced as conditions that change the waterfall
 2. Conditions of the Notes — formal trigger definitions and thresholds
 3. Issuer Covenants — negative covenants the issuer must comply with
 
-Extract ALL triggers and covenant conditions from this text. Focus on:
+Extract ALL triggers and covenant conditions from this text. Trigger families to
+look for — a given deal will have only some of them:
+- Coverage tests, measured at an attachment point in the capital structure. A CLO
+  states these per class and calls them collectively the Coverage Tests:
+  * OVERCOLLATERALISATION, which a CLO usually names the "Par Value Test"
+    ("Class C Par Value Test", "Class A/B Par Value Test")
+  * INTEREST COVERAGE ("Class D Interest Coverage Test")
+  Extract EVERY class's test separately — they have different thresholds.
 - Sequential Pay Trigger (switches principal from pro-rata to sequential distribution)
 - Principal Deficiency Ledger (PDL) triggers (Class A PDL, Class B PDL)
 - Reserve Fund shortfall / triggers
 - Clean-Up Call Option (triggered when pool balance < threshold % of original)
+- Reinvestment period end / reinvestment overcollateralisation test (CLO)
 - Any other event of default, acceleration trigger, or performance trigger
 
 For each trigger:
 - name: snake_case identifier (e.g. "sequential_pay_trigger", "class_a_pdl_trigger")
 - display_name: human-readable title (e.g. "Sequential Pay Trigger")
 - description: plain English explanation of what the trigger is and when it fires
-- metric: the measurable quantity (e.g. "cumulative_loss_rate_pct", "pdl_debit_balance",
-  "pool_balance_fraction", "reserve_fund_balance")
-- threshold: numerical value if stated (e.g. 10.0 for 10%), or null if not quantified
+- metric: the measurable quantity in snake_case (e.g. "cumulative_loss_rate_pct",
+  "pdl_debit_balance", "pool_balance_fraction", "reserve_fund_balance").
+  For a coverage test the metric name MUST carry two things: the attachment
+  point exactly as the document writes it, and the test family in the
+  document's own words — "class_c_par_value_ratio",
+  "class_a_b_par_value_ratio", "class_d_interest_coverage_ratio". Do NOT
+  flatten the family to the bare word "coverage" ("class_c_coverage_ratio"):
+  a deal calls its overcollateralisation and interest-coverage tests
+  collectively the Coverage Tests, so that name loses which ratio is meant and
+  the trigger cannot be resolved.
+- threshold: numerical value if stated (e.g. 10.0 for 10%), or null if not
+  quantified. A coverage test states its level as "is at least equal to 130.08
+  per cent" — extract 130.08. Use null, NEVER 0, when no level is stated: a
+  coverage test with a 0 threshold reads as permanently satisfied and silently
+  never fires.
 - threshold_unit: "percentage", "eur", "fraction", "boolean" — or null
 - direction: "above" (metric > threshold triggers it), "below" (metric < threshold),
   or "non_zero" (any positive debit balance triggers it)
@@ -157,10 +180,11 @@ For each trigger:
 
 Also extract all issuer covenants (negative covenants) as plain text strings.
 
-Set extraction_confidence between 0.0 and 1.0:
-- 1.0: all five known Green Lion triggers found with thresholds
-- 0.8: four triggers found, some thresholds missing
-- 0.6–0.7: two or three triggers found
+Set extraction_confidence between 0.0 and 1.0, judged against what THIS
+document defines rather than a fixed expected count:
+- 1.0: every trigger the text defines was found, each with its stated threshold
+- 0.8: all or nearly all found, some thresholds missing
+- 0.6–0.7: some triggers found, but the text clearly defines others you could not extract
 - below 0.6: fewer than two triggers found
 
 Call the `record_triggers_and_covenants` function with the complete results.
@@ -298,9 +322,24 @@ def _collect_section_text(
         defaulting to "Unknown Deal".
     """
     # Keywords tuned to Green Lion 2026-1 but intentionally broad for other RMBS/CLO
+    # Each entry is a role plus the SYNONYM FAMILY that names it across asset
+    # classes, not one deal's spelling. The bare section numbers are Green Lion's
+    # and are kept only as a last-resort cue for that document; a CLO numbers its
+    # terms as Conditions, and states its coverage tests in the definitions
+    # rather than in a section named for them (#456).
     target_keywords = [
-        ("priority_of_payments", ["priority of payments", "5.2", "5.3", "revenue priority", "redemption priority"]),
+        ("priority_of_payments", [
+            "priority of payments", "5.2", "5.3",
+            "revenue priority", "redemption priority",
+            "application of interest proceeds", "application of principal proceeds",
+            "interest proceeds", "principal proceeds",
+        ]),
         ("conditions_of_notes", ["conditions of the notes", "conditions of notes", "4.6", "event of default"]),
+        ("coverage_tests", [
+            "coverage test", "par value test", "interest coverage test",
+            "overcollateralisation test", "overcollateralization test",
+            "collateral quality test",
+        ]),
         ("issuer_covenants", ["issuer covenant", "negative covenant", "undertaking"]),
     ]
 
@@ -390,8 +429,15 @@ def extract_covenants(
         section_map, extra_sections=extra_sections
     )
 
+    # Render the prompt BEFORE resolving the cache path: the key covers it, so a
+    # prompt revision re-asks the model instead of silently serving the answer
+    # the previous wording produced (#456, the #445 rule applied to this module).
+    prompt = _PROMPT_TEMPLATE.format(section_text=section_text)
+
     # Resolve cache path
-    resolved_cache = Path(cache_path) if cache_path else _default_cache_path(deal_name)
+    resolved_cache = (
+        Path(cache_path) if cache_path else _default_cache_path(deal_name, prompt)
+    )
 
     # Load from cache if available (unless force_refresh busts it)
     if resolved_cache.exists() and not force_refresh:
@@ -403,7 +449,6 @@ def extract_covenants(
 
     client = genai.Client(vertexai=True, project=GCP_PROJECT, location=GCP_LOCATION)
     extract_tool = _build_extract_tool()
-    prompt = _PROMPT_TEMPLATE.format(section_text=section_text)
 
     response = client.models.generate_content(
         model=MODEL_PRO,
@@ -483,10 +528,27 @@ _REPO_ROOT = Path(__file__).resolve().parents[3]
 _CACHE_DIR = _REPO_ROOT / "data" / "extraction_cache"
 
 
-def _default_cache_path(deal_name: str) -> Path:
-    """Derive a cache file path from the deal name."""
+def _default_cache_path(
+    deal_name: str, prompt: str | None = None, model: str = MODEL_PRO
+) -> Path:
+    """Derive a cache file path from the deal name and the rendered prompt.
+
+    The deal name alone is not a sufficient key. It does not change when the
+    prompt does, so editing the extraction prompt left every previously-cached
+    deal serving the answer the OLD wording produced — the improvement reads as
+    having no effect, which is indistinguishable from the improvement not
+    working. Hashing the rendered prompt plus the model id covers the prompt
+    revision AND the document content at once, so no revision constant has to be
+    remembered and bumped by hand (#456; the section router already keys this
+    way for the same reason, #445).
+
+    The deal name is kept in the filename for legibility only.
+    """
     safe = re.sub(r"[^a-zA-Z0-9_\-]", "_", deal_name)
-    return _CACHE_DIR / f"covenants_{safe}.json"
+    if prompt is None:
+        return _CACHE_DIR / f"covenants_{safe}.json"
+    key = hashlib.sha256(f"{model}\x00{prompt}".encode()).hexdigest()[:16]
+    return _CACHE_DIR / f"covenants_{safe}-{key}.json"
 
 
 def _covenants_to_json(covenants: ExtractedCovenants) -> str:

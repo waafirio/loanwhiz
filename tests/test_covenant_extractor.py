@@ -721,3 +721,37 @@ class TestGreenLionCovenantExtractor:
         assert len(covenants.issuer_covenants) >= 1, (
             "Expected at least one issuer covenant from the Green Lion prospectus"
         )
+
+
+class TestCovenantCacheKey:
+    """The cache key must cover the prompt, not just the deal (#456)."""
+
+    def test_a_prompt_revision_changes_the_cache_path(self) -> None:
+        """Editing the extraction prompt must re-ask the model, not replay it.
+
+        Keyed on the deal name alone, a cached deal kept serving the answer the
+        OLD prompt wording produced, so a prompt improvement read as having no
+        effect — indistinguishable from the improvement not working, and the
+        exact shape of the no-op-by-construction trap #438 caught elsewhere.
+        """
+        from loanwhiz.extraction.covenant_extractor import _default_cache_path
+
+        before = _default_cache_path("Cairn CLO XVII DAC", "prompt text v1")
+        after = _default_cache_path("Cairn CLO XVII DAC", "prompt text v2")
+        assert before != after
+
+    def test_the_same_prompt_and_deal_reuse_one_entry(self) -> None:
+        """The key is stable, so an unchanged prompt still hits its cache."""
+        from loanwhiz.extraction.covenant_extractor import _default_cache_path
+
+        a = _default_cache_path("Cairn CLO XVII DAC", "identical prompt")
+        b = _default_cache_path("Cairn CLO XVII DAC", "identical prompt")
+        assert a == b
+
+    def test_two_deals_never_share_an_entry(self) -> None:
+        """Document content reaches the key through the prompt it is rendered into."""
+        from loanwhiz.extraction.covenant_extractor import _default_cache_path
+
+        a = _default_cache_path("Deal One", "sections of deal one")
+        b = _default_cache_path("Deal Two", "sections of deal two")
+        assert a != b

@@ -1466,7 +1466,11 @@ def _trigger_rules_from_covenants(
     from loanwhiz.domain.provenance import FieldProvenance
     from loanwhiz.domain.rules import TriggerRule
     from loanwhiz.extraction.covenant_extractor import _trigger_support
-    from loanwhiz.extraction.taxonomy import map_metric, normalize_threshold_unit
+    from loanwhiz.extraction.taxonomy import (
+        is_coverage_metric,
+        map_metric,
+        normalize_threshold_unit,
+    )
 
     _OP = {"above": ">", "below": "<", "non_zero": ">"}
 
@@ -1479,6 +1483,17 @@ def _trigger_rules_from_covenants(
         # A non_zero trigger fires on any positive balance → threshold 0.
         if threshold is None and raw.get("direction") == "non_zero":
             threshold = 0.0
+        # Zero is not a coverage level. An overcollateralisation or interest-
+        # coverage test runs at 100-130%, so a 0.0 threshold is an unquantified
+        # extraction wearing a number, and it fails in the invisible direction:
+        # "ratio < 0" is never true, so the test reads as permanently SATISFIED
+        # and the breach it exists to catch never fires. #452 already refuses an
+        # unquantified coverage test at the monitor seam, reporting it
+        # not-evaluable with a reason; that guard keys on ``threshold is None``,
+        # so normalising here is what routes this case to it rather than past it
+        # (#456).
+        if threshold == 0.0 and is_coverage_metric(mapping.value):
+            threshold = None
         unit = normalize_threshold_unit(raw.get("threshold_unit"))
 
         rule = TriggerRule(

@@ -2298,3 +2298,78 @@ class TestExtractionDeterminism:
 
         assert degraded.completeness_score < full.completeness_score
         assert set(degraded.sections_found) < set(full.sections_found)
+
+
+# ---------------------------------------------------------------------------
+# Unit tests — coverage-test thresholds (#456)
+# ---------------------------------------------------------------------------
+
+
+class TestCoverageTriggerThresholds:
+    """A coverage test must never carry a threshold that cannot be breached."""
+
+    @staticmethod
+    def _rules(triggers: list[dict]) -> list:
+        from loanwhiz.extraction.assembler import _trigger_rules_from_covenants
+
+        return _trigger_rules_from_covenants(
+            {"triggers": triggers},
+            deal_name="Test Deal",
+            provenance={},
+            use_llm=False,
+        )
+
+    def test_zero_threshold_on_a_coverage_test_becomes_unquantified(self) -> None:
+        """Zero is not a coverage level, so it is recorded as no level at all.
+
+        An overcollateralisation or interest-coverage test runs at 100-130%. A
+        0.0 threshold is an unquantified extraction wearing a number, and it
+        fails invisibly: "ratio < 0" is never true, so the test reads as
+        permanently SATISFIED and the breach it exists to catch never fires.
+        #452 already refuses an unquantified coverage test at the monitor seam
+        and says why, but that guard keys on a None threshold — so the honest
+        outcome depends on this normalisation routing the case to it.
+        """
+        rules = self._rules([
+            {
+                "name": "class_c_par_value_test",
+                "metric": "class_c_par_value_ratio",
+                "threshold": 0.0,
+                "threshold_unit": "percentage",
+                "direction": "below",
+            }
+        ])
+        from loanwhiz.domain.rules import MetricType
+
+        assert rules[0].metric == MetricType.class_c_oc_ratio
+        assert rules[0].threshold is None
+
+    def test_a_real_coverage_level_is_kept_exactly(self) -> None:
+        """The normalisation touches 0.0 only — a stated level passes through."""
+        rules = self._rules([
+            {
+                "name": "class_c_par_value_test",
+                "metric": "class_c_par_value_ratio",
+                "threshold": 121.74,
+                "threshold_unit": "percentage",
+                "direction": "below",
+            }
+        ])
+        assert rules[0].threshold == 121.74
+
+    def test_a_non_coverage_zero_threshold_is_untouched(self) -> None:
+        """A PDL fires on any positive balance, so ITS zero threshold is real.
+
+        The guard is scoped to coverage ratios precisely because zero is a
+        meaningful level for a balance rule and a meaningless one for a ratio.
+        """
+        rules = self._rules([
+            {
+                "name": "principal_deficiency_ledger_trigger",
+                "metric": "pdl_debit_balance",
+                "threshold": None,
+                "threshold_unit": "eur",
+                "direction": "non_zero",
+            }
+        ])
+        assert rules[0].threshold == 0.0
