@@ -15,3 +15,15 @@ ground truth, never the opening balances the fold seeds from. Add the
 same PR, then assert a `passed` cell; a key alone silently grades nothing.
 
 Refs: #440
+
+## 2026-09-05 · pitfall · #457
+
+A not-applicable reason is an **assertion about the world**, and one literal
+covering a whole branch will be false for some member of it. Say only what the
+input encodes: an empty `tape_urls` means no tape is registered, never that the
+deal publishes no loan-level data. Split two causes on a **registry fact**, never
+a deal id — "nothing is published" claims grading is impossible, "no answer key
+is authored" names a deferred decision. Assert the retracted wording is *absent*;
+a test checking only the state passes while the prose lies.
+
+Refs: #457
