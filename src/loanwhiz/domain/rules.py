@@ -99,11 +99,26 @@ class MetricType(str, Enum):
     (30d/60d alongside 90d/180d), a ``cumulative_default_rate`` kept **distinct**
     from ``cumulative_loss_rate`` (gross default ≠ net realised loss — collapsing
     the two onto one sentinel is exactly the silent-mis-map bug the closed enum
-    exists to prevent), and a deeper ``class_c_pdl`` ledger. Metrics the engine
-    holds no inputs to compute (CLO OC/IC tests, card-ABS payment-rate /
-    portfolio-yield, excess-spread, DSCR) are deliberately left to ``unmapped`` —
-    honest degradation, not a gap; adding an enum value that can only ever
-    report-supply buys nothing over the escape.
+    exists to prevent), and a deeper ``class_c_pdl`` ledger.
+
+    **Coverage tests, per attachment point (#452).** A coverage test *is* a
+    trigger, so overcollateralisation (``class_<x>_oc_ratio``) and interest
+    coverage (``class_<x>_ic_ratio``) are canonical metrics rather than
+    ``unmapped``. They are enumerated **per attachment point** because a deal
+    tests coverage at several points in its stack — a single OC/IC pair could
+    not say *which* point it measured, and an open attachment-point string
+    would reintroduce the free-string boundary bug this closed enum exists to
+    kill. The shape is asset-class agnostic: any deal that tests coverage at a
+    lettered attachment point uses it, CLO or not. A stack deeper than Class F
+    still degrades to ``unmapped`` via the escape.
+
+    This **reverses** the earlier judgement that CLO OC/IC "can only ever
+    report-supply". Both now resolve from structural state at the covenant
+    monitor: OC from the pool balance over the notes at-or-senior-to the
+    attachment point, IC from period interest collections over the interest due
+    on those same notes. The metrics the engine still holds no inputs for
+    (card-ABS payment-rate / portfolio-yield, excess-spread, DSCR) stay
+    ``unmapped`` — honest degradation, not a gap.
     """
 
     cumulative_loss_rate = "cumulative_loss_rate"
@@ -118,6 +133,22 @@ class MetricType(str, Enum):
     arrears_90d_ratio = "arrears_90d_ratio"
     arrears_180d_ratio = "arrears_180d_ratio"
     wa_ltv = "wa_ltv"
+    # ---- Coverage tests, one member per attachment point (#452) ----
+    # Overcollateralisation: collateral balance / notes at-or-senior-to the
+    # point. Interest coverage: interest collections / interest due on those
+    # same notes. Both are evaluated on the covenant monitor's percent scale.
+    class_a_oc_ratio = "class_a_oc_ratio"
+    class_b_oc_ratio = "class_b_oc_ratio"
+    class_c_oc_ratio = "class_c_oc_ratio"
+    class_d_oc_ratio = "class_d_oc_ratio"
+    class_e_oc_ratio = "class_e_oc_ratio"
+    class_f_oc_ratio = "class_f_oc_ratio"
+    class_a_ic_ratio = "class_a_ic_ratio"
+    class_b_ic_ratio = "class_b_ic_ratio"
+    class_c_ic_ratio = "class_c_ic_ratio"
+    class_d_ic_ratio = "class_d_ic_ratio"
+    class_e_ic_ratio = "class_e_ic_ratio"
+    class_f_ic_ratio = "class_f_ic_ratio"
     unmapped = "unmapped"
 
 
