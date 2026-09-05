@@ -2319,22 +2319,30 @@ class TestCoverageTriggerThresholds:
             use_llm=False,
         )
 
-    def test_zero_threshold_on_a_coverage_test_becomes_unquantified(self) -> None:
-        """Zero is not a coverage level, so it is recorded as no level at all.
+    @pytest.mark.parametrize("placeholder", [0.0, -1.0, -100.0])
+    def test_a_non_positive_coverage_threshold_becomes_unquantified(
+        self, placeholder: float
+    ) -> None:
+        """A coverage level is positive, so anything else is recorded as no level.
 
         An overcollateralisation or interest-coverage test runs at 100-130%. A
-        0.0 threshold is an unquantified extraction wearing a number, and it
-        fails invisibly: "ratio < 0" is never true, so the test reads as
+        non-positive threshold is an unquantified extraction wearing a number,
+        and it fails invisibly: "ratio < 0" is never true, so the test reads as
         permanently SATISFIED and the breach it exists to catch never fires.
         #452 already refuses an unquantified coverage test at the monitor seam
         and says why, but that guard keys on a None threshold — so the honest
         outcome depends on this normalisation routing the case to it.
+
+        The parametrisation is the point, not thoroughness. The first real
+        extraction emitted 0.0; told not to emit 0, the next emitted -1.0. A
+        guard bounded by the sentinel observed once is defeated by the next one,
+        so it is bounded by the property instead (#439's lesson, new axis).
         """
         rules = self._rules([
             {
                 "name": "class_c_par_value_test",
                 "metric": "class_c_par_value_ratio",
-                "threshold": 0.0,
+                "threshold": placeholder,
                 "threshold_unit": "percentage",
                 "direction": "below",
             }

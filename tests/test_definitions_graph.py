@@ -486,3 +486,32 @@ class TestGreenLionDefinitionsGraph:
         assert len(reloaded) == len(graph)
         for key in graph.terms:
             assert key in reloaded.terms
+
+
+def test_a_truncated_glossary_says_so(caplog) -> None:
+    """Truncating an alphabetical glossary loses a RANGE, not a sample.
+
+    The cap cuts mid-glossary, so the terms that survive are a prefix of the
+    alphabet. Cairn CLO XVII's definitions run past it and yielded 25 terms
+    spanning "Acceleration Notice" to "Bankruptcy Exchange Test" — a
+    healthy-looking count that silently excluded every coverage test, whose
+    thresholds are defined under C-F. A caller reading the count cannot tell
+    that from a complete extraction unless the truncation announces itself.
+    """
+    import logging
+    from unittest.mock import patch
+
+    from loanwhiz.extraction.definitions_graph import extract_definitions
+    from loanwhiz.extraction.section_router import route_sections
+
+    md = "## Definitions\n\n" + ("\n".join(f'"Term {i}" means something.' for i in range(4000)))
+    section_map = route_sections(md)
+
+    with caplog.at_level(logging.WARNING), patch(
+        "loanwhiz.extraction.definitions_graph.genai.Client",
+        side_effect=RuntimeError("stop before the network call"),
+    ):
+        with pytest.raises(RuntimeError):
+            extract_definitions(section_map, max_chars=1_000, force_refresh=True)
+
+    assert any("truncated" in r.getMessage() for r in caplog.records), caplog.text

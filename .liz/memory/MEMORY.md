@@ -5,7 +5,9 @@ triage by opening the entry, not by reading the line.
 
 - [Quality grading & ground-truth answer keys](quality-grading.md)
   - [2026-09-02 · gotcha · #440](#2026-09-02--gotcha--440) — keywords: answer_keys, quality_harness, _default_series_provider, fold_green_lion, not-applicable, backfill
-- [Extraction guards & false-positive filters](extraction-guards.md) — keywords: _CLASS_LETTERS, tranche, note class, Class J, Class O, false positive, guard, proxy range
+- [Extraction guards & false-positive filters](extraction-guards.md)
+  - [2026-09-02 · pitfall · #439](#2026-09-02--pitfall--439) — keywords: _CLASS_LETTERS, tranche, note class, Class J, Class O, false positive, guard, proxy range
+  - [2026-09-05 · pitfall · #456](#2026-09-05--pitfall--456) — keywords: widening a guard, newly visible input, N/A cell, scavenged rating, Subordinated Notes, untested downstream
 - [Extraction: locating the right section](extraction-section-routing.md) — keywords: descendant span, heading level, section number, Docling, has_payment_list, LLM router, empty result
 - [Published figures & doc drift](published-figures.md) — keywords: stale tally, completeness_score, capability matrix, re-derive, stored metric, published figure
 - [Registering a deal (deals.json)](deal-registration.md) — keywords: deals.json, notes_cash_report_urls, routing promise, registry key, asset_class, answer key invariant

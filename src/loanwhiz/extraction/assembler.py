@@ -1483,16 +1483,25 @@ def _trigger_rules_from_covenants(
         # A non_zero trigger fires on any positive balance → threshold 0.
         if threshold is None and raw.get("direction") == "non_zero":
             threshold = 0.0
-        # Zero is not a coverage level. An overcollateralisation or interest-
-        # coverage test runs at 100-130%, so a 0.0 threshold is an unquantified
-        # extraction wearing a number, and it fails in the invisible direction:
-        # "ratio < 0" is never true, so the test reads as permanently SATISFIED
-        # and the breach it exists to catch never fires. #452 already refuses an
-        # unquantified coverage test at the monitor seam, reporting it
-        # not-evaluable with a reason; that guard keys on ``threshold is None``,
-        # so normalising here is what routes this case to it rather than past it
-        # (#456).
-        if threshold == 0.0 and is_coverage_metric(mapping.value):
+        # A coverage level is a POSITIVE ratio — overcollateralisation and
+        # interest-coverage tests run at 100-130% — so a non-positive threshold
+        # is an unquantified extraction wearing a number. It fails in the
+        # invisible direction: "ratio < 0" is never true, so the test reads as
+        # permanently SATISFIED and the breach it exists to catch never fires.
+        # #452 already refuses an unquantified coverage test at the monitor seam,
+        # reporting it not-evaluable with a reason; that guard keys on
+        # ``threshold is None``, so normalising here is what routes this case to
+        # it rather than past it (#456).
+        #
+        # The bound is the PROPERTY (a level must be positive), not the sentinel
+        # observed once. Told not to emit 0, the model emitted -1.0 instead — so
+        # a guard written against 0.0 would have been defeated by the very next
+        # run, which is #439's lesson about proxy ranges arriving on a new axis.
+        if (
+            threshold is not None
+            and threshold <= 0.0
+            and is_coverage_metric(mapping.value)
+        ):
             threshold = None
         unit = normalize_threshold_unit(raw.get("threshold_unit"))
 

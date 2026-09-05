@@ -15,3 +15,16 @@ degraded to one unsized tranche — #397's own test still green. Write down the
 set your guard excludes; check real inputs against it, not just the motivator.
 
 Refs: #439
+Refs: #456 — same rule, on an LLM's placeholder value.
+
+## 2026-09-05 · pitfall · #456
+
+Widening an extractor guard is not additive: the input it used to drop now
+reaches downstream code that has never run on it. Admitting a CLO's unlettered
+Subordinated tranche made the row parser read that row's "N/A" rating cell as a
+word-bounded "A" and its issue-price cell as a coupon — a rated, coupon-paying
+first-loss note, out of a change that only added a name. Re-read what the newly
+visible input produces end to end before believing the fix; the rows a guard
+used to drop are exactly the ones no fixture ever covered.
+
+Refs: #456

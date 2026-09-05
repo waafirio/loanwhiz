@@ -21,6 +21,7 @@ Usage
 from __future__ import annotations
 
 import json
+import logging
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -30,6 +31,8 @@ from google.genai import types as genai_types
 
 from loanwhiz.config import GCP_LOCATION, GCP_PROJECT, MODEL_PRO
 from loanwhiz.extraction.section_router import Section, SectionMap, route_sections
+
+logger = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
@@ -235,6 +238,21 @@ def extract_definitions(
         raise ValueError("Definitions section not found in prospectus")
 
     section_text = defs_section.text[:max_chars]
+    if len(defs_section.text) > max_chars:
+        # A definitions section longer than the budget is truncated MID-GLOSSARY,
+        # and a glossary is alphabetical — so the terms that survive are a prefix
+        # of the alphabet, not a sample. Cairn CLO XVII's runs past this cap, and
+        # the result was 25 terms spanning "Acceleration Notice" to "Bankruptcy
+        # Exchange Test": a healthy-looking count that silently excluded every
+        # coverage test, whose thresholds live under C-F. Say so, so a caller
+        # reading a plausible term count knows what it does not contain (#456).
+        logger.warning(
+            "definitions section truncated at %d of %d chars — a glossary is "
+            "alphabetical, so no term after %r was seen",
+            max_chars,
+            len(defs_section.text),
+            section_text[-200:].strip().split("\n")[-1][:60],
+        )
 
     client = genai.Client(vertexai=True, project=GCP_PROJECT, location=GCP_LOCATION)
 

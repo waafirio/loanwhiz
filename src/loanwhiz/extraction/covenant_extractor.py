@@ -140,7 +140,13 @@ look for — a given deal will have only some of them:
   * OVERCOLLATERALISATION, which a CLO usually names the "Par Value Test"
     ("Class C Par Value Test", "Class A/B Par Value Test")
   * INTEREST COVERAGE ("Class D Interest Coverage Test")
-  Extract EVERY class's test separately — they have different thresholds.
+  Extract EVERY class's test as its OWN trigger — they have different
+  thresholds. A document often also defines a collective term ("the Class C
+  Coverage Tests" means the Class C Interest Coverage Test AND the Class C Par
+  Value Test). Never emit that collective term as a single trigger: it names two
+  different ratios with two different levels, so one combined entry loses which
+  ratio is meant and can carry only one of the two thresholds. Emit the
+  underlying tests, one trigger each.
 - Sequential Pay Trigger (switches principal from pro-rata to sequential distribution)
 - Principal Deficiency Ledger (PDL) triggers (Class A PDL, Class B PDL)
 - Reserve Fund shortfall / triggers
@@ -162,11 +168,12 @@ For each trigger:
   a deal calls its overcollateralisation and interest-coverage tests
   collectively the Coverage Tests, so that name loses which ratio is meant and
   the trigger cannot be resolved.
-- threshold: numerical value if stated (e.g. 10.0 for 10%), or null if not
-  quantified. A coverage test states its level as "is at least equal to 130.08
-  per cent" — extract 130.08. Use null, NEVER 0, when no level is stated: a
-  coverage test with a 0 threshold reads as permanently satisfied and silently
-  never fires.
+- threshold: numerical value if stated (e.g. 10.0 for 10%). A coverage test
+  states its level as "is at least equal to 130.08 per cent" — extract 130.08.
+  If no level is stated, OMIT this field entirely. Never substitute a
+  placeholder number — not 0, not -1, not any sentinel: a coverage test carrying
+  a non-positive threshold reads as permanently satisfied and silently never
+  fires, which is strictly worse than recording that the level is unknown.
 - threshold_unit: "percentage", "eur", "fraction", "boolean" — or null
 - direction: "above" (metric > threshold triggers it), "below" (metric < threshold),
   or "non_zero" (any positive debit balance triggers it)
