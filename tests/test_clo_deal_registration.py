@@ -248,11 +248,94 @@ def test_clo_carries_no_invented_structural_config(key: str) -> None:
     assert key not in DEAL_REGISTRY[CLO_DEAL_ID]
 
 
-def test_clo_has_no_committed_seed_model() -> None:
-    """No extraction has run for this deal — #456's job, not this one's."""
+def test_clo_seed_model_carries_the_whole_capital_stack() -> None:
+    """#456 ran the extraction, so this deal now HAS a model — and all of it.
+
+    #455 asserted the negative here ("no extraction has run"). That is no longer
+    true, and the replacement is not merely the inverse: the failure this deal
+    actually produced was a model that existed and looked well-formed while
+    silently missing three of eight tranches, so the assertion is on the whole
+    stack rather than on the model's existence.
+
+    Sizes are the cover page's, senior to junior, and they sum to the stated
+    EUR 404.1m. A partial parse still totals a plausible number, so the sum is
+    checked against the document rather than against itself.
+    """
     from loanwhiz.api.main import _load_cached_deal_model
 
-    assert _load_cached_deal_model(DEAL_REGISTRY[CLO_DEAL_ID]) is None
+    model = _load_cached_deal_model(DEAL_REGISTRY[CLO_DEAL_ID])
+    assert model is not None
+    tranches = model.tranche_structure
+    assert [t["name"] for t in tranches] == [
+        "Class A", "Class B-1", "Class B-2", "Class C",
+        "Class D", "Class E", "Class F", "Subordinated Notes",
+    ]
+    assert sum(t["size_eur"] for t in tranches) == 404_100_000.0
+    seniorities = [t["seniority"] for t in tranches]
+    assert all(a < b for a, b in zip(seniorities, seniorities[1:])), seniorities
+    # The first-loss tranche is unrated and pays no stated coupon. Recording
+    # that honestly is the point: the row's "N/A" cells previously yielded a
+    # fabricated "A" rating and the issue price as a coupon.
+    residual = tranches[-1]
+    assert residual["rating"] is None and residual["rate"] is None
+
+
+def test_clo_seed_model_carries_both_priorities_of_payments() -> None:
+    """Interest and Principal are DIFFERENT cascades, from different sections.
+
+    A CLO names them "Application of Interest Proceeds" and "Application of
+    Principal Proceeds"; the canonical schema calls the roles revenue and
+    redemption. The failure mode worth pinning is not absence but COLLAPSE —
+    both roles resolving to one section, which is what happened on the Italian
+    deal and what the router prompt explicitly permits when a single cascade
+    serves both. Asserting distinct sources is what tells them apart.
+    """
+    from loanwhiz.api.main import _load_cached_deal_model
+
+    model = _load_cached_deal_model(DEAL_REGISTRY[CLO_DEAL_ID])
+    assert model is not None
+    revenue = model.waterfalls["revenue"]
+    redemption = model.waterfalls["redemption"]
+    assert revenue["source_section"] != redemption["source_section"]
+    assert "interest" in revenue["source_section"].lower()
+    assert "principal" in redemption["source_section"].lower()
+    assert len(revenue["steps"]) > 20
+    assert len(redemption["steps"]) > 20
+
+
+def test_clo_coverage_tests_land_on_real_coverage_metrics() -> None:
+    """Every extracted coverage test resolves to an OC/IC metric or says why.
+
+    This is the deliverable #456 exists for: the coverage-test definitions
+    reaching the per-attachment-point metrics #452 added. The senior-most test
+    is the combined "Class A/B Par Value Test", whose ratio the document defines
+    over Class A + Class B outstanding — a Class B attachment point.
+
+    A trigger that resolves to `unmapped` is allowed and expected (the
+    reinvestment test names no attachment point; the incentive fee is
+    deliberately excluded), but it must keep its prose. What is NOT allowed is a
+    coverage metric carrying a threshold it can never breach.
+    """
+    from loanwhiz.api.main import _load_cached_deal_model
+    from loanwhiz.domain.rules import MetricType
+    from loanwhiz.extraction.assembler import _trigger_rules_from_covenants
+    from loanwhiz.extraction.taxonomy import is_coverage_metric
+
+    model = _load_cached_deal_model(DEAL_REGISTRY[CLO_DEAL_ID])
+    assert model is not None
+    rules = _trigger_rules_from_covenants(
+        model.covenants, deal_name="Cairn", provenance={}, use_llm=False
+    )
+    resolved = {r.metric for r in rules if r.metric != MetricType.unmapped}
+    # Both families, at several attachment points, including the senior block.
+    assert MetricType.class_b_oc_ratio in resolved
+    assert MetricType.class_b_ic_ratio in resolved
+    assert MetricType.class_f_oc_ratio in resolved
+    # No coverage test may carry a threshold that can never be breached: a
+    # non-positive level reads as permanently satisfied and never fires.
+    for rule in rules:
+        if is_coverage_metric(rule.metric) and rule.threshold is not None:
+            assert rule.threshold > 0, rule.name
 
 
 def test_clo_has_no_committed_answer_key() -> None:
@@ -312,14 +395,32 @@ def _live_matrix():
     )
 
 
-def test_every_clo_capability_cell_is_not_applicable_with_a_reason() -> None:
-    from loanwhiz.primitives.capability_matrix import STATE_NOT_APPLICABLE
+def test_every_clo_capability_cell_is_ran_or_reasoned_not_applicable() -> None:
+    """Extraction moved two cells to `ran`; the rest stay refused WITH a reason.
+
+    #455 asserted every cell was not-applicable, which was true while nothing
+    had been extracted. Now that #456 has run, the honest shape is two states
+    and no third: a cell either ran, or is not-applicable and says why. The
+    reason is the load-bearing half — a cell that is merely absent of a claim is
+    indistinguishable from one nobody assessed.
+
+    Deliberately NOT asserted here: which cells are `ran`. That is a property of
+    what the extraction produced, and pinning the pair by name would make this
+    test a second, weaker copy of the assertions above.
+    """
+    from loanwhiz.primitives.capability_matrix import (
+        STATE_NOT_APPLICABLE,
+        STATE_RAN,
+    )
 
     cells = [c for c in _live_matrix().cells if c.deal_id == CLO_DEAL_ID]
     assert cells, "CLO produced no capability cells"
     for cell in cells:
-        assert cell.state == STATE_NOT_APPLICABLE, f"{cell.capability_key} is {cell.state}"
-        assert cell.reason, f"{cell.capability_key} has no reason"
+        assert cell.state in (STATE_RAN, STATE_NOT_APPLICABLE), (
+            f"{cell.capability_key} is {cell.state}"
+        )
+        if cell.state == STATE_NOT_APPLICABLE:
+            assert cell.reason, f"{cell.capability_key} has no reason"
 
 
 def test_registering_the_clo_added_no_validated_cell() -> None:
