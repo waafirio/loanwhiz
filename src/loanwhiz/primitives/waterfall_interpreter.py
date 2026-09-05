@@ -59,6 +59,14 @@ from typing import Callable, Protocol, runtime_checkable
 
 from pydantic import BaseModel, Field, computed_field, model_validator
 
+from loanwhiz.domain.rules import (
+    LEGACY_RECIPIENT_SPELLINGS,
+    NeedSource,
+    RecipientType,
+    basis_for,
+    need_source_for,
+    recipients_needing_calculator,
+)
 from loanwhiz.primitives.deal_state import TranchePayment, WaterfallResult
 
 # Small tolerance for floating-point comparisons (EUR amounts).
@@ -223,6 +231,20 @@ class WaterfallFunds(BaseModel):
         Outstanding PDL debit balances (the replenishment needs).
     reserve_balance / reserve_target:
         Reserve account current balance and target (top-up need = target − bal).
+    liquidity_reserve_balance / liquidity_reserve_target:
+        The **separate** liquidity / commingling / set-off reserve, kept distinct
+        from the general reserve fund so a deal carrying both tops each up to its
+        own target instead of the two sharing one ledger.
+    collateral_balance:
+        Aggregate collateral (pool) principal balance — the base a percent-of-
+        collateral fee accrues on. Deliberately not CLO-specific: a CMBS or Auto
+        servicing fee accrues on the same base.
+    fee_rates_pct:
+        ``recipient → annual fee rate in percent`` for the ``fee_accrual``
+        recipients (the senior / subordinated management fees). A recipient
+        **absent** from this map has an unknown rate, and its calculator reports
+        ``not_evaluable`` rather than a zero fee — the distinction the silent-zero
+        bug class turns on.
     days_in_period:
         Day count for interest accrual (Act/360).
     sequential_pay:
@@ -249,6 +271,12 @@ class WaterfallFunds(BaseModel):
 
     reserve_balance: float = Field(default=0.0, ge=0.0)
     reserve_target: float = Field(default=0.0, ge=0.0)
+
+    liquidity_reserve_balance: float = Field(default=0.0, ge=0.0)
+    liquidity_reserve_target: float = Field(default=0.0, ge=0.0)
+
+    collateral_balance: float = Field(default=0.0, ge=0.0)
+    fee_rates_pct: dict[str, float] = Field(default_factory=dict)
 
     days_in_period: int = Field(default=90, gt=0)
 
@@ -369,23 +397,70 @@ class WaterfallFunds(BaseModel):
 # Need-calculator registry
 # ---------------------------------------------------------------------------
 
+#: A need-calculator: ``(funds) -> need``, or ``None`` when the funds carry no
+#: inputs for this recipient. ``None`` is **not** zero — it means "I cannot
+#: evaluate this", and :func:`compute_need` turns it into ``not_evaluable`` so
+#: an unconfigured fee never lands an authoritative-looking ``0.0`` in a
+#: distribution (#453).
+NeedCalculator = Callable[[WaterfallFunds], "float | None"]
+
 #: ``recipient kind → (funds) -> need``. A recipient with no registered
 #: calculator contributes 0 and is recorded ``not_evaluable`` in the trace.
-NEED_CALCULATORS: dict[str, Callable[[WaterfallFunds], float]] = {}
+#:
+#: Keys are canonical :class:`~loanwhiz.domain.rules.RecipientType` values plus
+#: the six legacy spellings declared in
+#: :data:`~loanwhiz.domain.rules.LEGACY_RECIPIENT_SPELLINGS`. :func:`register_need`
+#: refuses anything else, and the module-tail
+#: :func:`_assert_registry_covers_contract` refuses to import if a recipient the
+#: contract says needs a calculator has none.
+NEED_CALCULATORS: dict[str, NeedCalculator] = {}
 
 
-def register_need(*recipients: str) -> Callable[
-    [Callable[[WaterfallFunds], float]], Callable[[WaterfallFunds], float]
-]:
+def register_need(*recipients: str) -> Callable[[NeedCalculator], NeedCalculator]:
     """Decorator registering a need-calculator for one or more recipient kinds.
 
-    A need-calculator is a pure function ``(WaterfallFunds) -> float`` returning
-    the (non-negative) amount this recipient is owed this period.
+    A need-calculator is a pure function ``(WaterfallFunds) -> float | None``
+    returning the (non-negative) amount this recipient is owed this period, or
+    ``None`` when the funds carry no inputs to compute it.
+
+    **This is the boundary guard for the enum ↔ registry contract (#453).**
+    Registration is refused for:
+
+    - a name that is neither a :class:`~loanwhiz.domain.rules.RecipientType`
+      value nor one of the declared legacy spellings — a calculator keyed by a
+      name no canonical step can ever carry is dead code that reads like
+      coverage; and
+    - a recipient whose declared
+      :class:`~loanwhiz.domain.rules.NeedSource` is not registry-backed — a
+      calculator for a ``principal_due`` recipient would race
+      :func:`allocate_principal`, and one for a ``step_override`` recipient
+      would overwrite the servicer's actual with an invented figure.
+
+    #394 broadened ``RecipientType`` and registered nothing; the registry drifted
+    from the enum silently because nothing here could say no. Now it can.
+
+    Raises:
+        ValueError: if any name in ``recipients`` violates either rule.
     """
 
-    def _decorator(
-        fn: Callable[[WaterfallFunds], float],
-    ) -> Callable[[WaterfallFunds], float]:
+    for name in recipients:
+        recipient = _canonical_recipient(name)
+        if recipient is None:
+            raise ValueError(
+                f"register_need({name!r}): not a RecipientType value and not a "
+                "declared legacy spelling. Add the recipient to RecipientType "
+                "(with its RECIPIENT_BASIS / RECIPIENT_NEED_SOURCE rows), or "
+                "declare the spelling in LEGACY_RECIPIENT_SPELLINGS."
+            )
+        source = need_source_for(recipient)
+        if source not in _REGISTRY_BACKED_SOURCES:
+            raise ValueError(
+                f"register_need({name!r}): {recipient.value} declares "
+                f"NeedSource.{source.value}, whose need does not come from this "
+                "registry. Registering one here would override the real source."
+            )
+
+    def _decorator(fn: NeedCalculator) -> NeedCalculator:
         for name in recipients:
             NEED_CALCULATORS[name] = fn
         return fn
@@ -393,73 +468,233 @@ def register_need(*recipients: str) -> Callable[
     return _decorator
 
 
+#: The need sources whose amount the interpreter looks up in this registry.
+_REGISTRY_BACKED_SOURCES = frozenset({NeedSource.calculator, NeedSource.funds_input})
+
+
+def _canonical_recipient(name: str) -> RecipientType | None:
+    """The :class:`RecipientType` ``name`` denotes, or ``None`` if it denotes none.
+
+    Accepts a canonical enum value or a declared legacy spelling — the two
+    vocabularies the registry is legitimately keyed by.
+    """
+    try:
+        return RecipientType(name)
+    except ValueError:
+        return LEGACY_RECIPIENT_SPELLINGS.get(name)
+
+
 def _accrued_interest(balance: float, rate_pct: float, days: int) -> float:
     """Act/360 accrued interest: balance × (rate/100) / 360 × days."""
     return balance * (rate_pct / 100.0) / 360.0 * days
 
 
-@register_need("senior_fees", "security_trustee_fees")
-def _need_senior_fees(funds: WaterfallFunds) -> float:
-    return funds.senior_fees
+# --- Calculator factories, one per amount basis --------------------------------
+#
+# The calculators are GENERATED from ``RecipientType`` rather than written out
+# one per member (#453). Nine were missing because each new enum member needed
+# a hand-written twin nobody wrote; deriving them means a member added to a
+# family is covered the moment it exists. It also keeps the note-class range
+# out of this module entirely: the enum bounds the family, so there is no
+# hardcoded A–F alphabet here to under-reach the way #397's A–G cap did.
 
 
-@register_need("swap_payment")
-def _need_swap_payment(funds: WaterfallFunds) -> float:
-    return funds.swap_payment
+def _make_tranche_interest_need(tranche: str) -> NeedCalculator:
+    """Act/360 accrual on ``tranche``; ``None`` when the deal has no such tranche.
+
+    An absent tranche is *unknown*, not zero: a step paying Class D interest in
+    a deal whose funds carry no Class D has an unanswerable need, and answering
+    ``0.0`` would put an authoritative-looking figure into the distribution. A
+    tranche that is *present* with a zero balance is a different thing — fully
+    amortised, genuinely owed nothing — and still evaluates to 0.
+    """
+
+    def _need(funds: WaterfallFunds) -> float | None:
+        t = funds.tranche(tranche)
+        if t is None:
+            return None
+        return _accrued_interest(t.balance, t.rate_pct, funds.days_in_period)
+
+    _need.__name__ = f"_need_{tranche}_interest"
+    return _need
 
 
-@register_need("class_a_interest")
-def _need_class_a_interest(funds: WaterfallFunds) -> float:
-    return _accrued_interest(
-        funds.class_a_balance, funds.class_a_rate_pct, funds.days_in_period
+def _make_tranche_pdl_need(tranche: str) -> NeedCalculator:
+    """Cure up to ``tranche``'s outstanding PDL; ``None`` when it has no tranche."""
+
+    def _need(funds: WaterfallFunds) -> float | None:
+        t = funds.tranche(tranche)
+        if t is None:
+            return None
+        return t.pdl_balance
+
+    _need.__name__ = f"_need_{tranche}_pdl_cure"
+    return _need
+
+
+def _make_reserve_need(target_field: str, balance_field: str) -> NeedCalculator:
+    """Top-up need: ``max(0, target - balance)``.
+
+    Always evaluable — a zero target is a real answer ("this deal tops up no
+    such reserve"), not an absent input.
+    """
+
+    def _need(funds: WaterfallFunds) -> float | None:
+        return max(
+            0.0, getattr(funds, target_field) - getattr(funds, balance_field)
+        )
+
+    _need.__name__ = f"_need_{target_field.removesuffix('_target')}"
+    return _need
+
+
+def _make_collateral_fee_need(recipient: str) -> NeedCalculator:
+    """Act/360 fee accrual on the collateral balance at this recipient's rate.
+
+    ``collateral_balance × rate/100 / 360 × days`` — the shape a CLO's senior and
+    subordinated management fees take, and the same shape a CMBS or Auto
+    servicing fee takes, which is why the base is the collateral rather than a
+    fee-specific field.
+
+    Returns ``None`` when no rate is configured for this recipient. That is the
+    honest answer and the load-bearing one: a missing rate is an unknown fee,
+    and returning ``0.0`` would report "the manager is owed nothing this period"
+    — a silent zero of exactly the class this issue exists to close.
+    """
+
+    def _need(funds: WaterfallFunds) -> float | None:
+        rate_pct = funds.fee_rates_pct.get(recipient)
+        if rate_pct is None:
+            return None
+        return _accrued_interest(funds.collateral_balance, rate_pct, funds.days_in_period)
+
+    _need.__name__ = f"_need_{recipient}"
+    return _need
+
+
+def _make_funds_input_need(field: str) -> NeedCalculator:
+    """Pass through a servicer-actual scalar already carried on the funds."""
+
+    def _need(funds: WaterfallFunds) -> float | None:
+        return getattr(funds, field)
+
+    _need.__name__ = f"_need_{field}"
+    return _need
+
+
+#: ``funds_input`` recipient → the ``WaterfallFunds`` field carrying its actual.
+#: Irregular by nature (the field names predate the enum), so declared rather
+#: than derived; a member missing here fails the import-time assert below.
+_FUNDS_INPUT_FIELD: dict[RecipientType, str] = {
+    RecipientType.senior_expenses: "senior_fees",
+    RecipientType.swap_payment: "swap_payment",
+}
+
+#: ``target_shortfall`` recipient → its ``(target, balance)`` fields.
+_RESERVE_FIELDS: dict[RecipientType, tuple[str, str]] = {
+    RecipientType.reserve_replenishment: ("reserve_target", "reserve_balance"),
+    RecipientType.liquidity_reserve_replenishment: (
+        "liquidity_reserve_target",
+        "liquidity_reserve_balance",
+    ),
+}
+
+_INTEREST_SUFFIX = "_interest"
+_PDL_CURE_SUFFIX = "_pdl_cure"
+
+
+def _calculator_for(recipient: RecipientType) -> NeedCalculator | None:
+    """Build the calculator ``recipient``'s declared basis calls for, if any."""
+    basis = basis_for(recipient)
+    if basis == "interest_accrual":
+        return _make_tranche_interest_need(
+            recipient.value.removesuffix(_INTEREST_SUFFIX)
+        )
+    if basis == "pdl_balance":
+        return _make_tranche_pdl_need(recipient.value.removesuffix(_PDL_CURE_SUFFIX))
+    if basis == "target_shortfall":
+        fields = _RESERVE_FIELDS.get(recipient)
+        return _make_reserve_need(*fields) if fields else None
+    if basis == "fee_accrual":
+        return _make_collateral_fee_need(recipient.value)
+    if basis == "report_supplied":
+        # Only reachable for a ``funds_input`` recipient — a ``step_override``
+        # one is refused by ``register_need`` and never reaches here.
+        field = _FUNDS_INPUT_FIELD.get(recipient)
+        return _make_funds_input_need(field) if field else None
+    return None
+
+
+def _register_contract_calculators() -> None:
+    """Register one calculator per registry-backed recipient, then its aliases.
+
+    Runs once at import. Anything it cannot build is caught by
+    :func:`_assert_registry_covers_contract` immediately below — so this
+    function is allowed to be permissive, and a family it does not know how to
+    generate surfaces as an ImportError rather than as a silent gap.
+    """
+    for recipient in recipients_needing_calculator():
+        calc = _calculator_for(recipient)
+        if calc is not None:
+            register_need(recipient.value)(calc)
+    # The legacy free-string spellings resolve to the same function as their
+    # canonical recipient — derived from the one declaration, so a spelling can
+    # never drift onto a different formula than the enum value it aliases.
+    for spelling, recipient in LEGACY_RECIPIENT_SPELLINGS.items():
+        calc = NEED_CALCULATORS.get(recipient.value)
+        if calc is not None:
+            register_need(spelling)(calc)
+
+
+def _assert_registry_covers_contract() -> None:
+    """Refuse to import if a recipient the contract says needs a calculator lacks one.
+
+    The other half of :func:`register_need`'s guard. That one stops a *wrong*
+    registration; this one stops a *missing* one — the actual #394 failure, where
+    ``RecipientType`` grew members whose steps then quietly contributed need 0 to
+    real distributions. Making the hole an ImportError is what stops the next
+    vocabulary broadening reopening it.
+    """
+    missing = sorted(
+        r.value for r in recipients_needing_calculator() if r.value not in NEED_CALCULATORS
     )
+    if missing:
+        raise ImportError(
+            "NEED_CALCULATORS is missing a calculator for "
+            f"{missing}. Each declares a registry-backed NeedSource, so the "
+            "engine must be able to compute its need; either register one or "
+            "change its RECIPIENT_NEED_SOURCE row to say where the need really "
+            "comes from."
+        )
 
 
-@register_need("class_b_interest")
-def _need_class_b_interest(funds: WaterfallFunds) -> float:
-    return _accrued_interest(
-        funds.class_b_balance, funds.class_b_rate_pct, funds.days_in_period
-    )
-
-
-@register_need("class_c_interest")
-def _need_class_c_interest(funds: WaterfallFunds) -> float:
-    return _accrued_interest(
-        funds.class_c_balance, funds.class_c_rate_pct, funds.days_in_period
-    )
-
-
-@register_need("class_a_pdl_replenishment")
-def _need_class_a_pdl(funds: WaterfallFunds) -> float:
-    return funds.class_a_pdl_balance
-
-
-@register_need("class_b_pdl_replenishment")
-def _need_class_b_pdl(funds: WaterfallFunds) -> float:
-    return funds.class_b_pdl_balance
-
-
-@register_need("class_c_pdl_replenishment")
-def _need_class_c_pdl(funds: WaterfallFunds) -> float:
-    return funds.class_c_pdl_balance
-
-
-@register_need("reserve_replenishment", "reserve_account_replenishment")
-def _need_reserve(funds: WaterfallFunds) -> float:
-    return max(0.0, funds.reserve_target - funds.reserve_balance)
+_register_contract_calculators()
+_assert_registry_covers_contract()
 
 
 def compute_need(recipient: str, funds: WaterfallFunds) -> tuple[float, bool]:
     """Return ``(need, evaluable)`` for a recipient kind.
 
-    ``evaluable`` is ``False`` when no calculator is registered for the
-    recipient — the need is 0 and the step is recorded ``not_evaluable``, so an
-    unrecognised extracted recipient never crashes the run.
+    ``evaluable`` is ``False`` in two cases, and they mean different things
+    while degrading identically:
+
+    - **no calculator is registered** for the recipient — an extracted
+      jurisdiction-native label the engine does not recognise; and
+    - a calculator ran and returned ``None`` — it is registered, but the funds
+      carry no inputs for it this period (a fee with no configured rate, a
+      tranche the deal does not have).
+
+    Either way the need is 0 and the step is recorded ``not_evaluable``, so the
+    audit trace stays structurally complete and no unanswerable need is ever
+    reported as an authoritative ``0.0`` (#453).
     """
     calc = NEED_CALCULATORS.get(recipient)
     if calc is None:
         return 0.0, False
-    return max(0.0, calc(funds)), True
+    need = calc(funds)
+    if need is None:
+        return 0.0, False
+    return max(0.0, need), True
 
 
 # ---------------------------------------------------------------------------
