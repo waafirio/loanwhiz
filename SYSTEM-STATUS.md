@@ -118,7 +118,7 @@ distinct things are being counted, and only the last is external:
 - **Externally validated** means reconciled to a deal's own published Notes &
   Cash report. That is still **one deal**: Green Lion 2024-1 is the only
   `validated` cell in `GET /capability-matrix` (live tally: 1 validated /
-  12 ran / 17 not-applicable, over 6 deal columns). Green Lion 2023-1 now has a committed
+  14 ran / 15 not-applicable, over 6 deal columns). Green Lion 2023-1 now has a committed
   ground-truth answer key (#440), so `GET /quality-matrix` **grades two
   deals** — both reconcile their revenue and redemption Priority of Payments
   to the cent across all three published periods.

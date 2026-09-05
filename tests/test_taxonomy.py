@@ -450,18 +450,63 @@ def test_coverage_points_are_distinct_from_each_other() -> None:
 @pytest.mark.parametrize(
     "raw",
     [
-        "Class A/B Overcollateralisation Test",
         "Class C and D Par Value Test",
         "Class B/C Interest Coverage Test",
+        "Class D/F Par Value Test",
     ],
 )
 def test_combined_class_coverage_test_refuses_to_guess(raw: str) -> None:
-    """A combined test names no single point, so it degrades rather than guess.
+    """A block that does not start at Class A names no single point.
 
     Guessing the first letter would understate the denominator and therefore
-    OVERSTATE the ratio — a coverage test reported as healthier than it is.
+    OVERSTATE the ratio — a coverage test reported as healthier than it is. The
+    junior-most member is no better here: its senior-or-equal walk sweeps in a
+    senior class the test does not name, so no member of the block describes it.
+    Only a block contiguous from the top of the stack resolves (#456).
     """
     assert map_metric(raw, use_llm=False).value == MetricType.unmapped
+
+
+@pytest.mark.parametrize(
+    ("raw", "expected"),
+    [
+        ("Class A/B Par Value Test", MetricType.class_b_oc_ratio),
+        ("Class A/B Overcollateralisation Test", MetricType.class_b_oc_ratio),
+        ("Class A/B Interest Coverage Test", MetricType.class_b_ic_ratio),
+        ("Class A/B/C Par Value Test", MetricType.class_c_oc_ratio),
+    ],
+)
+def test_senior_block_coverage_test_resolves_at_its_junior_most_class(
+    raw: str, expected: MetricType
+) -> None:
+    """A combined SENIOR block is its junior-most member's attachment point.
+
+    A coverage ratio divides the collateral by the notes at or senior to its
+    attachment point, so a test naming a contiguous block from the top of the
+    stack has exactly the denominator of its junior-most member. Cairn CLO XVII
+    states it outright: the "Class A/B Par Value Ratio" divides the Adjusted
+    Collateral Principal Amount by "the sum of the Principal Amount Outstanding
+    of each of the Class A Notes and the Class B Notes" — the Class B point.
+
+    This is read off the document's formula, not guessed, and it moves in the
+    honest direction: Class B's denominator is LARGER than Class A's, so the
+    resolved ratio is the lower, more conservative of the two candidates. The
+    senior-most coverage test of a CLO is combined, so refusing it left the top
+    of the stack unmonitored.
+    """
+    assert map_metric(raw, use_llm=False).value == expected
+
+
+def test_a_bare_coverage_ratio_still_names_no_test_family() -> None:
+    """"Coverage" alone is neither overcollateralisation nor interest coverage.
+
+    A CLO calls the OC and IC tests collectively its "Coverage Tests", so a
+    string carrying only that word names a class but not WHICH of the two
+    ratios — a different ambiguity from the attachment point, and resolving the
+    block does not resolve it. It must keep degrading rather than pick one.
+    """
+    m = map_metric("class_c_coverage_ratio", use_llm=False)
+    assert m.value == MetricType.unmapped
 
 
 @pytest.mark.parametrize(

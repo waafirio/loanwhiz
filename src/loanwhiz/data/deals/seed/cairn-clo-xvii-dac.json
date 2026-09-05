@@ -1,0 +1,1486 @@
+{
+  "metadata": {
+    "deal_name": "Cairn CLO XVII DAC",
+    "prospectus_url": "https://ise-prodnr-eu-west-1-data-integration.s3-eu-west-1.amazonaws.com/202309/9f9dac99-d8fa-4525-928a-d0aab2db8c81.pdf",
+    "extracted_at": "2026-09-05T11:16:34.827155+00:00",
+    "extraction_duration_sec": 101.59763813018799,
+    "sections_found": [
+      "definitions",
+      "revenue_priority_of_payments",
+      "redemption_priority_of_payments",
+      "post_enforcement_priority",
+      "conditions_of_notes",
+      "eligibility_criteria",
+      "available_funds"
+    ],
+    "completeness_score": 1.0,
+    "cache_path": "data/deals/cairn-clo-xvii-dac.json"
+  },
+  "definitions": {
+    "Acceleration Notice": {
+      "definition": "has the meaning given to it in Condition 10(b) ( Acceleration ).",
+      "page_or_section": "1. Definitions"
+    },
+    "Accounts": {
+      "definition": "means  the  Principal  Account,  the  Interest  Account,  the  Custody  Account,  the  Unused  Proceeds Account,  the  Payment  Account,  the  Expense  Reserve  Account,  the  Collateral  Enhancement  Account,  the Counterparty Downgrade Collateral Accounts, the Interest Smoothing Account, the Hedge Termination Accounts, the Currency Account, the Interest Reserve Account, the Unfunded Revolver Reserve Account and the Collection Account.",
+      "page_or_section": "1. Definitions"
+    },
+    "Accrual Period": {
+      "definition": "means, in respect of each Class of Notes, the period from and including the Issue Date (or in the case of a Class that is subject to Refinancing, the Business Day upon which the Refinancing occurs) to, but excluding, the first Payment Date (or. in the case of a Class that is subject to Refinancing, the first Payment Date following the Refinancing) and each successive period from and including each Payment Date to, but excluding, the following Payment Date; provided that, for the purposes of calculating interest payable in accordance with Condition 6(e)(iii) ( Calculation of Fixed Interest Amounts ), the Payment Date (for the purposes of determining the Accrual Period) shall not be adjusted if the relevant Payment Date would have fallen other than on a Business Day but for the proviso in the definition of Payment Date.",
+      "page_or_section": "1. Definitions"
+    },
+    "Adjusted Collateral Principal Amount": {
+      "definition": "means, as of any date of determination, an amount equal to:\n\n- (a) the Aggregate Principal Balance of the Collateral Debt Obligations (other than Defaulted Obligations, Discount Obligations and Deferring Securities); plus\n- (b) the Aggregate Principal Balance of Loss Mitigation Obligations; plus\n- (c) unpaid  accrued  interest  purchased  with  Principal  Proceeds  (other  than  with  respect  to  Defaulted Obligations); plus\n- (d) without duplication, the amounts on deposit in the Principal Account and the Unused Proceeds Account (to the extent that such amounts represent Principal Proceeds) (including Eligible Investments therein which represent Principal Proceeds); plus\n- (e) in relation to a Deferring Security or a Defaulted Obligation, the lesser of (i) its Fitch Collateral Value or (ii) its S&P Collateral Value, provided that , the Adjusted Collateral Principal Amount of a Defaulted Obligation that has been a Defaulted Obligation for more than three years after the date on which it became a Defaulted Obligation and continues to be a Defaulted Obligation on such date shall be zero; plus\n- (f) the aggregate, for each Discount Obligation, of the product of the (x) purchase price (expressed as a percentage  of  par  and  excluding  accrued  interest)  and  (y)  the  Principal  Balance  of  such  Discount Obligation; minus\n- (g) the Excess CCC Adjustment Amount;\n\nprovided further ,\n\n- (h) that, with respect to any Collateral Debt Obligation that satisfies more than one of the definitions of Defaulted  Obligation,  Discount  Obligation  or  Deferring  Security  or  that  falls  into  the  Excess  CCC Adjustment Amount, such Collateral Debt Obligation shall, for the purposes of this definition, be treated as  belonging  to  the  category  of  Collateral  Debt  Obligations  which  results  in  the  lowest  Adjusted Collateral Principal Amount on any date of determination;\n- (i) in respect of each of paragraphs (b) to (g) above, any non-Euro amounts received will be converted into Euro at the Applicable Exchange Rate; and\n- (j) for the purposes of the calculation of the Coverage Tests in connection with the acquisition of any Uptier Priming Debt only, the calculation thereof shall account for any potential reduction in the  Adjusted Collateral Principal Amount for non-participation in any workout or restructuring of the related Collateral Debt Obligation including, for the avoidance of doubt, with respect to the inability to participate in any Rolled Senior Uptier Debt (as determined by the Investment Manager in its commercially reasonable discretion) including by the remaining Collateral Debt Obligation no longer falling within paragraph (a) of this definition of Adjusted Collateral Principal Amount and/or its treatment as a Defaulted Obligation.",
+      "page_or_section": "1. Definitions"
+    },
+    "Administrative Expenses": {
+      "definition": "means amounts due and payable by the Issuer in the following order of priority (in each case, except as expressly provided otherwise, together with any VAT thereon, whether payable to the relevant Tax Authority or to the relevant party):\n\n- (a) on a pro rata and pari passu basis, to (i) the Agents pursuant to the Agency Agreement (including by way  of  indemnity);  (ii)  the  Collateral  Administrator  and  the  Information  Agent,  pursuant  to  the Investment  Management  Agreement  (including  by  way  of  indemnity);  (iii)  the  Corporate  Services Provider  pursuant  to  the  Corporate  Services  Agreement  (including  by  way  of  indemnity)  and  (iv) Euronext Dublin, or such other stock exchange or exchanges upon which any of the Notes are listed from time to time;\n- (b) on a pro rata and pari passu basis, to each Hedge Counterparty pursuant to any Reporting Agreement;\n- (c) on a pro rata and pari passu basis:\n- (i) to any Rating Agency which may from time to time be requested to assign (i) a rating to each of the Rated Notes, or (ii) a confidential credit estimate to any of the Collateral Debt Obligations, for  fees  and  expenses  (including  surveillance  fees)  in  connection  with  any  such  rating  or confidential credit estimate, including, in each case, the ongoing monitoring thereof and any other  amounts  due  and  payable  to  any  Rating  Agency  in  accordance  with  the  terms  of  the Issuer's engagement with such Rating Agency;\n- (ii) to the independent certified public accountants, auditors, agents and counsel of the Issuer, (other than amounts payable to the Agents pursuant to paragraph (a) above);\n- (iii) to  the  Investment  Manager  pursuant  to  the  Investment  Management  Agreement  (including indemnities provided for therein), but excluding any Investment Management Fee or any VAT payable thereon and excluding any amount in respect of Investment Manager Advance;\n- (iv) to any other Person in respect of any governmental fee or charge (for the avoidance of doubt, excluding any taxes) or any statutory indemnity;\n- (v) on a pro rata basis to any other Person in respect of any other fees or expenses contemplated in these Conditions, the Transaction Documents or any other documents delivered pursuant to or in connection with the issue and sale of the Notes which are not provided for elsewhere in this definition  or  in  the  Priorities  of  Payments,  including,  without  limitation,  an  amount  up  to €10,000 per  annum in  respect  of  fees  and  expenses  incurred  by  the  Issuer  (in  its  sole  and absolute discretion) in assisting in the preparation, provision or validation of data for purposes of the Noteholder's tax jurisdictions;\n- (vi) to  the  Placement  Agent  pursuant  to  the  Placement  Agency  Agreement  in  respect  of  any indemnity payable to it thereunder;\n- (vii) to the payment on a pro rata basis of any fees, expenses or indemnity payments in relation to the  restructuring  of  a  Collateral  Debt  Obligation,  including  but  not  limited  to  a  steering committee relating thereto;\n- (viii) on a pro rata basis to any Selling Institution pursuant to any Participation Agreement after the date of entry into any Participation (excluding, for avoidance of doubt, any payments on account of any Unfunded Amounts);\n- (ix) to any person in connection with satisfying the requirements of Rule 17g-5 of the Exchange Act; and\n- (x) to the payment of any amounts necessary to ensure the orderly dissolution of the Issuer;\n- (d) on a pro rata and pari passu basis:\n- (i) on a pro rata basis to any other Person (including the Investment Manager) in connection with satisfying  the  requirements  of  Rule  17g-5,  EMIR,  the  CRA  Regulations,  AIFMD,  the  UK AIFMR, the UCITS Directive, Solvency II, the Securitisation Regulations (including, in the case  of  the  Issuer  only,  any  costs  or  fees  related  to  additional  due  diligence  or  reporting requirements), the Irish STS Regulations or the Dodd-Frank Act (including any implementing regulations, technical standards and guidance respectively related thereto) (in each case, as may be amended, supplemented or superseded from time to time);\n\n- (ii) costs of complying with FATCA and/or the CRS;\n- (iii) on a pro rata basis, (A) any pecuniary sanctions levied on the Issuer arising under Article 32 of the EU Securitisation Regulation and (B) any administrative penalties imposed on the Issuer in respect of the UK Securitisation Regulation, or any national laws or regulations supplementing or implementing the Securitisation Regulations, in relation to a failure by the Issuer to satisfy the Transparency Requirements;\n- (iv) reasonable fees, costs and expenses of the Issuer and Investment Manager including reasonable attorneys' fees of compliance by the Issuer and the Investment Manager with the United States Commodity  Exchange  Act  of  1936,  as  amended  (including  the  rules  and  regulations promulgated thereunder); and\n- (v) reasonable fees, costs and expenses in connection with sourcing information for and preparing each Principal Adverse Sustainability Impacts Statement;\n- (e) any Refinancing Costs (except to the extent already provided for above and to the extent not already paid as Trustee Fees and Expenses);\n- (f) except to the extent already provided for above and to the extent not already paid as Trustee Fees and Expenses, on a pro rata basis, payment of any indemnities payable to any Person as contemplated in these Conditions or the Transaction Documents; and\n- (g) on a pro rata basis to the payment of all other costs, expenses and fees reasonably incurred by the Issuer (to the extent not already covered in paragraphs (a) to (f) above),\n\nprovided that:\n\n- (i) the Investment Manager may direct the payment of any Rating Agency fees set out in paragraph (c)(i) above other than in the order required by paragraph (c) above, if the Investment Manager, Trustee  or  Issuer  has  been  advised  by  a  Rating  Agency  that  non-payment  of  its  fees  will immediately result in the withdrawal of any ratings on any Class of Rated Notes, so long as no such payments are made in priority to any payments due and payable under paragraphs (a) and (b) above; and\n- (ii) the Investment Manager may, in its reasonable judgement, determine that a payment other than in the order required by paragraphs (c) to (f) above is required to ensure the delivery of certain accounting  services  and  reports,  so  long  as  no  such  payments  are  made  in  priority  to  any payments due and payable under paragraphs (a) and (b) above.",
+      "page_or_section": "1. Definitions"
+    },
+    "Affiliate": {
+      "definition": "or \" Affiliated \" means with respect to a Person:\n\n- (a) any other Person who, directly or indirectly, is in control of, controlled by, or under common control with such Person; or\n- (b) any other Person who is a director, officer or employee:\n- (i) of such Person;\n- (ii) of any subsidiary or parent company of such Person; or\n- (iii) of any Person described in paragraph (a) above.\n\nFor the purposes of this definition, control of a Person shall mean the power, direct or indirect, (A) to vote more than 50 per cent. of the securities having ordinary voting power for the election of directors of such Person, or (B) to direct or cause the direction of the management and policies of such Person whether by contract or otherwise.",
+      "page_or_section": "1. Definitions"
+    },
+    "Agent": {
+      "definition": "means each of the Registrar, the Principal Paying Agent, the Transfer Agent, the Calculation Agent, the Account Bank, the Collateral Administrator, the Information Agent, the Custodian and each of their permitted successors  or  assigns  appointed  as  agents  of  the  Issuer  pursuant  to  the  Agency  Agreement,  the  Investment Management Agreement, as the case may be, and \" Agents \" shall be construed accordingly.",
+      "page_or_section": "1. Definitions"
+    },
+    "Aggregate Collateral Balance": {
+      "definition": "means, as at any Measurement Date, the amount equal to the aggregate of the following amounts, as at such Measurement Date:\n\n- (a) the  Aggregate  Principal  Balance  of  all  Collateral  Debt  Obligations,  save  that  for  the  purpose  of calculating the Aggregate Principal Balance for the purposes of:\n- (i) the Portfolio Profile Tests, the Principal Balance of each Defaulted Obligation shall be the lesser of (x) its S&P Collateral Value and (y) its Fitch Collateral Value; and\n- (ii) the  Collateral  Quality  Tests,  the  Principal  Balance  of  each  Defaulted  Obligation  shall  be excluded, unless otherwise expressly provided in the Transaction Documents;\n- (b) the Aggregate Principal Balance of all Loss Mitigation Obligations (subject to (d) below);\n- (c) the Balances standing to the credit of the Principal Account and the Unused Proceeds Account (to the extent that such amounts represent Principal Proceeds) and any Eligible Investments which represent Principal Proceeds (excluding, for the avoidance of doubt, any interest accrued on Eligible Investments); provided that,  for the purposes of determining the Balances therein, Principal Proceeds to be used to purchase  Collateral  Debt  Obligations  in  respect  of  which  the  Issuer  has  entered  into  a  binding commitment to purchase the relevant  Collateral  Debt  Obligations  but  such  purchase(s)  have  not  yet settled, shall be excluded from the Balances in the calculation of the Aggregate Collateral Balance as if such  purchase  had  been  completed,  and  Principal  Proceeds  to  be  received  from  Collateral  Debt Obligations in respect of which the Issuer has entered into a binding commitment to sell the relevant Collateral Debt Obligations but such sale(s) have not yet settled shall be included in the Balances in the calculation of the Aggregate Collateral Balance as if such sale had been completed;\n- (d) solely for the purposes of calculating the Aggregate Collateral Balance for the purposes of determining compliance with the Securitisation Regulations, including whether a Retention Deficiency has occurred:\n- (i) the  Principal  Balance  of  any  Collateral  Debt  Obligation  shall  be  its  principal  amount outstanding; and\n- (ii) the  Principal  Balance  of  any  Exchanged  Security,  Loss  Mitigation  Obligation  or  any  other obligation which does not constitute a Collateral Debt Obligation shall be:\n- (A) in the case of a debt obligation or security (other than an equity security), the principal amount outstanding of such obligation; and\n- (B) in  the  case  of  any  equity  security,  the  nominal  value  thereof  in  the  reasonable determination of the Investment Manager having regard to the Retention Requirements; and\n- (e) solely for the purposes of satisfying the Target Par Amount pursuant to the Effective Date Determination Requirements, the amount of Principal Proceeds, if any, applied towards the purchase of accrued interest on  a  Collateral  Debt  Obligation,  to  the  extent  that  any  such  amount  does  not  constitute  Purchased Accrued Interest which has been received by the Issuer.",
+      "page_or_section": "1. Definitions"
+    },
+    "Aggregate Funded Spread": {
+      "definition": "has the meaning given thereto in the Investment Management Agreement.",
+      "page_or_section": "1. Definitions"
+    },
+    "Aggregate Principal Balance": {
+      "definition": "means  the  aggregate  of  the  Principal  Balances  of  all  the  Collateral  Debt Obligations and the Loss Mitigation Obligations and, when used with respect to some portion of the Collateral Debt Obligations and/or Loss Mitigation Obligations, means the aggregate of the Principal Balances of such portion of the Collateral Debt Obligations and/or Loss Mitigation Obligations, in each case, as at the date of determination.",
+      "page_or_section": "1. Definitions"
+    },
+    "AIFMD": {
+      "definition": "means the Directive 2011/61/EU on Alternative Investment Fund Managers (as amended from time to time  and  as  implemented  by  the  Member  States  of  the  European  Union)  together  with  any  implementing  or delegated  regulations,  technical  standards  and  guidance  related  thereto  as  may  be  amended,  replaced  or supplemented from time to time.",
+      "page_or_section": "1. Definitions"
+    },
+    "Applicable Exchange Rate": {
+      "definition": "means,  in  relation  to  any  Currency  Hedge  Transaction,  the  Currency  Hedge Transaction Exchange Rate and, in any other case, the Spot Rate.",
+      "page_or_section": "1. Definitions"
+    },
+    "Applicable Margin": {
+      "definition": "has the meaning given thereto in Condition 6 ( Interest ).",
+      "page_or_section": "1. Definitions"
+    },
+    "Appointee": {
+      "definition": "means any attorney, manager, agent, delegate or other person properly appointed by the Trustee in accordance with the terms of the Trust Deed or the Irish Security Deed to discharge any of its functions or to advise it in relation thereto.",
+      "page_or_section": "1. Definitions"
+    },
+    "Article 7 ITS": {
+      "definition": "means  (i)  Commission  Implementing  Regulation  (EU)  2020/1225  including  any  relevant guidance  and  policy  statements  in  relation  thereto  published  by  the  EBA,  the  ESMA,  the  EIOPA  or  by  the European  Commission  and  (ii)  Commission  Implementing  Regulation  (EU)  2020/1225  as  it  forms  part  of domestic law by virtue of the EUWA, including any relevant legislation, instruments, rules, policy statements, guidance, transitional relief or other implementing measures of the FCA, the Bank of England, the PRA, the Pensions Regulator or other relevant UK regulator (or their successor) in relation thereto.",
+      "page_or_section": "1. Definitions"
+    },
+    "Article 7 RTS": {
+      "definition": "means (i) Commission Delegated Regulation (EU) 2020/1224 including (i) any relevant guidance and policy statements relating to the application of the Article 7 RTS published by the EBA, the ESMA, the EIOPA  or by the European Commission and (ii) Commission Delegated Regulation (EU) 2020/1224 as it forms part  of  domestic  law  by  virtue  of  the  EUWA,  including  any  relevant  legislation,  instruments,  rules,  policy statements, guidance, transitional relief or other implementing measures of the FCA, the Bank of England, the PRA, the Pensions Regulator or other relevant UK regulator (or their successor) in relation thereto.",
+      "page_or_section": "1. Definitions"
+    },
+    "Article 7 Technical Standards": {
+      "definition": "means the Article 7 RTS and the Article 7 ITS.",
+      "page_or_section": "1. Definitions"
+    },
+    "Asset Priming Obligor": {
+      "definition": "means the Unrestricted Subsidiary that is borrower or issuer of an obligation that is secured by collateral or benefits from other credit support which was not available (including if such collateral or credit support was previously, but is no longer, collateral or credit support) to a Collateral Debt Obligation held by the Issuer (the \" Subject Asset \").",
+      "page_or_section": "1. Definitions"
+    },
+    "Assignment": {
+      "definition": "means an interest in a loan acquired directly by way of novation or assignment.",
+      "page_or_section": "1. Definitions"
+    },
+    "Authorised Denomination": {
+      "definition": "means,  in  respect  of  any  Note,  the  Minimum  Denomination  thereof  and  any denomination equal to a multiple of the Authorised Integral Amount in excess of the Minimum Denomination thereof.",
+      "page_or_section": "1. Definitions"
+    },
+    "Authorised Integral Amount": {
+      "definition": "means (i) in respect of each Class of Rated Notes, €1,000 and (ii) in respect of the Subordinated Notes, €1.00.",
+      "page_or_section": "1. Definitions"
+    },
+    "Authorised Officer": {
+      "definition": "means, with respect to the Issuer, any Director or attorney of the Issuer or other person as notified by or on behalf of the Issuer to the Trustee who is authorised to act for the Issuer in matters relating to, and binding upon, the Issuer.",
+      "page_or_section": "1. Definitions"
+    },
+    "Balance": {
+      "definition": "means on any date, with respect to any cash or Eligible Investments standing to the credit of an Account (or any sub-account thereof), the aggregate of the:\n\n- (a) current balance of cash, demand deposits, time deposits, certificates of deposit, government guaranteed funds and other investment funds;\n- (b) outstanding principal amount of interest bearing corporate and government obligations and repurchase obligations; and\n- (c) purchase price, up to an amount not exceeding the face amount, of non-interest-bearing government and corporate obligations, commercial paper and certificates of deposit,\n\nprovided that, (i) to the extent that the Hedging Condition has been satisfied and a Currency Hedge Agreement is in place, amounts standing to the credit of the Currency Account shall be converted into Euro at the Applicable Exchange Rate, (ii) to the extent that no Currency Hedge Agreement is in place, any balance which is denominated in a currency other than the Euro shall be converted into Euro at the Applicable Exchange Rate and (iii) in the event that a default as to payment of principal and/or interest has occurred and is continuing (disregarding any grace periods provided for pursuant to the terms thereof), in respect of any Eligible Investment or any material obligation of the obligor thereunder which is senior or equal in right of payment to such Eligible Investment, such Eligible Investment shall have a value equal to the lesser of its Fitch Collateral Value and its S&P Collateral Value (determined as if such Eligible Investment were a Collateral Debt Obligation).",
+      "page_or_section": "1. Definitions"
+    },
+    "Bankruptcy Exchange": {
+      "definition": "means the exchange of a Defaulted Obligation or a Credit Impaired Obligation (without the  payment  of  any  additional  funds  other  than  reasonable  and  customary  transfer  costs)  for  any  other  debt obligation issued by another obligor which, but for the fact that such debt obligation is a Defaulted Obligation or a Credit Impaired Obligation, would otherwise qualify as a Collateral Debt Obligation (save that a debt obligation that  is  a  Credit  Impaired  Obligation  shall  not  be  exchanged  for  another  debt  obligation  that  is  a  Defaulted Obligation) and the Investment Manager in its reasonable business judgment has determined that the following conditions are satisfied: (i) at the time of the exchange, the Received Obligation has a better likelihood of recovery or is of better value or quality than the Exchanged Obligation, (ii) at the time of the exchange such Received Obligation is no less senior in right of payment with regard to its Obligor's other outstanding indebtedness than the Exchanged Obligation is in right of payment with regard to its obligor's other outstanding indebtedness, (iii) both prior to and after giving effect to such exchange, each of the Coverage Tests is satisfied or, if any Coverage Test was not satisfied prior to such exchange, the coverage ratio relating to such test shall be at least as close to being satisfied after giving effect to such exchange as it was before giving effect to such exchange, (iv) when determining the period during which the Issuer holds the Received Obligation, the period during which the Issuer held the Exchanged Obligation will be added to the period beginning at the time of acquisition of the Received Obligation and running through the applicable date of determination for all purposes herein, (v) the aggregate Principal Balance of the obligations received in Bankruptcy Exchanges (in the aggregate) since the Issue Date is not more than 5.0 per cent. of the Target Par Amount, (vi) the aggregate Principal Balance of the obligations received in Bankruptcy Exchanges held by the Issuer at such time does not exceed 2.5 per cent. of the Target Par Amount, (vii) the exchange will only be during the Reinvestment Period, (viii) no Restricted Trading Period will be in place at the time of the exchange, (ix) the Bankruptcy Exchange Test is satisfied in respect of the relevant exchange  and  (x)  if  the  Bankruptcy  Exchange  is  in  respect  of  a  Credit  Impaired  Obligation,  the  Received Obligation must satisfy the Reinvestment Criteria; provided that, to the extent that any payment is required from the Issuer in connection therewith, it will be payable only from amounts on deposit in the Collateral Enhancement Account available to pay for the purchase and/or exchange.",
+      "page_or_section": "1. Definitions"
+    },
+    "Bankruptcy Exchange Test": {
+      "definition": "means  a  test  that  will  be  satisfied  if,  in  the  Investment  Manager's  reasonable business judgement, the projected internal rate of return of the obligation obtained as a result of a Bankruptcy Exchange  is  greater  than  the  projected  internal  rate  of  return  of  the  obligation  exchanged  in  a  Bankruptcy Exchange, calculated by the Investment Manager by aggregating all cash and the Market Value of any obligation subject to a Bankruptcy Exchange at the time of each Bankruptcy Exchange.",
+      "page_or_section": "1. Definitions"
+    }
+  },
+  "waterfalls": {
+    "revenue": {
+      "deal_name": "Cairn CLO XVII DAC",
+      "waterfall_type": "revenue",
+      "steps": [
+        {
+          "priority": "(A)",
+          "recipient": "taxes_and_issuer_profit",
+          "description": "to the payment of: (i) firstly, Taxes owing by the Issuer accrued in respect of the related Due Period (other than Irish corporate income tax in relation to the Issuer Profit Amount referred to in paragraph (ii) below and any amounts payable in respect of VAT to the recipient of a payment made by the Issuer pursuant to the Priorities of Payments and VAT payable (if any) in respect of any Investment Management Fee), as certified by an Authorised Officer of the Issuer to the Trustee, if any; and (ii) secondly, the Issuer Profit Amount to be retained by the Issuer, for deposit into the Issuer Profit Account from time to time;",
+          "amount_formula": "Taxes as certified by an Authorised Officer; the Issuer Profit Amount",
+          "condition": null,
+          "is_pari_passu": false,
+          "citation": {
+            "page_or_row": "c(i)(A)",
+            "document": "Cairn CLO XVII DAC Prospectus",
+            "excerpt": "to the payment of: (i) firstly, Taxes owing by the Issuer accrued in respect of the related Due Period (other than Irish corporate income tax in relatio..."
+          },
+          "condition_terms": []
+        },
+        {
+          "priority": "(B)",
+          "recipient": "trustee_fees_and_expenses",
+          "description": "to the payment of accrued and unpaid Trustee Fees and Expenses, up to an amount equal to the Senior Expenses Cap in respect of the related Due Period, provided that following the occurrence of an Event of Default, the Senior Expenses Cap shall not apply in respect of such Trustee Fees and Expenses;",
+          "amount_formula": "up to the Senior Expenses Cap",
+          "condition": "Senior Expenses Cap shall not apply following an Event of Default",
+          "is_pari_passu": false,
+          "citation": {
+            "document": "Cairn CLO XVII DAC Prospectus",
+            "excerpt": "to the payment of accrued and unpaid Trustee Fees and Expenses, up to an amount equal to the Senior Expenses Cap in respect of the related Due Period, p...",
+            "page_or_row": "c(i)(B)"
+          },
+          "condition_terms": []
+        },
+        {
+          "priority": "(C)",
+          "recipient": "administrative_expenses",
+          "description": "to the payment of Administrative Expenses in the priority stated in the definition thereof, up to an amount equal to the Senior Expenses Cap in respect of the related Due Period less any amounts paid pursuant to paragraph (B) above;",
+          "amount_formula": "up to the Senior Expenses Cap less amounts paid in step (B)",
+          "condition": null,
+          "is_pari_passu": false,
+          "citation": {
+            "page_or_row": "c(i)(C)",
+            "document": "Cairn CLO XVII DAC Prospectus",
+            "excerpt": "to  the  payment  of  Administrative  Expenses  in  the  priority  stated  in  the definition  thereof,  up  to  an  amount  equal  to  the  Senior  Ex..."
+          },
+          "condition_terms": []
+        },
+        {
+          "priority": "(D)",
+          "recipient": "expense_reserve_account",
+          "description": "to the Expense Reserve Account, at the Investment Manager's discretion, of an amount up to or equal to the Ongoing Expense Reserve Amount;",
+          "amount_formula": "up to the Ongoing Expense Reserve Amount",
+          "condition": "at the Investment Manager's discretion",
+          "is_pari_passu": false,
+          "citation": {
+            "excerpt": "to the Expense Reserve Account, at the Investment Manager's discretion, of an amount up to or equal to the Ongoing Expense Reserve Amount;",
+            "page_or_row": "c(i)(D)",
+            "document": "Cairn CLO XVII DAC Prospectus"
+          },
+          "condition_terms": []
+        },
+        {
+          "priority": "(E)",
+          "recipient": "investment_manager_senior_fee",
+          "description": "to the payment: (1) firstly, to the Investment Manager of the Senior Investment Management Fee due and payable on such Payment Date and any VAT in respect thereof (save for any Deferred Senior Investment Management Amounts)... and (2) secondly, to the Investment Manager, any previously due and unpaid Senior Investment Management Fee (other than Deferred Senior Investment Management Amounts) and any VAT in respect thereof",
+          "amount_formula": "Senior Investment Management Fee due and payable, then any previously due and unpaid Senior Investment Management Fee",
+          "condition": null,
+          "is_pari_passu": false,
+          "citation": {
+            "document": "Cairn CLO XVII DAC Prospectus",
+            "page_or_row": "c(i)(E)",
+            "excerpt": "to the payment: (1) firstly, to the Investment  Manager  of  the  Senior  Investment Management Fee due and payable on such Payment Date and any VAT in..."
+          },
+          "condition_terms": []
+        },
+        {
+          "priority": "(F)",
+          "recipient": "hedge_payments",
+          "description": "firstly, to the payment on a pro rata basis, of (i) any Scheduled Periodic Hedge Issuer Payments, (ii) any Currency Hedge Issuer Termination Payments (other than Defaulted), and (iii) any Interest Rate Hedge Issuer Termination Payments (other than Defaulted); and secondly, on a pro rata basis, to the payment of any Hedge Replacement Payment",
+          "amount_formula": "as due",
+          "condition": null,
+          "is_pari_passu": true,
+          "citation": {
+            "excerpt": "firstly,  to  the  payment  on  a pro  rata basis,  of  (i)  any  Scheduled Periodic  Hedge  Issuer  Payments,  (ii)  any  Currency  Hedge  Issuer Te...",
+            "document": "Cairn CLO XVII DAC Prospectus",
+            "page_or_row": "c(i)(F)"
+          },
+          "condition_terms": []
+        },
+        {
+          "priority": "(G)",
+          "recipient": "class_a_notes_interest",
+          "description": "to the payment on a pro rata and pari passu basis of the Interest Amounts due and payable on the Class A Notes in respect of the Accrual Period ending on such Payment Date, and all other Interest Amounts due and payable on such Class A Notes;",
+          "amount_formula": "Interest Amounts due and payable",
+          "condition": null,
+          "is_pari_passu": true,
+          "citation": {
+            "excerpt": "to the payment on a pro rata and pari passu basis of the Interest Amounts due and payable on the Class A Notes in respect of the Accrual Period ending ...",
+            "page_or_row": "c(i)(G)",
+            "document": "Cairn CLO XVII DAC Prospectus"
+          },
+          "condition_terms": []
+        },
+        {
+          "priority": "(H)",
+          "recipient": "class_b_notes_interest",
+          "description": "to the payment on a pro rata basis of the Interest Amounts due and payable on the Class B Notes in respect of the Accrual Period ending on such Payment Date and all other Interest Amounts due and payable on such Class B Notes;",
+          "amount_formula": "Interest Amounts due and payable",
+          "condition": null,
+          "is_pari_passu": true,
+          "citation": {
+            "document": "Cairn CLO XVII DAC Prospectus",
+            "excerpt": "to the payment on a pro rata basis of the Interest Amounts due and payable on the Class B Notes in respect of the Accrual Period ending on such Payment...",
+            "page_or_row": "c(i)(H)"
+          },
+          "condition_terms": []
+        },
+        {
+          "priority": "(I)",
+          "recipient": "class_ab_coverage_test_cure",
+          "description": "if either of the Class A/B Coverage Tests is not satisfied on any Determination Date on or after the Effective Date... to the redemption of the Notes in accordance with the Note Payment Sequence to the extent necessary to cause each Class A/B Coverage Test to be satisfied if recalculated following such redemption;",
+          "amount_formula": "amount necessary to cause Class A/B Coverage Tests to be satisfied",
+          "condition": "if either of the Class A/B Coverage Tests is not satisfied",
+          "is_pari_passu": false,
+          "citation": {
+            "page_or_row": "c(i)(I)",
+            "excerpt": "if either of the Class A/B Coverage Tests is not satisfied on any Determination Date on or after the Effective Date, or in the case of the Class A/B I...",
+            "document": "Cairn CLO XVII DAC Prospectus"
+          },
+          "condition_terms": []
+        },
+        {
+          "priority": "(J)",
+          "recipient": "class_c_notes_interest",
+          "description": "to the payment on a pro rata basis of the Interest Amounts due and payable on the Class C Notes in respect of the Accrual Period ending on such Payment Date (excluding any Deferred Interest but including interest on Deferred Interest in respect of the relevant Accrual Period);",
+          "amount_formula": "Interest Amounts due and payable (excluding Deferred Interest)",
+          "condition": null,
+          "is_pari_passu": true,
+          "citation": {
+            "excerpt": "to the payment on a pro rata basis of the Interest Amounts due and payable on the Class C Notes in respect of the Accrual Period ending on such Payment...",
+            "document": "Cairn CLO XVII DAC Prospectus",
+            "page_or_row": "c(i)(J)"
+          },
+          "condition_terms": []
+        },
+        {
+          "priority": "(K)",
+          "recipient": "class_c_notes_deferred_interest",
+          "description": "to the payment on a pro rata basis of any Deferred Interest on the Class C Notes which is due and payable pursuant to Condition 6(c) ( Deferral of Interest );",
+          "amount_formula": "Deferred Interest due and payable",
+          "condition": null,
+          "is_pari_passu": true,
+          "citation": {
+            "page_or_row": "c(i)(K)",
+            "excerpt": "to the payment on a pro rata basis of any Deferred Interest on the Class C Notes  which  is  due  and  payable  pursuant  to  Condition  6(c)  ( Deferr...",
+            "document": "Cairn CLO XVII DAC Prospectus"
+          },
+          "condition_terms": []
+        },
+        {
+          "priority": "(L)",
+          "recipient": "class_c_coverage_test_cure",
+          "description": "if either of the Class C Coverage Tests is not satisfied on any Determination Date on or after the Effective Date... to the redemption of the Notes in accordance with the Note Payment Sequence to the extent necessary to cause each Class C Coverage Test to be met if recalculated following such redemption;",
+          "amount_formula": "amount necessary to cause Class C Coverage Tests to be met",
+          "condition": "if either of the Class C Coverage Tests is not satisfied",
+          "is_pari_passu": false,
+          "citation": {
+            "page_or_row": "c(i)(L)",
+            "excerpt": "if either of the Class C Coverage Tests is not satisfied on any Determination Date  on  or  after  the  Effective  Date,  or  in  the  case  of  the  ...",
+            "document": "Cairn CLO XVII DAC Prospectus"
+          },
+          "condition_terms": []
+        },
+        {
+          "priority": "(M)",
+          "recipient": "class_d_notes_interest",
+          "description": "to the payment on a pro rata basis of the Interest Amounts due and payable on the Class D Notes in respect of the Accrual Period ending on such Payment Date (excluding any Deferred Interest but including interest on Deferred Interest in respect of the relevant Accrual Period);",
+          "amount_formula": "Interest Amounts due and payable (excluding Deferred Interest)",
+          "condition": null,
+          "is_pari_passu": true,
+          "citation": {
+            "page_or_row": "c(i)(M)",
+            "excerpt": "to the payment on a pro rata basis of the Interest Amounts due and payable on the Class D Notes in respect of the Accrual Period ending on such Payment...",
+            "document": "Cairn CLO XVII DAC Prospectus"
+          },
+          "condition_terms": []
+        },
+        {
+          "priority": "(N)",
+          "recipient": "class_d_notes_deferred_interest",
+          "description": "to the payment on a pro rata basis of any Deferred Interest on the Class D Notes which is due and payable pursuant to Condition 6(c) ( Deferral of Interest );",
+          "amount_formula": "Deferred Interest due and payable",
+          "condition": null,
+          "is_pari_passu": true,
+          "citation": {
+            "document": "Cairn CLO XVII DAC Prospectus",
+            "page_or_row": "c(i)(N)",
+            "excerpt": "to the payment on a pro rata basis of any Deferred Interest on the Class D Notes  which  is  due  and  payable  pursuant  to  Condition  6(c)  ( Deferr..."
+          },
+          "condition_terms": []
+        },
+        {
+          "priority": "(O)",
+          "recipient": "class_d_coverage_test_cure",
+          "description": "if either of the Class D Coverage Tests is not satisfied on any Determination Date on or after the Effective Date... to the redemption of the Notes in accordance with the Note Payment Sequence to the extent necessary to cause each Class D Coverage Test to be met if recalculated following such redemption;",
+          "amount_formula": "amount necessary to cause Class D Coverage Tests to be met",
+          "condition": "if either of the Class D Coverage Tests is not satisfied",
+          "is_pari_passu": false,
+          "citation": {
+            "document": "Cairn CLO XVII DAC Prospectus",
+            "page_or_row": "c(i)(O)",
+            "excerpt": "if either of the Class D Coverage Tests is not satisfied on any Determination Date on or after the  Effective  Date,  or  in  the  case  of  the  Clas..."
+          },
+          "condition_terms": []
+        },
+        {
+          "priority": "(P)",
+          "recipient": "class_e_notes_interest",
+          "description": "to the payment on a pro rata basis of the Interest Amounts due and payable on the Class E Notes in respect of the Accrual Period ending on such Payment Date (excluding any Deferred Interest but including interest on Deferred Interest in respect of the relevant Accrual Period);",
+          "amount_formula": "Interest Amounts due and payable (excluding Deferred Interest)",
+          "condition": null,
+          "is_pari_passu": true,
+          "citation": {
+            "page_or_row": "c(i)(P)",
+            "document": "Cairn CLO XVII DAC Prospectus",
+            "excerpt": "to the payment on a pro rata basis of the Interest Amounts due and payable on the Class E Notes in respect of the Accrual Period ending on such Payment..."
+          },
+          "condition_terms": []
+        },
+        {
+          "priority": "(Q)",
+          "recipient": "class_e_notes_deferred_interest",
+          "description": "to the payment on a pro rata basis of any Deferred Interest on the Class E Notes which is due and payable pursuant to Condition 6(c) ( Deferral of Interest );",
+          "amount_formula": "Deferred Interest due and payable",
+          "condition": null,
+          "is_pari_passu": true,
+          "citation": {
+            "excerpt": "to the payment on a pro rata basis of any Deferred Interest on the Class E Notes  which  is  due  and  payable  pursuant  to  Condition  6(c)  ( Deferr...",
+            "page_or_row": "c(i)(Q)",
+            "document": "Cairn CLO XVII DAC Prospectus"
+          },
+          "condition_terms": []
+        },
+        {
+          "priority": "(R)",
+          "recipient": "class_e_par_value_test_cure",
+          "description": "if the Class E Par Value Test is not satisfied on any Determination Date on or after the Effective Date to the redemption of the Notes in accordance with the Note Payment Sequence to the extent necessary to cause each Class E Par Value Test to be met if recalculated following such redemption;",
+          "amount_formula": "amount necessary to cause Class E Par Value Test to be met",
+          "condition": "if the Class E Par Value Test is not satisfied",
+          "is_pari_passu": false,
+          "citation": {
+            "document": "Cairn CLO XVII DAC Prospectus",
+            "page_or_row": "c(i)(R)",
+            "excerpt": "if the Class E Par Value Test is not satisfied on any Determination Date on or after the Effective Date to the redemption of the Notes in accordance w..."
+          },
+          "condition_terms": []
+        },
+        {
+          "priority": "(S)",
+          "recipient": "class_f_notes_interest",
+          "description": "to the payment on a pro rata basis of the Interest Amounts due and payable on the Class F Notes in respect of the Accrual Period ending on such Payment Date (excluding any Deferred Interest but including interest on Deferred Interest in respect of the relevant Accrual Period);",
+          "amount_formula": "Interest Amounts due and payable (excluding Deferred Interest)",
+          "condition": null,
+          "is_pari_passu": true,
+          "citation": {
+            "document": "Cairn CLO XVII DAC Prospectus",
+            "page_or_row": "c(i)(S)",
+            "excerpt": "to the payment on a pro rata basis of the Interest Amounts due and payable on the Class F Notes in respect of the Accrual Period ending on such Payment..."
+          },
+          "condition_terms": []
+        },
+        {
+          "priority": "(T)",
+          "recipient": "class_f_notes_deferred_interest",
+          "description": "to the payment on a pro rata basis of any Deferred Interest on the Class F Notes which is due and payable pursuant to Condition 6(c) ( Deferral of Interest );",
+          "amount_formula": "Deferred Interest due and payable",
+          "condition": null,
+          "is_pari_passu": true,
+          "citation": {
+            "excerpt": "to the payment on a pro rata basis of any Deferred Interest on the Class F Notes  which  is  due  and  payable  pursuant  to  Condition  6(c)  ( Deferr...",
+            "page_or_row": "c(i)(T)",
+            "document": "Cairn CLO XVII DAC Prospectus"
+          },
+          "condition_terms": []
+        },
+        {
+          "priority": "(U)",
+          "recipient": "class_f_par_value_test_cure",
+          "description": "if the Class F Par Value Test is not satisfied on any Determination Date following the expiry of the Reinvestment Period, to the redemption of the Notes in accordance with the Note Payment Sequence to the extent necessary to cause such Class F Par Value Test to be met if recalculated following such redemption;",
+          "amount_formula": "amount necessary to cause Class F Par Value Test to be met",
+          "condition": "if the Class F Par Value Test is not satisfied following the expiry of the Reinvestment Period",
+          "is_pari_passu": false,
+          "citation": {
+            "excerpt": "if  the  Class F  Par  Value  Test  is  not  satisfied  on  any  Determination  Date following the expiry of the Reinvestment Period, to the redemption...",
+            "page_or_row": "c(i)(U)",
+            "document": "Cairn CLO XVII DAC Prospectus"
+          },
+          "condition_terms": []
+        },
+        {
+          "priority": "(V)",
+          "recipient": "effective_date_rating_event_cure",
+          "description": "on the Payment Date following the Effective Date and each Payment Date thereafter to the extent required, in the event of the occurrence of an Effective Date Rating Event which is continuing... to redeem the Notes in full in accordance with the Note Payment Sequence or, if earlier, until an Effective Date Rating Event is no longer continuing;",
+          "amount_formula": "amount to redeem the Notes in full",
+          "condition": "if an Effective Date Rating Event is continuing",
+          "is_pari_passu": false,
+          "citation": {
+            "document": "Cairn CLO XVII DAC Prospectus",
+            "excerpt": "on the Payment Date following the Effective Date and each Payment Date thereafter to the extent required, in the event of the occurrence of an Effectiv...",
+            "page_or_row": "c(i)(V)"
+          },
+          "condition_terms": []
+        },
+        {
+          "priority": "(W)",
+          "recipient": "reinvestment_overcollateralisation_test_cure",
+          "description": "on any Determination Date on or after the Effective Date and during the Reinvestment Period only, if... the Reinvestment Overcollateralisation Test has not been met, to the payment to the Principal Account as Principal Proceeds... in an amount... equal to the lesser of (1) 50 per cent. of all remaining Interest Proceeds available for payment and (2) the amount which... would be sufficient to cause the Reinvestment Overcollateralisation Test to be met",
+          "amount_formula": "the lesser of 50% of remaining Interest Proceeds and the amount sufficient to meet the Reinvestment Overcollateralisation Test",
+          "condition": "during the Reinvestment Period only, if the Reinvestment Overcollateralisation Test has not been met",
+          "is_pari_passu": false,
+          "citation": {
+            "excerpt": "on  any  Determination  Date  on  or  after  the  Effective  Date  and  during  the Reinvestment Period only, if after giving effect to the payment of...",
+            "page_or_row": "c(i)(W)",
+            "document": "Cairn CLO XVII DAC Prospectus"
+          },
+          "condition_terms": []
+        },
+        {
+          "priority": "(X)",
+          "recipient": "investment_manager_subordinated_fee",
+          "description": "to the payment: (1) firstly, to the Investment Manager of the Subordinated Investment Management Fee... (2) secondly, to the Investment Manager of any previously due and unpaid Subordinated Investment Management Fee... (3) thirdly, ...to the Investment Manager in payment of any previously Deferred Senior Investment Management Amounts and Deferred Subordinated Investment Management Amounts... and (4) fourthly, to the repayment of any Investment Manager Advances and any interest thereon;",
+          "amount_formula": "as due",
+          "condition": null,
+          "is_pari_passu": false,
+          "citation": {
+            "page_or_row": "c(i)(X)",
+            "excerpt": "to the payment: (1) firstly, to the Investment Manager of the Subordinated Investment Management Fee due and payable on such Payment Date and any VAT i...",
+            "document": "Cairn CLO XVII DAC Prospectus"
+          },
+          "condition_terms": []
+        },
+        {
+          "priority": "(Y)",
+          "recipient": "trustee_fees_and_expenses_uncapped",
+          "description": "to the payment of Trustee Fees and Expenses (if any) not paid by reason of the Senior Expenses Cap;",
+          "amount_formula": "amounts not paid by reason of the Senior Expenses Cap",
+          "condition": null,
+          "is_pari_passu": false,
+          "citation": {
+            "document": "Cairn CLO XVII DAC Prospectus",
+            "page_or_row": "c(i)(Y)",
+            "excerpt": "to the payment of Trustee Fees and Expenses (if any) not paid by reason of the Senior Expenses Cap;"
+          },
+          "condition_terms": []
+        },
+        {
+          "priority": "(Z)",
+          "recipient": "administrative_expenses_uncapped",
+          "description": "to the payment of Administrative Expenses (if any) not paid by reason of the Senior Expenses Cap, in relation to each item thereof in the order of priority stated in the definition thereof;",
+          "amount_formula": "amounts not paid by reason of the Senior Expenses Cap",
+          "condition": null,
+          "is_pari_passu": false,
+          "citation": {
+            "page_or_row": "c(i)(Z)",
+            "excerpt": "to the payment of Administrative Expenses (if any) not paid by reason of the Senior Expenses Cap, in relation to each item thereof in the order of pri...",
+            "document": "Cairn CLO XVII DAC Prospectus"
+          },
+          "condition_terms": []
+        },
+        {
+          "priority": "(AA)",
+          "recipient": "defaulted_hedge_termination_payments",
+          "description": "to the payment on a pari passu and pro rata basis of any Defaulted Currency Hedge Termination Payments due to any Currency Hedge Counterparty or Defaulted Interest Rate Hedge Termination Payments due to any Interest Rate Hedge Counterparty",
+          "amount_formula": "as due",
+          "condition": null,
+          "is_pari_passu": true,
+          "citation": {
+            "page_or_row": "c(i)(AA)",
+            "document": "Cairn CLO XVII DAC Prospectus",
+            "excerpt": "to the payment on a pari passu and pro rata basis of any Defaulted Currency Hedge Termination Payments due to any Currency Hedge Counterparty or Defaul..."
+          },
+          "condition_terms": []
+        },
+        {
+          "priority": "(BB)",
+          "recipient": "collateral_enhancement_account",
+          "description": "during the Reinvestment Period at the direction and in the discretion of the Investment Manager, to transfer to the Collateral Enhancement Account, any Collateral Enhancement Amount;",
+          "amount_formula": "any Collateral Enhancement Amount",
+          "condition": "during the Reinvestment Period, at the discretion of the Investment Manager",
+          "is_pari_passu": false,
+          "citation": {
+            "excerpt": "during the Reinvestment Period at the direction and in the discretion of the Investment Manager, to transfer to the Collateral Enhancement Account, any...",
+            "document": "Cairn CLO XVII DAC Prospectus",
+            "page_or_row": "c(i)(BB)"
+          },
+          "condition_terms": []
+        },
+        {
+          "priority": "(CC)",
+          "recipient": "subordinated_notes_interest_and_incentive_fee",
+          "description": "(1) firstly, if the Incentive Investment Management Fee IRR Threshold has not been reached, any remaining Interest Proceeds to the payment of interest on the Subordinated Notes... (2) secondly, if... the Incentive Investment Management Fee IRR Threshold has been reached... (I) firstly, up to 20 per cent. of any remaining Interest Proceeds, to the payment to the Investment Manager as an Incentive Investment Management Fee; (II) secondly, to the payment of any VAT in respect of the Incentive Investment Management Fee... and (III) thirdly, any remaining Interest Proceeds, to the payment of interest on the Subordinated Notes on a pro rata basis.",
+          "amount_formula": "remaining Interest Proceeds",
+          "condition": "dependent on the Incentive Investment Management Fee IRR Threshold",
+          "is_pari_passu": true,
+          "citation": {
+            "excerpt": "(1) firstly, if the Incentive Investment Management Fee IRR Threshold has  not  been  reached,  any  remaining  Interest  Proceeds  to  the payment of...",
+            "document": "Cairn CLO XVII DAC Prospectus",
+            "page_or_row": "c(i)(CC)"
+          },
+          "condition_terms": []
+        }
+      ],
+      "source_section": "Application of Interest Proceeds",
+      "extraction_confidence": 1.0
+    },
+    "redemption": {
+      "deal_name": "Cairn CLO XVII DAC",
+      "waterfall_type": "redemption",
+      "steps": [
+        {
+          "priority": "(A)",
+          "recipient": "interest_proceeds_priority_of_payments_a_to_i_shortfall",
+          "description": "to the payment on a sequential basis of the amounts referred to in paragraphs (A) through (I) (inclusive) of the Interest Proceeds Priority of Payments, but only to the extent not paid in full thereunder;",
+          "amount_formula": "to the extent not paid in full thereunder",
+          "condition": null,
+          "is_pari_passu": false,
+          "citation": {
+            "document": "Cairn CLO XVII DAC Prospectus",
+            "page_or_row": "(ii)(A)",
+            "excerpt": "to  the  payment  on  a  sequential  basis  of  the  amounts  referred  to  in paragraphs (A)  through  (I)  (inclusive)  of  the  Interest  Proceeds  Priority  of Payments, but only to the extent not paid in full thereunder;"
+          },
+          "condition_terms": []
+        },
+        {
+          "priority": "(B)",
+          "recipient": "interest_proceeds_priority_of_payments_j_shortfall",
+          "description": "to the payment of the amounts referred to in paragraph (J) of the Interest Proceeds Priority of Payments but only to the extent not paid in full thereunder and only to the extent that the Class C Notes are the Controlling Class;",
+          "amount_formula": "to the extent not paid in full thereunder",
+          "condition": "only to the extent that the Class C Notes are the Controlling Class",
+          "is_pari_passu": false,
+          "citation": {
+            "page_or_row": "(ii)(B)",
+            "excerpt": "to  the  payment  of  the  amounts  referred  to  in  paragraph (J)  of  the  Interest Proceeds  Priority  of  Payments  but  only  to  the  extent  not  paid  in  full thereunder and only to the extent that the Class C Notes are the Controlling Class;",
+            "document": "Cairn CLO XVII DAC Prospectus"
+          },
+          "condition_terms": []
+        },
+        {
+          "priority": "(C)",
+          "recipient": "interest_proceeds_priority_of_payments_k_shortfall",
+          "description": "to the payment of the amounts referred to in paragraph (K) of the Interest Proceeds Priority of Payments but only to the extent not paid in full thereunder and to the extent that the Class C Notes are the Controlling Class;",
+          "amount_formula": "to the extent not paid in full thereunder",
+          "condition": "to the extent that the Class C Notes are the Controlling Class",
+          "is_pari_passu": false,
+          "citation": {
+            "excerpt": "to  the  payment of the amounts referred to in paragraph (K) of the Interest Proceeds  Priority  of  Payments  but  only  to  the  extent  not  paid  in  full thereunder and to the extent that the Class C Notes are the Controlling Class;",
+            "document": "Cairn CLO XVII DAC Prospectus",
+            "page_or_row": "(ii)(C)"
+          },
+          "condition_terms": []
+        },
+        {
+          "priority": "(D)",
+          "recipient": "interest_proceeds_priority_of_payments_l_shortfall_for_class_c_coverage_tests",
+          "description": "to the payment of the amounts referred to in paragraph (L) of the Interest Proceeds Priority of Payments but only to the extent not paid in full thereunder and only to the extent necessary to cause the Class C Coverage Tests that are applicable on such Payment Date with respect to the Class C Notes to be met as of the related Determination Date;",
+          "amount_formula": "to the extent not paid in full thereunder",
+          "condition": "only to the extent necessary to cause the Class C Coverage Tests that are applicable on such Payment Date with respect to the Class C Notes to be met as of the related Determination Date",
+          "is_pari_passu": false,
+          "citation": {
+            "document": "Cairn CLO XVII DAC Prospectus",
+            "page_or_row": "(ii)(D)",
+            "excerpt": "to  the  payment of  the  amounts  referred  to  in  paragraph (L)  of  the  Interest Proceeds  Priority  of  Payments  but  only  to  the  extent  not  paid  in  full thereunder and only to the extent necessary to cause the Class C Coverage Tests that are applicable on such Payment Date with respect to the Class C Notes to be met as of the related Determination Date;"
+          },
+          "condition_terms": []
+        },
+        {
+          "priority": "(E)",
+          "recipient": "interest_proceeds_priority_of_payments_m_shortfall",
+          "description": "to the payment of the amounts referred to in paragraph (M) of the Interest Proceeds Priority of Payments but only to the extent not paid in full thereunder and only to the extent that the Class D Notes are the Controlling Class;",
+          "amount_formula": "to the extent not paid in full thereunder",
+          "condition": "only to the extent that the Class D Notes are the Controlling Class",
+          "is_pari_passu": false,
+          "citation": {
+            "document": "Cairn CLO XVII DAC Prospectus",
+            "page_or_row": "(ii)(E)",
+            "excerpt": "to the payment of the amounts referred to in paragraph (M) of the Interest Proceeds  Priority  of  Payments  but  only  to  the  extent  not  paid  in  full thereunder and only to the extent that the Class D Notes are the Controlling Class;"
+          },
+          "condition_terms": []
+        },
+        {
+          "priority": "(F)",
+          "recipient": "interest_proceeds_priority_of_payments_n_shortfall",
+          "description": "to the payment of the amounts referred to in paragraph (N) of the Interest Proceeds Priority of Payments but only to the extent not paid in full thereunder and to the extent that the Class D Notes are the Controlling Class;",
+          "amount_formula": "to the extent not paid in full thereunder",
+          "condition": "to the extent that the Class D Notes are the Controlling Class",
+          "is_pari_passu": false,
+          "citation": {
+            "page_or_row": "(ii)(F)",
+            "document": "Cairn CLO XVII DAC Prospectus",
+            "excerpt": "to  the  payment of the amounts referred to in paragraph (N) of the Interest Proceeds  Priority  of  Payments  but  only  to  the  extent  not  paid  in  full thereunder and to the extent that the Class D Notes are the Controlling Class;"
+          },
+          "condition_terms": []
+        },
+        {
+          "priority": "(G)",
+          "recipient": "interest_proceeds_priority_of_payments_o_shortfall_for_class_d_coverage_tests",
+          "description": "to the payment of the amounts referred to in paragraph (O) of the Interest Proceeds Priority of Payments but only to the extent not paid in full thereunder and only to the extent necessary to cause the Class D Coverage Tests that are applicable on such Payment Date with respect to the Class D Notes to be met as of the related Determination Date;",
+          "amount_formula": "to the extent not paid in full thereunder",
+          "condition": "only to the extent necessary to cause the Class D Coverage Tests that are applicable on such Payment Date with respect to the Class D Notes to be met as of the related Determination Date",
+          "is_pari_passu": false,
+          "citation": {
+            "page_or_row": "(ii)(G)",
+            "document": "Cairn CLO XVII DAC Prospectus",
+            "excerpt": "to  the  payment of the amounts referred to in paragraph (O) of the Interest Proceeds  Priority  of  Payments  but  only  to  the  extent  not  paid  in  full thereunder and only to the extent necessary to cause the Class D Coverage Tests that are applicable on such Payment Date with respect to the Class D Notes to be met as of the related Determination Date;"
+          },
+          "condition_terms": []
+        },
+        {
+          "priority": "(H)",
+          "recipient": "interest_proceeds_priority_of_payments_p_shortfall",
+          "description": "to the payment of the amounts referred to in paragraph (P) of the Interest Proceeds Priority of Payments but only to the extent not paid in full thereunder and only to the extent that the Class E Notes are the Controlling Class;",
+          "amount_formula": "to the extent not paid in full thereunder",
+          "condition": "only to the extent that the Class E Notes are the Controlling Class",
+          "is_pari_passu": false,
+          "citation": {
+            "document": "Cairn CLO XVII DAC Prospectus",
+            "excerpt": "to  the  payment of  the  amounts  referred  to  in  paragraph (P)  of  the  Interest Proceeds  Priority  of  Payments  but  only  to  the  extent  not  paid  in  full thereunder and only to the extent that the Class E Notes are the Controlling Class;",
+            "page_or_row": "(ii)(H)"
+          },
+          "condition_terms": []
+        },
+        {
+          "priority": "(I)",
+          "recipient": "interest_proceeds_priority_of_payments_q_shortfall",
+          "description": "to the payment of the amounts referred to in paragraph (Q) of the Interest Proceeds Priority of Payments but only to the extent not paid in full thereunder and only to the extent that the Class E Notes are the Controlling Class;",
+          "amount_formula": "to the extent not paid in full thereunder",
+          "condition": "only to the extent that the Class E Notes are the Controlling Class",
+          "is_pari_passu": false,
+          "citation": {
+            "excerpt": "to  the  payment of the amounts referred to in paragraph (Q) of the Interest Proceeds  Priority  of  Payments  but  only  to  the  extent  not  paid  in  full thereunder and only to the extent that the Class E Notes are the Controlling Class;",
+            "page_or_row": "(ii)(I)",
+            "document": "Cairn CLO XVII DAC Prospectus"
+          },
+          "condition_terms": []
+        },
+        {
+          "priority": "(J)",
+          "recipient": "interest_proceeds_priority_of_payments_r_shortfall_for_class_e_par_value_test",
+          "description": "to the payment of the amounts referred to in paragraph (R) of the Interest Proceeds Priority of Payments but only to the extent not paid in full thereunder and only to the extent necessary to cause the Class E Par Value Test that is applicable on such Payment Date with respect to the Class E Notes to be met as of the related Determination Date;",
+          "amount_formula": "to the extent not paid in full thereunder",
+          "condition": "only to the extent necessary to cause the Class E Par Value Test that is applicable on such Payment Date with respect to the Class E Notes to be met as of the related Determination Date",
+          "is_pari_passu": false,
+          "citation": {
+            "page_or_row": "(ii)(J)",
+            "excerpt": "to  the  payment of the amounts referred to in paragraph  (R) of the Interest Proceeds  Priority  of  Payments  but  only  to  the  extent  not  paid  in  full thereunder and only to the extent necessary to cause the Class E Par Value Test that is applicable on such Payment Date with respect to the Class E Notes to be met as of the related Determination Date;",
+            "document": "Cairn CLO XVII DAC Prospectus"
+          },
+          "condition_terms": []
+        },
+        {
+          "priority": "(K)",
+          "recipient": "interest_proceeds_priority_of_payments_s_shortfall",
+          "description": "to the payment of the amounts referred to in paragraph (S) of the Interest Proceeds Priority of Payments but only to the extent not paid in full thereunder and only to the extent that the Class F Notes are the Controlling Class;",
+          "amount_formula": "to the extent not paid in full thereunder",
+          "condition": "only to the extent that the Class F Notes are the Controlling Class",
+          "is_pari_passu": false,
+          "citation": {
+            "page_or_row": "(ii)(K)",
+            "document": "Cairn CLO XVII DAC Prospectus",
+            "excerpt": "to  the  payment of  the  amounts  referred  to  in  paragraph (S)  of  the  Interest Proceeds  Priority  of  Payments  but  only  to  the  extent  not  paid  in  full thereunder and only to the extent that the Class F Notes are the Controlling Class;"
+          },
+          "condition_terms": []
+        },
+        {
+          "priority": "(L)",
+          "recipient": "interest_proceeds_priority_of_payments_t_shortfall",
+          "description": "to the payment of the amounts referred to in paragraph (T) of the Interest Proceeds Priority of Payments but only to the extent not paid in full thereunder and only to the extent that the Class F Notes are the Controlling Class;",
+          "amount_formula": "to the extent not paid in full thereunder",
+          "condition": "only to the extent that the Class F Notes are the Controlling Class",
+          "is_pari_passu": false,
+          "citation": {
+            "excerpt": "to  the  payment  of  the  amounts  referred  to  in  paragraph (T)  of  the  Interest Proceeds  Priority  of  Payments  but  only  to  the  extent  not  paid  in  full thereunder and only to the extent that the Class F Notes are the Controlling Class;",
+            "document": "Cairn CLO XVII DAC Prospectus",
+            "page_or_row": "(ii)(L)"
+          },
+          "condition_terms": []
+        },
+        {
+          "priority": "(M)",
+          "recipient": "interest_proceeds_priority_of_payments_u_shortfall_for_class_f_par_value_test",
+          "description": "to the payment of the amounts referred to in paragraph (U) of the Interest Proceeds Priority of Payments but, only to the extent not paid in full thereunder and necessary to cause the Class F Par Value Test that is applicable on such Payment Date with respect to the Class F Notes to be met as of the related Determination Date;",
+          "amount_formula": "to the extent not paid in full thereunder",
+          "condition": "necessary to cause the Class F Par Value Test that is applicable on such Payment Date with respect to the Class F Notes to be met as of the related Determination Date",
+          "is_pari_passu": false,
+          "citation": {
+            "document": "Cairn CLO XVII DAC Prospectus",
+            "excerpt": "to  the  payment of the amounts referred to  in paragraph (U) of the Interest Proceeds  Priority  of  Payments  but,  only  to  the  extent  not  paid  in  full thereunder  and  necessary  to  cause  the  Class F  Par  Value  Test  that  is applicable on such Payment Date with respect to the Class F Notes to be met as of the related Determination Date;",
+            "page_or_row": "(ii)(M)"
+          },
+          "condition_terms": []
+        },
+        {
+          "priority": "(N)",
+          "recipient": "interest_proceeds_priority_of_payments_v_shortfall",
+          "description": "to the payment of the amounts referred to in paragraph (V) of the Interest Proceeds Priority of Payments, but only to the extent not paid in full thereunder;",
+          "amount_formula": "to the extent not paid in full thereunder",
+          "condition": null,
+          "is_pari_passu": false,
+          "citation": {
+            "document": "Cairn CLO XVII DAC Prospectus",
+            "excerpt": "to  the  payment of the amounts referred to in paragraph (V) of the Interest Proceeds  Priority  of  Payments,  but  only  to  the  extent  not  paid  in  full thereunder;",
+            "page_or_row": "(ii)(N)"
+          },
+          "condition_terms": []
+        },
+        {
+          "priority": "(O)",
+          "recipient": "special_redemption_amount",
+          "description": "if such Payment Date is a Special Redemption Date, at the election of the Investment Manager, to make payments in an amount equal to the Special Redemption Amount (if any) applicable to such Payment Date in accordance with the Note Payment Sequence;",
+          "amount_formula": "Special Redemption Amount (if any) applicable to such Payment Date",
+          "condition": "if such Payment Date is a Special Redemption Date, at the election of the Investment Manager",
+          "is_pari_passu": false,
+          "citation": {
+            "page_or_row": "(ii)(O)",
+            "document": "Cairn CLO XVII DAC Prospectus",
+            "excerpt": "if  such Payment Date is a Special Redemption Date, at the election  of the Investment Manager, to make payments in an amount equal to the Special Redemption Amount (if any) applicable to such Payment Date in accordance with the Note Payment Sequence;"
+          },
+          "condition_terms": []
+        },
+        {
+          "priority": "(P)(1)",
+          "recipient": "purchase_of_substitute_collateral",
+          "description": "during the Reinvestment Period, at the discretion of the Investment Manager, either to the purchase of Substitute Collateral Debt Obligations and/or Loss Mitigation Obligations or to the Principal Account pending reinvestment in Substitute Collateral Debt Obligations at a later date in each case in accordance with the Investment Management Agreement;",
+          "amount_formula": "",
+          "condition": "during the Reinvestment Period, at the discretion of the Investment Manager",
+          "is_pari_passu": false,
+          "citation": {
+            "excerpt": "(1) during the Reinvestment Period, at the discretion of the Investment Manager,  either  to  the  purchase  of  Substitute  Collateral  Debt Obligations and/or Loss Mitigation Obligations or to the Principal Account pending reinvestment in Substitute Collateral Debt Obligations  at  a  later  date  in  each  case  in  accordance  with  the Investment Management Agreement; or",
+            "page_or_row": "(ii)(P)(1)",
+            "document": "Cairn CLO XVII DAC Prospectus"
+          },
+          "condition_terms": []
+        },
+        {
+          "priority": "(P)(2)",
+          "recipient": "purchase_of_substitute_collateral_post_reinvestment",
+          "description": "after the Reinvestment Period in the case of Principal Proceeds representing Unscheduled Principal Proceeds and Sale Proceeds from the sale of Credit Impaired Obligations and Credit Improved Obligations at the discretion of the Investment Manager, either to the purchase of Substitute Collateral Debt Obligations or to the Principal Account pending reinvestment in Substitute Collateral Debt Obligations and/or Loss Mitigation Obligations at a later date in each case in accordance with the Investment Management Agreement so long as such Principal Proceeds remain available for such reinvestment in accordance with the terms of the Investment Management Agreement;",
+          "amount_formula": "",
+          "condition": "after the Reinvestment Period in the case of Principal Proceeds representing Unscheduled Principal Proceeds and Sale Proceeds from the sale of Credit Impaired Obligations and Credit Improved Obligations at the discretion of the Investment Manager",
+          "is_pari_passu": false,
+          "citation": {
+            "excerpt": "(2) after  the  Reinvestment  Period  in  the  case  of  Principal  Proceeds representing  Unscheduled  Principal  Proceeds  and  Sale  Proceeds from the sale of Credit Impaired Obligations and Credit Improved Obligations at the discretion of the Investment Manager, either to the purchase of Substitute Collateral Debt Obligations or to the Principal Account pending reinvestment in Substitute Collateral Debt Obligations and/or Loss Mitigation Obligations at a later date in each case in accordance with the Investment Management Agreement so long as such Principal Proceeds remain available for such reinvestment  in  accordance  with  the  terms  of  the  Investment Management Agreement;",
+            "page_or_row": "(ii)(P)(2)",
+            "document": "Cairn CLO XVII DAC Prospectus"
+          },
+          "condition_terms": []
+        },
+        {
+          "priority": "(Q)",
+          "recipient": "redeem_notes",
+          "description": "after the Reinvestment Period, to redeem the Notes in accordance with the Note Payment Sequence;",
+          "amount_formula": "",
+          "condition": "after the Reinvestment Period",
+          "is_pari_passu": false,
+          "citation": {
+            "document": "Cairn CLO XVII DAC Prospectus",
+            "page_or_row": "(ii)(Q)",
+            "excerpt": "after the Reinvestment Period, to redeem the Notes in accordance with the Note Payment Sequence;"
+          },
+          "condition_terms": []
+        },
+        {
+          "priority": "(R)",
+          "recipient": "interest_proceeds_priority_of_payments_x_to_bb_shortfall",
+          "description": "after the Reinvestment Period, to the payment on a sequential basis of the amounts referred to in paragraphs (X) through (BB) (inclusive) of the Interest Proceeds Priority of Payments, but only to the extent not paid in full thereunder;",
+          "amount_formula": "to the extent not paid in full thereunder",
+          "condition": "after the Reinvestment Period",
+          "is_pari_passu": false,
+          "citation": {
+            "excerpt": "after the Reinvestment Period, to the payment on a sequential basis of the amounts referred to in paragraphs (X) through (BB) (inclusive) of the Interest Proceeds  Priority  of  Payments,  but  only  to  the  extent  not  paid  in  full thereunder;",
+            "document": "Cairn CLO XVII DAC Prospectus",
+            "page_or_row": "(ii)(R)"
+          },
+          "condition_terms": []
+        },
+        {
+          "priority": "(S)(1)",
+          "recipient": "subordinated_notes_pro_rata",
+          "description": "firstly, if the Incentive Investment Management Fee IRR Threshold has not been reached, any remaining Principal Proceeds to the payment on the Subordinated Notes on a pro rata basis, until the Incentive Investment Management Fee IRR Threshold is reached;",
+          "amount_formula": "any remaining Principal Proceeds",
+          "condition": "if the Incentive Investment Management Fee IRR Threshold has not been reached",
+          "is_pari_passu": true,
+          "citation": {
+            "page_or_row": "(ii)(S)(1)",
+            "excerpt": "(1) firstly, if the Incentive Investment Management Fee IRR Threshold has  not  been  reached,  any  remaining  Principal  Proceeds  to  the payment on the Subordinated Notes on a pro rata basis,  until  the Incentive Investment Management Fee IRR Threshold is reached; and",
+            "document": "Cairn CLO XVII DAC Prospectus"
+          },
+          "condition_terms": []
+        },
+        {
+          "priority": "(S)(2)(I)",
+          "recipient": "incentive_investment_management_fee",
+          "description": "secondly, if, after taking into account all prior distributions to Subordinated Noteholders and any distributions to be made to Subordinated Noteholders on such Payment Date, including in accordance with the Interest Proceeds Priority of Payments, the Principal Proceeds Priority of Payments and the Collateral Enhancement Obligation Proceeds Priority of Payments, the Incentive Investment Management Fee IRR Threshold has been reached (on or prior to such Payment Date): (I) firstly, 20 per cent. of any remaining Principal Proceeds, to the payment to the Investment Manager as an Incentive Investment Management Fee;",
+          "amount_formula": "20 per cent. of any remaining Principal Proceeds",
+          "condition": "if, after taking into account all prior distributions to Subordinated Noteholders..., the Incentive Investment Management Fee IRR Threshold has been reached",
+          "is_pari_passu": false,
+          "citation": {
+            "page_or_row": "(ii)(S)(2)(I)",
+            "excerpt": "(I) firstly, 20 per cent. of any remaining Principal Proceeds, to the  payment  to  the  Investment  Manager  as  an  Incentive Investment Management Fee;",
+            "document": "Cairn CLO XVII DAC Prospectus"
+          },
+          "condition_terms": []
+        },
+        {
+          "priority": "(S)(2)(II)",
+          "recipient": "vat_on_incentive_investment_management_fee",
+          "description": "secondly, to the payment of any VAT in respect of the Incentive Investment Management Fee referred to in paragraph (a) above (whether payable to the Investment Manager or directly to the relevant Tax Authority);",
+          "amount_formula": "any VAT in respect of the Incentive Investment Management Fee",
+          "condition": "if... the Incentive Investment Management Fee IRR Threshold has been reached",
+          "is_pari_passu": false,
+          "citation": {
+            "page_or_row": "(ii)(S)(2)(II)",
+            "document": "Cairn CLO XVII DAC Prospectus",
+            "excerpt": "(II) secondly,  to  the  payment  of  any  VAT  in  respect  of  the Incentive  Investment  Management  Fee  referred  to  in paragraph (a)  above  (whether  payable  to  the  Investment Manager or directly to the relevant Tax Authority); and"
+          },
+          "condition_terms": []
+        },
+        {
+          "priority": "(S)(2)(III)",
+          "recipient": "subordinated_notes_principal_and_interest",
+          "description": "thirdly, any remaining Principal Proceeds, to the payment of principal on the Subordinated Notes on a pro rata basis and thereafter to the payment of interest on a pro rata basis on the Subordinated Notes.",
+          "amount_formula": "any remaining Principal Proceeds",
+          "condition": "if... the Incentive Investment Management Fee IRR Threshold has been reached",
+          "is_pari_passu": true,
+          "citation": {
+            "document": "Cairn CLO XVII DAC Prospectus",
+            "page_or_row": "(ii)(S)(2)(III)",
+            "excerpt": "(III) thirdly, any remaining Principal Proceeds, to the payment of principal on the Subordinated Notes on a pro rata basis and thereafter to the payment of interest on a pro rata basis on the Subordinated Notes."
+          },
+          "condition_terms": []
+        }
+      ],
+      "source_section": "(ii) Application of Principal Proceeds",
+      "extraction_confidence": 0.9152173913043479
+    },
+    "post_enforcement": {
+      "deal_name": "Cairn CLO XVII DAC",
+      "waterfall_type": "post_enforcement",
+      "steps": [
+        {
+          "priority": "(A)",
+          "recipient": "issuer_taxes_and_profit",
+          "description": "to the payment of (i) Taxes owing by the Issuer accrued in respect of the related Due Period (other than Irish corporate income tax in relation to the Issuer Profit Amount referred to in (ii) below and any amounts payable in respect of VAT to the recipient of a payment made by the Issuer pursuant to the Priorities of Payments and VAT payable (if any) in respect of any Investment Management Fee), as certified by an Authorised Officer of the Issuer to the Trustee, if any; and (ii) to the payment of the Issuer Profit Amount, for deposit into the Issuer Profit Account from time to time",
+          "amount_formula": "as certified by an Authorised Officer of the Issuer to the Trustee",
+          "condition": null,
+          "is_pari_passu": false,
+          "citation": {
+            "excerpt": "to  the  payment of (i) Taxes owing by the Issuer accrued in respect of the related Due Period (other than Irish corporate income tax in relation to the",
+            "document": "Cairn CLO XVII DAC Prospectus",
+            "page_or_row": "Section 11(b)(iv)(A)"
+          },
+          "condition_terms": []
+        },
+        {
+          "priority": "(B)",
+          "recipient": "trustee_fees_and_expenses",
+          "description": "to the payment of accrued and unpaid Trustee Fees and Expenses, up to an amount equal to the Senior Expenses Cap in respect of the related Due Period; provided that following the occurrence of an Event of Default, the Senior Expenses Cap shall not apply in respect of such Trustee Fees and Expenses",
+          "amount_formula": "accrued and unpaid Trustee Fees and Expenses, up to the Senior Expenses Cap",
+          "condition": "following the occurrence of an Event of Default, the Senior Expenses Cap shall not apply",
+          "is_pari_passu": false,
+          "citation": {
+            "excerpt": "to the payment of accrued and unpaid Trustee Fees and Expenses, up to an amount equal to the Senior Expenses Cap in respect of the related Due Period; p",
+            "page_or_row": "Section 11(b)(iv)(B)",
+            "document": "Cairn CLO XVII DAC Prospectus"
+          },
+          "condition_terms": []
+        },
+        {
+          "priority": "(C)",
+          "recipient": "administrative_expenses",
+          "description": "to the payment of accrued and unpaid Administrative Expenses in relation to each item thereof, on a pari passu basis up to an amount equal to the Senior Expenses Cap in respect of the related Due Period less any amounts paid pursuant to paragraph (B) above; provided that upon an acceleration of the Notes (which has not been rescinded or annulled) in accordance with Condition 10(b) ( Acceleration ) the Senior Expenses Cap shall not apply",
+          "amount_formula": "accrued and unpaid Administrative Expenses, up to the Senior Expenses Cap less amounts paid under (B)",
+          "condition": "upon an acceleration of the Notes, the Senior Expenses Cap shall not apply",
+          "is_pari_passu": true,
+          "citation": {
+            "document": "Cairn CLO XVII DAC Prospectus",
+            "excerpt": "to the payment of accrued and unpaid Administrative Expenses in relation to each item thereof, on a pari passu basis up to an amount equal to the Senior",
+            "page_or_row": "Section 11(b)(iv)(C)"
+          },
+          "condition_terms": []
+        },
+        {
+          "priority": "(D)",
+          "recipient": "senior_investment_management_fee",
+          "description": "to the payment: (1) firstly, on a pro rata basis to the Investment Manager of the Senior Investment Management Fee due and payable on such Payment Date and any VAT in respect thereof (whether payable to the Investment Manager or directly to the relevant Tax Authority) save for any Deferred Senior Investment Management Amounts which shall not be paid pursuant to this paragraph; and (2) secondly, to the Investment Manager, any previously due and unpaid Senior Investment Management Fee (other than Deferred Senior Investment Management Amounts) and any VAT in respect thereof (whether payable to the Investment Manager or directly to the relevant Tax Authority)",
+          "amount_formula": "current then previously unpaid Senior Investment Management Fee and VAT",
+          "condition": "Deferred Senior Investment Management Amounts are not paid here",
+          "is_pari_passu": true,
+          "citation": {
+            "excerpt": "to the payment:\n- (1) firstly, on a pro rata basis to the Investment Manager of the Senior Investment Management Fee due and payable on such Payment Date",
+            "page_or_row": "Section 11(b)(iv)(D)",
+            "document": "Cairn CLO XVII DAC Prospectus"
+          },
+          "condition_terms": []
+        },
+        {
+          "priority": "(E)",
+          "recipient": "hedge_counterparty_payments",
+          "description": "to the payment, on a pro rata basis, of (i) any Scheduled Periodic Hedge Issuer Payments, (ii) any Currency Hedge Issuer Termination Payments (to the extent not paid out of the Currency Account or the relevant Hedge Termination Account or the relevant Counterparty Downgrade Collateral Account and other than Defaulted Currency Hedge Termination Payments), and (iii) any Interest Rate Hedge Issuer Termination Payments (to the extent not paid out of the Interest Account or the relevant Hedge Termination Account or the relevant Counterparty Downgrade Collateral Account and other than Defaulted Interest Rate Hedge Termination Payments)",
+          "amount_formula": "Scheduled Periodic Hedge Issuer Payments, and certain Hedge Issuer Termination Payments",
+          "condition": "other than Defaulted Currency/Interest Rate Hedge Termination Payments",
+          "is_pari_passu": true,
+          "citation": {
+            "excerpt": "to  the  payment,  on  a pro rata basis,  of  (i)  any  Scheduled  Periodic  Hedge Issuer Payments, (ii) any Currency Hedge Issuer Termination Payments (to",
+            "document": "Cairn CLO XVII DAC Prospectus",
+            "page_or_row": "Section 11(b)(iv)(E)"
+          },
+          "condition_terms": []
+        },
+        {
+          "priority": "(F)",
+          "recipient": "class_a_notes_interest",
+          "description": "to the payment on a pro rata and pari passu basis of all Interest Amounts due and payable on the Class A Notes",
+          "amount_formula": "all Interest Amounts due and payable",
+          "condition": null,
+          "is_pari_passu": true,
+          "citation": {
+            "page_or_row": "Section 11(b)(iv)(F)",
+            "excerpt": "to the payment on a pro rata and pari passu basis of all Interest Amounts due and payable on the Class A Notes;",
+            "document": "Cairn CLO XVII DAC Prospectus"
+          },
+          "condition_terms": []
+        },
+        {
+          "priority": "(G)",
+          "recipient": "class_a_notes_principal",
+          "description": "to the redemption on a pro rata and pari passu basis of the Class A Notes, until the Class A Notes have been redeemed in full",
+          "amount_formula": "until the Class A Notes have been redeemed in full",
+          "condition": null,
+          "is_pari_passu": true,
+          "citation": {
+            "page_or_row": "Section 11(b)(iv)(G)",
+            "excerpt": "to the redemption on a pro rata and pari passu basis of the Class A Notes, until the Class A Notes have been redeemed in full;",
+            "document": "Cairn CLO XVII DAC Prospectus"
+          },
+          "condition_terms": []
+        },
+        {
+          "priority": "(H)",
+          "recipient": "class_b_notes_interest",
+          "description": "to the payment on a pro rata basis of the Interest Amounts due and payable on the Class B Notes",
+          "amount_formula": "Interest Amounts due and payable",
+          "condition": null,
+          "is_pari_passu": true,
+          "citation": {
+            "document": "Cairn CLO XVII DAC Prospectus",
+            "excerpt": "to the payment on a pro rata basis of the Interest Amounts due and payable on the Class B Notes;",
+            "page_or_row": "Section 11(b)(iv)(H)"
+          },
+          "condition_terms": []
+        },
+        {
+          "priority": "(I)",
+          "recipient": "class_b_notes_principal",
+          "description": "to the redemption on a pro rata basis of the Class B Notes, until the Class B Notes have been redeemed in full",
+          "amount_formula": "until the Class B Notes have been redeemed in full",
+          "condition": null,
+          "is_pari_passu": true,
+          "citation": {
+            "page_or_row": "Section 11(b)(iv)(I)",
+            "document": "Cairn CLO XVII DAC Prospectus",
+            "excerpt": "to the redemption on a pro rata basis of the Class B Notes, until the Class B Notes have been redeemed in full;"
+          },
+          "condition_terms": []
+        },
+        {
+          "priority": "(J)",
+          "recipient": "class_c_notes_interest",
+          "description": "to the payment on a pro rata basis of the Interest Amounts (excluding any Deferred Interest, but including interest on Deferred Interest) due and payable on the Class C Notes",
+          "amount_formula": "Interest Amounts (excluding any Deferred Interest, but including interest on Deferred Interest) due and payable",
+          "condition": null,
+          "is_pari_passu": true,
+          "citation": {
+            "excerpt": "to the payment on a pro rata basis of the Interest Amounts (excluding any Deferred Interest, but including interest on Deferred Interest) due and payable",
+            "page_or_row": "Section 11(b)(iv)(J)",
+            "document": "Cairn CLO XVII DAC Prospectus"
+          },
+          "condition_terms": []
+        },
+        {
+          "priority": "(K)",
+          "recipient": "class_c_notes_deferred_interest",
+          "description": "to the payment on a pro rata basis of any Deferred Interest on the Class C-Notes",
+          "amount_formula": "any Deferred Interest",
+          "condition": null,
+          "is_pari_passu": true,
+          "citation": {
+            "document": "Cairn CLO XVII DAC Prospectus",
+            "page_or_row": "Section 11(b)(iv)(K)",
+            "excerpt": "to  the  payment  on  a pro  rata basis  of  any  Deferred  Interest  on  the Class C-Notes;"
+          },
+          "condition_terms": []
+        },
+        {
+          "priority": "(L)",
+          "recipient": "class_c_notes_principal",
+          "description": "to the redemption on a pro rata basis of the Class C Notes, until the Class C Notes have been redeemed in full",
+          "amount_formula": "until the Class C Notes have been redeemed in full",
+          "condition": null,
+          "is_pari_passu": true,
+          "citation": {
+            "page_or_row": "Section 11(b)(iv)(L)",
+            "document": "Cairn CLO XVII DAC Prospectus",
+            "excerpt": "to the redemption on a pro rata basis of the Class C Notes, until the Class C Notes have been redeemed in full;"
+          },
+          "condition_terms": []
+        },
+        {
+          "priority": "(M)",
+          "recipient": "class_d_notes_interest",
+          "description": "to the payment on a pro rata basis of the Interest Amounts (excluding any Deferred Interest, but including interest on Deferred Interest) due and payable on the Class D Notes",
+          "amount_formula": "Interest Amounts (excluding any Deferred Interest, but including interest on Deferred Interest) due and payable",
+          "condition": null,
+          "is_pari_passu": true,
+          "citation": {
+            "excerpt": "to the payment on a pro rata basis of the Interest Amounts (excluding any Deferred Interest, but including interest on Deferred Interest) due and payable",
+            "page_or_row": "Section 11(b)(iv)(M)",
+            "document": "Cairn CLO XVII DAC Prospectus"
+          },
+          "condition_terms": []
+        },
+        {
+          "priority": "(N)",
+          "recipient": "class_d_notes_deferred_interest",
+          "description": "to the payment on a pro rata basis of any Deferred Interest on the Class D Notes",
+          "amount_formula": "any Deferred Interest",
+          "condition": null,
+          "is_pari_passu": true,
+          "citation": {
+            "document": "Cairn CLO XVII DAC Prospectus",
+            "page_or_row": "Section 11(b)(iv)(N)",
+            "excerpt": "to the payment on a pro rata basis of any Deferred Interest on the Class D Notes;"
+          },
+          "condition_terms": []
+        },
+        {
+          "priority": "(O)",
+          "recipient": "class_d_notes_principal",
+          "description": "to the redemption on a pro rata basis of the Class D Notes, until the Class D Notes have been redeemed in full",
+          "amount_formula": "until the Class D Notes have been redeemed in full",
+          "condition": null,
+          "is_pari_passu": true,
+          "citation": {
+            "document": "Cairn CLO XVII DAC Prospectus",
+            "page_or_row": "Section 11(b)(iv)(O)",
+            "excerpt": "to the redemption on a pro rata basis of the Class D Notes, until the Class D Notes have been redeemed in full;"
+          },
+          "condition_terms": []
+        },
+        {
+          "priority": "(P)",
+          "recipient": "class_e_notes_interest",
+          "description": "to the payment on a pro rata basis of the Interest Amounts (excluding any Deferred Interest but including interest on Deferred Interest) due and payable on the Class E Notes",
+          "amount_formula": "Interest Amounts (excluding any Deferred Interest but including interest on Deferred Interest) due and payable",
+          "condition": null,
+          "is_pari_passu": true,
+          "citation": {
+            "excerpt": "to the payment on a pro rata basis of the Interest Amounts (excluding any Deferred Interest but including interest on Deferred Interest) due and payable o",
+            "document": "Cairn CLO XVII DAC Prospectus",
+            "page_or_row": "Section 11(b)(iv)(P)"
+          },
+          "condition_terms": []
+        },
+        {
+          "priority": "(Q)",
+          "recipient": "class_e_notes_deferred_interest",
+          "description": "to the payment on a pro rata basis of any Deferred Interest on the Class E Notes",
+          "amount_formula": "any Deferred Interest",
+          "condition": null,
+          "is_pari_passu": true,
+          "citation": {
+            "excerpt": "to the payment on a pro rata basis of any Deferred Interest on the Class E Notes;",
+            "document": "Cairn CLO XVII DAC Prospectus",
+            "page_or_row": "Section 11(b)(iv)(Q)"
+          },
+          "condition_terms": []
+        },
+        {
+          "priority": "(R)",
+          "recipient": "class_e_notes_principal",
+          "description": "to the redemption on a pro rata basis of the Class E Notes, until the Class E Notes have been redeemed in full",
+          "amount_formula": "until the Class E Notes have been redeemed in full",
+          "condition": null,
+          "is_pari_passu": true,
+          "citation": {
+            "excerpt": "to the redemption on a pro rata basis of the Class E Notes, until the Class E Notes have been redeemed in full;",
+            "document": "Cairn CLO XVII DAC Prospectus",
+            "page_or_row": "Section 11(b)(iv)(R)"
+          },
+          "condition_terms": []
+        },
+        {
+          "priority": "(S)",
+          "recipient": "class_f_notes_interest",
+          "description": "to the payment on a pro rata basis of the Interest Amounts (excluding any Deferred Interest but including interest on Deferred Interest) due and payable on the Class F Notes",
+          "amount_formula": "Interest Amounts (excluding any Deferred Interest but including interest on Deferred Interest) due and payable",
+          "condition": null,
+          "is_pari_passu": true,
+          "citation": {
+            "document": "Cairn CLO XVII DAC Prospectus",
+            "excerpt": "to the payment on a pro rata basis of the Interest Amounts (excluding any Deferred Interest but including interest on Deferred Interest) due and payable o",
+            "page_or_row": "Section 11(b)(iv)(S)"
+          },
+          "condition_terms": []
+        },
+        {
+          "priority": "(T)",
+          "recipient": "class_f_notes_deferred_interest",
+          "description": "to the payment on a pro rata basis of any Deferred Interest on the Class F Notes",
+          "amount_formula": "any Deferred Interest",
+          "condition": null,
+          "is_pari_passu": true,
+          "citation": {
+            "page_or_row": "Section 11(b)(iv)(T)",
+            "excerpt": "to the payment on a pro rata basis of any Deferred Interest on the Class F Notes;",
+            "document": "Cairn CLO XVII DAC Prospectus"
+          },
+          "condition_terms": []
+        },
+        {
+          "priority": "(U)",
+          "recipient": "class_f_notes_principal",
+          "description": "to the redemption on a pro rata basis of the Class F Notes, until the Class F Notes have been redeemed in full",
+          "amount_formula": "until the Class F Notes have been redeemed in full",
+          "condition": null,
+          "is_pari_passu": true,
+          "citation": {
+            "page_or_row": "Section 11(b)(iv)(U)",
+            "excerpt": "to the redemption on a pro rata basis of the Class F Notes, until the Class F Notes have been redeemed in full;",
+            "document": "Cairn CLO XVII DAC Prospectus"
+          },
+          "condition_terms": []
+        },
+        {
+          "priority": "(V)",
+          "recipient": "subordinated_investment_management_fees_and_advances",
+          "description": "to the payment: (1) firstly, to the Investment Manager of the Subordinated Investment Management Fee... (2) secondly, ...any previously due and unpaid Subordinated Investment Management Fee... (3) thirdly, ...any Deferred Senior Investment Management Amounts and Deferred Subordinated Investment Management Amounts... (4) fourthly, to the repayment of any Investment Manager Advances and any interest thereon",
+          "amount_formula": "Subordinated Investment Management Fee, then unpaid Subordinated Fee, then Deferred Senior/Subordinated Fees, then Investment Manager Advances",
+          "condition": "save for any Deferred Senior Investment Management Amounts or Deferred Subordinated Investment Management Amounts which shall not be paid pursuant to this paragraph",
+          "is_pari_passu": false,
+          "citation": {
+            "excerpt": "to the payment:\n- (1) firstly ,  to  the  Investment Manager of the Subordinated Investment Management Fee due and payable on such Payment Date and any V",
+            "page_or_row": "Section 11(b)(iv)(V)",
+            "document": "Cairn CLO XVII DAC Prospectus"
+          },
+          "condition_terms": []
+        },
+        {
+          "priority": "(W)",
+          "recipient": "unpaid_trustee_fees_and_expenses",
+          "description": "to the payment of Trustee Fees and Expenses not paid by reason of the Senior Expenses Cap (if any), in relation to each item thereof, on a pro rata basis",
+          "amount_formula": "Trustee Fees and Expenses not paid by reason of the Senior Expenses Cap",
+          "condition": null,
+          "is_pari_passu": true,
+          "citation": {
+            "excerpt": "to the payment of Trustee Fees and Expenses not paid by reason of the Senior Expenses Cap (if any), in relation to each item thereof, on a pro rata bas",
+            "document": "Cairn CLO XVII DAC Prospectus",
+            "page_or_row": "Section 11(b)(iv)(W)"
+          },
+          "condition_terms": []
+        },
+        {
+          "priority": "(X)",
+          "recipient": "unpaid_administrative_expenses",
+          "description": "to the payment of Administrative Expenses not paid by reason of the Senior Expenses Cap (if any), in relation to each item thereof, in the order of priority stated in the definition thereof",
+          "amount_formula": "Administrative Expenses not paid by reason of the Senior Expenses Cap",
+          "condition": null,
+          "is_pari_passu": false,
+          "citation": {
+            "document": "Cairn CLO XVII DAC Prospectus",
+            "excerpt": "to the payment of Administrative Expenses not paid by reason of the Senior Expenses Cap (if any), in relation to each item thereof, in the order of pri",
+            "page_or_row": "Section 11(b)(iv)(X)"
+          },
+          "condition_terms": []
+        },
+        {
+          "priority": "(Y)",
+          "recipient": "defaulted_hedge_termination_payments",
+          "description": "to the payment on a pari passu and pro rata basis of any Defaulted Currency Hedge Termination Payments due to any Currency Hedge Counterparty or Defaulted Interest Rate Hedge Termination Payments due to any Interest Rate Hedge Counterparty (in each case to the extent not paid out of the relevant Hedge Termination Account or any relevant Counterparty Downgrade Collateral Account)",
+          "amount_formula": "Defaulted Currency Hedge Termination Payments and Defaulted Interest Rate Hedge Termination Payments",
+          "condition": "to the extent not paid out of the relevant Hedge Termination Account or any relevant Counterparty Downgrade Collateral Account",
+          "is_pari_passu": true,
+          "citation": {
+            "page_or_row": "Section 11(b)(iv)(Y)",
+            "excerpt": "to the payment on a pari passu and pro rata basis of any Defaulted Currency Hedge Termination Payments due to any Currency Hedge Counterparty or Defaulte",
+            "document": "Cairn CLO XVII DAC Prospectus"
+          },
+          "condition_terms": []
+        },
+        {
+          "priority": "(Z)",
+          "recipient": "subordinated_notes_and_incentive_fee",
+          "description": "(1) firstly , if the Incentive Investment Management Fee IRR Threshold has not been reached, any remaining Interest Proceeds and Principal Proceeds to the payment of principal on the Subordinated Notes on a pro rata basis and thereafter to the payment of interest thereon on a pro rata basis, until the Incentive Investment Management Fee IRR Threshold is reached; and (2) secondly , if, after taking into account all prior distributions... the Incentive Investment Management Fee IRR Threshold has been reached... (I) firstly , 20 per cent. of any remaining Interest Proceeds and Principal Proceeds, to the payment to the Investment Manager as the Incentive Investment Management Fee; (II) secondly , to the payment of any VAT in respect of the Incentive Investment Management Fee... (III) thirdly , any remaining Interest Proceeds and Principal Proceeds to the payment of principal on the Subordinated Notes on a pro rata basis and thereafter to the payment of interest thereon on a pro rata basis.",
+          "amount_formula": "If IRR threshold not met: principal and interest on Subordinated Notes. If IRR threshold met: 20% to Incentive Fee, then VAT on fee, then remainder to principal and interest on Subordinated Notes.",
+          "condition": "Depends on whether the Incentive Investment Management Fee IRR Threshold has been reached.",
+          "is_pari_passu": false,
+          "citation": {
+            "excerpt": "(1) firstly , if the Incentive Investment Management Fee IRR Threshold has not been reached, any remaining Interest Proceeds and Principal Proceeds to the p",
+            "document": "Cairn CLO XVII DAC Prospectus",
+            "page_or_row": "Section 11(b)(iv)(Z)"
+          },
+          "condition_terms": []
+        }
+      ],
+      "source_section": "Post-Acceleration Priority of Payments",
+      "extraction_confidence": 1.0
+    }
+  },
+  "covenants": {
+    "deal_name": "IMPORTANT NOTICE",
+    "triggers": [
+      {
+        "name": "class_a_b_interest_coverage_test",
+        "display_name": "Class A/B Interest Coverage Test",
+        "description": "If the Class A/B Interest Coverage Test is not satisfied, interest proceeds are used to redeem notes to the extent necessary to satisfy the test.",
+        "metric": "class_a_b_interest_coverage_ratio",
+        "threshold": null,
+        "threshold_unit": null,
+        "direction": "below",
+        "consequence": "Redemption of the Notes in accordance with the Note Payment Sequence to cause the test to be satisfied.",
+        "section_reference": "REVENUE PRIORITY OF PAYMENTS: (c) Priorities of Payments (i)(I)",
+        "citation": {
+          "excerpt": "if either of the Class A/B Coverage Tests is not satisfied on any Determination Date on or after the Effective Date... to the redemption of the Notes",
+          "page_or_row": "REVENUE PRIORITY OF PAYMENTS: (c) Priorities of Payments (i)(I)",
+          "document": "prospectus"
+        },
+        "metric_terms": []
+      },
+      {
+        "name": "class_a_b_par_value_test",
+        "display_name": "Class A/B Par Value Test",
+        "description": "If the Class A/B Par Value Test is not satisfied, interest proceeds are used to redeem notes to the extent necessary to satisfy the test.",
+        "metric": "class_a_b_par_value_ratio",
+        "threshold": null,
+        "threshold_unit": null,
+        "direction": "below",
+        "consequence": "Redemption of the Notes in accordance with the Note Payment Sequence to cause the test to be satisfied.",
+        "section_reference": "REVENUE PRIORITY OF PAYMENTS: (c) Priorities of Payments (i)(I)",
+        "citation": {
+          "document": "prospectus",
+          "page_or_row": "REVENUE PRIORITY OF PAYMENTS: (c) Priorities of Payments (i)(I)",
+          "excerpt": "if either of the Class A/B Coverage Tests is not satisfied on any Determination Date on or after the Effective Date... to the redemption of the Notes"
+        },
+        "metric_terms": []
+      },
+      {
+        "name": "class_c_interest_coverage_test",
+        "display_name": "Class C Interest Coverage Test",
+        "description": "If the Class C Interest Coverage Test is not satisfied, interest proceeds are used to redeem notes to the extent necessary to satisfy the test.",
+        "metric": "class_c_interest_coverage_ratio",
+        "threshold": null,
+        "threshold_unit": null,
+        "direction": "below",
+        "consequence": "Redemption of the Notes in accordance with the Note Payment Sequence to cause the test to be satisfied.",
+        "section_reference": "REVENUE PRIORITY OF PAYMENTS: (c) Priorities of Payments (i)(L)",
+        "citation": {
+          "excerpt": "if either of the Class C Coverage Tests is not satisfied on any Determination Date on or after the Effective Date... to the redemption of the Notes",
+          "document": "prospectus",
+          "page_or_row": "REVENUE PRIORITY OF PAYMENTS: (c) Priorities of Payments (i)(L)"
+        },
+        "metric_terms": []
+      },
+      {
+        "name": "class_c_par_value_test",
+        "display_name": "Class C Par Value Test",
+        "description": "If the Class C Par Value Test is not satisfied, interest proceeds are used to redeem notes to the extent necessary to satisfy the test.",
+        "metric": "class_c_par_value_ratio",
+        "threshold": null,
+        "threshold_unit": null,
+        "direction": "below",
+        "consequence": "Redemption of the Notes in accordance with the Note Payment Sequence to cause the test to be satisfied.",
+        "section_reference": "REVENUE PRIORITY OF PAYMENTS: (c) Priorities of Payments (i)(L)",
+        "citation": {
+          "page_or_row": "REVENUE PRIORITY OF PAYMENTS: (c) Priorities of Payments (i)(L)",
+          "excerpt": "if either of the Class C Coverage Tests is not satisfied on any Determination Date on or after the Effective Date... to the redemption of the Notes",
+          "document": "prospectus"
+        },
+        "metric_terms": []
+      },
+      {
+        "name": "class_d_interest_coverage_test",
+        "display_name": "Class D Interest Coverage Test",
+        "description": "If the Class D Interest Coverage Test is not satisfied, interest proceeds are used to redeem notes to the extent necessary to satisfy the test.",
+        "metric": "class_d_interest_coverage_ratio",
+        "threshold": null,
+        "threshold_unit": null,
+        "direction": "below",
+        "consequence": "Redemption of the Notes in accordance with the Note Payment Sequence to cause the test to be satisfied.",
+        "section_reference": "REVENUE PRIORITY OF PAYMENTS: (c) Priorities of Payments (i)(O)",
+        "citation": {
+          "excerpt": "if either of the Class D Coverage Tests is not satisfied on any Determination Date on or after the Effective Date... to the redemption of the Notes",
+          "document": "prospectus",
+          "page_or_row": "REVENUE PRIORITY OF PAYMENTS: (c) Priorities of Payments (i)(O)"
+        },
+        "metric_terms": []
+      },
+      {
+        "name": "class_d_par_value_test",
+        "display_name": "Class D Par Value Test",
+        "description": "If the Class D Par Value Test is not satisfied, interest proceeds are used to redeem notes to the extent necessary to satisfy the test.",
+        "metric": "class_d_par_value_ratio",
+        "threshold": null,
+        "threshold_unit": null,
+        "direction": "below",
+        "consequence": "Redemption of the Notes in accordance with the Note Payment Sequence to cause the test to be satisfied.",
+        "section_reference": "REVENUE PRIORITY OF PAYMENTS: (c) Priorities of Payments (i)(O)",
+        "citation": {
+          "excerpt": "if either of the Class D Coverage Tests is not satisfied on any Determination Date on or after the Effective Date... to the redemption of the Notes",
+          "page_or_row": "REVENUE PRIORITY OF PAYMENTS: (c) Priorities of Payments (i)(O)",
+          "document": "prospectus"
+        },
+        "metric_terms": []
+      },
+      {
+        "name": "class_e_par_value_test",
+        "display_name": "Class E Par Value Test",
+        "description": "If the Class E Par Value Test is not satisfied, interest proceeds are used to redeem notes to the extent necessary to satisfy the test.",
+        "metric": "class_e_par_value_ratio",
+        "threshold": null,
+        "threshold_unit": null,
+        "direction": "below",
+        "consequence": "Redemption of the Notes in accordance with the Note Payment Sequence to cause the test to be satisfied.",
+        "section_reference": "REVENUE PRIORITY OF PAYMENTS: (c) Priorities of Payments (i)(R)",
+        "citation": {
+          "document": "prospectus",
+          "page_or_row": "REVENUE PRIORITY OF PAYMENTS: (c) Priorities of Payments (i)(R)",
+          "excerpt": "if the Class E Par Value Test is not satisfied on any Determination Date on or after the Effective Date to the redemption of the Notes"
+        },
+        "metric_terms": []
+      },
+      {
+        "name": "class_f_par_value_test",
+        "display_name": "Class F Par Value Test",
+        "description": "If the Class F Par Value Test is not satisfied after the Reinvestment Period, interest proceeds are used to redeem notes to the extent necessary to satisfy the test.",
+        "metric": "class_f_par_value_ratio",
+        "threshold": null,
+        "threshold_unit": null,
+        "direction": "below",
+        "consequence": "Redemption of the Notes in accordance with the Note Payment Sequence to cause the test to be satisfied.",
+        "section_reference": "REVENUE PRIORITY OF PAYMENTS: (c) Priorities of Payments (i)(U)",
+        "citation": {
+          "excerpt": "if the Class F Par Value Test is not satisfied on any Determination Date following the expiry of the Reinvestment Period, to the redemption of the Notes",
+          "page_or_row": "REVENUE PRIORITY OF PAYMENTS: (c) Priorities of Payments (i)(U)",
+          "document": "prospectus"
+        },
+        "metric_terms": []
+      },
+      {
+        "name": "reinvestment_overcollateralisation_test",
+        "display_name": "Reinvestment Overcollateralisation Test",
+        "description": "During the Reinvestment Period, if the Reinvestment Overcollateralisation Test is not met, a portion of interest proceeds are diverted to purchase additional collateral.",
+        "metric": "reinvestment_overcollateralisation_ratio",
+        "threshold": null,
+        "threshold_unit": null,
+        "direction": "below",
+        "consequence": "Diversion of up to 50% of remaining interest proceeds to the Principal Account for the acquisition of additional Collateral Debt Obligations.",
+        "section_reference": "REVENUE PRIORITY OF PAYMENTS: (c) Priorities of Payments (i)(W)",
+        "citation": {
+          "document": "prospectus",
+          "page_or_row": "REVENUE PRIORITY OF PAYMENTS: (c) Priorities of Payments (i)(W)",
+          "excerpt": "the Reinvestment Overcollateralisation Test has not been met, to the payment to the Principal Account as Principal Proceeds, for the acquisition of additional"
+        },
+        "metric_terms": []
+      },
+      {
+        "name": "incentive_investment_management_fee_irr_threshold",
+        "display_name": "Incentive Investment Management Fee IRR Threshold",
+        "description": "Determines the payment priority for the Incentive Investment Management Fee from principal and collateral enhancement obligation proceeds based on the IRR of the Subordinated Notes.",
+        "metric": "subordinated_notes_irr",
+        "threshold": null,
+        "threshold_unit": null,
+        "direction": "above",
+        "consequence": "20% of remaining Principal Proceeds and Collateral Enhancement Obligation Proceeds are paid to the Investment Manager as an Incentive Investment Management Fee.",
+        "section_reference": "REDEMPTION PRIORITY OF PAYMENTS: (ii) Application of Principal Proceeds (S)",
+        "citation": {
+          "excerpt": "if the Incentive Investment Management Fee IRR Threshold has not been reached, any remaining Principal Proceeds to the payment on the Subordinated Notes",
+          "page_or_row": "REDEMPTION PRIORITY OF PAYMENTS: (ii) Application of Principal Proceeds (S)",
+          "document": "prospectus"
+        },
+        "metric_terms": []
+      }
+    ],
+    "issuer_covenants": [],
+    "extraction_confidence": 0.8
+  },
+  "tranche_structure": [
+    {
+      "name": "Class A",
+      "size_eur": 248000000.0,
+      "rating": "AAA",
+      "rate": "3 month EURIBOR + 1.80%",
+      "seniority": 0
+    },
+    {
+      "name": "Class B-1",
+      "size_eur": 24600000.0,
+      "rating": "AA",
+      "rate": "3 month EURIBOR + 2.75%",
+      "seniority": 101
+    },
+    {
+      "name": "Class B-2",
+      "size_eur": 15000000.0,
+      "rating": "AA",
+      "rate": "6.87%",
+      "seniority": 102
+    },
+    {
+      "name": "Class C",
+      "size_eur": 23100000.0,
+      "rating": "A",
+      "rate": "3 month EURIBOR + 3.60%",
+      "seniority": 200
+    },
+    {
+      "name": "Class D",
+      "size_eur": 26500000.0,
+      "rating": "BBB",
+      "rate": "3 month EURIBOR + 5.30%",
+      "seniority": 300
+    },
+    {
+      "name": "Class E",
+      "size_eur": 17200000.0,
+      "rating": "BB",
+      "rate": "3 month EURIBOR + 7.46%",
+      "seniority": 400
+    },
+    {
+      "name": "Class F",
+      "size_eur": 14600000.0,
+      "rating": "B",
+      "rate": "3 month EURIBOR + 9.64%",
+      "seniority": 500
+    },
+    {
+      "name": "Subordinated Notes",
+      "size_eur": 35100000.0,
+      "rating": null,
+      "rate": null,
+      "seniority": 2600
+    }
+  ],
+  "trigger_names": [
+    "class_a_b_interest_coverage_test",
+    "class_a_b_par_value_test",
+    "class_c_interest_coverage_test",
+    "class_c_par_value_test",
+    "class_d_interest_coverage_test",
+    "class_d_par_value_test",
+    "class_e_par_value_test",
+    "class_f_par_value_test",
+    "reinvestment_overcollateralisation_test",
+    "incentive_investment_management_fee_irr_threshold"
+  ]
+}

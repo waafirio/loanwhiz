@@ -190,7 +190,7 @@ Endpoints:
 - `POST /deal/{id}/project` — multi-period forward fold over a `months` horizon under base/stress scenarios
 - `POST /deal/{id}/stress-matrix` — the same fold across a CPR × CDR × rate-shift grid (capped at 64 cells)
 - `GET /primitives` — the primitive catalogue with per-primitive reachability (`live` / `library-only`)
-- `GET /capability-matrix` — the primitives × 6 registered deals capability matrix: each cell `validated` / `ran` / `not-applicable` with a real reason, plus the tally (**1 validated / 12 ran / 17 not-applicable**)
+- `GET /capability-matrix` — the primitives × 6 registered deals capability matrix: each cell `validated` / `ran` / `not-applicable` with a real reason, plus the tally (**1 validated / 14 ran / 15 not-applicable**)
 - `GET /quality-matrix` — the *graded* extension: each (deal × check) cell reconciled against the deal's committed ground-truth answer key. Two deals have one — Green Lion 2024-1 and Green Lion 2023-1 — and both grade their revenue/redemption PoP to the cent
 - `GET /deal/{id}/validation` — the engine-validation report for a deal; `available=true` with the to-the-cent reconciliation for Green Lion 2024-1, `available=false` with an honest note otherwise. Note this understates Green Lion 2023-1: it has committed fixtures and an answer key and is graded by `/quality-matrix`, but no validation *builder* is registered, so this endpoint still reports `available=false`
 

@@ -487,15 +487,29 @@ def _refine_coverage_metric(normalised: str) -> MetricType | None:
     """Resolve a ``class_<letter>`` overcollateralisation / interest-coverage metric.
 
     Returns ``None`` when the string carries no coverage cue, no class letter,
-    or **more than one distinct class letter** — each of which is a case the
-    caller should pass to the LLM / ``unmapped`` escape rather than guess at.
+    or a set of class letters that names no single attachment point — each of
+    which is a case the caller should pass to the ``unmapped`` escape rather
+    than guess at.
 
-    The multi-letter refusal is the load-bearing one. A combined "Class A/B
-    Overcollateralisation Test" measures the A+B attachment point, so guessing
-    the first letter would understate the denominator and therefore **overstate**
-    the ratio — a coverage test reported as healthier than it is. Refusing to
-    place an ambiguous string is the honest failure direction; a confident wrong
-    attachment point is the silent one.
+    A **combined senior block** is the one multi-letter case that does name a
+    point, and it resolves rather than degrades (#456). A coverage ratio divides
+    the collateral by the notes *at or senior to* its attachment point, so a
+    test naming a contiguous block from the top of the stack has exactly the
+    denominator of its junior-most member. Cairn CLO XVII states this outright:
+    its "Class A/B Par Value Ratio" divides the Adjusted Collateral Principal
+    Amount by "the sum of the Principal Amount Outstanding of each of the Class
+    A Notes and the Class B Notes" — the same denominator its Class B point
+    would have. So ``class_a_b_par_value`` is ``class_b_oc_ratio``, read off the
+    document's own formula rather than guessed.
+
+    Every other multi-letter shape is still refused, and the refusal is the
+    load-bearing half. Taking the FIRST letter would understate the denominator
+    and therefore **overstate** the ratio — a coverage test reported as
+    healthier than it is. A block that does not start at Class A ("Class B/C")
+    is refused too: the junior-most member's senior-or-equal walk would sweep in
+    a senior class the test does not name, so no member of the block describes
+    it. Refusing to place an ambiguous string is the honest failure direction; a
+    confident wrong attachment point is the silent one.
     """
     letters = set(_CLASS_LETTER_RE.findall(normalised))
     # A combined test names its further classes as BARE letter tokens, which the
@@ -505,9 +519,19 @@ def _refine_coverage_metric(normalised: str) -> MetricType | None:
     # A single-class string is unaffected — in ``class_e_par_value_test`` the
     # only standalone letter is the class letter itself.
     letters |= set(_BARE_LETTER_RE.findall(normalised))
-    if len(letters) != 1:
+    if not letters:
         return None
-    letter = letters.pop()
+    if len(letters) == 1:
+        letter = letters.pop()
+    else:
+        ordered = sorted(letters)
+        contiguous_from_the_top = ordered == [
+            chr(ord("a") + i) for i in range(len(ordered))
+        ]
+        if not contiguous_from_the_top:
+            return None
+        # The junior-most member of the block fixes the denominator.
+        letter = ordered[-1]
     # Interest coverage is checked first: an "interest coverage" string carries
     # no OC cue, but a bare "oc"/"ic" token is short enough that order matters.
     if _IC_CUE_RE.search(normalised):
@@ -672,6 +696,16 @@ def map_metric(raw: str, description: str = "", *, use_llm: bool = True) -> Taxo
 _COVERAGE_METRICS: frozenset[MetricType] = frozenset(
     list(_CLASS_OC_BY_LETTER.values()) + list(_CLASS_IC_BY_LETTER.values())
 )
+
+
+def is_coverage_metric(metric: MetricType) -> bool:
+    """True for a per-attachment-point overcollateralisation / interest-coverage metric.
+
+    The one place that answers "is this metric a ratio measured at a point in
+    the capital structure?", so a caller reasoning about coverage thresholds
+    does not re-derive the membership from the enum's spelling.
+    """
+    return metric in _COVERAGE_METRICS
 
 
 def coverage_metric_for(raw: str) -> MetricType | None:
