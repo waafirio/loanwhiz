@@ -41,7 +41,13 @@ from dataclasses import dataclass
 # avoid widening the base-branch domain<->primitives import cycle: the package
 # __init__ pulls in provenance -> primitives.base -> the whole primitives
 # package, which (when imported before primitives) trips a partial-init cycle.
-from loanwhiz.domain.rules import AmountRule, MetricType, RecipientType
+from loanwhiz.domain.rules import (
+    LEGACY_RECIPIENT_SPELLINGS,
+    AmountRule,
+    MetricType,
+    RecipientType,
+    basis_for,
+)
 
 # ---------------------------------------------------------------------------
 # Result type
@@ -82,7 +88,6 @@ _RECIPIENT_ALIASES: dict[str, RecipientType] = {
     # registrar, corporate services, tax / withholding gross-up) collapses here:
     # all are senior admin costs the engine has no formula for (report_supplied),
     # so they are alias rows onto an existing value, not new enum members (#394).
-    "security_trustee_fees": RecipientType.senior_expenses,
     "security_trustee": RecipientType.senior_expenses,
     "trustee_fees": RecipientType.senior_expenses,
     "note_trustee_fees": RecipientType.senior_expenses,
@@ -91,7 +96,6 @@ _RECIPIENT_ALIASES: dict[str, RecipientType] = {
     "issuer_expenses": RecipientType.senior_expenses,
     "issuer_expense_account_replenishment": RecipientType.senior_expenses,
     "senior_expenses": RecipientType.senior_expenses,
-    "senior_fees": RecipientType.senior_expenses,
     "agents_fees": RecipientType.senior_expenses,
     "paying_agent_fees": RecipientType.senior_expenses,
     "cash_manager_fees": RecipientType.senior_expenses,
@@ -122,6 +126,25 @@ _RECIPIENT_ALIASES: dict[str, RecipientType] = {
     "commission_de_gestion": RecipientType.servicing_fee,
     "servicegebuhr": RecipientType.servicing_fee,
     "servicingvergoeding": RecipientType.servicing_fee,
+    # CLO collateral-management fees (#453). Only the *qualified* spellings are
+    # listed, deliberately: a CLO priority of payments always says which of the
+    # three fees a step pays, and there is no substring rule for "management"
+    # — a bare "management_fee", and the out-of-scope **incentive** fee (an
+    # equity-IRR hurdle the engine holds no inputs for), must fall through to
+    # ``unmapped`` rather than be guessed onto the senior one. Guessing there
+    # would pay a real number to the wrong creditor.
+    "senior_management_fee": RecipientType.senior_management_fee,
+    "senior_collateral_management_fee": RecipientType.senior_management_fee,
+    "collateral_management_fee_senior": RecipientType.senior_management_fee,
+    "senior_manager_fee": RecipientType.senior_management_fee,
+    "commissione_di_gestione_senior": RecipientType.senior_management_fee,
+    "comision_de_gestion_senior": RecipientType.senior_management_fee,
+    "subordinated_management_fee": RecipientType.subordinated_management_fee,
+    "subordinated_collateral_management_fee": RecipientType.subordinated_management_fee,
+    "collateral_management_fee_subordinated": RecipientType.subordinated_management_fee,
+    "subordinated_manager_fee": RecipientType.subordinated_management_fee,
+    "commissione_di_gestione_subordinata": RecipientType.subordinated_management_fee,
+    "comision_de_gestion_subordinada": RecipientType.subordinated_management_fee,
     # Swap (non-subordinated). Cap / floor / basis-swap counterparties collapse
     # onto the swap calculator (same report_supplied treatment) — alias, not a
     # new enum value (#394).
@@ -141,16 +164,12 @@ _RECIPIENT_ALIASES: dict[str, RecipientType] = {
     "class_e_interest": RecipientType.class_e_interest,
     "class_f_interest": RecipientType.class_f_interest,
     # PDL cure / replenishment.
-    "class_a_pdl_replenishment": RecipientType.class_a_pdl_cure,
     "class_a_pdl_cure": RecipientType.class_a_pdl_cure,
-    "class_b_pdl_replenishment": RecipientType.class_b_pdl_cure,
     "class_b_pdl_cure": RecipientType.class_b_pdl_cure,
-    "class_c_pdl_replenishment": RecipientType.class_c_pdl_cure,
     "class_c_pdl_cure": RecipientType.class_c_pdl_cure,
     # Reserve replenishment. The general reserve fund keeps ``reserve_
     # replenishment``; liquidity / commingling / set-off reserve top-ups (same
     # target-shortfall mechanic) map onto ``liquidity_reserve_replenishment``.
-    "reserve_account_replenishment": RecipientType.reserve_replenishment,
     "reserve_fund_replenishment": RecipientType.reserve_replenishment,
     "reserve_replenishment": RecipientType.reserve_replenishment,
     "fondo_di_riserva": RecipientType.reserve_replenishment,
@@ -195,6 +214,14 @@ _RECIPIENT_ALIASES: dict[str, RecipientType] = {
     "residual_certificate": RecipientType.residual_certificate,
     "residual": RecipientType.residual_certificate,
 }
+
+# The six non-canonical spellings the ENGINE's need-calculator registry is also
+# keyed by (``senior_fees``, ``class_a_pdl_replenishment``, …). They were rows
+# in the table above until #453; they now live in ``domain.rules`` so
+# ``register_need`` can validate against them without importing this module,
+# and are merged back here so this table's behaviour is unchanged and the two
+# readers cannot disagree about which free strings are legitimate.
+_RECIPIENT_ALIASES.update(LEGACY_RECIPIENT_SPELLINGS)
 
 # Substring rules applied when no exact alias hit. Ordered most-specific first;
 # the first whose pattern is contained in the normalised string wins.
@@ -278,44 +305,28 @@ _METRIC_SUBSTRINGS: list[tuple[str, MetricType]] = [
 # Amount basis binding — mapped recipient → fixed engine formula key.
 # ---------------------------------------------------------------------------
 
-_BASIS_FOR_RECIPIENT: dict[RecipientType, str] = {
-    RecipientType.senior_expenses: "report_supplied",
-    RecipientType.servicing_fee: "report_supplied",
-    RecipientType.swap_payment: "report_supplied",
-    RecipientType.class_a_interest: "interest_accrual",
-    RecipientType.class_b_interest: "interest_accrual",
-    RecipientType.class_c_interest: "interest_accrual",
-    RecipientType.class_d_interest: "interest_accrual",
-    RecipientType.class_e_interest: "interest_accrual",
-    RecipientType.class_f_interest: "interest_accrual",
-    RecipientType.class_a_pdl_cure: "pdl_balance",
-    RecipientType.class_b_pdl_cure: "pdl_balance",
-    RecipientType.class_c_pdl_cure: "pdl_balance",
-    RecipientType.liquidity_reserve_replenishment: "target_shortfall",
-    RecipientType.reserve_replenishment: "target_shortfall",
-    RecipientType.class_a_principal: "principal_due",
-    RecipientType.class_b_principal: "principal_due",
-    RecipientType.class_c_principal: "principal_due",
-    RecipientType.class_d_principal: "principal_due",
-    RecipientType.class_e_principal: "principal_due",
-    RecipientType.class_f_principal: "principal_due",
-    RecipientType.subordinated_amounts: "report_supplied",
-    RecipientType.residual_certificate: "residual",
-    RecipientType.unmapped: "report_supplied",
-}
-
-
 def basis_for_recipient(recipient: RecipientType) -> str:
     """Return the canonical :class:`AmountRule` ``basis`` key for a recipient.
 
-    The binding is fixed: an interest recipient accrues, a PDL recipient cures up
-    to its balance, a reserve recipient tops up to target, a principal recipient
-    amortises, a residual recipient sweeps the remainder, and everything the
-    engine has no formula for (senior expenses, swap, subordinated, ``unmapped``)
-    is ``report_supplied`` — the amount comes from ``PeriodInputs.step_overrides``
-    rather than an engine calculator.
+    The binding is fixed: an interest recipient accrues, a fee recipient accrues
+    on the collateral balance, a PDL recipient cures up to its balance, a reserve
+    recipient tops up to target, a principal recipient amortises, a residual
+    recipient sweeps the remainder, and everything the engine has no formula for
+    (senior expenses, swap, subordinated, ``unmapped``) is ``report_supplied`` —
+    the amount comes from ``PeriodInputs.step_overrides`` rather than an engine
+    calculator.
+
+    The table itself moved to :data:`loanwhiz.domain.rules.RECIPIENT_BASIS`
+    (#453) so the enum, its amount basis and its engine need source are declared
+    in one place, and the engine's need-calculator registry can read the same
+    declaration without importing this module. This wrapper stays so every
+    existing caller (``assembler``, ``build_amount_rule``) is untouched.
+
+    Note the missing ``.get(..., "report_supplied")`` default: the table is
+    asserted total over ``RecipientType`` at import, so an unbound member is now
+    an ImportError rather than a silent report-supplied step.
     """
-    return _BASIS_FOR_RECIPIENT.get(recipient, "report_supplied")
+    return basis_for(recipient)
 
 
 # ---------------------------------------------------------------------------

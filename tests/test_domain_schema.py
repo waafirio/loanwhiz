@@ -81,6 +81,12 @@ def test_recipient_type_closed_set():
     assert {r.value for r in RecipientType} == {
         "senior_expenses",
         "servicing_fee",
+        # CLO collateral-manager fees (#453). The **incentive** fee is
+        # deliberately absent: it hangs on an equity IRR hurdle the engine
+        # holds no inputs for, so it stays `unmapped` rather than becoming a
+        # member that can only ever report-supply.
+        "senior_management_fee",
+        "subordinated_management_fee",
         "swap_payment",
         "class_a_interest",
         "class_b_interest",

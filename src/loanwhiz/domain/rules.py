@@ -41,24 +41,34 @@ from loanwhiz.domain.provenance import ProvenanceMap
 class RecipientType(str, Enum):
     """Who a waterfall step pays — the closed set of engine-evaluable recipients.
 
-    Each value binds to exactly one engine need-calculator, ordered roughly
-    senior → junior. ``unmapped`` is the explicit escape for a step whose
-    recipient the engine cannot evaluate: it degrades honestly to
+    Each value declares **where its per-period need comes from**, ordered
+    roughly senior → junior. ``unmapped`` is the explicit escape for a step
+    whose recipient the engine cannot evaluate: it degrades honestly to
     "report-supplied / not-evaluable" rather than mis-mapping to a wrong
     calculator.
+
+    That declaration is not prose: every member has a row in
+    :data:`RECIPIENT_BASIS` and :data:`RECIPIENT_NEED_SOURCE`, both asserted
+    **exhaustive at import time** (see :func:`_assert_recipient_tables_total`).
+    A member added without those rows fails to import — the hole #394 opened
+    (enum members broadened, calculators never registered, deep-stack steps
+    silently contributing need 0) cannot be reopened by adding a member
+    alone (#453).
 
     The set is broadened beyond the original English Green-Lion RMBS coverage
     for the global ABS universe (#394): deeper capital stacks reach Class F
     interest/principal and Class C PDL cure, and a ``liquidity_reserve_
     replenishment`` covers liquidity / commingling / set-off reserve top-ups.
-    Each addition binds to an **existing** engine basis key (see
-    :func:`~loanwhiz.extraction.taxonomy.basis_for_recipient`) — no new engine
-    formula is introduced; a payee the engine has no calculator for stays
-    ``unmapped`` (honest degradation), never a wrong-calculator mis-map.
+    A CLO adds the senior and subordinated **management fees** (#453) — the
+    only new engine formula since #394, ``fee_accrual`` on the collateral
+    balance, which a CMBS/Auto servicing fee shares. The **incentive**
+    management fee is deliberately absent: it is subject to an equity IRR
+    hurdle the engine holds no inputs for, so it stays ``unmapped``.
     """
 
     senior_expenses = "senior_expenses"  # issuer costs, admin, trustee, agents, tax
     servicing_fee = "servicing_fee"
+    senior_management_fee = "senior_management_fee"  # CLO collateral manager, senior
     swap_payment = "swap_payment"
     class_a_interest = "class_a_interest"
     class_b_interest = "class_b_interest"
@@ -77,9 +87,213 @@ class RecipientType(str, Enum):
     class_d_principal = "class_d_principal"  # deeper-stack principal
     class_e_principal = "class_e_principal"
     class_f_principal = "class_f_principal"
+    # CLO collateral manager, subordinated — ranks below the notes, above equity.
+    subordinated_management_fee = "subordinated_management_fee"
     subordinated_amounts = "subordinated_amounts"  # subordinated swap, deferred fees
     residual_certificate = "residual_certificate"  # deferred purchase price / residual
     unmapped = "unmapped"  # explicit escape -> report-supplied / not-evaluable
+
+
+# ---------------------------------------------------------------------------
+# The recipient contract — basis, need source, legacy spellings.
+#
+# Declared HERE, beside the enum, and nowhere else. ``extraction.taxonomy``
+# and ``primitives.waterfall_interpreter`` both read these tables rather than
+# keeping their own copy: the drift this closes (#453) existed precisely
+# because the enum lived here, the amount-basis binding lived in taxonomy, and
+# the engine's need-calculator registry was keyed by a third, undeclared
+# vocabulary of free strings.
+# ---------------------------------------------------------------------------
+
+#: The fixed engine formulas an :class:`AmountRule` may select. ``report_supplied``
+#: means there is no engine formula (the amount comes from
+#: ``PeriodInputs.step_overrides``); ``residual`` is the terminal sweep.
+AmountBasis = Literal[
+    "interest_accrual",  # balance x rate x days / basis
+    "fee_accrual",  # collateral balance x fee rate x days / basis (#453)
+    "pdl_balance",  # cure up to outstanding PDL
+    "target_shortfall",  # reserve: max(0, target - balance)
+    "principal_due",  # amortisation / sequential / pro-rata
+    "report_supplied",  # no engine formula — amount from PeriodInputs.step_overrides
+    "residual",  # whatever remains (terminal step)
+]
+
+
+class NeedSource(str, Enum):
+    """Where the engine gets a recipient's per-period need.
+
+    The enum's promise used to be prose — "each value binds to exactly one
+    engine need-calculator" — which was false for most members and enforced
+    nowhere. This makes it a checkable, per-member declaration, and splits the
+    four genuinely different answers apart so "no calculator" stops meaning
+    both "legitimately supplied elsewhere" and "nobody registered one" (#453).
+
+    Attributes:
+        calculator:    An engine formula over deal data.
+                       ``waterfall_interpreter.NEED_CALCULATORS`` **must** hold
+                       one keyed by the member's own value.
+        funds_input:   A servicer-actual scalar carried on ``WaterfallFunds``
+                       (``senior_fees``, ``swap_payment``). A registered
+                       calculator passes it through, so the registry must hold
+                       one, but the number is the report's, not the engine's.
+        allocation:    Supplied by ``waterfall_interpreter.allocate_principal``
+                       and fed in as ``interpret(need_overrides=...)``. The
+                       registry must **not** hold one — a calculator here would
+                       race the sequential↔pro-rata allocation.
+        step_override: No engine formula; the amount comes from
+                       ``PeriodInputs.step_overrides``.
+        residual:      The terminal "whatever remains" sweep; the need is
+                       whatever is left in the pot, by definition.
+    """
+
+    calculator = "calculator"
+    funds_input = "funds_input"
+    allocation = "allocation"
+    step_override = "step_override"
+    residual = "residual"
+
+
+#: Recipient → the fixed engine formula that computes its amount. Exhaustive
+#: over :class:`RecipientType`, asserted at import.
+RECIPIENT_BASIS: dict["RecipientType", AmountBasis] = {
+    RecipientType.senior_expenses: "report_supplied",
+    RecipientType.servicing_fee: "report_supplied",
+    RecipientType.senior_management_fee: "fee_accrual",
+    RecipientType.swap_payment: "report_supplied",
+    RecipientType.class_a_interest: "interest_accrual",
+    RecipientType.class_b_interest: "interest_accrual",
+    RecipientType.class_c_interest: "interest_accrual",
+    RecipientType.class_d_interest: "interest_accrual",
+    RecipientType.class_e_interest: "interest_accrual",
+    RecipientType.class_f_interest: "interest_accrual",
+    RecipientType.class_a_pdl_cure: "pdl_balance",
+    RecipientType.class_b_pdl_cure: "pdl_balance",
+    RecipientType.class_c_pdl_cure: "pdl_balance",
+    RecipientType.liquidity_reserve_replenishment: "target_shortfall",
+    RecipientType.reserve_replenishment: "target_shortfall",
+    RecipientType.class_a_principal: "principal_due",
+    RecipientType.class_b_principal: "principal_due",
+    RecipientType.class_c_principal: "principal_due",
+    RecipientType.class_d_principal: "principal_due",
+    RecipientType.class_e_principal: "principal_due",
+    RecipientType.class_f_principal: "principal_due",
+    RecipientType.subordinated_management_fee: "fee_accrual",
+    RecipientType.subordinated_amounts: "report_supplied",
+    RecipientType.residual_certificate: "residual",
+    RecipientType.unmapped: "report_supplied",
+}
+
+#: Recipient → where its need comes from. Exhaustive over
+#: :class:`RecipientType`, asserted at import.
+RECIPIENT_NEED_SOURCE: dict["RecipientType", NeedSource] = {
+    # Servicer-actual scalars the interpreter reads off ``WaterfallFunds``.
+    RecipientType.senior_expenses: NeedSource.funds_input,
+    RecipientType.swap_payment: NeedSource.funds_input,
+    # No engine formula at all — the amount comes from step_overrides.
+    RecipientType.servicing_fee: NeedSource.step_override,
+    RecipientType.subordinated_amounts: NeedSource.step_override,
+    RecipientType.unmapped: NeedSource.step_override,
+    # Engine formulas over deal data.
+    RecipientType.senior_management_fee: NeedSource.calculator,
+    RecipientType.subordinated_management_fee: NeedSource.calculator,
+    RecipientType.class_a_interest: NeedSource.calculator,
+    RecipientType.class_b_interest: NeedSource.calculator,
+    RecipientType.class_c_interest: NeedSource.calculator,
+    RecipientType.class_d_interest: NeedSource.calculator,
+    RecipientType.class_e_interest: NeedSource.calculator,
+    RecipientType.class_f_interest: NeedSource.calculator,
+    RecipientType.class_a_pdl_cure: NeedSource.calculator,
+    RecipientType.class_b_pdl_cure: NeedSource.calculator,
+    RecipientType.class_c_pdl_cure: NeedSource.calculator,
+    RecipientType.liquidity_reserve_replenishment: NeedSource.calculator,
+    RecipientType.reserve_replenishment: NeedSource.calculator,
+    # Principal: allocate_principal owns the sequential ↔ pro-rata split and
+    # feeds it in as need_overrides. A registered calculator would race it.
+    RecipientType.class_a_principal: NeedSource.allocation,
+    RecipientType.class_b_principal: NeedSource.allocation,
+    RecipientType.class_c_principal: NeedSource.allocation,
+    RecipientType.class_d_principal: NeedSource.allocation,
+    RecipientType.class_e_principal: NeedSource.allocation,
+    RecipientType.class_f_principal: NeedSource.allocation,
+    # The terminal sweep.
+    RecipientType.residual_certificate: NeedSource.residual,
+}
+
+#: Non-canonical recipient spellings the **engine** accepts as registry keys.
+#:
+#: The interpreter's ``NEED_CALCULATORS`` predates the canonical enum and is
+#: keyed by the free strings the extractor emits, six of which are not enum
+#: values. They are legitimate — real deal models spell steps this way — but
+#: they were declared only as rows buried in ``taxonomy._RECIPIENT_ALIASES``,
+#: which the interpreter cannot import (it would close the
+#: ``domain -> primitives -> extraction -> domain`` cycle). Declaring them here
+#: lets ``register_need`` refuse anything outside enum ∪ this table, which is
+#: what makes the #394 drift *unregistrable* rather than merely detectable.
+#:
+#: ``taxonomy._RECIPIENT_ALIASES`` merges this table rather than restating it,
+#: so the two cannot disagree.
+LEGACY_RECIPIENT_SPELLINGS: dict[str, "RecipientType"] = {
+    "senior_fees": RecipientType.senior_expenses,
+    "security_trustee_fees": RecipientType.senior_expenses,
+    "class_a_pdl_replenishment": RecipientType.class_a_pdl_cure,
+    "class_b_pdl_replenishment": RecipientType.class_b_pdl_cure,
+    "class_c_pdl_replenishment": RecipientType.class_c_pdl_cure,
+    "reserve_account_replenishment": RecipientType.reserve_replenishment,
+}
+
+
+def _assert_recipient_tables_total() -> None:
+    """Refuse to import if either recipient table is not total over the enum.
+
+    This is the guard that makes the #453 defect class unrepresentable rather
+    than merely documented. Before it, ``basis_for_recipient`` ended in
+    ``.get(recipient, "report_supplied")``: a member added to
+    :class:`RecipientType` with no binding *silently* became report-supplied,
+    which is exactly how #394 broadened the vocabulary and left nine engine
+    holes behind. An ImportError is loud, immediate and impossible to ship past.
+    """
+    for name, table in (
+        ("RECIPIENT_BASIS", RECIPIENT_BASIS),
+        ("RECIPIENT_NEED_SOURCE", RECIPIENT_NEED_SOURCE),
+    ):
+        missing = sorted(r.value for r in RecipientType if r not in table)
+        if missing:
+            raise ImportError(
+                f"{name} is not total over RecipientType — no binding declared "
+                f"for {missing}. Every recipient must declare where its need "
+                f"comes from; see NeedSource."
+            )
+
+
+_assert_recipient_tables_total()
+
+
+def basis_for(recipient: "RecipientType") -> AmountBasis:
+    """The fixed engine formula key bound to ``recipient``.
+
+    Total by construction — :func:`_assert_recipient_tables_total` ran at
+    import, so this indexes rather than defaulting.
+    """
+    return RECIPIENT_BASIS[recipient]
+
+
+def need_source_for(recipient: "RecipientType") -> NeedSource:
+    """Where the engine gets ``recipient``'s per-period need."""
+    return RECIPIENT_NEED_SOURCE[recipient]
+
+
+def recipients_needing_calculator() -> frozenset["RecipientType"]:
+    """The recipients ``NEED_CALCULATORS`` must hold an entry for.
+
+    Both :attr:`NeedSource.calculator` and :attr:`NeedSource.funds_input` are
+    registry-backed; they differ in where the *number* originates, not in
+    whether the interpreter looks one up.
+    """
+    return frozenset(
+        r
+        for r, src in RECIPIENT_NEED_SOURCE.items()
+        if src in (NeedSource.calculator, NeedSource.funds_input)
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -143,14 +357,9 @@ class AmountRule(BaseModel):
     calculator: RecipientType = Field(
         ..., description="Binds to the engine's need-calculator for this recipient."
     )
-    basis: Literal[
-        "interest_accrual",  # balance x rate x days / basis
-        "pdl_balance",  # cure up to outstanding PDL
-        "target_shortfall",  # reserve: max(0, target - balance)
-        "principal_due",  # amortisation / sequential / pro-rata
-        "report_supplied",  # no engine formula — amount from PeriodInputs.step_overrides
-        "residual",  # whatever remains (terminal step)
-    ] = Field(..., description="Which fixed engine formula computes the amount.")
+    basis: AmountBasis = Field(
+        ..., description="Which fixed engine formula computes the amount."
+    )
     raw_text: str = Field(..., description="Verbatim prose, for audit.")
 
 
