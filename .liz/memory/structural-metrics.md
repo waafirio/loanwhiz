@@ -28,3 +28,15 @@ the most flattering candidate. Map the recognised-but-unplaceable string to the
 the string reaching an LLM that would invent a position non-deterministically.
 
 Refs: #452
+
+## 2026-09-05 · pitfall · #457
+
+Before repeating a documented reason for a metric refusing, run it and read
+**which layer actually refused**. Refusals stack and the documented cause is
+often never reached: a coverage test recorded as unquantifiable-for-want-of-a-
+threshold refused earlier on an unplaceable equity tranche. Fixing only the
+documented one leaves the test still refusing. Probe the next layer by removing
+the blocking input only when doing so provably changes no output, and label that
+a counterfactual, never a deal figure.
+
+Refs: #457

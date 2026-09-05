@@ -14,3 +14,4 @@ deal name: that covers document content and prompt revision at once. Expect the
 cache to make any test that already reached the live model order-dependent.
 
 Refs: #445
+Refs: #456 — the covenant cache had the same deal-name key.

@@ -379,6 +379,44 @@ The Notes Initial Payment will be paid on the Issue Date to the Issuer in the am
 """
 
 
+# The real Cairn CLO XVII DAC cover page (#456), verbatim from page 3 of the
+# 420-page Listing Particulars. Like Leone Arancio it states the capital
+# structure in PROSE with no tranche table, but it adds two shapes no committed
+# RMBS deal has: a **hyphenated** sub-series (Class B-1 / B-2, where the Italian
+# and Spanish deals write A1 / A2 joined), and an **unlettered** residual
+# tranche (the Subordinated Notes) carrying 8.7% of the stack.
+_CLO_PROSE_CAPITAL_STRUCTURE_MD = """\
+## Cairn CLO XVII Designated Activity Company
+
+EUR 248,000,000 Class A Senior Secured Floating Rate Notes due 2036
+EUR 24,600,000 Class B-1 Senior Secured Floating Rate Notes due 2036
+EUR 15,000,000 Class B-2 Senior Secured Fixed Rate Notes due 2036
+EUR 23,100,000 Class C Senior Secured Deferrable Floating Rate Notes due 2036
+EUR 26,500,000 Class D Senior Secured Deferrable Floating Rate Notes due 2036
+EUR 17,200,000 Class E Senior Secured Deferrable Floating Rate Notes due 2036
+EUR 14,600,000 Class F Senior Secured Deferrable Floating Rate Notes due 2036
+EUR 35,100,000 Subordinated Notes due 2036
+"""
+
+
+# The real Cairn CLO XVII tranche table as Docling renders it (#456), abridged
+# to the rows that matter. Two properties no committed RMBS table has: a
+# hyphenated sub-series, and a final row whose rating and coupon columns are
+# explicitly "N/A" while a LATER column still holds a percentage (the issue
+# price). Both are what a positional attribute scan gets wrong.
+_CLO_TRANCHE_TABLE_MD = """\
+# Cairn CLO XVII DAC — Notes
+
+| Class of Notes     | Principal Amount   | Initial Stated Interest Rate 2,5   | S&P Rating 1 of at least   |   Stated Maturity | Issue Price 4   |
+|--------------------|--------------------|------------------------------------|----------------------------|-------------------|-----------------|
+| Class A Notes      | €248,000,000       | 3 month EURIBOR + 1.80%            | "AAA(sf)"                  |              2036 | 100.00%         |
+| Class B-1 Notes    | €24,600,000        | 3 month EURIBOR + 2.75%            | "AA(sf)"                   |              2036 | 100.00%         |
+| Class B-2 Notes    | €15,000,000        | 6.87%                              | "AA(sf)"                   |              2036 | 100.00%         |
+| Class F Notes      | €14,600,000        | 3 month EURIBOR + 9.64%            | "B-(sf)"                   |              2036 | 100.00%         |
+| Subordinated Notes | €35,100,000        | N/A 6                              | N/A                        |              2036 | 79.00%          |
+"""
+
+
 class TestExtractTranches:
     def test_no_sources_returns_empty_list(self) -> None:
         assert _extract_tranches(None, None) == []
@@ -711,6 +749,158 @@ class TestExtractTranches:
         ranks = [_seniority_for(n) for n in ("Class A1", "Class A2", "Class B", "Class J")]
         assert ranks == sorted(ranks)
         assert len(set(ranks)) == len(ranks)
+
+    # --- #456: hyphenated sub-classes + an unlettered named residual -------
+
+    def test_hyphenated_subclasses_are_distinct_sized_tranches(self) -> None:
+        """``Class B-1`` / ``Class B-2`` are two tranches, not one and not none.
+
+        A sub-series is written joined ("Class A1", the Italian and Spanish
+        deals) or hyphenated ("Class B-1", the CLO and US convention). The
+        class grammar admitted only the joined form, so on Cairn CLO XVII the
+        prose pattern failed outright at the hyphen: B-1 and B-2 produced no
+        match at all and EUR 39.6m of the stack vanished silently.
+        """
+        by_name = {
+            t["name"]: t
+            for t in _extract_tranches(route_sections(_CLO_PROSE_CAPITAL_STRUCTURE_MD))
+        }
+        assert "Class B-1" in by_name
+        assert "Class B-2" in by_name
+        assert by_name["Class B-1"]["size_eur"] == 24_600_000.0
+        assert by_name["Class B-2"]["size_eur"] == 15_000_000.0
+
+    def test_hyphenated_subclass_seniority_is_distinct_and_ordered(self) -> None:
+        r"""A hyphenated sub-series orders like a joined one: A < B-1 < B-2 < C.
+
+        ``_seniority_for`` read the series digits with ``\s*(\d*)``, which the
+        hyphen blocked — so ``Class B-1`` and ``Class B-2`` both scored 100.
+        Two tranches sharing a seniority make the senior→junior sort
+        non-deterministic between them, and a waterfall paid in that order pays
+        the wrong note first.
+        """
+        assert _seniority_for("Class B-1") < _seniority_for("Class B-2")
+        assert _seniority_for("Class A") < _seniority_for("Class B-1")
+        assert _seniority_for("Class B-2") < _seniority_for("Class C")
+        # The joined and hyphenated spellings are the same tranche position.
+        assert _seniority_for("Class B-1") == _seniority_for("Class B1")
+
+    def test_unlettered_named_residual_note_is_not_dropped(self) -> None:
+        """"Subordinated Notes" is a real sized tranche with no class letter.
+
+        The class grammar keyed entirely off a ``Class <letter>`` token, so a
+        CLO's equity tranche — named, sized and listed in the same cover-page
+        enumeration as the rated notes — was unseeable by construction. This is
+        #439's lesson on a second axis: the guard excluded a whole naming
+        convention, not just a letter.
+        """
+        by_name = {
+            t["name"]: t
+            for t in _extract_tranches(route_sections(_CLO_PROSE_CAPITAL_STRUCTURE_MD))
+        }
+        assert "Subordinated Notes" in by_name
+        assert by_name["Subordinated Notes"]["size_eur"] == 35_100_000.0
+        # A residual ranks below every lettered class, including the named
+        # junior letters — it is the first-loss piece.
+        assert by_name["Subordinated Notes"]["seniority"] > by_name["Class F"]["seniority"]
+
+    def test_seniority_puts_a_named_residual_below_every_class_letter(self) -> None:
+        """A residual name outranks nothing — not even Class Z.
+
+        Scored off its first letter, "Subordinated" read as ``S`` and landed
+        *senior* to Class X and Class Z, which are themselves residual labels.
+        A residual is defined by being last, so it is ranked, not spelled.
+        """
+        residual = _seniority_for("Subordinated Notes")
+        for letter in ("A", "B", "C", "D", "E", "F", "G", "J", "M", "R", "X", "Z"):
+            assert residual > _seniority_for(f"Class {letter}"), letter
+
+    def test_full_clo_capital_stack_parses_senior_to_junior(self) -> None:
+        """All eight Cairn CLO XVII classes, in order, summing to the cover page.
+
+        The whole-stack assertion is the one that catches a partial parse: the
+        per-class tests above each pass while three other tranches are missing,
+        and a capital structure short EUR 74.7m of EUR 404.1m still looks
+        entirely well-formed to every downstream consumer.
+        """
+        result = _extract_tranches(route_sections(_CLO_PROSE_CAPITAL_STRUCTURE_MD))
+        assert [t["name"] for t in result] == [
+            "Class A", "Class B-1", "Class B-2", "Class C",
+            "Class D", "Class E", "Class F", "Subordinated Notes",
+        ]
+        assert sum(t["size_eur"] for t in result) == 404_100_000.0
+        seniorities = [t["seniority"] for t in result]
+        assert all(a < b for a, b in zip(seniorities, seniorities[1:])), seniorities
+
+    def test_an_arbitrary_adjective_before_notes_is_not_a_tranche(self) -> None:
+        """Only the conventional residual designators are class names.
+
+        Admitting an unlettered tranche must not turn every "<Word> Notes"
+        phrase into one — a prospectus is full of them ("Retained Notes", "the
+        Rated Notes"). The vocabulary is a closed enumeration, exactly like the
+        class-letter alphabet, so a word outside it stays unseen.
+        """
+        md = (
+            "Nominal amount:\n\n"
+            "- Euro 500,000,000 for the Class A Notes;\n"
+            "- Euro 20,000,000 for the Class B Notes.\n\n"
+            "EUR 42,000,000 Retained Notes due 2036\n"
+            "EUR 43,000,000 Rated Notes due 2036\n"
+        )
+        names = [t["name"] for t in _extract_tranches(route_sections(md))]
+        assert names == ["Class A", "Class B"]
+
+    def test_table_layout_also_sees_subclasses_and_the_residual(self) -> None:
+        """The table path recognises the same class set as the prose path.
+
+        Both paths resolve a class through one shared grammar, so a document
+        that states its stack in a table gets the identical tranche set as one
+        that states it in prose — otherwise which spelling a deal happens to
+        use decides whether its junior notes exist.
+        """
+        result = _extract_tranches(route_sections(_CLO_TRANCHE_TABLE_MD))
+        assert [t["name"] for t in result] == [
+            "Class A", "Class B-1", "Class B-2", "Class F", "Subordinated Notes",
+        ]
+        by_name = {t["name"]: t for t in result}
+        assert by_name["Class B-2"]["size_eur"] == 15_000_000.0
+        assert by_name["Subordinated Notes"]["size_eur"] == 35_100_000.0
+
+    def test_unrated_residual_reports_no_rating_rather_than_scavenging_one(
+        self,
+    ) -> None:
+        """An explicit "N/A" is an answer - absent - not a cell to scan past.
+
+        The Subordinated Notes are explicitly unrated and pay no stated coupon.
+        A scan that reads the first matching cell in the row takes the
+        word-bounded "A" out of "N/A" and reports the first-loss tranche as
+        rated single-A, and takes the 79.00% issue price as its coupon. A
+        fabricated rating on the note that absorbs the first loss is precisely
+        the plausible-looking wrong number nobody re-checks.
+        """
+        by_name = {
+            t["name"]: t for t in _extract_tranches(route_sections(_CLO_TRANCHE_TABLE_MD))
+        }
+        residual = by_name["Subordinated Notes"]
+        assert residual["rating"] is None
+        assert residual["rate"] is None
+
+    def test_attributes_are_read_from_their_labelled_column(self) -> None:
+        """A rated row's coupon is its rate column, never a later percentage.
+
+        The issue-price column also holds a bare percentage, so the rate is
+        only right by accident when the rate column happens to come first.
+        Reading the header's own labels is what makes it right on purpose.
+        """
+        by_name = {
+            t["name"]: t for t in _extract_tranches(route_sections(_CLO_TRANCHE_TABLE_MD))
+        }
+        assert by_name["Class B-2"]["rate"] == "6.87%"
+        assert by_name["Class A"]["rate"] == "3 month EURIBOR + 1.80%"
+        # The 100.00% issue price never becomes a coupon.
+        assert all(
+            t["rate"] != "100.00%" for t in by_name.values() if t["rate"] is not None
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -2108,3 +2298,118 @@ class TestExtractionDeterminism:
 
         assert degraded.completeness_score < full.completeness_score
         assert set(degraded.sections_found) < set(full.sections_found)
+
+
+# ---------------------------------------------------------------------------
+# Unit tests — coverage-test thresholds (#456)
+# ---------------------------------------------------------------------------
+
+
+class TestCoverageTriggerThresholds:
+    """A coverage test must never carry a threshold that cannot be breached."""
+
+    @staticmethod
+    def _rules(triggers: list[dict]) -> list:
+        from loanwhiz.extraction.assembler import _trigger_rules_from_covenants
+
+        return _trigger_rules_from_covenants(
+            {"triggers": triggers},
+            deal_name="Test Deal",
+            provenance={},
+            use_llm=False,
+        )
+
+    @pytest.mark.parametrize("placeholder", [0.0, -1.0, -100.0])
+    def test_a_non_positive_coverage_threshold_becomes_unquantified(
+        self, placeholder: float
+    ) -> None:
+        """A coverage level is positive, so anything else is recorded as no level.
+
+        An overcollateralisation or interest-coverage test runs at 100-130%. A
+        non-positive threshold is an unquantified extraction wearing a number,
+        and it fails invisibly: "ratio < 0" is never true, so the test reads as
+        permanently SATISFIED and the breach it exists to catch never fires.
+        #452 already refuses an unquantified coverage test at the monitor seam
+        and says why, but that guard keys on a None threshold — so the honest
+        outcome depends on this normalisation routing the case to it.
+
+        The parametrisation is the point, not thoroughness. The first real
+        extraction emitted 0.0; told not to emit 0, the next emitted -1.0. A
+        guard bounded by the sentinel observed once is defeated by the next one,
+        so it is bounded by the property instead (#439's lesson, new axis).
+        """
+        rules = self._rules([
+            {
+                "name": "class_c_par_value_test",
+                "metric": "class_c_par_value_ratio",
+                "threshold": placeholder,
+                "threshold_unit": "percentage",
+                "direction": "below",
+            }
+        ])
+        from loanwhiz.domain.rules import MetricType
+
+        assert rules[0].metric == MetricType.class_c_oc_ratio
+        assert rules[0].threshold is None
+
+    def test_a_real_coverage_level_is_kept_exactly(self) -> None:
+        """The normalisation touches 0.0 only — a stated level passes through."""
+        rules = self._rules([
+            {
+                "name": "class_c_par_value_test",
+                "metric": "class_c_par_value_ratio",
+                "threshold": 121.74,
+                "threshold_unit": "percentage",
+                "direction": "below",
+            }
+        ])
+        assert rules[0].threshold == 121.74
+
+    def test_a_non_coverage_zero_threshold_is_untouched(self) -> None:
+        """A PDL fires on any positive balance, so ITS zero threshold is real.
+
+        The guard is scoped to coverage ratios precisely because zero is a
+        meaningful level for a balance rule and a meaningless one for a ratio.
+        """
+        rules = self._rules([
+            {
+                "name": "principal_deficiency_ledger_trigger",
+                "metric": "pdl_debit_balance",
+                "threshold": None,
+                "threshold_unit": "eur",
+                "direction": "non_zero",
+            }
+        ])
+        assert rules[0].threshold == 0.0
+
+
+class TestPartiallyLabelledTrancheTable:
+    """A header naming SOME attributes must not cost the others (#456)."""
+
+    _MD = """\
+# Notes
+
+| Class of Notes | Size            | S&P Rating |
+|----------------|-----------------|------------|
+| Class A Notes  | EUR 500,000,000 | AAA        |
+| Class B Notes  | EUR 20,000,000  | AA         |
+"""
+
+    def test_an_undeclared_attribute_falls_back_rather_than_dropping_the_row(
+        self,
+    ) -> None:
+        """"Size" is outside the size vocabulary, so that column is undeclared.
+
+        Choosing the column map or the positional scan for the WHOLE row means a
+        header that labels its rating column but not its amount column resolves
+        no size, and the ``size is None`` guard then drops every tranche in the
+        table — trading a wrong-attribute bug for a silent total loss, which is
+        strictly worse. The fallback is therefore per attribute.
+        """
+        result = _extract_tranches(route_sections(self._MD))
+        assert [t["name"] for t in result] == ["Class A", "Class B"]
+        by_name = {t["name"]: t for t in result}
+        assert by_name["Class A"]["size_eur"] == 500_000_000.0
+        assert by_name["Class B"]["size_eur"] == 20_000_000.0
+        # The declared column is still read from its own column.
+        assert by_name["Class A"]["rating"] == "AAA"

@@ -149,7 +149,7 @@ What this does, in order:
 
 ## Running Against a New Deal
 
-The framework is **data-driven by design** — adding a deal is *data*, not code (the waterfall interpreter executes each deal's extracted model rather than hardcoded logic). Drop a `src/loanwhiz/data/deals.json` file next to `config.py`; it is a JSON object mapping each `deal_id` to a deal-context dict and is merged over the in-code Green Lion default at import time (no Python edit required). The unmodified pipeline now runs end-to-end on five deals across three jurisdictions, but "ran" is not "validated": exactly one deal — **Green Lion 2024-1** — is validated to the cent against its own published Notes & Cash report, and one more — Green Lion 2023-1 — is graded to the cent by `GET /quality-matrix` against a committed answer key. See [SYSTEM-STATUS.md](../SYSTEM-STATUS.md) for the current boundaries:
+The framework is **data-driven by design** — adding a deal is *data*, not code (the waterfall interpreter executes each deal's extracted model rather than hardcoded logic). Drop a `src/loanwhiz/data/deals.json` file next to `config.py`; it is a JSON object mapping each `deal_id` to a deal-context dict and is merged over the in-code Green Lion default at import time (no Python edit required). The unmodified pipeline now runs end-to-end on five deals across three jurisdictions — a sixth, an Irish CLO, is registered as data only and runs nowhere yet — but "ran" is not "validated": exactly one deal — **Green Lion 2024-1** — is validated to the cent against its own published Notes & Cash report, and one more — Green Lion 2023-1 — is graded to the cent by `GET /quality-matrix` against a committed answer key. See [SYSTEM-STATUS.md](../SYSTEM-STATUS.md) for the current boundaries:
 
 ```json
 {
@@ -190,7 +190,7 @@ Endpoints:
 - `POST /deal/{id}/project` — multi-period forward fold over a `months` horizon under base/stress scenarios
 - `POST /deal/{id}/stress-matrix` — the same fold across a CPR × CDR × rate-shift grid (capped at 64 cells)
 - `GET /primitives` — the primitive catalogue with per-primitive reachability (`live` / `library-only`)
-- `GET /capability-matrix` — the primitives × 5 deals capability matrix: each cell `validated` / `ran` / `not-applicable` with a real reason, plus the tally (**1 validated / 12 ran / 12 not-applicable**)
+- `GET /capability-matrix` — the primitives × 6 registered deals capability matrix: each cell `validated` / `ran` / `not-applicable` with a real reason, plus the tally (**1 validated / 14 ran / 15 not-applicable**)
 - `GET /quality-matrix` — the *graded* extension: each (deal × check) cell reconciled against the deal's committed ground-truth answer key. Two deals have one — Green Lion 2024-1 and Green Lion 2023-1 — and both grade their revenue/redemption PoP to the cent
 - `GET /deal/{id}/validation` — the engine-validation report for a deal; `available=true` with the to-the-cent reconciliation for Green Lion 2024-1, `available=false` with an honest note otherwise. Note this understates Green Lion 2023-1: it has committed fixtures and an answer key and is graded by `/quality-matrix`, but no validation *builder* is registered, so this endpoint still reports `available=false`
 
@@ -201,7 +201,7 @@ See `src/loanwhiz/api/README.md` for the full endpoint reference and curl exampl
 The Next.js dashboard (`./scripts/run-demo-v2.sh`, UI on :3000) groups its views into two sidebar sections (`NAV_GROUPS` in `web/lib/nav.ts`):
 
 - **Deal Analytics** — Overview, Pool & Performance, Waterfall, Compliance, Projection (the per-deal analyst views, one loaded deal at a time).
-- **Platform & Governance** — Showcase (the primitives × 5 deals capability matrix across Dutch / Italian / Spanish RMBS), Validation (the Green Lion 2024-1 engine-vs-Notes-&-Cash proof, to the cent), Framework (the primitive-registry catalogue), and Governance (the FINOS evidence pack + direct-read tape `data_source` provenance).
+- **Platform & Governance** — Showcase (the primitives × 6 registered deals capability matrix across Dutch / Italian / Spanish RMBS plus the registered-only Irish CLO), Validation (the Green Lion 2024-1 engine-vs-Notes-&-Cash proof, to the cent), Framework (the primitive-registry catalogue), and Governance (the FINOS evidence pack + direct-read tape `data_source` provenance).
 
 The capability matrix is the honest source of truth for what is validated vs ran vs not-applicable across the deal set — never read the cross-jurisdiction coverage as "validated everywhere".
 

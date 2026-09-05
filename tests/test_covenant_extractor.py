@@ -721,3 +721,98 @@ class TestGreenLionCovenantExtractor:
         assert len(covenants.issuer_covenants) >= 1, (
             "Expected at least one issuer covenant from the Green Lion prospectus"
         )
+
+
+class TestCovenantCacheKey:
+    """The cache key must cover the prompt, not just the deal (#456)."""
+
+    def test_a_prompt_revision_changes_the_cache_path(self) -> None:
+        """Editing the extraction prompt must re-ask the model, not replay it.
+
+        Keyed on the deal name alone, a cached deal kept serving the answer the
+        OLD prompt wording produced, so a prompt improvement read as having no
+        effect — indistinguishable from the improvement not working, and the
+        exact shape of the no-op-by-construction trap #438 caught elsewhere.
+        """
+        from loanwhiz.extraction.covenant_extractor import _default_cache_path
+
+        before = _default_cache_path("Cairn CLO XVII DAC", "prompt text v1")
+        after = _default_cache_path("Cairn CLO XVII DAC", "prompt text v2")
+        assert before != after
+
+    def test_the_same_prompt_and_deal_reuse_one_entry(self) -> None:
+        """The key is stable, so an unchanged prompt still hits its cache."""
+        from loanwhiz.extraction.covenant_extractor import _default_cache_path
+
+        a = _default_cache_path("Cairn CLO XVII DAC", "identical prompt")
+        b = _default_cache_path("Cairn CLO XVII DAC", "identical prompt")
+        assert a == b
+
+    def test_two_deals_never_share_an_entry(self) -> None:
+        """Document content reaches the key through the prompt it is rendered into."""
+        from loanwhiz.extraction.covenant_extractor import _default_cache_path
+
+        a = _default_cache_path("Deal One", "sections of deal one")
+        b = _default_cache_path("Deal Two", "sections of deal two")
+        assert a != b
+
+
+class TestCovenantSectionSelection:
+    """The section cues must name each role's synonym family, not one deal's."""
+
+    @staticmethod
+    def _clo_markdown() -> str:
+        """A CLO-shaped document: no RMBS section numbers, lettered Conditions."""
+        return (
+            "## IMPORTANT NOTICE\n\n"
+            + ("This offering circular may not be forwarded. " * 400)
+            + "\n\n## Coverage Tests and Collateral Quality Tests\n\n"
+            "The Class A/B Par Value Test will be satisfied if the Class A/B Par "
+            "Value Ratio is at least equal to 130.08 per cent.\n"
+            "The Class C Interest Coverage Test will be satisfied if the Class C "
+            "Interest Coverage Ratio is at least equal to 110.00 per cent.\n\n"
+            "## Application of Interest Proceeds\n\n"
+            "(A) to the payment of Taxes;\n(B) to the payment of Trustee Fees;\n"
+            "(C) to the payment of Administrative Expenses;\n"
+        )
+
+    def test_a_coverage_tests_heading_is_selected(self) -> None:
+        """A CLO defines its coverage tests under a heading no RMBS cue names.
+
+        The cue list carried only Green Lion's spellings and section numbers
+        ("5.2", "revenue priority"), none of which a CLO uses. With nothing
+        matched the collector falls back to the first 30,000 characters, which
+        on a real offering circular is the Rule 144A disclaimer — so the model
+        was asked to find triggers in the front matter.
+        """
+        from loanwhiz.extraction.covenant_extractor import _collect_section_text
+        from loanwhiz.extraction.section_router import route_sections
+
+        text, _ = _collect_section_text(route_sections(self._clo_markdown()))
+        assert "COVERAGE TESTS" in text
+        assert "Par Value Test" in text
+        assert "Interest Coverage Test" in text
+
+    def test_the_interest_proceeds_cascade_is_selected(self) -> None:
+        """"Application of Interest Proceeds" is a priority of payments."""
+        from loanwhiz.extraction.covenant_extractor import _collect_section_text
+        from loanwhiz.extraction.section_router import route_sections
+
+        text, _ = _collect_section_text(route_sections(self._clo_markdown()))
+        # The LABEL, not the prose: the blind 30k fallback would contain this
+        # section's text too, so asserting the text alone passes either way.
+        # Only a section the collector actually SELECTED carries its header.
+        assert "PRIORITY OF PAYMENTS: Application of Interest Proceeds" in text
+
+    def test_the_disclaimer_fallback_is_not_reached(self) -> None:
+        """Selecting real sections is what keeps the blind 30k slice unused.
+
+        The fallback fires only when NOTHING matched, so the way to show the
+        cues work is that the front matter — which the fallback would have sent
+        in full — is not what got collected.
+        """
+        from loanwhiz.extraction.covenant_extractor import _collect_section_text
+        from loanwhiz.extraction.section_router import route_sections
+
+        text, _ = _collect_section_text(route_sections(self._clo_markdown()))
+        assert "may not be forwarded" not in text
