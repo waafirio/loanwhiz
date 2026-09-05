@@ -23,6 +23,7 @@ from loanwhiz.extraction import taxonomy
 from loanwhiz.extraction.taxonomy import (
     basis_for_recipient,
     build_amount_rule,
+    coverage_metric_for,
     map_metric,
     map_recipient,
     normalize_threshold_unit,
@@ -397,3 +398,117 @@ def test_build_amount_rule_interest() -> None:
     rule = build_amount_rule(RecipientType.class_a_interest, "all interest due")
     assert rule.basis == "interest_accrual"
     assert rule.calculator == RecipientType.class_a_interest
+
+
+# ---------------------------------------------------------------------------
+# Coverage tests, per attachment point (#452).
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "raw,expected",
+    [
+        # Overcollateralisation, under each name a prospectus actually uses.
+        ("Class A Overcollateralisation Test", MetricType.class_a_oc_ratio),
+        ("Class B Overcollateralization Ratio", MetricType.class_b_oc_ratio),
+        ("class_c_oc_ratio", MetricType.class_c_oc_ratio),
+        ("Class D OC Test", MetricType.class_d_oc_ratio),
+        ("Class E Par Value Test", MetricType.class_e_oc_ratio),
+        ("Class F Principal Coverage Test", MetricType.class_f_oc_ratio),
+        # Interest coverage.
+        ("Class A Interest Coverage Ratio", MetricType.class_a_ic_ratio),
+        ("Class B IC Test", MetricType.class_b_ic_ratio),
+        ("class_c_ic_ratio", MetricType.class_c_ic_ratio),
+        ("Class D Interest Coverage Test", MetricType.class_d_ic_ratio),
+    ],
+)
+def test_coverage_metric_maps_per_attachment_point(
+    raw: str, expected: MetricType
+) -> None:
+    """A coverage test resolves to the attachment point it names, not a generic pair."""
+    m = map_metric(raw, use_llm=False)
+    assert m.value == expected, f"{raw!r} -> {m.value} (expected {expected})"
+    assert m.method == "deterministic"
+
+
+def test_oc_and_ic_at_one_point_are_distinct_metrics() -> None:
+    """OC and IC measure different things; collapsing them is the mis-map bug."""
+    oc = map_metric("Class B Overcollateralisation Test", use_llm=False).value
+    ic = map_metric("Class B Interest Coverage Test", use_llm=False).value
+    assert oc == MetricType.class_b_oc_ratio
+    assert ic == MetricType.class_b_ic_ratio
+    assert oc != ic
+
+
+def test_coverage_points_are_distinct_from_each_other() -> None:
+    """Two attachment points must not collapse onto one metric."""
+    a = map_metric("Class A OC Test", use_llm=False).value
+    c = map_metric("Class C OC Test", use_llm=False).value
+    assert a != c
+
+
+@pytest.mark.parametrize(
+    "raw",
+    [
+        "Class A/B Overcollateralisation Test",
+        "Class C and D Par Value Test",
+        "Class B/C Interest Coverage Test",
+    ],
+)
+def test_combined_class_coverage_test_refuses_to_guess(raw: str) -> None:
+    """A combined test names no single point, so it degrades rather than guess.
+
+    Guessing the first letter would understate the denominator and therefore
+    OVERSTATE the ratio — a coverage test reported as healthier than it is.
+    """
+    assert map_metric(raw, use_llm=False).value == MetricType.unmapped
+
+
+@pytest.mark.parametrize(
+    "raw",
+    [
+        "overcollateralisation_ratio",
+        "interest_coverage_ratio",
+        "Par Value Test",
+        "OC Test",
+    ],
+)
+def test_classless_coverage_declines_to_invent_an_attachment_point(raw: str) -> None:
+    """A classless coverage string names no point, so it places none.
+
+    Unlike a classless PDL — which fires on any positive balance whatever the
+    class — the attachment point CHANGES THE NUMBER. Defaulting to the senior
+    point reports the highest of the candidate ratios, so a junior test read as
+    a senior one looks healthier than it is.
+    """
+    m = map_metric(raw, use_llm=False)
+    assert m.value == MetricType.unmapped
+    assert m.confidence == 0.0
+
+
+def test_classless_coverage_is_recognised_not_merely_unmatched() -> None:
+    """The `unmapped` rows are deliberate, not an accidental miss.
+
+    Without them the string reaches the LLM, which would invent an attachment
+    point non-deterministically from a phrase that names none. Recognising the
+    vocabulary deterministically and declining to place it is the point, so the
+    resolution must not depend on an LLM being reachable.
+    """
+    with patch(
+        "loanwhiz.extraction.taxonomy._llm_classify",
+        return_value=("class_a_oc_ratio", 0.95),
+    ) as stub:
+        m = map_metric("Overcollateralisation Ratio", use_llm=True)
+    assert m.value == MetricType.unmapped
+    assert m.method == "deterministic"
+    stub.assert_not_called()
+
+
+def test_coverage_metric_for_ignores_non_coverage_strings() -> None:
+    """The monitor's shared entry point must not claim unrelated metrics."""
+    assert coverage_metric_for("Class B Overcollateralisation Test") == (
+        MetricType.class_b_oc_ratio
+    )
+    assert coverage_metric_for("default_pct") is None
+    assert coverage_metric_for("cumulative_loss_rate") is None
+    assert coverage_metric_for("wa_ltv") is None

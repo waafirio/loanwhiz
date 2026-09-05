@@ -41,7 +41,13 @@ from dataclasses import dataclass
 # avoid widening the base-branch domain<->primitives import cycle: the package
 # __init__ pulls in provenance -> primitives.base -> the whole primitives
 # package, which (when imported before primitives) trips a partial-init cycle.
-from loanwhiz.domain.rules import AmountRule, MetricType, RecipientType
+from loanwhiz.domain.rules import (
+    LEGACY_RECIPIENT_SPELLINGS,
+    AmountRule,
+    MetricType,
+    RecipientType,
+    basis_for,
+)
 
 # ---------------------------------------------------------------------------
 # Result type
@@ -82,7 +88,6 @@ _RECIPIENT_ALIASES: dict[str, RecipientType] = {
     # registrar, corporate services, tax / withholding gross-up) collapses here:
     # all are senior admin costs the engine has no formula for (report_supplied),
     # so they are alias rows onto an existing value, not new enum members (#394).
-    "security_trustee_fees": RecipientType.senior_expenses,
     "security_trustee": RecipientType.senior_expenses,
     "trustee_fees": RecipientType.senior_expenses,
     "note_trustee_fees": RecipientType.senior_expenses,
@@ -91,7 +96,6 @@ _RECIPIENT_ALIASES: dict[str, RecipientType] = {
     "issuer_expenses": RecipientType.senior_expenses,
     "issuer_expense_account_replenishment": RecipientType.senior_expenses,
     "senior_expenses": RecipientType.senior_expenses,
-    "senior_fees": RecipientType.senior_expenses,
     "agents_fees": RecipientType.senior_expenses,
     "paying_agent_fees": RecipientType.senior_expenses,
     "cash_manager_fees": RecipientType.senior_expenses,
@@ -122,6 +126,25 @@ _RECIPIENT_ALIASES: dict[str, RecipientType] = {
     "commission_de_gestion": RecipientType.servicing_fee,
     "servicegebuhr": RecipientType.servicing_fee,
     "servicingvergoeding": RecipientType.servicing_fee,
+    # CLO collateral-management fees (#453). Only the *qualified* spellings are
+    # listed, deliberately: a CLO priority of payments always says which of the
+    # three fees a step pays, and there is no substring rule for "management"
+    # — a bare "management_fee", and the out-of-scope **incentive** fee (an
+    # equity-IRR hurdle the engine holds no inputs for), must fall through to
+    # ``unmapped`` rather than be guessed onto the senior one. Guessing there
+    # would pay a real number to the wrong creditor.
+    "senior_management_fee": RecipientType.senior_management_fee,
+    "senior_collateral_management_fee": RecipientType.senior_management_fee,
+    "collateral_management_fee_senior": RecipientType.senior_management_fee,
+    "senior_manager_fee": RecipientType.senior_management_fee,
+    "commissione_di_gestione_senior": RecipientType.senior_management_fee,
+    "comision_de_gestion_senior": RecipientType.senior_management_fee,
+    "subordinated_management_fee": RecipientType.subordinated_management_fee,
+    "subordinated_collateral_management_fee": RecipientType.subordinated_management_fee,
+    "collateral_management_fee_subordinated": RecipientType.subordinated_management_fee,
+    "subordinated_manager_fee": RecipientType.subordinated_management_fee,
+    "commissione_di_gestione_subordinata": RecipientType.subordinated_management_fee,
+    "comision_de_gestion_subordinada": RecipientType.subordinated_management_fee,
     # Swap (non-subordinated). Cap / floor / basis-swap counterparties collapse
     # onto the swap calculator (same report_supplied treatment) — alias, not a
     # new enum value (#394).
@@ -141,16 +164,12 @@ _RECIPIENT_ALIASES: dict[str, RecipientType] = {
     "class_e_interest": RecipientType.class_e_interest,
     "class_f_interest": RecipientType.class_f_interest,
     # PDL cure / replenishment.
-    "class_a_pdl_replenishment": RecipientType.class_a_pdl_cure,
     "class_a_pdl_cure": RecipientType.class_a_pdl_cure,
-    "class_b_pdl_replenishment": RecipientType.class_b_pdl_cure,
     "class_b_pdl_cure": RecipientType.class_b_pdl_cure,
-    "class_c_pdl_replenishment": RecipientType.class_c_pdl_cure,
     "class_c_pdl_cure": RecipientType.class_c_pdl_cure,
     # Reserve replenishment. The general reserve fund keeps ``reserve_
     # replenishment``; liquidity / commingling / set-off reserve top-ups (same
     # target-shortfall mechanic) map onto ``liquidity_reserve_replenishment``.
-    "reserve_account_replenishment": RecipientType.reserve_replenishment,
     "reserve_fund_replenishment": RecipientType.reserve_replenishment,
     "reserve_replenishment": RecipientType.reserve_replenishment,
     "fondo_di_riserva": RecipientType.reserve_replenishment,
@@ -195,6 +214,38 @@ _RECIPIENT_ALIASES: dict[str, RecipientType] = {
     "residual_certificate": RecipientType.residual_certificate,
     "residual": RecipientType.residual_certificate,
 }
+
+# The six non-canonical spellings the ENGINE's need-calculator registry is also
+# keyed by (``senior_fees``, ``class_a_pdl_replenishment``, …). They were rows
+# in the table above until #453; they now live in ``domain.rules`` so
+# ``register_need`` can validate against them without importing this module,
+# and are merged back here so this table's behaviour is unchanged and the two
+# readers cannot disagree about which free strings are legitimate.
+_RECIPIENT_ALIASES.update(LEGACY_RECIPIENT_SPELLINGS)
+
+# Recipients we can NAME but deliberately cannot evaluate — declared unmappable
+# rather than left to fall through (#453).
+#
+# The escape hatch below this table is the LLM classifier, and it is handed
+# ``[e.value for e in RecipientType]`` as its options. Once ``senior_management_
+# fee`` exists as a member, "Incentive Management Fee" is one plausible-looking
+# hop away from it — and the incentive fee is subject to an **equity IRR
+# hurdle** the engine holds no running equity cashflow for, so classifying it
+# onto a management-fee calculator would accrue a real number for the wrong
+# creditor. Naming it here stops the classifier ever being asked.
+#
+# This is the deny half of a closed vocabulary: a string we recognise and have
+# decided is not evaluable is more auditable than one that merely failed to
+# match, and it degrades to exactly the same honest ``unmapped``.
+_UNEVALUABLE_RECIPIENTS: frozenset[str] = frozenset(
+    {
+        "incentive_management_fee",
+        "incentive_collateral_management_fee",
+        "incentive_fee",
+        "collateral_management_fee_incentive",
+        "deferred_incentive_management_fee",
+    }
+)
 
 # Substring rules applied when no exact alias hit. Ordered most-specific first;
 # the first whose pattern is contained in the normalised string wins.
@@ -252,6 +303,38 @@ _METRIC_ALIASES: dict[str, MetricType] = {
     "arrears_180d_ratio": MetricType.arrears_180d_ratio,
     "wa_ltv": MetricType.wa_ltv,
     "weighted_average_ltv": MetricType.wa_ltv,
+    # ---- Coverage tests (#452) ----
+    # Only the CLASSLESS forms live here. The per-class forms
+    # (``class_b_oc_test``, ``Class C Interest Coverage Ratio``, …) are resolved
+    # generically by ``_refine_coverage_metric`` so every phrasing need not be
+    # enumerated — the same division of labour as
+    # ``_refine_class_recipient`` on the recipient side.
+    #
+    # A classless coverage test names no attachment point, so it cannot say
+    # WHICH point it measured — and unlike a classless PDL (which fires on any
+    # positive balance whatever the class) the attachment point CHANGES THE
+    # NUMBER: the same pool over Class A alone and over A+B+C are different
+    # ratios. Defaulting to the senior point would report the *highest* of
+    # them, so a junior test read as a senior one looks healthier than it is.
+    #
+    # These rows therefore map to the ``unmapped`` escape ON PURPOSE. They earn
+    # their place by being **explicit**: without them the string falls through
+    # to the LLM, which would invent an attachment point non-deterministically
+    # from a phrase that names none. Recognising the vocabulary and declining
+    # to place it is the honest answer, and the trigger reports not-evaluable
+    # with a reason rather than a confident wrong ratio.
+    "overcollateralisation_ratio": MetricType.unmapped,
+    "overcollateralization_ratio": MetricType.unmapped,
+    "overcollateralisation_test": MetricType.unmapped,
+    "overcollateralization_test": MetricType.unmapped,
+    "oc_ratio": MetricType.unmapped,
+    "oc_test": MetricType.unmapped,
+    "par_value_test": MetricType.unmapped,
+    "par_value_ratio": MetricType.unmapped,
+    "interest_coverage_ratio": MetricType.unmapped,
+    "interest_coverage_test": MetricType.unmapped,
+    "ic_ratio": MetricType.unmapped,
+    "ic_test": MetricType.unmapped,
 }
 
 _METRIC_SUBSTRINGS: list[tuple[str, MetricType]] = [
@@ -278,44 +361,28 @@ _METRIC_SUBSTRINGS: list[tuple[str, MetricType]] = [
 # Amount basis binding — mapped recipient → fixed engine formula key.
 # ---------------------------------------------------------------------------
 
-_BASIS_FOR_RECIPIENT: dict[RecipientType, str] = {
-    RecipientType.senior_expenses: "report_supplied",
-    RecipientType.servicing_fee: "report_supplied",
-    RecipientType.swap_payment: "report_supplied",
-    RecipientType.class_a_interest: "interest_accrual",
-    RecipientType.class_b_interest: "interest_accrual",
-    RecipientType.class_c_interest: "interest_accrual",
-    RecipientType.class_d_interest: "interest_accrual",
-    RecipientType.class_e_interest: "interest_accrual",
-    RecipientType.class_f_interest: "interest_accrual",
-    RecipientType.class_a_pdl_cure: "pdl_balance",
-    RecipientType.class_b_pdl_cure: "pdl_balance",
-    RecipientType.class_c_pdl_cure: "pdl_balance",
-    RecipientType.liquidity_reserve_replenishment: "target_shortfall",
-    RecipientType.reserve_replenishment: "target_shortfall",
-    RecipientType.class_a_principal: "principal_due",
-    RecipientType.class_b_principal: "principal_due",
-    RecipientType.class_c_principal: "principal_due",
-    RecipientType.class_d_principal: "principal_due",
-    RecipientType.class_e_principal: "principal_due",
-    RecipientType.class_f_principal: "principal_due",
-    RecipientType.subordinated_amounts: "report_supplied",
-    RecipientType.residual_certificate: "residual",
-    RecipientType.unmapped: "report_supplied",
-}
-
-
 def basis_for_recipient(recipient: RecipientType) -> str:
     """Return the canonical :class:`AmountRule` ``basis`` key for a recipient.
 
-    The binding is fixed: an interest recipient accrues, a PDL recipient cures up
-    to its balance, a reserve recipient tops up to target, a principal recipient
-    amortises, a residual recipient sweeps the remainder, and everything the
-    engine has no formula for (senior expenses, swap, subordinated, ``unmapped``)
-    is ``report_supplied`` — the amount comes from ``PeriodInputs.step_overrides``
-    rather than an engine calculator.
+    The binding is fixed: an interest recipient accrues, a fee recipient accrues
+    on the collateral balance, a PDL recipient cures up to its balance, a reserve
+    recipient tops up to target, a principal recipient amortises, a residual
+    recipient sweeps the remainder, and everything the engine has no formula for
+    (senior expenses, swap, subordinated, ``unmapped``) is ``report_supplied`` —
+    the amount comes from ``PeriodInputs.step_overrides`` rather than an engine
+    calculator.
+
+    The table itself moved to :data:`loanwhiz.domain.rules.RECIPIENT_BASIS`
+    (#453) so the enum, its amount basis and its engine need source are declared
+    in one place, and the engine's need-calculator registry can read the same
+    declaration without importing this module. This wrapper stays so every
+    existing caller (``assembler``, ``build_amount_rule``) is untouched.
+
+    Note the missing ``.get(..., "report_supplied")`` default: the table is
+    asserted total over ``RecipientType`` at import, so an unbound member is now
+    an ImportError rather than a silent report-supplied step.
     """
-    return _BASIS_FOR_RECIPIENT.get(recipient, "report_supplied")
+    return basis_for(recipient)
 
 
 # ---------------------------------------------------------------------------
@@ -381,6 +448,74 @@ _CLASS_PRINCIPAL_BY_LETTER: dict[str, RecipientType] = {
 }
 _CLASS_LETTER_RE = re.compile(r"class_([a-f])(?![a-z])")
 
+# Coverage metrics by attachment point (#452) — the metric-side counterpart of
+# the recipient tables above. A coverage test is named for the point in the
+# stack it measures, so the class letter IS the metric's identity.
+_CLASS_OC_BY_LETTER: dict[str, MetricType] = {
+    "a": MetricType.class_a_oc_ratio,
+    "b": MetricType.class_b_oc_ratio,
+    "c": MetricType.class_c_oc_ratio,
+    "d": MetricType.class_d_oc_ratio,
+    "e": MetricType.class_e_oc_ratio,
+    "f": MetricType.class_f_oc_ratio,
+}
+_CLASS_IC_BY_LETTER: dict[str, MetricType] = {
+    "a": MetricType.class_a_ic_ratio,
+    "b": MetricType.class_b_ic_ratio,
+    "c": MetricType.class_c_ic_ratio,
+    "d": MetricType.class_d_ic_ratio,
+    "e": MetricType.class_e_ic_ratio,
+    "f": MetricType.class_f_ic_ratio,
+}
+
+# A standalone a-f letter token — the second class of a combined coverage test.
+_BARE_LETTER_RE = re.compile(r"(?<![a-z])([a-f])(?![a-z])")
+
+# Cues that a metric string names a coverage test. "par value" is the CLO
+# prospectus's own name for the overcollateralisation test; "principal
+# coverage" is the same test again under a third name.
+_OC_CUE_RE = re.compile(
+    r"overcollateral|over_collateral|par_value|principal_coverage"
+    r"|(?<![a-z])oc(?![a-z])"
+)
+_IC_CUE_RE = re.compile(
+    r"interest_coverage|interest_cover(?![a-z])|(?<![a-z])ic(?![a-z])"
+)
+
+
+def _refine_coverage_metric(normalised: str) -> MetricType | None:
+    """Resolve a ``class_<letter>`` overcollateralisation / interest-coverage metric.
+
+    Returns ``None`` when the string carries no coverage cue, no class letter,
+    or **more than one distinct class letter** — each of which is a case the
+    caller should pass to the LLM / ``unmapped`` escape rather than guess at.
+
+    The multi-letter refusal is the load-bearing one. A combined "Class A/B
+    Overcollateralisation Test" measures the A+B attachment point, so guessing
+    the first letter would understate the denominator and therefore **overstate**
+    the ratio — a coverage test reported as healthier than it is. Refusing to
+    place an ambiguous string is the honest failure direction; a confident wrong
+    attachment point is the silent one.
+    """
+    letters = set(_CLASS_LETTER_RE.findall(normalised))
+    # A combined test names its further classes as BARE letter tokens, which the
+    # ``class_``-prefixed pattern cannot see: "Class A/B Overcollateralisation
+    # Test" normalises to ``class_a_b_...`` and "Class C and D Par Value Test"
+    # to ``class_c_and_d_...``. Scanning for standalone a-f tokens catches both.
+    # A single-class string is unaffected — in ``class_e_par_value_test`` the
+    # only standalone letter is the class letter itself.
+    letters |= set(_BARE_LETTER_RE.findall(normalised))
+    if len(letters) != 1:
+        return None
+    letter = letters.pop()
+    # Interest coverage is checked first: an "interest coverage" string carries
+    # no OC cue, but a bare "oc"/"ic" token is short enough that order matters.
+    if _IC_CUE_RE.search(normalised):
+        return _CLASS_IC_BY_LETTER.get(letter)
+    if _OC_CUE_RE.search(normalised):
+        return _CLASS_OC_BY_LETTER.get(letter)
+    return None
+
 
 def _refine_class_recipient(normalised: str) -> RecipientType | None:
     """Resolve a generic ``class_<letter>_...`` interest/principal recipient.
@@ -433,6 +568,12 @@ def map_recipient(
     """
     normalised = _normalise(raw)
     if not normalised:
+        return TaxonomyMapping(RecipientType.unmapped, 0.0, "deterministic")
+
+    # Declared-unevaluable, checked BEFORE the alias/substring/LLM ladder: a
+    # recipient we recognise and know the engine cannot compute must never
+    # reach the classifier, which would only see a near neighbour it can.
+    if normalised in _UNEVALUABLE_RECIPIENTS:
         return TaxonomyMapping(RecipientType.unmapped, 0.0, "deterministic")
 
     # Exact alias.
@@ -488,11 +629,24 @@ def map_metric(raw: str, description: str = "", *, use_llm: bool = True) -> Taxo
 
     hit = _METRIC_ALIASES.get(normalised)
     if hit is not None:
+        # A row mapping to ``unmapped`` is a RECOGNISED but unplaceable string
+        # (a classless coverage test). It short-circuits the LLM deliberately,
+        # and carries 0.0 — the confidence contract for ``unmapped`` — because
+        # nothing was identified, however certain we are that nothing was.
+        if hit is MetricType.unmapped:
+            return TaxonomyMapping(MetricType.unmapped, 0.0, "deterministic")
         return TaxonomyMapping(hit, 1.0, "deterministic")
 
     # A bare "pdl_debit_balance" with no class — default to class A (senior).
     if "pdl" in normalised and "class" not in normalised:
         return TaxonomyMapping(MetricType.class_a_pdl, 0.7, "deterministic")
+
+    # A per-attachment-point coverage test (#452). Checked before the generic
+    # substring pass so the class letter — which is the metric's identity — is
+    # read rather than discarded.
+    coverage = _refine_coverage_metric(normalised)
+    if coverage is not None:
+        return TaxonomyMapping(coverage, 0.9, "deterministic")
 
     for pattern, value in _METRIC_SUBSTRINGS:
         if pattern in normalised:
@@ -512,6 +666,32 @@ def map_metric(raw: str, description: str = "", *, use_llm: bool = True) -> Taxo
                 pass
 
     return TaxonomyMapping(MetricType.unmapped, 0.0, "deterministic")
+
+
+#: Every per-attachment-point coverage metric, as one set.
+_COVERAGE_METRICS: frozenset[MetricType] = frozenset(
+    list(_CLASS_OC_BY_LETTER.values()) + list(_CLASS_IC_BY_LETTER.values())
+)
+
+
+def coverage_metric_for(raw: str) -> MetricType | None:
+    """The coverage :class:`MetricType` a free string names, or ``None``.
+
+    The single classification point for coverage vocabulary, shared by the
+    extraction path and the covenant monitor (#452). The monitor keeps its own
+    alias map for the *tape* vocabulary, but routing coverage strings back
+    through :func:`map_metric` means the two sides cannot drift into two
+    vocabularies for one concept — a row added to the tables above is
+    understood by the monitor with no second edit.
+
+    Deterministic only: ``use_llm=False``, so this never makes a network call on
+    the monitor's evaluation path. A string naming no coverage test returns
+    ``None`` and the caller falls back to its own resolution.
+    """
+    value = map_metric(raw, use_llm=False).value
+    if isinstance(value, MetricType) and value in _COVERAGE_METRICS:
+        return value
+    return None
 
 
 # ---------------------------------------------------------------------------

@@ -81,6 +81,12 @@ def test_recipient_type_closed_set():
     assert {r.value for r in RecipientType} == {
         "senior_expenses",
         "servicing_fee",
+        # CLO collateral-manager fees (#453). The **incentive** fee is
+        # deliberately absent: it hangs on an equity IRR hurdle the engine
+        # holds no inputs for, so it stays `unmapped` rather than becoming a
+        # member that can only ever report-supply.
+        "senior_management_fee",
+        "subordinated_management_fee",
         "swap_payment",
         "class_a_interest",
         "class_b_interest",
@@ -121,9 +127,35 @@ def test_metric_type_closed_set():
         "arrears_90d_ratio",
         "arrears_180d_ratio",
         "wa_ltv",
+        # Coverage tests, one member per attachment point (#452).
+        "class_a_oc_ratio",
+        "class_b_oc_ratio",
+        "class_c_oc_ratio",
+        "class_d_oc_ratio",
+        "class_e_oc_ratio",
+        "class_f_oc_ratio",
+        "class_a_ic_ratio",
+        "class_b_ic_ratio",
+        "class_c_ic_ratio",
+        "class_d_ic_ratio",
+        "class_e_ic_ratio",
+        "class_f_ic_ratio",
         "unmapped",
     }
     assert MetricType.unmapped.value == "unmapped"
+
+
+def test_coverage_metrics_are_per_attachment_point():
+    """Coverage is tested at several points in a stack, so one OC/IC pair
+    could not say WHICH point it measured (#452)."""
+    oc = {m.value for m in MetricType if m.value.endswith("_oc_ratio")}
+    ic = {m.value for m in MetricType if m.value.endswith("_ic_ratio")}
+    # Every lettered attachment point the recipient taxonomy reaches.
+    for letter in "abcdef":
+        assert f"class_{letter}_oc_ratio" in oc
+        assert f"class_{letter}_ic_ratio" in ic
+    # OC and IC stay distinct concepts — neither is an alias of the other.
+    assert oc.isdisjoint(ic)
 
 
 def test_recipient_type_rejects_out_of_taxonomy_value():
