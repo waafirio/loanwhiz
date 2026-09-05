@@ -43,7 +43,7 @@ The result is JSON-serialisable structured data the C4 demo UI renders.
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
@@ -58,10 +58,28 @@ STATE_VALIDATED = "validated"
 STATE_RAN = "ran"
 STATE_NOT_APPLICABLE = "not-applicable"
 
+#: The closed cell-state vocabulary, as a type. Mirrors the sibling honesty
+#: vocabulary in :mod:`loanwhiz.governance.finos_conformance`
+#: (``ConformanceStatus``) so both read the same way, and matches the closed
+#: ``CapabilityCellState`` union the web client declares.
+#:
+#: **Closed on purpose.** The three states are the #193 honesty contract, not a
+#: presentation detail: widening them is how "we could not grade this" quietly
+#: acquires a fourth, friendlier spelling. Typing the field means a new state is
+#: rejected by pydantic at construction — the boundary — rather than serialised
+#: to a client whose own union does not carry it.
+CellState = Literal["validated", "ran", "not-applicable"]
+
 #: Jurisdiction default for the Dutch Green Lion deals, which carry no explicit
 #: ``jurisdiction`` registry key (only the non-Dutch deals do). Resolving it here
 #: keeps the matrix's per-deal jurisdiction column complete and legible.
 _DEFAULT_JURISDICTION = "Netherlands"
+
+#: Asset-class default for the deals that predate the registry's ``asset_class``
+#: key. The matrix reports asset class so a non-RMBS column is legible *as* a
+#: different asset class; resolving it from the registry (never from the deal id)
+#: is what lets a CMBS or Auto column arrive as data, with no change here.
+_DEFAULT_ASSET_CLASS = "RMBS"
 
 
 # ---------------------------------------------------------------------------
@@ -110,7 +128,7 @@ class CapabilityCell(BaseModel):
 
     capability_key: str = Field(..., description="Stable capability identifier.")
     deal_id: str = Field(..., description="Canonical deal id.")
-    state: str = Field(
+    state: CellState = Field(
         ..., description=f"One of {STATE_VALIDATED!r}, {STATE_RAN!r}, {STATE_NOT_APPLICABLE!r}."
     )
     reason: str = Field(..., description="Human reason — REQUIRED and non-empty for not-applicable.")
@@ -132,6 +150,9 @@ class DealColumn(BaseModel):
     deal_id: str = Field(..., description="Canonical deal id.")
     deal_name: str = Field(..., description="Human deal name.")
     jurisdiction: str = Field(..., description="Resolved jurisdiction (Netherlands default).")
+    asset_class: str = Field(
+        ..., description="Resolved asset class (e.g. RMBS, CLO) — registry-driven, RMBS default."
+    )
     has_seed_model: bool = Field(..., description="Whether a committed extracted model was loaded.")
     completeness_score: float | None = Field(
         default=None, description="Extracted-model completeness in [0,1], if a model loaded."
@@ -156,7 +177,8 @@ class CapabilityMatrix(BaseModel):
         default=(
             "Each cell is computed from the deal's real inputs (registry context + "
             "committed extracted model + offline validation builder), so the same "
-            "primitive code is shown running across Dutch, Italian and Spanish deals. "
+            "primitive code is shown running across every registered deal, whatever "
+            "its jurisdiction or asset class — each column names both. "
             "'validated' = ran AND reconciled to external truth; 'ran' = executed, no "
             "external truth to check; 'not-applicable' = inputs absent, with the real "
             "reason. Honesty over a wall of green."
@@ -177,7 +199,7 @@ class CapabilityMatrix(BaseModel):
 #: Signature of a cell classifier.
 CellClassifier = Callable[
     [str, Mapping[str, Any], "DealModel | None", "Mapping[str, Callable[[], ReconciliationReport]]"],
-    "tuple[str, str, CellEvidence]",
+    "tuple[CellState, str, CellEvidence]",
 ]
 
 
@@ -199,7 +221,10 @@ def _classify_tape_analytics(
     if not tapes:
         return (
             STATE_NOT_APPLICABLE,
-            "No loan tapes published for this deal — ESMA tape analytics has no input.",
+            "No machine-readable ESMA loan tape is registered for this deal, so tape "
+            "analytics has no input. This is a statement about tape availability only — "
+            "it does not claim the deal publishes no loan-level collateral detail in "
+            "another form.",
             CellEvidence(
                 confidence=None,
                 citation="Deal registry context: tape_urls is empty.",
@@ -247,6 +272,17 @@ def _classify_covenant_monitor(
     )
 
 
+#: Registry keys naming a period source the engine can cold-start a deal from.
+#: Unlike a claim about what a deal publishes, this is fully determined by the
+#: registry: it is a statement about what *this repo* can ingest today.
+_INGESTIBLE_SOURCE_KEYS = ("tape_urls", "notes_cash_report_urls")
+
+
+def _has_ingestible_source(deal_ctx: Mapping[str, Any]) -> bool:
+    """Whether the per-deal endpoints can reconstruct a period series for this deal."""
+    return any(deal_ctx.get(key) for key in _INGESTIBLE_SOURCE_KEYS)
+
+
 def _classify_waterfall_execution(
     deal_id: str,
     deal_ctx: Mapping[str, Any],
@@ -286,9 +322,27 @@ def _classify_waterfall_execution(
                 detail={"revenue_step_count": 0},
             ),
         )
+    ingestible = _has_ingestible_source(deal_ctx)
+    # ``ran`` is a claim about the *engine*, which executes these steps against
+    # period funds whatever the deal. It is not a claim that the per-deal
+    # endpoints will serve this deal: those need a period source to cold-start
+    # from, and a deal with neither a tape nor a Notes & Cash report gets a
+    # labelled 422 instead. Saying only the first left the matrix and the
+    # endpoint flatly contradicting each other for such a deal, so the cell now
+    # carries both halves rather than the flattering one.
+    qualifier = (
+        ""
+        if ingestible
+        else (
+            " The engine executes these steps; the per-deal endpoints cannot yet "
+            "serve this deal, which has no registered tape or Notes & Cash report "
+            "to cold-start a period series from."
+        )
+    )
     return (
         STATE_RAN,
-        f"Extracted {len(chosen_steps)}-step {chosen_type} waterfall executes against period funds.",
+        f"Extracted {len(chosen_steps)}-step {chosen_type} waterfall executes "
+        f"against period funds.{qualifier}",
         CellEvidence(
             confidence=1.0,  # deterministic interpreter run
             citation=_seed_citation(model, "Extracted deal model seed."),
@@ -296,6 +350,7 @@ def _classify_waterfall_execution(
                 "waterfall_type": chosen_type,
                 "step_count": len(chosen_steps),
                 "waterfalls": sorted(waterfalls.keys()),
+                "has_ingestible_source": ingestible,
             },
         ),
     )
@@ -317,7 +372,9 @@ def _classify_collateral_reconciliation(
     if not tapes:
         return (
             STATE_NOT_APPLICABLE,
-            "No loan tapes published — no collateral pool series to reconstruct.",
+            "No machine-readable ESMA loan tape is registered for this deal, so there "
+            "is no collateral pool series to reconstruct — a statement about tape "
+            "availability, not about what the deal publishes elsewhere.",
             CellEvidence(
                 confidence=None,
                 citation="Deal registry context: tape_urls is empty.",
@@ -352,14 +409,26 @@ def _classify_engine_validation(
     """
     builder = validators.get(deal_id)
     if builder is None:
+        # State only what was actually checked. The tempting richer reason —
+        # "reports are published, but nobody authored a key" — is an inference
+        # this function is not entitled to make, and the registry cannot support
+        # it: `investor_report_urls` counts periodic reports, which are not
+        # Priority-of-Payments reports, and a deal whose PoP report exists may
+        # deliberately not register it (`notes_cash_report_urls` is a routing
+        # promise, not a URL slot — see docs/data-card.md). Guessing in either
+        # direction produces a confidently false sentence: "nothing is published"
+        # wrongly says a deal *cannot* be validated, and "no key has been
+        # authored" is false of a deal that already has one committed.
         return (
             STATE_NOT_APPLICABLE,
-            "No published Notes & Cash Priority-of-Payments report to reconcile the "
-            "engine against for this deal.",
+            "No offline validation builder is committed for this deal, so there is "
+            "nothing here for the engine to be reconciled against. This is a "
+            "statement about what is committed, not about what the deal publishes — "
+            "docs/data-card.md records what is obtainable, per deal.",
             CellEvidence(
                 confidence=None,
                 citation="No committed engine-validation builder for this deal.",
-                detail={},
+                detail={"has_validation_builder": False},
             ),
         )
     report: ReconciliationReport = builder()
@@ -450,6 +519,17 @@ def _resolve_jurisdiction(deal_ctx: Mapping[str, Any]) -> str:
     return deal_ctx.get("jurisdiction") or _DEFAULT_JURISDICTION
 
 
+def _resolve_asset_class(deal_ctx: Mapping[str, Any]) -> str:
+    """Resolve a deal's asset class — explicit registry key, else the RMBS default.
+
+    The exact shape of :func:`_resolve_jurisdiction`, and deliberately so: asset
+    class is **registry data**, not a branch. The matrix therefore describes a
+    CLO column without knowing what a CLO is, and a CMBS or Auto deal becomes a
+    legible column by being registered — no change to this module.
+    """
+    return deal_ctx.get("asset_class") or _DEFAULT_ASSET_CLASS
+
+
 def build_capability_matrix(
     deals: Mapping[str, Mapping[str, Any]],
     *,
@@ -491,6 +571,7 @@ def build_capability_matrix(
                 deal_id=deal_id,
                 deal_name=str(deal_ctx.get("deal_name", deal_id)),
                 jurisdiction=_resolve_jurisdiction(deal_ctx),
+                asset_class=_resolve_asset_class(deal_ctx),
                 has_seed_model=model is not None,
                 completeness_score=(model.metadata.completeness_score if model else None),
             )

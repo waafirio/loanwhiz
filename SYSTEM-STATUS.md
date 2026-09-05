@@ -39,9 +39,12 @@ in the #276 engine collapse.
   5 deals in 3 jurisdictions (Dutch / Italian / Spanish RMBS); see
   `tests/test_cross_jurisdiction_cold_start.py` and
   `tests/test_breadth_cross_jurisdiction.py`. A sixth deal — the Irish CLO
-  Cairn CLO XVII DAC — is **registered as data only** and executes nowhere yet;
-  see `tests/test_clo_deal_registration.py`, which pins what is absent for it
-  as hard as what is present.
+  Cairn CLO XVII DAC — is extracted and **executes through the same
+  `run_period` kernel**, with its own Interest and Principal cascades rather
+  than the RMBS defaults; see `tests/test_clo_engine_execution.py`. It is
+  validated against nothing, and the production ingestion path still refuses it
+  (no ESMA tape, no registered Notes & Cash report), which
+  `tests/test_clo_deal_registration.py` pins as hard as what is present.
 - **Multi-period projection.** `POST /deal/{deal_id}/project`
   (`src/loanwhiz/api/main.py:3571`) takes a `months` horizon
   (`ProjectRequest`, `main.py:374`), generates a synthetic CPR / CDR /
@@ -127,8 +130,11 @@ Leone Arancio and Sol-Lion II publish **no** Notes & Cash report, so no answer
 key can be authored for them without inventing one, and none is. The CLO is the
 exception that proves the rule: Cairn CLO XVII DAC's Note Valuation Report *does*
 publish both an Interest and a Principal Priority of Payments, freely and
-unauthenticated, so an answer key is **feasible** there — but none is authored,
-no validation builder is committed, and every CLO cell reads `not-applicable`.
+unauthenticated, so an answer key is **feasible** there — but none is authored and
+no validation builder is committed, so no CLO cell reads `validated`. Its
+covenant-monitoring and waterfall-execution cells read `ran` (the engine really
+does execute the deal); the rest read `not-applicable`, each with a reason that
+is true of this deal specifically (#457).
 Whether to pursue a validated CLO cell is an open operator decision, not a
 promise this repo has made. Coverage is
 also uneven *within* a seed: Sol-Lion II carries ratings and coupons (A1–A6
