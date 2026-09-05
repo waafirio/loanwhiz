@@ -260,21 +260,30 @@ _METRIC_ALIASES: dict[str, MetricType] = {
     # ``_refine_class_recipient`` on the recipient side.
     #
     # A classless coverage test names no attachment point, so it cannot say
-    # WHICH point it measured. It resolves to the Class A (senior) test, the
-    # same senior-default convention the classless PDL string takes, and
-    # ``map_metric`` reports the lower confidence that guess deserves.
-    "overcollateralisation_ratio": MetricType.class_a_oc_ratio,
-    "overcollateralization_ratio": MetricType.class_a_oc_ratio,
-    "overcollateralisation_test": MetricType.class_a_oc_ratio,
-    "overcollateralization_test": MetricType.class_a_oc_ratio,
-    "oc_ratio": MetricType.class_a_oc_ratio,
-    "oc_test": MetricType.class_a_oc_ratio,
-    "par_value_test": MetricType.class_a_oc_ratio,
-    "par_value_ratio": MetricType.class_a_oc_ratio,
-    "interest_coverage_ratio": MetricType.class_a_ic_ratio,
-    "interest_coverage_test": MetricType.class_a_ic_ratio,
-    "ic_ratio": MetricType.class_a_ic_ratio,
-    "ic_test": MetricType.class_a_ic_ratio,
+    # WHICH point it measured — and unlike a classless PDL (which fires on any
+    # positive balance whatever the class) the attachment point CHANGES THE
+    # NUMBER: the same pool over Class A alone and over A+B+C are different
+    # ratios. Defaulting to the senior point would report the *highest* of
+    # them, so a junior test read as a senior one looks healthier than it is.
+    #
+    # These rows therefore map to the ``unmapped`` escape ON PURPOSE. They earn
+    # their place by being **explicit**: without them the string falls through
+    # to the LLM, which would invent an attachment point non-deterministically
+    # from a phrase that names none. Recognising the vocabulary and declining
+    # to place it is the honest answer, and the trigger reports not-evaluable
+    # with a reason rather than a confident wrong ratio.
+    "overcollateralisation_ratio": MetricType.unmapped,
+    "overcollateralization_ratio": MetricType.unmapped,
+    "overcollateralisation_test": MetricType.unmapped,
+    "overcollateralization_test": MetricType.unmapped,
+    "oc_ratio": MetricType.unmapped,
+    "oc_test": MetricType.unmapped,
+    "par_value_test": MetricType.unmapped,
+    "par_value_ratio": MetricType.unmapped,
+    "interest_coverage_ratio": MetricType.unmapped,
+    "interest_coverage_test": MetricType.unmapped,
+    "ic_ratio": MetricType.unmapped,
+    "ic_test": MetricType.unmapped,
 }
 
 _METRIC_SUBSTRINGS: list[tuple[str, MetricType]] = [
@@ -423,14 +432,6 @@ _CLASS_IC_BY_LETTER: dict[str, MetricType] = {
     "e": MetricType.class_e_ic_ratio,
     "f": MetricType.class_f_ic_ratio,
 }
-
-# The coverage values a CLASSLESS alias row lands on. Membership here means
-# "this was a senior-default guess, not an exact identification", which is what
-# ``map_metric`` reports as confidence — an honest 0.7 rather than a 1.0 the
-# input never earned.
-_CLASSLESS_COVERAGE_DEFAULTS: frozenset[MetricType] = frozenset(
-    {MetricType.class_a_oc_ratio, MetricType.class_a_ic_ratio}
-)
 
 # A standalone a-f letter token — the second class of a combined coverage test.
 _BARE_LETTER_RE = re.compile(r"(?<![a-z])([a-f])(?![a-z])")
@@ -587,12 +588,12 @@ def map_metric(raw: str, description: str = "", *, use_llm: bool = True) -> Taxo
 
     hit = _METRIC_ALIASES.get(normalised)
     if hit is not None:
-        # A classless coverage alias names no attachment point, so the Class A
-        # landing is a senior-default guess, not an exact match — report it at
-        # the same confidence the classless PDL default carries rather than
-        # claiming certainty the string does not support.
-        if hit in _CLASSLESS_COVERAGE_DEFAULTS:
-            return TaxonomyMapping(hit, 0.7, "deterministic")
+        # A row mapping to ``unmapped`` is a RECOGNISED but unplaceable string
+        # (a classless coverage test). It short-circuits the LLM deliberately,
+        # and carries 0.0 — the confidence contract for ``unmapped`` — because
+        # nothing was identified, however certain we are that nothing was.
+        if hit is MetricType.unmapped:
+            return TaxonomyMapping(MetricType.unmapped, 0.0, "deterministic")
         return TaxonomyMapping(hit, 1.0, "deterministic")
 
     # A bare "pdl_debit_balance" with no class — default to class A (senior).

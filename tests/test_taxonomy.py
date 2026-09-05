@@ -465,23 +465,43 @@ def test_combined_class_coverage_test_refuses_to_guess(raw: str) -> None:
 
 
 @pytest.mark.parametrize(
-    "raw,expected",
+    "raw",
     [
-        ("overcollateralisation_ratio", MetricType.class_a_oc_ratio),
-        ("interest_coverage_ratio", MetricType.class_a_ic_ratio),
+        "overcollateralisation_ratio",
+        "interest_coverage_ratio",
+        "Par Value Test",
+        "OC Test",
     ],
 )
-def test_classless_coverage_defaults_to_senior_at_lower_confidence(
-    raw: str, expected: MetricType
-) -> None:
-    """A classless coverage string is a senior-default guess, and says so.
+def test_classless_coverage_declines_to_invent_an_attachment_point(raw: str) -> None:
+    """A classless coverage string names no point, so it places none.
 
-    It must not claim the 1.0 confidence an exact identification earns — the
-    string named no attachment point.
+    Unlike a classless PDL — which fires on any positive balance whatever the
+    class — the attachment point CHANGES THE NUMBER. Defaulting to the senior
+    point reports the highest of the candidate ratios, so a junior test read as
+    a senior one looks healthier than it is.
     """
     m = map_metric(raw, use_llm=False)
-    assert m.value == expected
-    assert m.confidence < 1.0
+    assert m.value == MetricType.unmapped
+    assert m.confidence == 0.0
+
+
+def test_classless_coverage_is_recognised_not_merely_unmatched() -> None:
+    """The `unmapped` rows are deliberate, not an accidental miss.
+
+    Without them the string reaches the LLM, which would invent an attachment
+    point non-deterministically from a phrase that names none. Recognising the
+    vocabulary deterministically and declining to place it is the point, so the
+    resolution must not depend on an LLM being reachable.
+    """
+    with patch(
+        "loanwhiz.extraction.taxonomy._llm_classify",
+        return_value=("class_a_oc_ratio", 0.95),
+    ) as stub:
+        m = map_metric("Overcollateralisation Ratio", use_llm=True)
+    assert m.value == MetricType.unmapped
+    assert m.method == "deterministic"
+    stub.assert_not_called()
 
 
 def test_coverage_metric_for_ignores_non_coverage_strings() -> None:
