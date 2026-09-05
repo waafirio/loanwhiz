@@ -1,10 +1,10 @@
 ---
 id: 2026-09-06-clo-tape-from-trustee-reports
 title: Derive an Annex 4 loan tape from Cairn's trustee reports, ingested through the normal channel
-status: decomposed
+status: filed
 created: 2026-09-06
 updated: 2026-09-06
-epics: []
+epics: [468]
 ---
 
 # Derive an Annex 4 loan tape from Cairn's trustee reports, ingested through the normal channel
@@ -146,7 +146,7 @@ One epic, three children, strictly sequential. Each consumes the previous
 child's output, so there is no parallelism to be had here and pretending
 otherwise would just produce a worker that stands down.
 
-### Epic: CLO loan tape derived from trustee reports   (umbrella #<N>)
+### Epic: CLO loan tape derived from trustee reports   (umbrella #468)
 
 Turn the collateral schedule inside Cairn's monthly trustee reports into a tape
 that enters through the **normal** ingestion channel — resolving on the existing
@@ -213,4 +213,15 @@ a regulatory filing.
 
 ## Filed issues
 
-_(Filled in phase 4.)_
+- Epic "CLO loan tape derived from trustee reports" → umbrella **#468**
+  - **#469** Parse the trustee-report collateral schedule to structured rows  _(prio 1)_
+  - **#470** Map the parsed schedule onto canonical Annex 4 columns, with honest provenance  _(sequential, After #469, prio 2)_
+  - **#471** Register the derived tape and ingest it through the normal channel  _(sequential, After #470, prio 3)_
+
+All four labelled `liz:enrolled`. Every child body carries the four standing
+constraints verbatim plus its own reuse / contract / governance / generality
+notes, so a worker never has to open this plan to know how the work must be done.
+
+Strictly sequential: #470 consumes #469's rows, #471 consumes #470's canonical
+tape. With the fleet's server-side concurrency cap of 2 this runs one child at a
+time regardless.
