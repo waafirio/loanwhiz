@@ -313,3 +313,113 @@ def test_capability_matrix_endpoint_returns_structured_matrix() -> None:
     assert body["tally"]["not-applicable"] > body["tally"]["validated"]
     # Every cell over the wire carries a non-empty reason.
     assert all(c["reason"].strip() for c in body["cells"])
+
+
+# ---------------------------------------------------------------------------
+# The contracts #457 added: a closed state vocabulary, registry-resolved asset
+# class, and not-applicable reasons that are factually true of the deal.
+# ---------------------------------------------------------------------------
+
+
+def test_the_state_vocabulary_is_closed_at_construction() -> None:
+    """A fourth cell state is refused by the model, not merely discouraged.
+
+    The three states are the #193 honesty contract. Before this was typed, the
+    field was a bare ``str``: a widened vocabulary ("partial", "pending") would
+    have been accepted server-side and served to a web client whose own union
+    cannot represent it. Refusing it here makes the invalid state unrepresentable
+    rather than documented-as-invalid.
+    """
+    from pydantic import ValidationError
+
+    from loanwhiz.primitives.capability_matrix import CapabilityCell, CellEvidence
+
+    evidence = CellEvidence(confidence=None, citation="test", detail={})
+    for state in (STATE_VALIDATED, STATE_RAN, STATE_NOT_APPLICABLE):
+        assert CapabilityCell(
+            capability_key="k", deal_id="d", state=state, reason="r", evidence=evidence
+        ).state == state
+
+    for widened in ("partial", "pending", "not_applicable", "unknown"):
+        with pytest.raises(ValidationError):
+            CapabilityCell(
+                capability_key="k", deal_id="d", state=widened, reason="r", evidence=evidence
+            )
+
+
+def test_asset_class_is_resolved_from_the_registry_not_from_a_deal_id() -> None:
+    """A column describes its asset class as data, so a new one costs no code.
+
+    The generality bar for this epic is "would adding CMBS next be cheaper?".
+    It is only cheaper if asset class arrives by registration. An unregistered
+    deal falls back to the RMBS default rather than failing or blanking.
+    """
+    from loanwhiz.primitives.capability_matrix import _resolve_asset_class
+
+    assert _resolve_asset_class({"asset_class": "CLO"}) == "CLO"
+    assert _resolve_asset_class({"asset_class": "CMBS"}) == "CMBS"
+    assert _resolve_asset_class({}) == "RMBS"
+
+    matrix = _real_matrix()
+    by_id = {c.deal_id: c for c in matrix.deals}
+    assert by_id["cairn-clo-xvii"].asset_class == "CLO"
+    assert by_id["green-lion-2024-1"].asset_class == "RMBS"
+    # Every column is described; a blank asset class is the silent gap this fills.
+    assert all(c.asset_class.strip() for c in matrix.deals)
+
+
+def test_engine_validation_does_not_claim_a_published_report_is_missing() -> None:
+    """A deal whose reports ARE published must not be told it has none (#455).
+
+    The reason a deal cannot be graded is load-bearing prose: "nothing is
+    published" says validation is impossible, while "no answer key is authored"
+    names a deferred decision. Cairn CLO XVII DAC publishes both Priorities of
+    Payments, so the first sentence would be false of it.
+    """
+    cell = _cell(_real_matrix(), "cairn-clo-xvii", "engine_validation")
+    assert cell.state == STATE_NOT_APPLICABLE
+    assert "answer key" in cell.reason
+    # The retracted claim, in the shapes it could come back as.
+    assert "No published Notes & Cash" not in cell.reason
+    assert "no external ground truth" not in cell.reason
+    assert cell.evidence.detail["published_report_count"] > 0
+
+
+def test_engine_validation_still_says_so_when_nothing_is_published() -> None:
+    """The other branch stays available — this is a discriminator, not a rewrite."""
+    matrix = build_capability_matrix(
+        {"bare": {"deal_name": "Bare Deal"}},
+        seed_loader=lambda ctx: None,
+        validators={},
+    )
+    cell = _cell(matrix, "bare", "engine_validation")
+    assert cell.state == STATE_NOT_APPLICABLE
+    assert "No published periodic report is registered" in cell.reason
+    assert cell.evidence.detail["published_report_count"] == 0
+
+
+def test_tape_reasons_do_not_overclaim_that_no_loan_level_data_exists() -> None:
+    """``tape_urls`` encodes tape availability, and the reason must say only that.
+
+    Cairn publishes loan-level collateral detail in its trustee reports; it is
+    simply not a machine-readable ESMA tape. The old wording ("no loan tapes
+    published for this deal") read as the stronger, false claim.
+    """
+    matrix = _real_matrix()
+    for capability_key in ("tape_analytics", "collateral_reconciliation"):
+        cell = _cell(matrix, "cairn-clo-xvii", capability_key)
+        assert cell.state == STATE_NOT_APPLICABLE
+        assert "ESMA loan tape" in cell.reason
+        assert "No loan tapes published" not in cell.reason
+
+
+def test_the_clo_column_reports_no_validated_cell() -> None:
+    """No answer key is authored, so nothing about this deal may read validated."""
+    matrix = _real_matrix()
+    clo_cells = [c for c in matrix.cells if c.deal_id == "cairn-clo-xvii"]
+    assert clo_cells, "the CLO must have a column at all"
+    assert all(c.state != STATE_VALIDATED for c in clo_cells)
+    # And every ungraded cell says why, in its own words.
+    assert all(
+        c.reason.strip() for c in clo_cells if c.state == STATE_NOT_APPLICABLE
+    )
