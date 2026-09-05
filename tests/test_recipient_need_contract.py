@@ -121,6 +121,60 @@ class TestDeclarationTotality:
         assert RecipientType.unmapped not in recipients_needing_calculator()
 
 
+class TestGuardsActuallyFire:
+    """Exercise the guards, not just the state they currently enforce.
+
+    ``TestDeclarationTotality`` asserts the tables *are* total — which stays
+    green if someone deletes the guard, because the tables happen to be total
+    today. These tests doctor the tables and call the guards directly, so they
+    red when the mechanism is removed rather than when its effect happens to
+    lapse. Without them the import-time asserts are untested code claiming to
+    be the contract's teeth.
+    """
+
+    def test_missing_basis_row_is_refused_at_import(self, monkeypatch) -> None:
+        from loanwhiz.domain import rules
+
+        monkeypatch.delitem(rules.RECIPIENT_BASIS, RecipientType.class_d_interest)
+        with pytest.raises(ImportError, match="RECIPIENT_BASIS is not total"):
+            rules._assert_recipient_tables_total()
+
+    def test_missing_need_source_row_is_refused_at_import(self, monkeypatch) -> None:
+        from loanwhiz.domain import rules
+
+        monkeypatch.delitem(
+            rules.RECIPIENT_NEED_SOURCE, RecipientType.class_d_interest
+        )
+        with pytest.raises(ImportError, match="RECIPIENT_NEED_SOURCE is not total"):
+            rules._assert_recipient_tables_total()
+
+    def test_the_refusal_names_the_undeclared_member(self, monkeypatch) -> None:
+        """A guard that fires without saying what is wrong costs a debug cycle."""
+        from loanwhiz.domain import rules
+
+        monkeypatch.delitem(rules.RECIPIENT_BASIS, RecipientType.class_e_principal)
+        with pytest.raises(ImportError, match="class_e_principal"):
+            rules._assert_recipient_tables_total()
+
+    def test_an_unregistered_calculator_backed_recipient_is_refused_at_import(
+        self, monkeypatch
+    ) -> None:
+        """The #394 failure itself: an enum member the registry never covered."""
+        from loanwhiz.primitives import waterfall_interpreter as wi
+
+        monkeypatch.delitem(wi.NEED_CALCULATORS, "class_d_interest")
+        with pytest.raises(ImportError, match="class_d_interest"):
+            wi._assert_registry_covers_contract()
+
+    def test_the_registry_guard_is_silent_when_the_contract_is_met(self) -> None:
+        """A guard that fires unconditionally pins nothing."""
+        from loanwhiz.domain import rules
+        from loanwhiz.primitives import waterfall_interpreter as wi
+
+        rules._assert_recipient_tables_total()
+        wi._assert_registry_covers_contract()
+
+
 # ---------------------------------------------------------------------------
 # 2. The registry matches the declaration, in both directions.
 # ---------------------------------------------------------------------------
@@ -361,20 +415,40 @@ class TestManagementFees:
         assert mapping.method == "deterministic"
 
     @pytest.mark.parametrize(
-        "raw", ["Incentive Management Fee", "incentive_fee", "management_fee"]
+        "raw",
+        [
+            "Incentive Management Fee",
+            "incentive_fee",
+            "Incentive Collateral Management Fee",
+            "deferred_incentive_management_fee",
+        ],
     )
-    def test_ambiguous_or_out_of_scope_fee_is_not_guessed_onto_a_calculator(
-        self, raw: str
-    ) -> None:
+    def test_incentive_fee_never_reaches_the_classifier(self, raw: str) -> None:
         """The incentive fee needs an equity IRR the engine cannot compute.
 
-        Mapping it (or a bare "management fee") onto the senior fee would pay a
-        real accrual to the wrong creditor — worse than the honest escape, and
-        the reason there is no ``management`` substring rule.
+        ``use_llm=True`` is the point of this test, not an oversight. The LLM
+        fallback is handed every ``RecipientType`` value as an option, so once
+        ``senior_management_fee`` exists the incentive fee is one plausible hop
+        from a real accrual paid to the wrong creditor. The deny table short-
+        circuits before the ladder, so no LLM is called at all — which is why
+        this passes offline with no credentials.
         """
-        mapping = map_recipient(raw, use_llm=False)
+        mapping = map_recipient(raw, use_llm=True)
         assert mapping.value is RecipientType.unmapped
+        assert mapping.confidence == 0.0
+        assert mapping.method == "deterministic"
         assert basis_for(mapping.value) == "report_supplied"
+
+    def test_bare_management_fee_hits_no_deterministic_rule(self) -> None:
+        """No ``management`` substring rule: an unqualified fee is not guessed.
+
+        On the deterministic path it lands ``unmapped``. It is deliberately NOT
+        deny-listed — unlike the incentive fee it *is* engine-evaluable once
+        qualified, so letting the classifier read it in context is the designed
+        behaviour, and this test pins only the deterministic half.
+        """
+        mapping = map_recipient("management_fee", use_llm=False)
+        assert mapping.value is RecipientType.unmapped
 
 
 # ---------------------------------------------------------------------------

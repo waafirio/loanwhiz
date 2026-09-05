@@ -223,6 +223,30 @@ _RECIPIENT_ALIASES: dict[str, RecipientType] = {
 # readers cannot disagree about which free strings are legitimate.
 _RECIPIENT_ALIASES.update(LEGACY_RECIPIENT_SPELLINGS)
 
+# Recipients we can NAME but deliberately cannot evaluate — declared unmappable
+# rather than left to fall through (#453).
+#
+# The escape hatch below this table is the LLM classifier, and it is handed
+# ``[e.value for e in RecipientType]`` as its options. Once ``senior_management_
+# fee`` exists as a member, "Incentive Management Fee" is one plausible-looking
+# hop away from it — and the incentive fee is subject to an **equity IRR
+# hurdle** the engine holds no running equity cashflow for, so classifying it
+# onto a management-fee calculator would accrue a real number for the wrong
+# creditor. Naming it here stops the classifier ever being asked.
+#
+# This is the deny half of a closed vocabulary: a string we recognise and have
+# decided is not evaluable is more auditable than one that merely failed to
+# match, and it degrades to exactly the same honest ``unmapped``.
+_UNEVALUABLE_RECIPIENTS: frozenset[str] = frozenset(
+    {
+        "incentive_management_fee",
+        "incentive_collateral_management_fee",
+        "incentive_fee",
+        "collateral_management_fee_incentive",
+        "deferred_incentive_management_fee",
+    }
+)
+
 # Substring rules applied when no exact alias hit. Ordered most-specific first;
 # the first whose pattern is contained in the normalised string wins.
 _RECIPIENT_SUBSTRINGS: list[tuple[str, RecipientType]] = [
@@ -444,6 +468,12 @@ def map_recipient(
     """
     normalised = _normalise(raw)
     if not normalised:
+        return TaxonomyMapping(RecipientType.unmapped, 0.0, "deterministic")
+
+    # Declared-unevaluable, checked BEFORE the alias/substring/LLM ladder: a
+    # recipient we recognise and know the engine cannot compute must never
+    # reach the classifier, which would only see a near neighbour it can.
+    if normalised in _UNEVALUABLE_RECIPIENTS:
         return TaxonomyMapping(RecipientType.unmapped, 0.0, "deterministic")
 
     # Exact alias.
