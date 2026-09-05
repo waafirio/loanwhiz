@@ -2381,3 +2381,35 @@ class TestCoverageTriggerThresholds:
             }
         ])
         assert rules[0].threshold == 0.0
+
+
+class TestPartiallyLabelledTrancheTable:
+    """A header naming SOME attributes must not cost the others (#456)."""
+
+    _MD = """\
+# Notes
+
+| Class of Notes | Size            | S&P Rating |
+|----------------|-----------------|------------|
+| Class A Notes  | EUR 500,000,000 | AAA        |
+| Class B Notes  | EUR 20,000,000  | AA         |
+"""
+
+    def test_an_undeclared_attribute_falls_back_rather_than_dropping_the_row(
+        self,
+    ) -> None:
+        """"Size" is outside the size vocabulary, so that column is undeclared.
+
+        Choosing the column map or the positional scan for the WHOLE row means a
+        header that labels its rating column but not its amount column resolves
+        no size, and the ``size is None`` guard then drops every tranche in the
+        table — trading a wrong-attribute bug for a silent total loss, which is
+        strictly worse. The fallback is therefore per attribute.
+        """
+        result = _extract_tranches(route_sections(self._MD))
+        assert [t["name"] for t in result] == ["Class A", "Class B"]
+        by_name = {t["name"]: t for t in result}
+        assert by_name["Class A"]["size_eur"] == 500_000_000.0
+        assert by_name["Class B"]["size_eur"] == 20_000_000.0
+        # The declared column is still read from its own column.
+        assert by_name["Class A"]["rating"] == "AAA"

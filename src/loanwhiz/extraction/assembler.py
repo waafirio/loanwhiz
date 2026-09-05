@@ -1026,21 +1026,31 @@ def _tranches_from_class_row_table(table: list[list[str]]) -> list[dict]:
         # Exclude the cell holding the "Class X" label so its letter isn't
         # misread as a rating (e.g. "Class A Notes" -> rating "A").
         attr_cells = [c for c in row if not _CLASS_RE.search(c)]
-        if columns:
-            # The table labels its own columns, so read each attribute from the
-            # column that declares it rather than from whichever cell happens to
-            # match first (#456). Positional scanning is right only by accident:
-            # it worked on the RMBS tables because the rate column precedes the
-            # issue-price column, and on Cairn's unrated first-loss row it read
-            # the 79.00% issue price as the coupon of a note that pays none.
-            size = _cell_at(row, columns.get("size"), _parse_tranche_size)
-            rating = _cell_at(row, columns.get("rating"), _first_group(_RATING_RE))
-            rate = _cell_at(row, columns.get("rate"), _first_group(_RATE_RE))
+        # Read each attribute from the column that DECLARES it, and fall back to
+        # the positional scan only for attributes this header does not name
+        # (#456). Positional scanning is right only by accident — it worked on
+        # the RMBS tables because the rate column precedes the issue-price
+        # column, and on Cairn's unrated first-loss row it read the 79.00% issue
+        # price as the coupon of a note that pays none.
+        #
+        # The fallback is PER ATTRIBUTE, not per table. Choosing one strategy for
+        # the whole row means a header that labels its rating column but calls
+        # the amount column something outside the size vocabulary ("Size")
+        # resolves no size and drops every tranche in the table — trading the
+        # wrong-attribute bug for a silent-total-loss one, which is worse.
+        if "size" in columns:
+            size = _cell_at(row, columns["size"], _parse_tranche_size)
         else:
             size = next((a for a in (_parse_tranche_size(c) for c in attr_cells) if a), None)
+        if "rating" in columns:
+            rating = _cell_at(row, columns["rating"], _first_group(_RATING_RE))
+        else:
             rating = next(
                 (r.group(1) for c in attr_cells if (r := _RATING_RE.search(c))), None
             )
+        if "rate" in columns:
+            rate = _cell_at(row, columns["rate"], _first_group(_RATE_RE))
+        else:
             rate = next(
                 (r.group(1).strip() for c in attr_cells if (r := _RATE_RE.search(c))), None
             )
