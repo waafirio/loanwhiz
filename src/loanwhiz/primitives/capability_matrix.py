@@ -272,6 +272,17 @@ def _classify_covenant_monitor(
     )
 
 
+#: Registry keys naming a period source the engine can cold-start a deal from.
+#: Unlike a claim about what a deal publishes, this is fully determined by the
+#: registry: it is a statement about what *this repo* can ingest today.
+_INGESTIBLE_SOURCE_KEYS = ("tape_urls", "notes_cash_report_urls")
+
+
+def _has_ingestible_source(deal_ctx: Mapping[str, Any]) -> bool:
+    """Whether the per-deal endpoints can reconstruct a period series for this deal."""
+    return any(deal_ctx.get(key) for key in _INGESTIBLE_SOURCE_KEYS)
+
+
 def _classify_waterfall_execution(
     deal_id: str,
     deal_ctx: Mapping[str, Any],
@@ -311,9 +322,27 @@ def _classify_waterfall_execution(
                 detail={"revenue_step_count": 0},
             ),
         )
+    ingestible = _has_ingestible_source(deal_ctx)
+    # ``ran`` is a claim about the *engine*, which executes these steps against
+    # period funds whatever the deal. It is not a claim that the per-deal
+    # endpoints will serve this deal: those need a period source to cold-start
+    # from, and a deal with neither a tape nor a Notes & Cash report gets a
+    # labelled 422 instead. Saying only the first left the matrix and the
+    # endpoint flatly contradicting each other for such a deal, so the cell now
+    # carries both halves rather than the flattering one.
+    qualifier = (
+        ""
+        if ingestible
+        else (
+            " The engine executes these steps; the per-deal endpoints cannot yet "
+            "serve this deal, which has no registered tape or Notes & Cash report "
+            "to cold-start a period series from."
+        )
+    )
     return (
         STATE_RAN,
-        f"Extracted {len(chosen_steps)}-step {chosen_type} waterfall executes against period funds.",
+        f"Extracted {len(chosen_steps)}-step {chosen_type} waterfall executes "
+        f"against period funds.{qualifier}",
         CellEvidence(
             confidence=1.0,  # deterministic interpreter run
             citation=_seed_citation(model, "Extracted deal model seed."),
@@ -321,6 +350,7 @@ def _classify_waterfall_execution(
                 "waterfall_type": chosen_type,
                 "step_count": len(chosen_steps),
                 "waterfalls": sorted(waterfalls.keys()),
+                "has_ingestible_source": ingestible,
             },
         ),
     )

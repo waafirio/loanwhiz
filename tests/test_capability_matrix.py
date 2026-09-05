@@ -432,3 +432,43 @@ def test_the_clo_column_reports_no_validated_cell() -> None:
     assert all(
         c.reason.strip() for c in clo_cells if c.state == STATE_NOT_APPLICABLE
     )
+
+
+def test_waterfall_ran_does_not_contradict_an_endpoint_that_refuses_the_deal() -> None:
+    """A `ran` cell must not read as "the endpoints will serve this deal".
+
+    `ran` is a claim about the engine, which executes the extracted steps for any
+    deal. The per-deal endpoints need a period source to cold-start from, and a
+    deal with neither a registered tape nor a Notes & Cash report gets a labelled
+    422 instead. Reporting only the first half left the matrix and the endpoint
+    contradicting each other, which is the kind of flattering half-truth the
+    honesty contract exists to prevent.
+
+    The qualifier is deliberately one-directional: it fires only where the
+    registry proves there is no source, and stays silent otherwise rather than
+    claiming the endpoint works (serving also depends on a cached report, which
+    the registry does not determine).
+    """
+    matrix = _real_matrix()
+    for column in matrix.deals:
+        cell = _cell(matrix, column.deal_id, "waterfall_execution")
+        if cell.state != STATE_RAN:
+            continue
+        has_source = cell.evidence.detail["has_ingestible_source"]
+        registry_has_source = bool(
+            DEAL_REGISTRY[column.deal_id].get("tape_urls")
+            or DEAL_REGISTRY[column.deal_id].get("notes_cash_report_urls")
+        )
+        assert has_source is registry_has_source
+        if not has_source:
+            assert "per-deal endpoints cannot yet serve this deal" in cell.reason
+        else:
+            assert "cannot yet serve" not in cell.reason
+
+
+def test_the_clo_waterfall_cell_names_both_halves() -> None:
+    """The CLO specifically: the engine runs it, the endpoints do not serve it."""
+    cell = _cell(_real_matrix(), "cairn-clo-xvii", "waterfall_execution")
+    assert cell.state == STATE_RAN
+    assert "executes against period funds" in cell.reason
+    assert "per-deal endpoints cannot yet serve this deal" in cell.reason
