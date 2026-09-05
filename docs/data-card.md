@@ -71,7 +71,7 @@ the per-cell source of truth: **1 validated / 14 ran / 15 not-applicable**.
 | **Green Lion 2023-1 B.V.** | Netherlands | Prospectus (real) + investor reports + **quarterly Notes & Cash (real)** | **1.0** | Full waterfall, 4 triggers | **Graded to the cent** by `GET /quality-matrix` against a committed answer key (#440) — revenue + redemption PoP across all three published periods. The `/deal/{id}/validation` endpoint still returns `available=false`: the fixtures and key are committed, but no validation *builder* is registered, so that endpoint understates what is graded. |
 | **Leone Arancio RMBS 2023-1 S.r.l.** | Italy | Prospectus (real, Italian) + investor reports | **0.925** | Full waterfall (23/23/12 steps), 3 triggers, 3 note classes — A1 480m / A2 6,600m / J 920m | Pipeline ran; tranche sizes reconcile to the curated `deals.json` registry, but **no** Notes & Cash report is published, so no external validation is possible |
 | **Sol-Lion II RMBS Fondo de Titulización** | Spain | Prospectus (real, Spanish) + investor reports | **0.925** | Full waterfall (20/15/12 steps), 3 triggers, 8 note classes — A1–A6, B, C | Pipeline ran; tranche sizes reconcile to the curated `deals.json` registry, but **no** Notes & Cash report is published, so no external validation is possible |
-| **Cairn CLO XVII DAC** *(CLO — extracted, unvalidated)* | Ireland | Listing Particulars (real, 420pp) + 3 monthly trustee reports (real) + Note Valuation Report (real, 83pp) | **1.0** | Full 8-class stack (A, B-1, B-2, C, D, E, F + Subordinated, EUR 404.1m), both Priorities of Payments as distinct cascades (29-step Interest / 23-step Principal / 26-step Post-Acceleration), 10 triggers of which 8 are per-class coverage tests, 25 definitions | **Ran, not validated.** No answer key is authored, so no cell is `validated`. `covenant_monitoring` and `waterfall_execution` are `ran`; tape analytics, collateral reconciliation and engine validation stay `not-applicable`. The coverage tests carry no thresholds — see the limitation below — so the monitor reports them not-evaluable rather than passing |
+| **Cairn CLO XVII DAC** *(CLO — extracted, unvalidated)* | Ireland | Listing Particulars (real, 420pp) + 3 monthly trustee reports (real) + Note Valuation Report (real, 83pp) | **1.0** | Full 8-class stack (A, B-1, B-2, C, D, E, F + Subordinated, EUR 404.1m), both Priorities of Payments as distinct cascades (29-step Interest / 23-step Principal / 26-step Post-Acceleration), 10 triggers of which 8 are per-class coverage tests, 25 definitions | **Executes, not validated.** The seed folds through the shared `run_period` kernel with the deal's own cascades (#457). No answer key is authored, so no cell is `validated` — for want of a key, not of a report. `covenant_monitoring` and `waterfall_execution` are `ran`; tape analytics, collateral reconciliation and engine validation stay `not-applicable`, each with a reason true of this deal. The coverage tests carry no thresholds — see the limitation below — so the monitor reports them not-evaluable rather than passing |
 
 ### Cairn CLO XVII DAC — what is and is not obtainable
 
@@ -185,18 +185,55 @@ honestly — a coverage test with no quantified threshold is reported
 `not_evaluable` with that reason, never as a passing test. Capturing the levels
 is the obvious next increment and is **not** done here.
 
-**Two reporting reasons that are now inaccurate for this deal** (both live in
-`capability_matrix.py`, outside this child's scope — routed to #457, which wires
-the CLO reader):
+**Refined by #457: the missing threshold is real, but it is not the refusal that
+fires first.** Running the deal revealed that on the actual eight-class stack
+every coverage test refuses one layer earlier, in the structural metric itself:
+the Subordinated Notes carry no class letter, so #452 cannot place the tranche in
+the capital structure and correctly refuses the whole metric rather than trusting
+a denominator it cannot verify. The threshold reason is only reached once that
+tranche is set aside. Both refusals are honest and both are separately fixable,
+which is why the distinction is recorded rather than smoothed over — a reader
+told only about thresholds would fix thresholds and find the tests still refusing.
 
-- `engine_validation` reports `not-applicable` because "No published Notes & Cash
-  Priority-of-Payments report to reconcile the engine against for this deal."
-  For Cairn that is **factually false** — the Note Valuation Report publishes both
-  Priorities of Payments. What is genuinely missing is a committed validation
-  *builder*, not the report.
-- `tape_analytics` reports "No loan tapes published for this deal", which is true
-  of ESMA tapes but understates that loan-level collateral detail *is* published,
-  in an unreadable format.
+Worth noting for whoever takes that on: the equity tranche is junior to every
+attachment point, so it enters no coverage denominator and placing it would leave
+every ratio unchanged. With it set aside the engine produces a correctly-ordered
+OC ladder that falls as the attachment point deepens, then refuses again for the
+documented threshold reason. Changing the placement rule is a change to #452's
+deliberate conservatism in `covenant_monitor.py`, so #457 surfaced it rather than
+making that call unilaterally.
+
+**Two reporting reasons were inaccurate for this deal; #457 corrected both.**
+They lived in `capability_matrix.py` and are recorded here because the wording of
+a refusal is load-bearing — "nothing is published" says a deal *cannot* be
+validated, which is a different and stronger claim than "nobody has authored the
+key yet".
+
+- `engine_validation` said "No published Notes & Cash Priority-of-Payments report
+  to reconcile the engine against for this deal." For Cairn that was **factually
+  false** — the Note Valuation Report publishes both Priorities of Payments. The
+  reason now discriminates on a registry fact (does the deal declare any periodic
+  report?) rather than on a deal id, so a deal with published reports is told the
+  truth: no answer key has been authored and no validation builder is committed.
+  Unvalidated for want of a key, not for want of a report.
+- `tape_analytics` and `collateral_reconciliation` said "No loan tapes published
+  for this deal", which was true of ESMA tapes but read as the stronger claim that
+  no loan-level data exists. Both now say only what `tape_urls` encodes: no
+  machine-readable ESMA loan tape is registered.
+
+**The engine executes this deal (#457).** The committed seed folds through the
+existing `run_period` kernel — the same one the RMBS deals use — over the full
+eight-class stack, running the deal's own Interest and Principal cascades rather
+than the built-in RMBS defaults. No new execution path was added: `run_period`
+already accepts extracted steps and triggers as parameters, so wiring a CLO
+through it is parameterisation. `tests/test_clo_engine_execution.py` pins this.
+
+Two things that proof deliberately does **not** claim. It exercises the engine
+*kernel*, not the ingestion path: the production `/deal/{id}` reconstruction
+still refuses this deal with a labelled 422, because it has neither an ESMA tape
+nor a registered Notes & Cash report, and giving it one would mean a third
+ingestion adapter. And it validates nothing — no cell reads `validated`, because
+no answer key is authored.
 
 A third, narrower gap: `RegisterDealRequest` (`api/main.py`) is a fixed whitelist
 of registry keys and does not list `asset_class`, so a deal registered at runtime
