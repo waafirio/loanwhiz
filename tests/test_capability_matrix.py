@@ -368,34 +368,43 @@ def test_asset_class_is_resolved_from_the_registry_not_from_a_deal_id() -> None:
     assert all(c.asset_class.strip() for c in matrix.deals)
 
 
-def test_engine_validation_does_not_claim_a_published_report_is_missing() -> None:
-    """A deal whose reports ARE published must not be told it has none (#455).
+def test_engine_validation_never_claims_a_published_report_is_missing() -> None:
+    """The refusal must not assert anything about what a deal publishes (#455).
 
-    The reason a deal cannot be graded is load-bearing prose: "nothing is
-    published" says validation is impossible, while "no answer key is authored"
-    names a deferred decision. Cairn CLO XVII DAC publishes both Priorities of
-    Payments, so the first sentence would be false of it.
+    This reason is load-bearing prose, and it can be wrong in two opposite
+    directions. "No published report exists" says validation is *impossible* —
+    false for Cairn CLO XVII DAC, whose Note Valuation Report carries both
+    Priorities of Payments. "No answer key has been authored" says it merely has
+    not been done — false for Green Lion 2023-1, which has one committed (#440).
+
+    The registry cannot tell those apart: `investor_report_urls` counts periodic
+    reports rather than PoP reports, and a deal may deliberately leave
+    `notes_cash_report_urls` unset. So the reason states only the condition this
+    classifier actually verified — no committed builder — and says so explicitly.
     """
-    cell = _cell(_real_matrix(), "cairn-clo-xvii", "engine_validation")
-    assert cell.state == STATE_NOT_APPLICABLE
-    assert "answer key" in cell.reason
-    # The retracted claim, in the shapes it could come back as.
-    assert "No published Notes & Cash" not in cell.reason
-    assert "no external ground truth" not in cell.reason
-    assert cell.evidence.detail["published_report_count"] > 0
+    matrix = _real_matrix()
+    for column in matrix.deals:
+        cell = _cell(matrix, column.deal_id, "engine_validation")
+        if cell.state == STATE_VALIDATED:
+            continue
+        assert "No offline validation builder is committed" in cell.reason
+        assert cell.evidence.detail["has_validation_builder"] is False
+        # Neither overclaim, in the shapes each could return as.
+        for overclaim in (
+            "No published Notes & Cash",
+            "No published periodic report",
+            "no external ground truth",
+            "no answer key has been authored",
+        ):
+            assert overclaim not in cell.reason, f"{column.deal_id}: {overclaim!r}"
 
 
-def test_engine_validation_still_says_so_when_nothing_is_published() -> None:
-    """The other branch stays available — this is a discriminator, not a rewrite."""
-    matrix = build_capability_matrix(
-        {"bare": {"deal_name": "Bare Deal"}},
-        seed_loader=lambda ctx: None,
-        validators={},
-    )
-    cell = _cell(matrix, "bare", "engine_validation")
-    assert cell.state == STATE_NOT_APPLICABLE
-    assert "No published periodic report is registered" in cell.reason
-    assert cell.evidence.detail["published_report_count"] == 0
+def test_engine_validation_reason_is_deal_agnostic() -> None:
+    """One verified statement, so no deal can be told a story true only of another."""
+    matrix = _real_matrix()
+    cells = [c for c in matrix.cells if c.capability_key == "engine_validation"]
+    reasons = {c.reason for c in cells if c.state != STATE_VALIDATED}
+    assert len(reasons) == 1
 
 
 def test_tape_reasons_do_not_overclaim_that_no_loan_level_data_exists() -> None:

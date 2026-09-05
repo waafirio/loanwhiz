@@ -70,13 +70,6 @@ STATE_NOT_APPLICABLE = "not-applicable"
 #: to a client whose own union does not carry it.
 CellState = Literal["validated", "ran", "not-applicable"]
 
-#: Registry keys under which a deal's published periodic reports are declared.
-#: A deal with any of these has *external* published figures in principle; it
-#: still needs a committed validation builder before the engine can be graded
-#: against them. Keeping the distinction registry-driven is what lets the
-#: engine-validation reason stay true per deal without naming any deal.
-_PUBLISHED_REPORT_KEYS = ("notes_cash_report_urls", "investor_report_urls")
-
 #: Jurisdiction default for the Dutch Green Lion deals, which carry no explicit
 #: ``jurisdiction`` registry key (only the non-Dutch deals do). Resolving it here
 #: keeps the matrix's per-deal jurisdiction column complete and legible.
@@ -184,7 +177,8 @@ class CapabilityMatrix(BaseModel):
         default=(
             "Each cell is computed from the deal's real inputs (registry context + "
             "committed extracted model + offline validation builder), so the same "
-            "primitive code is shown running across Dutch, Italian and Spanish deals. "
+            "primitive code is shown running across every registered deal, whatever "
+            "its jurisdiction or asset class — each column names both. "
             "'validated' = ran AND reconciled to external truth; 'ran' = executed, no "
             "external truth to check; 'not-applicable' = inputs absent, with the real "
             "reason. Honesty over a wall of green."
@@ -385,30 +379,26 @@ def _classify_engine_validation(
     """
     builder = validators.get(deal_id)
     if builder is None:
-        published = _published_report_count(deal_ctx)
-        # Two genuinely different reasons for the same honest not-applicable, told
-        # apart by a registry fact rather than by a deal id. Reporting the wrong
-        # one is not a cosmetic slip: "nothing is published" says the deal *cannot*
-        # be validated, when for some deals the truth is that nobody has authored
-        # the answer key yet. Only the second is a deferred decision.
-        reason = (
-            "No published periodic report is registered for this deal, so there is "
-            "no external ground truth to reconcile the engine against."
-            if published == 0
-            else (
-                f"{published} published periodic report(s) are registered for this "
-                "deal, but no answer key has been authored and no offline validation "
-                "builder is committed — so the engine has nothing to be reconciled "
-                "against yet. Unvalidated for want of a key, not for want of a report."
-            )
-        )
+        # State only what was actually checked. The tempting richer reason —
+        # "reports are published, but nobody authored a key" — is an inference
+        # this function is not entitled to make, and the registry cannot support
+        # it: `investor_report_urls` counts periodic reports, which are not
+        # Priority-of-Payments reports, and a deal whose PoP report exists may
+        # deliberately not register it (`notes_cash_report_urls` is a routing
+        # promise, not a URL slot — see docs/data-card.md). Guessing in either
+        # direction produces a confidently false sentence: "nothing is published"
+        # wrongly says a deal *cannot* be validated, and "no key has been
+        # authored" is false of a deal that already has one committed.
         return (
             STATE_NOT_APPLICABLE,
-            reason,
+            "No offline validation builder is committed for this deal, so there is "
+            "nothing here for the engine to be reconciled against. This is a "
+            "statement about what is committed, not about what the deal publishes — "
+            "docs/data-card.md records what is obtainable, per deal.",
             CellEvidence(
                 confidence=None,
                 citation="No committed engine-validation builder for this deal.",
-                detail={"published_report_count": published},
+                detail={"has_validation_builder": False},
             ),
         )
     report: ReconciliationReport = builder()
@@ -508,18 +498,6 @@ def _resolve_asset_class(deal_ctx: Mapping[str, Any]) -> str:
     legible column by being registered — no change to this module.
     """
     return deal_ctx.get("asset_class") or _DEFAULT_ASSET_CLASS
-
-
-def _published_report_count(deal_ctx: Mapping[str, Any]) -> int:
-    """How many published periodic reports the registry declares for this deal.
-
-    The discriminator behind an honest engine-validation reason: it separates
-    *"nothing is published to reconcile against"* from *"reports are published,
-    but no answer key has been authored and no builder is committed"*. Both are
-    ``not-applicable``; only one of them is true of any given deal, and saying
-    the wrong one is the #193 failure in prose form.
-    """
-    return sum(len(deal_ctx.get(key) or []) for key in _PUBLISHED_REPORT_KEYS)
 
 
 def build_capability_matrix(

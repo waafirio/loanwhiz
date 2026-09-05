@@ -212,10 +212,15 @@ key yet".
 - `engine_validation` said "No published Notes & Cash Priority-of-Payments report
   to reconcile the engine against for this deal." For Cairn that was **factually
   false** — the Note Valuation Report publishes both Priorities of Payments. The
-  reason now discriminates on a registry fact (does the deal declare any periodic
-  report?) rather than on a deal id, so a deal with published reports is told the
-  truth: no answer key has been authored and no validation builder is committed.
-  Unvalidated for want of a key, not for want of a report.
+  reason now states only what the classifier actually verified: that no offline
+  validation builder is committed, explicitly noting that this says nothing about
+  what the deal publishes. The richer wording ("reports exist, but nobody authored
+  a key") was tried and rejected — the registry cannot support it, since
+  `investor_report_urls` counts periodic reports rather than PoP reports and this
+  deal deliberately leaves `notes_cash_report_urls` unset. It would have been
+  false of Green Lion 2023-1, which has a committed answer key. For Cairn the
+  substantive answer stands and is recorded here rather than inferred in code:
+  unvalidated for want of an authored key, not for want of an obtainable report.
 - `tape_analytics` and `collateral_reconciliation` said "No loan tapes published
   for this deal", which was true of ESMA tapes but read as the stronger claim that
   no loan-level data exists. Both now say only what `tape_urls` encodes: no
