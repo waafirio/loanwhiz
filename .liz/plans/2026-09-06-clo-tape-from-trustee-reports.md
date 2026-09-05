@@ -1,7 +1,7 @@
 ---
 id: 2026-09-06-clo-tape-from-trustee-reports
 title: Derive an Annex 4 loan tape from Cairn's trustee reports, ingested through the normal channel
-status: draft
+status: decomposed
 created: 2026-09-06
 updated: 2026-09-06
 epics: []
@@ -142,7 +142,74 @@ rest safe.
 
 ## Decomposition
 
-_(Filled in phase 2.)_
+One epic, three children, strictly sequential. Each consumes the previous
+child's output, so there is no parallelism to be had here and pretending
+otherwise would just produce a worker that stands down.
+
+### Epic: CLO loan tape derived from trustee reports   (umbrella #<N>)
+
+Turn the collateral schedule inside Cairn's monthly trustee reports into a tape
+that enters through the **normal** ingestion channel — resolving on the existing
+annex registry onto canonical Annex 4 columns, carrying `CRPL` locators where the
+correspondence is real, and stating plainly everywhere that it is **derived from
+a trustee report, not filed under Article 7(1)(a)**.
+
+The epic is done when the CLO's tape-driven capability cells report real results
+instead of "no loan tape published", and no surface anywhere implies the tape is
+a regulatory filing.
+
+- **Parse the trustee-report collateral schedule to structured rows** — Extract
+  the per-asset schedule from the committed monthly trustee reports (Current
+  Asset Characteristics Parts I/II/III plus the S&P CCC Obligations page),
+  joining the parts on facility identifier into one row per asset per reporting
+  date. **Reuse:** `notes_cash_parser` is the in-tree precedent for a
+  deterministic, offline, pypdf-based report parser — follow its shape rather
+  than introducing a new PDF stack. **Contract — this is the acceptance bar:**
+  the parsed tape must **reconcile against the report's own stated aggregates**
+  (Portfolio Profile Tests, aggregate par, S&P Industry Concentration, S&P Rating
+  Stratification), pinned by a test; a parse that does not tie out to the
+  document's own totals is not trusted by anything downstream. Row continuations
+  are the known hazard — multi-line issuer names and wrapped country values are
+  visible in the raw text. **Governance:** parse failures and dropped rows must
+  be counted and surfaced, never silently skipped. **Generality:** the three
+  monthly reports are three periods; the parser handles a *report*, not a date.
+  Sequencing: parallel. Paths: `src/loanwhiz/primitives/**`,
+  `tests/fixtures/**`, `tests/**`.
+- **Map the parsed schedule onto canonical Annex 4 columns, with honest
+  provenance** — Resolve the parsed rows onto the canonical columns declared in
+  `esma_annex4_corporate`, so the tape carries `CRPL` locators where the
+  correspondence is genuine. **This child owns the honesty problem and it is the
+  point of the epic.** Three specific traps, all identified in the plan: the tape
+  is *derived*, not an Article 7(1)(a) filing, and every provenance surface must
+  say so; S&P/Fitch industry classification is **not** the NACE code `CRPL14`
+  declares; and country is **not** the NUTS-3 region `CRPL10` declares. **Reuse
+  and contract:** #451 made `AnnexField.code` nullable precisely so a field can
+  resolve a column while yielding **no locator** — provenance visibly absent
+  rather than fabricated. Follow that precedent; do not invent a second
+  mechanism, and do not map an approximate correspondence onto a regulatory code.
+  Fields the schedule simply lacks (arrears, default, recoveries, original
+  balance, Basel segment) must read as **absent, never zero** — the silent-zero
+  bug #451 found in exactly this table is the standing warning. Sequencing:
+  sequential. After the parse child. Paths: `src/loanwhiz/domain/**`,
+  `src/loanwhiz/primitives/esma_tape_normaliser.py`, `tests/**`.
+- **Register the derived tape and ingest it through the normal channel** — Make
+  the derived tape reachable the way every other tape is, so annex detection
+  resolves it as Annex 4 and the tape-driven capability cells produce real
+  results. Decide and justify where a *derived* tape lives given `tape_urls`
+  currently holds URLs — a committed artefact and a generated-at-ingest artefact
+  have different provenance and reproducibility properties, and the choice should
+  be argued in the plan rather than defaulted. **Contract:** a derived tape must
+  remain **distinguishable from a filed regulatory tape at every surface that
+  reports provenance** — `data_source`, the evidence pack, the capability matrix
+  reason, and the data card. If a reader can mistake it for an ESMA filing, this
+  child has failed regardless of whether the cells light up. **Governance:**
+  update the data and model cards to record what the derived tape is, what it
+  covers, and what it omits. **Generality:** "derived from an investor/trustee
+  report" should be a recognisable *source kind*, not a Cairn special case — the
+  next such deal, or Cairn's real Art 7(1)(a) Loan Reports if access is ever
+  obtained, should flow the same way. Sequencing: sequential. After the mapping
+  child. Paths: `src/loanwhiz/data/**`, `src/loanwhiz/api/**`,
+  `src/loanwhiz/primitives/capability_matrix.py`, `docs/**`, `tests/**`.
 
 ## Filed issues
 
