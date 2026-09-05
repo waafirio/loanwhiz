@@ -1,6 +1,7 @@
 {
   "green-lion-2023-1": {
     "deal_name": "Green Lion 2023-1 B.V.",
+    "asset_class": "RMBS",
     "prospectus_url": "https://ing.com/binaries/content/assets/documents/files/green-lion-2023-1_-_prospectus.pdf",
     "tape_urls": [],
     "investor_report_urls": [
@@ -17,6 +18,7 @@
   },
   "green-lion-2024-1": {
     "deal_name": "Green Lion 2024-1 B.V.",
+    "asset_class": "RMBS",
     "prospectus_url": "https://ing.com/binaries/content/assets/documents/files/green-lion-2024-1---prospectus.pdf",
     "tape_urls": [],
     "investor_report_urls": [
@@ -33,6 +35,7 @@
   },
   "leone-arancio-2023-1": {
     "deal_name": "Leone Arancio RMBS 2023-1 S.r.l.",
+    "asset_class": "RMBS",
     "jurisdiction": "Italy",
     "prospectus_url": "https://ing.com/binaries/content/assets/documents/files/leone-arancio-rmbs-2023-1-prospectus-dated-12-september-2023.pdf",
     "tape_urls": [],
@@ -86,6 +89,7 @@
   },
   "sol-lion-ii": {
     "deal_name": "Sol-Lion II RMBS Fondo de Titulización",
+    "asset_class": "RMBS",
     "jurisdiction": "Spain",
     "prospectus_url": "https://ing.com/binaries/content/assets/documents/files/sol-lion-ii-rmbs-fondo-de-titulizacion-prospectus-dated-25-november-2020.pdf",
     "tape_urls": [],
@@ -123,6 +127,18 @@
       {"period": "March 2026", "url": "https://ing.com/binaries/content/assets/documents/fixed-income-bank/sol-lion-ii-investor-report---march-2026.pdf"},
       {"period": "April 2026", "url": "https://ing.com/binaries/content/assets/documents/fixed-income-bank/sol-lion-ii-investor-report---april-2026.pdf"},
       {"period": "May 2026", "url": "https://ing.com/binaries/content/assets/documents/fixed-income-bank/sol-lion-ii-investor-report---may-2026.pdf"}
+    ]
+  },
+  "cairn-clo-xvii": {
+    "deal_name": "Cairn CLO XVII DAC",
+    "asset_class": "CLO",
+    "jurisdiction": "Ireland",
+    "prospectus_url": "https://ise-prodnr-eu-west-1-data-integration.s3-eu-west-1.amazonaws.com/202309/9f9dac99-d8fa-4525-928a-d0aab2db8c81.pdf",
+    "tape_urls": [],
+    "investor_report_urls": [
+      {"period": "December 2024", "url": "https://ise-prodnr-eu-west-1-data-integration.s3-eu-west-1.amazonaws.com/202502/4477d1cc-05b3-4e42-a888-de1af838b9e3.pdf"},
+      {"period": "February 2025", "url": "https://ise-prodnr-eu-west-1-data-integration.s3-eu-west-1.amazonaws.com/202503/98ac9e38-15e1-47a3-8b40-b38b768bd3fe.pdf"},
+      {"period": "March 2025", "url": "https://ise-prodnr-eu-west-1-data-integration.s3-eu-west-1.amazonaws.com/202503/3c77fad7-5c02-4a4b-a710-719ae16a2b38.pdf"}
     ]
   }
 }

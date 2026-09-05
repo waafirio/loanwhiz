@@ -38,7 +38,10 @@ in the #276 engine collapse.
 - **Cross-jurisdiction execution.** The same primitives run end-to-end across
   5 deals in 3 jurisdictions (Dutch / Italian / Spanish RMBS); see
   `tests/test_cross_jurisdiction_cold_start.py` and
-  `tests/test_breadth_cross_jurisdiction.py`.
+  `tests/test_breadth_cross_jurisdiction.py`. A sixth deal — the Irish CLO
+  Cairn CLO XVII DAC — is **registered as data only** and executes nowhere yet;
+  see `tests/test_clo_deal_registration.py`, which pins what is absent for it
+  as hard as what is present.
 - **Multi-period projection.** `POST /deal/{deal_id}/project`
   (`src/loanwhiz/api/main.py:3571`) takes a `months` horizon
   (`ProjectRequest`, `main.py:374`), generates a synthetic CPR / CDR /
@@ -115,13 +118,19 @@ distinct things are being counted, and only the last is external:
 - **Externally validated** means reconciled to a deal's own published Notes &
   Cash report. That is still **one deal**: Green Lion 2024-1 is the only
   `validated` cell in `GET /capability-matrix` (live tally: 1 validated /
-  12 ran / 12 not-applicable). Green Lion 2023-1 now has a committed
+  12 ran / 17 not-applicable, over 6 deal columns). Green Lion 2023-1 now has a committed
   ground-truth answer key (#440), so `GET /quality-matrix` **grades two
   deals** — both reconcile their revenue and redemption Priority of Payments
   to the cent across all three published periods.
 
 Leone Arancio and Sol-Lion II publish **no** Notes & Cash report, so no answer
-key can be authored for them without inventing one, and none is. Coverage is
+key can be authored for them without inventing one, and none is. The CLO is the
+exception that proves the rule: Cairn CLO XVII DAC's Note Valuation Report *does*
+publish both an Interest and a Principal Priority of Payments, freely and
+unauthenticated, so an answer key is **feasible** there — but none is authored,
+no validation builder is committed, and every CLO cell reads `not-applicable`.
+Whether to pursue a validated CLO cell is an open operator decision, not a
+promise this repo has made. Coverage is
 also uneven *within* a seed: Sol-Lion II carries ratings and coupons (A1–A6
 AAA, 0.25%–0.75%; B 1.00%, C 1.50%), while **Leone Arancio's are all `null`** —
 that prospectus states them far from the class labels, and inferring them by

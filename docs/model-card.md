@@ -64,7 +64,7 @@ The following uses are explicitly **out of scope** and are not supported:
 - **Legal advice or legal document interpretation.** The pipeline extracts text and structure; it does not provide legal analysis or legal opinions.
 - **Investment decisions.** Extracted deal models are analytical inputs, not investment recommendations. The pipeline does not assess creditworthiness, risk appetite, or suitability.
 - **Regulatory compliance certification.** The pipeline is not a compliance tool. Outputs have not been validated against any regulatory reporting standard. They must not be used as evidence of regulatory compliance without independent review.
-- **Cross-deal generalisation without validation.** The pipeline *runs* on 5 deals across 3 jurisdictions, but only the downstream waterfall engine on **Green Lion 2024-1** is validated to the cent against external published actuals (**Green Lion 2023-1** is additionally graded to the cent by `GET /quality-matrix` against its own committed answer key). Extracted outputs on every other deal must be treated as unvalidated until independently verified — the Italian and Spanish prospectuses now extract at high *coverage* (0.925), but neither publishes a Notes & Cash report, so no published actuals exist to check them against.
+- **Cross-deal generalisation without validation.** The pipeline *runs* on 5 of the 6 registered deals (the sixth, an Irish CLO, is registered only — nothing extracted, nothing executed), but only the downstream waterfall engine on **Green Lion 2024-1** is validated to the cent against external published actuals (**Green Lion 2023-1** is additionally graded to the cent by `GET /quality-matrix` against its own committed answer key). Extracted outputs on every other deal must be treated as unvalidated until independently verified — the Italian and Spanish prospectuses now extract at high *coverage* (0.925), but neither publishes a Notes & Cash report, so no published actuals exist to check them against.
 - **Autonomous decision-making.** The pipeline is a decision-support tool. No output should be used to take automated financial action without human review.
 
 ---
@@ -74,7 +74,9 @@ The following uses are explicitly **out of scope** and are not supported:
 ### Validation Dataset
 
 The pipeline has been **run across 5 deals in 3 jurisdictions** (Dutch / Italian
-/ Spanish RMBS — see [docs/data-card.md](data-card.md)), but extraction quality
+/ Spanish RMBS — see [docs/data-card.md](data-card.md)). A sixth registered deal,
+the Irish CLO Cairn CLO XVII DAC, has **not** been run: it is sourced and recorded
+only, and contributes no extraction figure below. Extraction quality
 and external validation differ sharply per deal and are reported honestly. The
 primary extraction-quality reference is the **Green Lion 2026-1 B.V.** prospectus
 (Dutch RMBS, Annex 2 ESMA format), detailed step-by-step below; the per-deal
@@ -139,7 +141,7 @@ so neither can be externally validated. They remain honest `ran` cells.
 
 ## Limitations
 
-1. **Coverage is broad; external validation is not.** The pipeline runs on 5 deals across 3 jurisdictions (Dutch / Italian / Spanish RMBS) and extraction completeness is now 0.75–1.0 across all of them, but only **Green Lion 2024-1** is externally validated (engine to the cent against its published Notes & Cash). **Green Lion 2023-1** is also graded to the cent by `GET /quality-matrix` against a committed answer key (#440) — two deals graded, one `validated` capability cell. The Italian and Spanish deals publish no Notes & Cash report, so they cannot be graded at all without inventing ground truth, and none is invented. Other asset classes (CLOs, CMBS, US RMBS, ABS) are untested. The capability matrix (1 validated / 12 ran / 12 not-applicable) is the honest source of truth — never read the coverage as "validated across all deals".
+1. **Coverage is broad; external validation is not.** The pipeline runs on 5 of the 6 registered deals — 3 jurisdictions, all RMBS (Dutch / Italian / Spanish) — and extraction completeness is now 0.75–1.0 across all of them, but only **Green Lion 2024-1** is externally validated (engine to the cent against its published Notes & Cash). **Green Lion 2023-1** is also graded to the cent by `GET /quality-matrix` against a committed answer key (#440) — two deals graded, one `validated` capability cell. The Italian and Spanish deals publish no Notes & Cash report, so they cannot be graded at all without inventing ground truth, and none is invented. The Irish CLO is registered but unextracted, so it is evidence of nothing yet; CMBS, US RMBS and ABS are absent entirely. The capability matrix (1 validated / 12 ran / 17 not-applicable) is the honest source of truth — never read the coverage as "validated across all deals".
 
 2. **Cross-reference resolution.** Prospectus definitions frequently reference other defined terms. The pipeline resolves one level of cross-reference; deeply nested chains (term A → term B → term C) may not resolve fully and require human review.
 
