@@ -399,6 +399,24 @@ EUR 35,100,000 Subordinated Notes due 2036
 """
 
 
+# The real Cairn CLO XVII tranche table as Docling renders it (#456), abridged
+# to the rows that matter. Two properties no committed RMBS table has: a
+# hyphenated sub-series, and a final row whose rating and coupon columns are
+# explicitly "N/A" while a LATER column still holds a percentage (the issue
+# price). Both are what a positional attribute scan gets wrong.
+_CLO_TRANCHE_TABLE_MD = """\
+# Cairn CLO XVII DAC — Notes
+
+| Class of Notes     | Principal Amount   | Initial Stated Interest Rate 2,5   | S&P Rating 1 of at least   |   Stated Maturity | Issue Price 4   |
+|--------------------|--------------------|------------------------------------|----------------------------|-------------------|-----------------|
+| Class A Notes      | €248,000,000       | 3 month EURIBOR + 1.80%            | "AAA(sf)"                  |              2036 | 100.00%         |
+| Class B-1 Notes    | €24,600,000        | 3 month EURIBOR + 2.75%            | "AA(sf)"                   |              2036 | 100.00%         |
+| Class B-2 Notes    | €15,000,000        | 6.87%                              | "AA(sf)"                   |              2036 | 100.00%         |
+| Class F Notes      | €14,600,000        | 3 month EURIBOR + 9.64%            | "B-(sf)"                   |              2036 | 100.00%         |
+| Subordinated Notes | €35,100,000        | N/A 6                              | N/A                        |              2036 | 79.00%          |
+"""
+
+
 class TestExtractTranches:
     def test_no_sources_returns_empty_list(self) -> None:
         assert _extract_tranches(None, None) == []
@@ -831,6 +849,58 @@ class TestExtractTranches:
         )
         names = [t["name"] for t in _extract_tranches(route_sections(md))]
         assert names == ["Class A", "Class B"]
+
+    def test_table_layout_also_sees_subclasses_and_the_residual(self) -> None:
+        """The table path recognises the same class set as the prose path.
+
+        Both paths resolve a class through one shared grammar, so a document
+        that states its stack in a table gets the identical tranche set as one
+        that states it in prose — otherwise which spelling a deal happens to
+        use decides whether its junior notes exist.
+        """
+        result = _extract_tranches(route_sections(_CLO_TRANCHE_TABLE_MD))
+        assert [t["name"] for t in result] == [
+            "Class A", "Class B-1", "Class B-2", "Class F", "Subordinated Notes",
+        ]
+        by_name = {t["name"]: t for t in result}
+        assert by_name["Class B-2"]["size_eur"] == 15_000_000.0
+        assert by_name["Subordinated Notes"]["size_eur"] == 35_100_000.0
+
+    def test_unrated_residual_reports_no_rating_rather_than_scavenging_one(
+        self,
+    ) -> None:
+        """An explicit "N/A" is an answer - absent - not a cell to scan past.
+
+        The Subordinated Notes are explicitly unrated and pay no stated coupon.
+        A scan that reads the first matching cell in the row takes the
+        word-bounded "A" out of "N/A" and reports the first-loss tranche as
+        rated single-A, and takes the 79.00% issue price as its coupon. A
+        fabricated rating on the note that absorbs the first loss is precisely
+        the plausible-looking wrong number nobody re-checks.
+        """
+        by_name = {
+            t["name"]: t for t in _extract_tranches(route_sections(_CLO_TRANCHE_TABLE_MD))
+        }
+        residual = by_name["Subordinated Notes"]
+        assert residual["rating"] is None
+        assert residual["rate"] is None
+
+    def test_attributes_are_read_from_their_labelled_column(self) -> None:
+        """A rated row's coupon is its rate column, never a later percentage.
+
+        The issue-price column also holds a bare percentage, so the rate is
+        only right by accident when the rate column happens to come first.
+        Reading the header's own labels is what makes it right on purpose.
+        """
+        by_name = {
+            t["name"]: t for t in _extract_tranches(route_sections(_CLO_TRANCHE_TABLE_MD))
+        }
+        assert by_name["Class B-2"]["rate"] == "6.87%"
+        assert by_name["Class A"]["rate"] == "3 month EURIBOR + 1.80%"
+        # The 100.00% issue price never becomes a coupon.
+        assert all(
+            t["rate"] != "100.00%" for t in by_name.values() if t["rate"] is not None
+        )
 
 
 # ---------------------------------------------------------------------------

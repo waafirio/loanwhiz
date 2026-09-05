@@ -942,6 +942,67 @@ def _tranches_from_class_column_table(table: list[list[str]]) -> list[dict]:
     return []
 
 
+# An explicit "this attribute does not apply to this class" cell, optionally
+# carrying a footnote marker ("N/A 6"). It is a real answer — *absent* — and
+# must not be scanned past: "N/A" contains a word-bounded "A", so a rating scan
+# reads an unrated first-loss tranche as rated single-A (#456). Publishing a
+# fabricated rating on the note that takes the first loss is exactly the
+# plausible-looking wrong number the honest-degradation rule exists to prevent.
+_NOT_APPLICABLE_RE = re.compile(r"^\s*(?:n\.?/?a\.?|none|nil|[-–—]+)\s*[\d,]*\s*$", re.IGNORECASE)
+
+# Column-label vocabulary, shared with the class-as-column parser: the words a
+# tranche table uses to name each attribute. Order matters — "S&P Rating" must
+# be tested as a rating before the rate pattern sees it.
+_COLUMN_LABELS = (
+    ("size", re.compile(r"principal|amount|nominal", re.IGNORECASE)),
+    ("rating", re.compile(r"rating", re.IGNORECASE)),
+    ("rate", re.compile(r"interest|rate|coupon|margin", re.IGNORECASE)),
+)
+
+
+def _attribute_columns(table: list[list[str]]) -> dict[str, int]:
+    """Map attribute -> column index from a class-as-row table's header.
+
+    The header is the first row that names no class but does label at least one
+    attribute. Returns ``{}`` when the table has no such header, so the caller
+    keeps the positional scan rather than degrading on an unlabelled table.
+    """
+    for row in table:
+        if _CLASS_RE.search(" ".join(row)):
+            break  # a class row: the header, if any, precedes it
+        found: dict[str, int] = {}
+        for idx, cell in enumerate(row):
+            for attr, pattern in _COLUMN_LABELS:
+                if attr not in found and pattern.search(cell):
+                    found[attr] = idx
+                    break
+        if found:
+            return found
+    return {}
+
+
+def _first_group(pattern: "re.Pattern[str]"):
+    """Reader that returns a pattern's first capture group, stripped."""
+    def read(cell: str) -> str | None:
+        m = pattern.search(cell)
+        return m.group(1).strip() if m else None
+    return read
+
+
+def _cell_at(row: list[str], index: int | None, read):
+    """Read one attribute from its declared column.
+
+    An explicitly not-applicable cell yields ``None`` — the attribute is absent
+    for this class, which is a finding, not a reason to look elsewhere.
+    """
+    if index is None or index >= len(row):
+        return None
+    cell = row[index]
+    if _NOT_APPLICABLE_RE.match(cell):
+        return None
+    return read(cell)
+
+
 def _tranches_from_class_row_table(table: list[list[str]]) -> list[dict]:
     """Parse a table where each *row* is a note class.
 
@@ -951,6 +1012,7 @@ def _tranches_from_class_row_table(table: list[list[str]]) -> list[dict]:
     amount) is dropped by the ``size is None`` guard combined with the bounded
     ``_CLASS_RE`` alphabet — this is what removes the spurious ``Class O`` row.
     """
+    columns = _attribute_columns(table)
     tranches: list[dict] = []
     seen: set[str] = set()
     for row in table:
@@ -964,13 +1026,24 @@ def _tranches_from_class_row_table(table: list[list[str]]) -> list[dict]:
         # Exclude the cell holding the "Class X" label so its letter isn't
         # misread as a rating (e.g. "Class A Notes" -> rating "A").
         attr_cells = [c for c in row if not _CLASS_RE.search(c)]
-        size = next((a for a in (_parse_tranche_size(c) for c in attr_cells) if a), None)
-        rating = next(
-            (r.group(1) for c in attr_cells if (r := _RATING_RE.search(c))), None
-        )
-        rate = next(
-            (r.group(1).strip() for c in attr_cells if (r := _RATE_RE.search(c))), None
-        )
+        if columns:
+            # The table labels its own columns, so read each attribute from the
+            # column that declares it rather than from whichever cell happens to
+            # match first (#456). Positional scanning is right only by accident:
+            # it worked on the RMBS tables because the rate column precedes the
+            # issue-price column, and on Cairn's unrated first-loss row it read
+            # the 79.00% issue price as the coupon of a note that pays none.
+            size = _cell_at(row, columns.get("size"), _parse_tranche_size)
+            rating = _cell_at(row, columns.get("rating"), _first_group(_RATING_RE))
+            rate = _cell_at(row, columns.get("rate"), _first_group(_RATE_RE))
+        else:
+            size = next((a for a in (_parse_tranche_size(c) for c in attr_cells) if a), None)
+            rating = next(
+                (r.group(1) for c in attr_cells if (r := _RATING_RE.search(c))), None
+            )
+            rate = next(
+                (r.group(1).strip() for c in attr_cells if (r := _RATE_RE.search(c))), None
+            )
         if size is None:
             continue
         seen.add(name)
