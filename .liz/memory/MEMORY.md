@@ -10,3 +10,4 @@ triage by opening the entry, not by reading the line.
 - [Published figures & doc drift](published-figures.md) — keywords: stale tally, completeness_score, capability matrix, re-derive, stored metric, published figure
 - [Extraction determinism & LLM caching](extraction-determinism.md) — keywords: classify_segments_llm, section router, determinism cache, prompt hash, force_refresh, sections_found, completeness_score, degrade-to-default
 - [Regulatory mapping tables (ESMA annexes, field codes, locators)](regulatory-mapping-tables.md) — keywords: AnnexField, extension field, code=None, field code, locator, ESMA RTS, annex numbering, CRPL, AUTL, RREL, borrowed code
+- [Engine contracts (closed enums, registries, need calculators)](engine-contracts.md) — keywords: NEED_CALCULATORS, register_need, RecipientType, closed enum, registry coverage, import-time assert, silent default, generated calculators
