@@ -3,7 +3,7 @@ id: 2026-09-02-clo-structural-spine
 title: CLO structural spine — generalise the engine off RMBS
 status: filed
 created: 2026-09-02
-updated: 2026-09-02
+updated: 2026-09-05
 epics: [450, 454]
 ---
 
@@ -72,16 +72,52 @@ The gaps, verified against `main` @ `78d2c53` rather than assumed:
 
 Two operator decisions shape this plan, and both narrow it deliberately.
 
-**There is no CLO data yet.** No prospectus, no trustee reports, no loan-level
-tape. Sourcing is therefore part of the work rather than a precondition. The
-consequence is load-bearing and must not be quietly forgotten later: **this plan
-promises no to-the-cent validation.** The project's credibility rests on
-"reproduced a real deal to the cent," and that claim requires published actuals
-to reconcile against — for a CLO that means trustee reports, which are typically
-vendor or investor-portal material rather than free EDW downloads. Every cell
-this plan produces is an honest `ran`, never a `validated`, and
-`/quality-matrix` will not grade a CLO until an answer key exists. The #193
-honesty discipline forbids inventing one.
+**There was no CLO data when this plan was written.** No prospectus, no trustee
+reports, no loan-level tape. Sourcing was therefore made part of the work rather
+than a precondition.
+
+> ### ⚠ CORRECTION — 2026-09-05
+>
+> **The paragraph that stood here asserted that no to-the-cent CLO validation
+> was possible. That assertion was wrong.** It is preserved below because a plan
+> is a record of what was believed and why, and quietly rewriting it would hide
+> the mistake rather than fix it.
+>
+> The original claim was:
+>
+> > this plan promises no to-the-cent validation. The project's credibility rests
+> > on "reproduced a real deal to the cent," and that claim requires published
+> > actuals to reconcile against — for a CLO that means trustee reports, which
+> > are *typically vendor or investor-portal material rather than free EDW
+> > downloads*. Every cell this plan produces is an honest `ran`, never a
+> > `validated`.
+>
+> The emphasised clause was an **assumption, never verified**. Issue #455 checked
+> it by going and looking: **six Euronext Dublin URLs return `200
+> application/pdf` with no authentication**, and their text was read rather than
+> trusted — three U.S. Bank monthly trustee reports and an **83-page Note
+> Valuation Report carrying both an Interest Priority of Payments and a Principal
+> Priority of Payments**. That is precisely the Notes & Cash analogue that let
+> Green Lion 2024-1 and 2023-1 reconcile to the cent.
+>
+> **A validated CLO cell is therefore feasible.** Nothing in the data forecloses
+> it. Issues #454 and #457 carried the same false claim and were corrected on the
+> same date.
+
+**What remains true, for a narrower reason.** This plan still does not pursue a
+validated cell and still authors no answer key — because that is a **deferred
+scope decision**, and the sensible moment to take it is after #456 has shown the
+extractor can read a CLO offering circular at all. Until a key is committed,
+`/quality-matrix` does not grade a CLO and its cells read `ran` or
+`not-applicable` — **because none has been authored yet, not because none is
+possible.** The #193 honesty discipline is untouched: no answer key may be
+invented. "Feasible" means the source documents exist and can be read, not that a
+key may be assumed.
+
+**The lesson worth keeping.** The premise was stated confidently, written into
+two issue bodies and this plan, and survived until a worker was instructed to
+verify rather than assume. It is the same failure this plan's own §"calibration"
+section warns about, committed while writing that section.
 
 **Scope stops at the structural spine.** Capital stack, both waterfalls, the
 coverage-test *definitions*, and the corporate loan-level schema — enough to
@@ -305,8 +341,9 @@ failure.
   a publicly obtainable prospectus / offering memorandum, register it in
   `deals.json` in the existing deal-context shape, and record honestly in the
   data card which documents are and are not available (in particular whether any
-  trustee reports could be obtained, since their absence is what forecloses
-  to-the-cent validation). No extraction. **Reuse:** the existing deal-context
+  trustee reports could be obtained, since their availability is what decides
+  whether to-the-cent validation is reachable — they turned out to be freely
+  obtainable; see the 2026-09-05 correction above). No extraction. **Reuse:** the existing deal-context
   shape and registry — adding a deal is *data*, not code, and must stay that
   way. **Governance:** the data card records what is and is not available, so
   the absence of trustee reports is visible now rather than discovered at
@@ -330,7 +367,8 @@ failure.
   the engine, evaluate its coverage tests as covenant metrics, and let the
   capability matrix report the result with real per-cell reasons — `ran` where
   it ran, `not-applicable` with a genuine reason where it did not, and never
-  `validated`, since no answer key exists without trustee reports. **Reuse:**
+  `validated`, since no answer key has been authored for this deal (the trustee
+  reports themselves are obtainable — see the 2026-09-05 correction above). **Reuse:**
   the existing `run_period` fold, covenant monitor and capability matrix — this
   child wires a deal through machinery that already exists and should add no new
   execution path. **Contract:** the matrix's three-state vocabulary is not
