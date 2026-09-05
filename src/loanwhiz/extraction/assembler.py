@@ -631,6 +631,44 @@ def _extract_tranches(
 # still absent, so the artifact #397 removed stays removed.
 _CLASS_LETTERS = "A-GJMRXZ"
 
+# The separator between a class letter and its sub-series number. A sub-series
+# is spelled two ways and both are in the committed corpus: **joined** ("Class
+# A1", the Italian and Spanish deals) and **hyphen-separated** ("Class B-1",
+# the CLO and US convention). Recognising only the joined form did not merely
+# collapse B-1 and B-2 onto one "Class B" — the prose patterns require
+# whitespace after the series digits, so the hyphen made them fail outright and
+# both tranches vanished with no trace (#456).
+#
+# The dashes are enumerated rather than assumed ASCII: a PDF text layer emits
+# U+2010 HYPHEN and U+2013 EN DASH as readily as U+002D, and all three occur in
+# the Cairn Listing Particulars. Whatever was written, the canonical label
+# normalises to a single ASCII "-" so one tranche has one name.
+_CLASS_SERIES_DASH = "\u002d\u2010-\u2015"
+
+# The conventional names for an **unlettered** note class — the residual /
+# first-loss piece a CLO calls the Subordinated Notes and other structures call
+# Income or Equity Notes. This is the same closed-enumeration discriminator as
+# ``_CLASS_LETTERS``, on the second axis: a note class is designated either by
+# a letter or by one of these names, and nothing else is a note class. Keying
+# tranche recognition entirely off a ``Class <letter>`` token made a named
+# residual unseeable by construction, so Cairn CLO XVII's EUR 35.1m first-loss
+# tranche — listed, sized and rated alongside the rated notes — was dropped
+# (#456). That is #439's lesson on a second axis: the guard excluded a whole
+# naming convention, not just a letter.
+#
+# The word "Notes" is required after the name at every use site. That adjacency
+# is the discriminator: a prospectus says "subordinated" constantly (the
+# Subordinated Investment Management Fee, the Subordinated Noteholders), and
+# only "<designator> Notes" beside a corroborating amount is a class.
+_RESIDUAL_CLASS_NAMES = ("Subordinated", "Income", "Equity")
+_RESIDUAL_ALT = "|".join(_RESIDUAL_CLASS_NAMES)
+
+# Seniority rank for a named residual. It must sit below **every** letter,
+# including the residual letters J/R/X/Z, because a residual is defined by
+# being last rather than by how it is spelled. Scored off its first letter
+# "Subordinated" read as ``S`` and landed senior to Class X and Class Z.
+_RESIDUAL_SENIORITY = (ord("Z") - ord("A") + 1) * 100
+
 
 def _seniority_for(label: str) -> int:
     """0-based seniority for a class label such as ``A``, ``A1``, ``B``.
@@ -656,8 +694,15 @@ def _seniority_for(label: str) -> int:
     # Also strips "Tranche"/"Note" and a plural/space-less form, so a label the
     # A-G table parser never emits but a prose parser might ("Notes B", "ClassC")
     # cannot reintroduce the same misread (#438).
+    # A named residual is ranked, not spelled: it is junior to every letter,
+    # so it never goes through the letter scan below (#456).
+    if re.match(rf"^\s*(?:{_RESIDUAL_ALT})\b", label, flags=re.IGNORECASE):
+        return _RESIDUAL_SENIORITY
     label = re.sub(r"^\s*(?:class|series|tranche|note)s?\b\s*", "", label, flags=re.IGNORECASE)
-    m = re.search(r"([A-Za-z])\s*(\d*)", label)
+    # The sub-series separator is optional and may be a dash, so "B-1" and "B1"
+    # are the same position; without the dash the digits were unreachable and
+    # every sub-series of one letter collided on a single rank (#456).
+    m = re.search(rf"([A-Za-z])\s*[{_CLASS_SERIES_DASH}]?\s*(\d*)", label)
     if not m:
         return 0
     letter_rank = ord(m.group(1).upper()) - ord("A")
@@ -677,17 +722,34 @@ _AMOUNT_RE = re.compile(
 # Matches "Class A", "Class A1", "Class A Notes", "Class J Notes", and
 # "Series A1" / "Series A6" (RMBS prospectuses use "Series" for the senior
 # multi-series block).
+# A note class is designated either by a letter (with an optional sub-series
+# number, joined or dash-separated) or by one of the conventional residual
+# names — the two alternatives below are the single definition of that grammar,
+# so every consumer recognises the same set (#456).
 _CLASS_RE = re.compile(
-    rf"(?:Class|Series)\s+([{_CLASS_LETTERS}])\s*(\d*)",
+    rf"(?:Class|Series)\s+(?P<letter>[{_CLASS_LETTERS}])"
+    rf"\s*(?P<dash>[{_CLASS_SERIES_DASH}])?\s*(?P<series>\d*)"
+    rf"|(?P<residual>{_RESIDUAL_ALT})\s+Notes\b",
     re.IGNORECASE,
 )
 
 
 def _class_label(match: "re.Match[str]") -> str:
-    """Build the canonical ``Class A`` / ``Class A1`` name from a `_CLASS_RE` match."""
-    letter = match.group(1).upper()
-    series = match.group(2) or ""
-    return f"Class {letter}{series}"
+    """Build the canonical class name from a `_CLASS_RE` match.
+
+    ``Class A`` / ``Class A1`` / ``Class B-1`` for a lettered class, and
+    ``Subordinated Notes`` for a named residual. The sub-series separator is
+    normalised to a single ASCII hyphen and preserved only when the source
+    wrote one, so ``A1`` and ``B-1`` each keep the spelling their own document
+    uses and one tranche never acquires two names.
+    """
+    residual = match.groupdict().get("residual")
+    if residual:
+        return f"{residual.capitalize()} Notes"
+    letter = match.group("letter").upper()
+    series = match.group("series") or ""
+    sep = "-" if (series and match.group("dash")) else ""
+    return f"Class {letter}{sep}{series}"
 
 # A coupon / interest-rate expression, e.g. "3 month EURIBOR + 0.43%" or "0.43%".
 _RATE_RE = re.compile(
@@ -945,19 +1007,30 @@ def _tranches_from_class_row_table(table: list[list[str]]) -> list[dict]:
 # match in full, so the surrounding pattern fails rather than mis-scaling it.
 _GROUPED_AMOUNT = r"[0-9]{1,3}(?:[.,][0-9]{3})+|[0-9]+"
 
+# The class designator as it appears inside a prose size statement: the same
+# grammar as ``_CLASS_RE`` (letter + optional joined-or-dashed sub-series, or a
+# named residual), spelled once so both prose patterns bind an amount to
+# exactly the set of classes the rest of the module recognises (#456).
+_PROSE_CLASS = (
+    rf"(?:Class\s+(?P<letter>[{_CLASS_LETTERS}])"
+    rf"\s*(?P<dash>[{_CLASS_SERIES_DASH}])?\s*(?P<series>\d*)"
+    rf"|(?P<residual>{_RESIDUAL_ALT}))"
+)
+
 _PROSE_SIZE_RES = (
     # The nominal-amount enumeration: "Euro 480,000,000 for the Class A1 Notes".
     re.compile(
-        rf"(?:€|EUR|Euro)\s*({_GROUPED_AMOUNT})\s+for\s+the\s+"
-        rf"Class\s+([{_CLASS_LETTERS}])\s*(\d*)\s+Notes\b",
+        rf"(?:€|EUR|Euro)\s*(?P<amount>{_GROUPED_AMOUNT})\s+for\s+the\s+"
+        rf"{_PROSE_CLASS}\s+Notes\b",
         re.IGNORECASE,
     ),
     # The cover page: "€ 480,000,000 Class A1 Residential Mortgage-Backed
-    # Floating Rate Notes due October 2083". The bounded word run keeps the
-    # amount and the word "Notes" in the same noun phrase.
+    # Floating Rate Notes due October 2083", and its CLO equivalent
+    # "EUR 35,100,000 Subordinated Notes due 2036". The bounded word run keeps
+    # the amount and the word "Notes" in the same noun phrase.
     re.compile(
-        rf"(?:€|EUR|Euro)\s*({_GROUPED_AMOUNT})\s+"
-        rf"Class\s+([{_CLASS_LETTERS}])\s*(\d*)\s+(?:[A-Za-z-]+\s+){{0,8}}?Notes\b",
+        rf"(?:€|EUR|Euro)\s*(?P<amount>{_GROUPED_AMOUNT})\s+"
+        rf"{_PROSE_CLASS}\s+(?:[A-Za-z-]+\s+){{0,8}}?Notes\b",
         re.IGNORECASE,
     ),
 )
@@ -988,10 +1061,10 @@ def _tranches_from_nominal_amount_prose(markdown_text: str) -> list[dict]:
     found: dict[str, dict] = {}
     for pattern in _PROSE_SIZE_RES:
         for m in pattern.finditer(markdown_text):
-            name = f"Class {m.group(2).upper()}{m.group(3) or ''}"
+            name = _class_label(m)
             if name in found:
                 continue  # first statement of a class wins
-            size = _parse_euro_amount(m.group(1))
+            size = _parse_euro_amount(m.group("amount"))
             if size is None:
                 continue
             found[name] = {

@@ -379,6 +379,26 @@ The Notes Initial Payment will be paid on the Issue Date to the Issuer in the am
 """
 
 
+# The real Cairn CLO XVII DAC cover page (#456), verbatim from page 3 of the
+# 420-page Listing Particulars. Like Leone Arancio it states the capital
+# structure in PROSE with no tranche table, but it adds two shapes no committed
+# RMBS deal has: a **hyphenated** sub-series (Class B-1 / B-2, where the Italian
+# and Spanish deals write A1 / A2 joined), and an **unlettered** residual
+# tranche (the Subordinated Notes) carrying 8.7% of the stack.
+_CLO_PROSE_CAPITAL_STRUCTURE_MD = """\
+## Cairn CLO XVII Designated Activity Company
+
+EUR 248,000,000 Class A Senior Secured Floating Rate Notes due 2036
+EUR 24,600,000 Class B-1 Senior Secured Floating Rate Notes due 2036
+EUR 15,000,000 Class B-2 Senior Secured Fixed Rate Notes due 2036
+EUR 23,100,000 Class C Senior Secured Deferrable Floating Rate Notes due 2036
+EUR 26,500,000 Class D Senior Secured Deferrable Floating Rate Notes due 2036
+EUR 17,200,000 Class E Senior Secured Deferrable Floating Rate Notes due 2036
+EUR 14,600,000 Class F Senior Secured Deferrable Floating Rate Notes due 2036
+EUR 35,100,000 Subordinated Notes due 2036
+"""
+
+
 class TestExtractTranches:
     def test_no_sources_returns_empty_list(self) -> None:
         assert _extract_tranches(None, None) == []
@@ -711,6 +731,106 @@ class TestExtractTranches:
         ranks = [_seniority_for(n) for n in ("Class A1", "Class A2", "Class B", "Class J")]
         assert ranks == sorted(ranks)
         assert len(set(ranks)) == len(ranks)
+
+    # --- #456: hyphenated sub-classes + an unlettered named residual -------
+
+    def test_hyphenated_subclasses_are_distinct_sized_tranches(self) -> None:
+        """``Class B-1`` / ``Class B-2`` are two tranches, not one and not none.
+
+        A sub-series is written joined ("Class A1", the Italian and Spanish
+        deals) or hyphenated ("Class B-1", the CLO and US convention). The
+        class grammar admitted only the joined form, so on Cairn CLO XVII the
+        prose pattern failed outright at the hyphen: B-1 and B-2 produced no
+        match at all and EUR 39.6m of the stack vanished silently.
+        """
+        by_name = {
+            t["name"]: t
+            for t in _extract_tranches(route_sections(_CLO_PROSE_CAPITAL_STRUCTURE_MD))
+        }
+        assert "Class B-1" in by_name
+        assert "Class B-2" in by_name
+        assert by_name["Class B-1"]["size_eur"] == 24_600_000.0
+        assert by_name["Class B-2"]["size_eur"] == 15_000_000.0
+
+    def test_hyphenated_subclass_seniority_is_distinct_and_ordered(self) -> None:
+        r"""A hyphenated sub-series orders like a joined one: A < B-1 < B-2 < C.
+
+        ``_seniority_for`` read the series digits with ``\s*(\d*)``, which the
+        hyphen blocked — so ``Class B-1`` and ``Class B-2`` both scored 100.
+        Two tranches sharing a seniority make the senior→junior sort
+        non-deterministic between them, and a waterfall paid in that order pays
+        the wrong note first.
+        """
+        assert _seniority_for("Class B-1") < _seniority_for("Class B-2")
+        assert _seniority_for("Class A") < _seniority_for("Class B-1")
+        assert _seniority_for("Class B-2") < _seniority_for("Class C")
+        # The joined and hyphenated spellings are the same tranche position.
+        assert _seniority_for("Class B-1") == _seniority_for("Class B1")
+
+    def test_unlettered_named_residual_note_is_not_dropped(self) -> None:
+        """"Subordinated Notes" is a real sized tranche with no class letter.
+
+        The class grammar keyed entirely off a ``Class <letter>`` token, so a
+        CLO's equity tranche — named, sized and listed in the same cover-page
+        enumeration as the rated notes — was unseeable by construction. This is
+        #439's lesson on a second axis: the guard excluded a whole naming
+        convention, not just a letter.
+        """
+        by_name = {
+            t["name"]: t
+            for t in _extract_tranches(route_sections(_CLO_PROSE_CAPITAL_STRUCTURE_MD))
+        }
+        assert "Subordinated Notes" in by_name
+        assert by_name["Subordinated Notes"]["size_eur"] == 35_100_000.0
+        # A residual ranks below every lettered class, including the named
+        # junior letters — it is the first-loss piece.
+        assert by_name["Subordinated Notes"]["seniority"] > by_name["Class F"]["seniority"]
+
+    def test_seniority_puts_a_named_residual_below_every_class_letter(self) -> None:
+        """A residual name outranks nothing — not even Class Z.
+
+        Scored off its first letter, "Subordinated" read as ``S`` and landed
+        *senior* to Class X and Class Z, which are themselves residual labels.
+        A residual is defined by being last, so it is ranked, not spelled.
+        """
+        residual = _seniority_for("Subordinated Notes")
+        for letter in ("A", "B", "C", "D", "E", "F", "G", "J", "M", "R", "X", "Z"):
+            assert residual > _seniority_for(f"Class {letter}"), letter
+
+    def test_full_clo_capital_stack_parses_senior_to_junior(self) -> None:
+        """All eight Cairn CLO XVII classes, in order, summing to the cover page.
+
+        The whole-stack assertion is the one that catches a partial parse: the
+        per-class tests above each pass while three other tranches are missing,
+        and a capital structure short EUR 74.7m of EUR 404.1m still looks
+        entirely well-formed to every downstream consumer.
+        """
+        result = _extract_tranches(route_sections(_CLO_PROSE_CAPITAL_STRUCTURE_MD))
+        assert [t["name"] for t in result] == [
+            "Class A", "Class B-1", "Class B-2", "Class C",
+            "Class D", "Class E", "Class F", "Subordinated Notes",
+        ]
+        assert sum(t["size_eur"] for t in result) == 404_100_000.0
+        seniorities = [t["seniority"] for t in result]
+        assert all(a < b for a, b in zip(seniorities, seniorities[1:])), seniorities
+
+    def test_an_arbitrary_adjective_before_notes_is_not_a_tranche(self) -> None:
+        """Only the conventional residual designators are class names.
+
+        Admitting an unlettered tranche must not turn every "<Word> Notes"
+        phrase into one — a prospectus is full of them ("Retained Notes", "the
+        Rated Notes"). The vocabulary is a closed enumeration, exactly like the
+        class-letter alphabet, so a word outside it stays unseen.
+        """
+        md = (
+            "Nominal amount:\n\n"
+            "- Euro 500,000,000 for the Class A Notes;\n"
+            "- Euro 20,000,000 for the Class B Notes.\n\n"
+            "EUR 42,000,000 Retained Notes due 2036\n"
+            "EUR 43,000,000 Rated Notes due 2036\n"
+        )
+        names = [t["name"] for t in _extract_tranches(route_sections(md))]
+        assert names == ["Class A", "Class B"]
 
 
 # ---------------------------------------------------------------------------
