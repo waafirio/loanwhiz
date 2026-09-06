@@ -17,8 +17,11 @@ the *true* cross-jurisdiction story, not a wall of green):
   external ground truth** to reconcile against (e.g. a deal with an extracted
   waterfall but no published per-step distribution).
 - ``not-applicable`` — the primitive's inputs are absent for this deal, with a
-  **real reason** attached (e.g. "no loan tapes published", "waterfall not
-  extracted from this prospectus"). Never a silent blank.
+  **real reason** attached (e.g. "no ESMA loan tape is registered", "waterfall
+  not extracted from this prospectus"). Never a silent blank, and never a claim
+  wider than the registry fact behind it: "no tape is registered" is a statement
+  about this repo, whereas "no loan tapes published" — the wording #457
+  retracted, kept here only as the counter-example — is a claim about the world.
 
 Design
 ------
@@ -48,6 +51,7 @@ from typing import Any, Literal
 from pydantic import BaseModel, Field
 
 from loanwhiz.extraction.assembler import DealModel
+from loanwhiz.primitives.derived_tape import source_kind_for
 from loanwhiz.primitives.reconciler import ReconciliationReport
 
 # ---------------------------------------------------------------------------
@@ -210,6 +214,114 @@ def _seed_citation(model: DealModel | None, fallback: str) -> str:
     return f"Extracted deal model seed (completeness {model.metadata.completeness_score:.2f})."
 
 
+#: ``deals.json`` keys the tape-driven period reconstruction needs before it can
+#: fold a registered tape into a period series. Mirrors what
+#: ``loanwhiz.api.main._resolve_structural_config`` demands; the two are pinned
+#: to each other by ``test_capability_matrix`` rather than left to drift, because
+#: a matrix cell claiming a reconstruction the endpoint refuses is exactly the
+#: flattering half-truth these reasons exist to prevent.
+ENGINE_STRUCTURAL_CONFIG_KEYS = (
+    "capital_structure",
+    "reserve_account_target",
+    "original_pool_balance",
+)
+
+#: The one deal whose registry context legitimately omits the keys above: its
+#: structural config lives in the ``_GREEN_LION_*`` constants the resolver falls
+#: back to. Kept in sync with ``loanwhiz.api.main._GREEN_LION_DEAL_ID``.
+_GREEN_LION_DEAL_ID = "green-lion-2026-1"
+
+
+def _missing_structural_config(
+    deal_id: str, deal_ctx: Mapping[str, Any], model: DealModel | None
+) -> tuple[str, ...]:
+    """Structural-config keys this deal cannot resolve, in declaration order.
+
+    Empty means the tape-driven reconstruction has the configuration it needs.
+    ``capital_structure`` also resolves from a complete extracted tranche
+    structure (the resolver's tier 2), so a deal is only short of it when the
+    seed cannot supply one either.
+    """
+    if deal_id == _GREEN_LION_DEAL_ID:
+        return ()
+    missing: list[str] = []
+    for key in ENGINE_STRUCTURAL_CONFIG_KEYS:
+        if deal_ctx.get(key) is not None:
+            continue
+        if key == "capital_structure" and _extracted_tranche_balances(model):
+            continue
+        missing.append(key)
+    return tuple(missing)
+
+
+def _extracted_tranche_balances(model: DealModel | None) -> bool:
+    """Whether the seed can supply a complete engine-ready ``capital_structure``.
+
+    Mirrors ``loanwhiz.api.main._extracted_capital_structure``: the three senior/
+    mezz/junior ``size_eur`` balances **and** a numerically-usable coupon on the
+    senior tranche. The rate matters — an extracted ``"3m EURIBOR + 0.43"`` is
+    deliberately not coerced there, so a seed carrying only reference-rate
+    strings does not in fact yield a capital structure, and a cell that assumed
+    it did would name the wrong missing key. ``test_capability_matrix`` pins the
+    two against every registered deal rather than trusting this comment.
+    """
+    if model is None:
+        return False
+    by_seniority = {
+        t.get("seniority"): t
+        for t in (model.tranche_structure or [])
+        if isinstance(t, dict) and isinstance(t.get("seniority"), int)
+    }
+    if not all(
+        isinstance((by_seniority.get(rank) or {}).get("size_eur"), (int, float))
+        for rank in (0, 1, 2)
+    ):
+        return False
+    rate = (by_seniority.get(0) or {}).get("rate")
+    if isinstance(rate, (int, float)):
+        return True
+    if isinstance(rate, str):
+        try:
+            float(rate.strip().rstrip("%").strip())
+        except ValueError:
+            return False
+        return True
+    return False
+
+
+def _tape_source_kinds(tapes: list) -> dict[str, int]:
+    """Count registered tapes by declared source kind.
+
+    The key is the :class:`~loanwhiz.domain.tape_provenance.TapeSourceKind`
+    value, or ``"undeclared"`` for an ordinary published-file tape. ``undeclared``
+    is deliberately not folded into "filed": this repo holds no evidence about
+    whether those files are their originator's Article 7(1)(a) disclosure, and
+    the matrix must not be the surface that invents one.
+    """
+    counts: dict[str, int] = {}
+    for tape in tapes:
+        kind = source_kind_for(tape.get("url", ""))
+        key = kind.value if kind is not None else "undeclared"
+        counts[key] = counts.get(key, 0) + 1
+    return counts
+
+
+def _derived_qualifier(tapes: list) -> str:
+    """A sentence stating that some registered tapes are derived, or ``""``.
+
+    Quotes ``TapeSourceKind.disclosure`` verbatim rather than paraphrasing it, so
+    the claim cannot drift between this cell, the tape citation and the data
+    card. Silence when nothing is derived — an undeclared tape gets no sentence
+    at all rather than a reassuring one.
+    """
+    derived = [t for t in tapes if source_kind_for(t.get("url", "")) is not None]
+    if not derived:
+        return ""
+    kinds = sorted({source_kind_for(t["url"]) for t in derived}, key=lambda k: k.value)
+    disclosures = " ".join(k.disclosure for k in kinds)
+    return f" {len(derived)} of them are not published tape files: {disclosures}"
+
+
 def _classify_tape_analytics(
     deal_id: str,
     deal_ctx: Mapping[str, Any],
@@ -231,13 +343,25 @@ def _classify_tape_analytics(
                 detail={"tape_count": 0},
             ),
         )
+    kinds = _tape_source_kinds(tapes)
+    # "loan tape(s) registered", not "ESMA tape URL(s)": a derived tape resolves
+    # onto ESMA annex columns but is not an ESMA tape anyone published, and the
+    # positive branch is where that distinction is easiest to lose. #457's lesson
+    # was that replacing one overclaim with its mirror image still leaves a false
+    # reason — so this states the registry fact and lets the disclosure say what
+    # the tapes are.
     return (
         STATE_RAN,
-        f"{len(tapes)} loan tape(s) available; pool analytics normalise per period.",
+        f"{len(tapes)} loan tape(s) registered; pool analytics normalise per "
+        f"period.{_derived_qualifier(tapes)}",
         CellEvidence(
             confidence=1.0,  # deterministic normalisation
-            citation=f"Deal registry context: {len(tapes)} ESMA tape URL(s).",
-            detail={"tape_count": len(tapes)},
+            citation=(
+                f"Deal registry context: {len(tapes)} tape(s) registered — "
+                + ", ".join(f"{n} {kind}" for kind, n in sorted(kinds.items()))
+                + "."
+            ),
+            detail={"tape_count": len(tapes), "tape_source_kinds": kinds},
         ),
     )
 
@@ -323,22 +447,37 @@ def _classify_waterfall_execution(
             ),
         )
     ingestible = _has_ingestible_source(deal_ctx)
+    missing_config = _missing_structural_config(deal_id, deal_ctx, model)
     # ``ran`` is a claim about the *engine*, which executes these steps against
     # period funds whatever the deal. It is not a claim that the per-deal
     # endpoints will serve this deal: those need a period source to cold-start
-    # from, and a deal with neither a tape nor a Notes & Cash report gets a
-    # labelled 422 instead. Saying only the first left the matrix and the
-    # endpoint flatly contradicting each other for such a deal, so the cell now
-    # carries both halves rather than the flattering one.
-    qualifier = (
-        ""
-        if ingestible
-        else (
+    # from AND the structural config to fold it through, and a deal short of
+    # either gets a labelled 422 instead. Saying only the first left the matrix
+    # and the endpoint flatly contradicting each other, so the cell carries both
+    # halves rather than the flattering one.
+    #
+    # The qualifier stays **one-directional**: it fires only where the registry
+    # proves the endpoint refuses, and stays silent otherwise rather than
+    # claiming the endpoint works (serving also depends on a cached report, which
+    # the registry does not determine). Registering a derived tape for a deal
+    # with no structural config moves it from the first refusal to the second —
+    # so the reason names the second, instead of falling silent and reading as
+    # "solved".
+    if not ingestible:
+        qualifier = (
             " The engine executes these steps; the per-deal endpoints cannot yet "
             "serve this deal, which has no registered tape or Notes & Cash report "
             "to cold-start a period series from."
         )
-    )
+    elif missing_config:
+        qualifier = (
+            " The engine executes these steps; the per-deal endpoints cannot yet "
+            "serve this deal, whose registered period source cannot be folded into "
+            "a series without the structural configuration it does not register: "
+            f"{', '.join(missing_config)}."
+        )
+    else:
+        qualifier = ""
     return (
         STATE_RAN,
         f"Extracted {len(chosen_steps)}-step {chosen_type} waterfall executes "
@@ -351,6 +490,7 @@ def _classify_waterfall_execution(
                 "step_count": len(chosen_steps),
                 "waterfalls": sorted(waterfalls.keys()),
                 "has_ingestible_source": ingestible,
+                "missing_structural_config": list(missing_config),
             },
         ),
     )
@@ -381,13 +521,49 @@ def _classify_collateral_reconciliation(
                 detail={"tape_count": 0},
             ),
         )
+    # A registered tape is necessary but not sufficient. The reconstruction folds
+    # each period through the waterfall engine, which needs the deal's capital
+    # structure, reserve target and original pool balance; without them the
+    # endpoint answers a labelled 422. Reporting ``ran`` off tape count alone
+    # would have this cell claim a reconstruction the endpoint refuses — the
+    # mirror-image overclaim #457 warns about, arriving the moment a tape is
+    # registered for a deal whose structural config is not.
+    missing = _missing_structural_config(deal_id, deal_ctx, model)
+    if missing:
+        return (
+            STATE_NOT_APPLICABLE,
+            f"{len(tapes)} loan tape(s) are registered, but reconstructing a "
+            f"per-period pool state also needs structural configuration this deal "
+            f"does not register: {', '.join(missing)}. That is a statement about "
+            f"registered configuration, not about the tape — which is present and "
+            f"does normalise (see the tape-analytics cell).",
+            CellEvidence(
+                confidence=None,
+                citation=(
+                    f"Deal registry context: {len(tapes)} tape(s) registered; "
+                    f"missing {', '.join(missing)}."
+                ),
+                detail={
+                    "tape_count": len(tapes),
+                    "missing_structural_config": list(missing),
+                },
+            ),
+        )
     return (
         STATE_RAN,
-        f"Pool state reconstructed across {len(tapes)} tape period(s) by net-reconciliation.",
+        f"Pool state reconstructed across {len(tapes)} tape period(s) by "
+        f"net-reconciliation.{_derived_qualifier(tapes)}",
         CellEvidence(
             confidence=1.0,
-            citation=f"Deal registry context: {len(tapes)} ESMA tape URL(s).",
-            detail={"tape_count": len(tapes)},
+            citation=(
+                f"Deal registry context: {len(tapes)} tape(s) registered, with the "
+                f"structural config the reconstruction needs."
+            ),
+            detail={
+                "tape_count": len(tapes),
+                "tape_source_kinds": _tape_source_kinds(tapes),
+                "missing_structural_config": [],
+            },
         ),
     )
 

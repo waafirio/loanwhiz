@@ -26,3 +26,16 @@ exclusion with the classifier **enabled**: `use_llm=False` asserts the guarantee
 on the only path that could not have broken it.
 
 Refs: #453
+
+## 2026-09-06 · pitfall · #471
+
+Before feeding a new tape/record shape into an existing analytics primitive, ask
+what each derived metric returns when its column is **absent**. A boolean mask
+that degrades to all-`False` reports a *clean* population, not an unknown one —
+arrears buckets came back `current_pct: 100.0, default_pct: 0.0` at full
+confidence for a tape whose source publishes no arrears column at all,
+indistinguishable from a genuinely performing pool. Emit no key rather than a
+bucket that means "nothing to report", and make "states it in no form" a
+distinct branch from "states it as zero".
+
+Refs: #471

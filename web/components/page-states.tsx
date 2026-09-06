@@ -67,25 +67,33 @@ export function EmptyState({ message }: { message: string }) {
 
 /**
  * Graceful-degrade notice for the tape-based views (Pool / Waterfall /
- * Compliance / Projection) when the selected deal is a *seasoned* deal with no
- * published loan tapes (e.g. the real ING Green Lion 2023-1 / 2024-1, whose
- * loan-level tapes live in a private repository — #212, epic #206). These views
- * are loan-tape-driven, so rather than a generic "no data" empty card (which
- * reads like a bug), this states plainly that the deal has no tapes and points
- * the user at where its validation *does* live: the Validation view.
+ * Compliance / Projection) when the selected deal has no loan tape registered
+ * in LoanWhiz (e.g. the real ING Green Lion 2023-1 / 2024-1, whose loan-level
+ * tapes live in a private repository — #212, epic #206). These views are
+ * loan-tape-driven, so rather than a generic "no data" empty card (which reads
+ * like a bug), this says what is missing and points the user at where the
+ * deal's validation *does* live: the Validation view.
+ *
+ * The wording states what LoanWhiz has, never what an issuer discloses — the
+ * distinction #457 drew for the capability matrix's cell reasons, which this
+ * card is the user-facing counterpart of. "No tape is registered" is a fact
+ * about this system; "no loan tapes are published" was a claim about the world,
+ * and a false one for a deal whose loan-level detail is published in another
+ * form (a CLO trustee report, say).
  */
 export function NoTapesNotice({ what }: { what: string }) {
   return (
     <Card>
       <CardHeader>
         <CardTitle className="text-base">
-          No loan tapes published for this deal
+          No loan tape is registered for this deal
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-2 text-sm text-muted-foreground">
         <p>
-          This is a seasoned deal — its loan-level ESMA tapes are not published,
-          so {what} does not apply here.
+          LoanWhiz has no loan-level tape registered for this deal, so {what}{" "}
+          does not apply here. That is a statement about what this system holds
+          — the deal may publish loan-level detail in a form no tape covers.
         </p>
         <p>
           See the{" "}

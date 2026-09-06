@@ -6,11 +6,14 @@ triage by opening the entry, not by reading the line.
 - [Quality grading & ground-truth answer keys](quality-grading.md)
   - [2026-09-02 · gotcha · #440](#2026-09-02--gotcha--440) — keywords: answer_keys, quality_harness, _default_series_provider, fold_green_lion, not-applicable, backfill
   - [2026-09-05 · pitfall · #457](#2026-09-05--pitfall--457) — keywords: not-applicable reason, reason string, tape_urls, registry fact, answer key, retracted wording, capability_matrix
+  - [2026-09-06 · pitfall · #471](#2026-09-06--pitfall--471) — keywords: positive branch, overclaim, precondition, ran cell, structural config, missing input, capability cell
+  - [2026-09-06 · gotcha · #471](#2026-09-06--gotcha--471) — keywords: grep-for-absence, banned substring, retracted wording, prose assertion, denial, false positive
 - [Extraction guards & false-positive filters](extraction-guards.md)
   - [2026-09-02 · pitfall · #439](#2026-09-02--pitfall--439) — keywords: _CLASS_LETTERS, tranche, note class, Class J, Class O, false positive, guard, proxy range
   - [2026-09-05 · pitfall · #456](#2026-09-05--pitfall--456) — keywords: widening a guard, newly visible input, N/A cell, scavenged rating, Subordinated Notes, untested downstream
 - [Extraction: locating the right section](extraction-section-routing.md) — keywords: descendant span, heading level, section number, Docling, has_payment_list, LLM router, empty result
 - [Published figures & doc drift](published-figures.md) — keywords: stale tally, completeness_score, capability matrix, re-derive, stored metric, published figure
+  - [2026-09-06 · pattern · #469](#2026-09-06--pattern--469) — keywords: reconcile to stated aggregates, self-describing report, per-bucket distribution, refuse on divergence, document contradicts itself, source defect
 - [Registering a deal (deals.json)](deal-registration.md) — keywords: deals.json, notes_cash_report_urls, routing promise, registry key, asset_class, answer key invariant
 - [Metrics computed over a capital structure](structural-metrics.md)
   - [2026-09-05 · pitfall · #452](#2026-09-05--pitfall--452) — keywords: attachment point, senior-or-equal walk, denominator, coverage ratio, OC, IC, silent health, unplaceable tranche
@@ -18,6 +21,9 @@ triage by opening the entry, not by reading the line.
   - [2026-09-05 · pitfall · #457](#2026-09-05--pitfall--457) — keywords: layered refusal, not_evaluable, documented cause, coverage threshold, equity tranche, unplaceable, counterfactual
 - [Extraction determinism & LLM caching](extraction-determinism.md) — keywords: classify_segments_llm, section router, determinism cache, prompt hash, force_refresh, sections_found, completeness_score, degrade-to-default
 - [Regulatory mapping tables (ESMA annexes, field codes, locators)](regulatory-mapping-tables.md) — keywords: AnnexField, extension field, code=None, field code, locator, ESMA RTS, annex numbering, CRPL, AUTL, RREL, borrowed code
+  - [2026-09-06 · decision · #470](#2026-09-06--decision--470) — keywords: field identity, value conformance, NACE, NUTS-3, market price vs value, unit mismatch, obligor identifier, RTS vocabulary, derived tape
 - [Engine contracts (closed enums, registries, need calculators)](engine-contracts.md)
   - [2026-09-05 · pattern · #453](#2026-09-05--pattern--453) — keywords: NEED_CALCULATORS, register_need, RecipientType, closed enum, registry coverage, import-time assert, silent default, generated calculators
   - [2026-09-05 · pitfall · #453](#2026-09-05--pitfall--453) — keywords: LLM classifier options, deny list, enum growth, near-miss, incentive fee, use_llm=False, unmapped escape
+  - [2026-09-06 · pitfall · #471](#2026-09-06--pitfall--471) — keywords: absent column, all-False mask, arrears breakdown, silent clean pool, degrade, no key not zero
+- [Extracting tables from PDFs](pdf-table-extraction.md) — keywords: visitor_text, text matrix, tm[4], rotated table, extraction_mode layout, row boundary, continuation line, column order, pypdf
