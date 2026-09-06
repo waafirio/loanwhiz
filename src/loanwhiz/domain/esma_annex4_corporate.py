@@ -41,6 +41,12 @@ this module does not invent codes for them:
   financials block (``CRPL17``–``CRPL21``) are the nearest disclosed proxies.
 - **No covenant-lite flag** — the string "covenant" does not occur in the annex.
 
+Both, and the other columns a real corporate tape carries that Annex IV does not
+define, are modelled as **extension fields** (``AnnexField.code=None``) at the
+end of the table below: they resolve their column so the value is usable, and
+yield **no locator** so provenance is visibly absent rather than fabricated.
+Never give one a code to make a citation look complete.
+
 CLO *structural* disclosure (concentration limits, PIK restrictions,
 reinvestment, CLO-manager data) lives in Annex XIV sections ``SESC``/``SESL``,
 not in this loan-level template.
@@ -101,7 +107,7 @@ ANNEX4_CORPORATE_FIELDS: tuple[AnnexField, ...] = (
         field_name="geographic_region",
         description="Geographic region (NUTS-3) of the obligor.",
         canonical_column="province",
-        synonyms=("geographic_region", "region", "nuts3", "country", "crpl10"),
+        synonyms=("geographic_region", "region", "nuts3", "crpl10"),
     ),
     AnnexField(
         code="CRPL12",
@@ -115,7 +121,7 @@ ANNEX4_CORPORATE_FIELDS: tuple[AnnexField, ...] = (
         field_name="nace_industry_code",
         description="Obligor industry NACE code (Regulation (EC) No 1893/2006).",
         canonical_column="industry_code",
-        synonyms=("nace", "nace_code", "industry", "industry_classification", "crpl14"),
+        synonyms=("nace", "nace_code", "crpl14"),
     ),
     AnnexField(
         code="CRPL15",
@@ -343,6 +349,168 @@ ANNEX4_CORPORATE_FIELDS: tuple[AnnexField, ...] = (
         description="Type of collateral securing the exposure.",
         canonical_column="collateral_type",
         synonyms=("crpc9",),
+    ),
+    # --- Extension fields (``code=None``) ------------------------------------
+    #
+    # Real corporate tapes — a trustee report's collateral schedule especially —
+    # carry columns Annex IV simply does not define. Each resolves its column and
+    # yields **no locator**, so the value is usable while its provenance is
+    # visibly absent rather than fabricated (the ``vehicle_type`` precedent,
+    # #451). Never give one of these a code to make a citation look complete.
+    AnnexField(
+        code=None,
+        field_name="obligor_name",
+        description=(
+            "Obligor's name as the source states it. Distinct from ``CRPL4``, "
+            "which is an obligor *identifier*: a name is a different datum, and "
+            "the RTS identifier is not the obligor's real name."
+        ),
+        canonical_column="obligor_name",
+        synonyms=("issuer_name", "borrower_name"),
+    ),
+    AnnexField(
+        code=None,
+        field_name="facility_name",
+        description=(
+            "Facility's name as the source states it. Annex IV names no facility "
+            "description field; ``CRPL2`` is an identifier, not a name."
+        ),
+        canonical_column="facility_name",
+        synonyms=("facility_description",),
+    ),
+    AnnexField(
+        code=None,
+        field_name="industry_classification",
+        description=(
+            "Obligor industry under a classification the source does not state. "
+            "NOT ``CRPL14``, which is specifically a NACE code (Reg. (EC) No "
+            "1893/2006) — resolving a free-text industry there would assert a "
+            "NACE conformance the source does not carry."
+        ),
+        canonical_column="industry_classification",
+        synonyms=("industry",),
+    ),
+    AnnexField(
+        code=None,
+        field_name="sp_industry",
+        description=(
+            "S&P industry classification. A different scheme from NACE, so it is "
+            "not ``CRPL14`` however closely the concepts read."
+        ),
+        canonical_column="sp_industry",
+        synonyms=("s&p_industry", "standard_and_poors_industry"),
+    ),
+    AnnexField(
+        code=None,
+        field_name="fitch_industry",
+        description=(
+            "Fitch industry classification. A different scheme from NACE, so it "
+            "is not ``CRPL14``."
+        ),
+        canonical_column="fitch_industry",
+        synonyms=(),
+    ),
+    AnnexField(
+        code=None,
+        field_name="obligor_country",
+        description=(
+            "Obligor's country. NOT ``CRPL10``, which is a NUTS-3 *sub-national* "
+            "region: a country is a coarser geography, and mapping one onto the "
+            "other asserts a precision the source does not have."
+        ),
+        canonical_column="obligor_country",
+        synonyms=("country", "country_of_incorporation"),
+    ),
+    AnnexField(
+        code=None,
+        field_name="market_price_pct",
+        description=(
+            "Market price as a percentage of par (e.g. ``99.72``). NOT "
+            "``CRPL41``, which is a market *value* — an amount in the exposure's "
+            "currency. The value is derivable as ``current_balance x price / "
+            "100``, but the source states the price, not the amount."
+        ),
+        canonical_column="market_price_pct",
+        synonyms=("market_price", "price"),
+    ),
+    AnnexField(
+        code=None,
+        field_name="index_floor",
+        description=(
+            "Floor applied to the reference index for a floating-rate exposure. "
+            "Annex IV defines no index-floor field."
+        ),
+        canonical_column="index_floor",
+        synonyms=("floor",),
+    ),
+    AnnexField(
+        code=None,
+        field_name="sp_rating",
+        description=(
+            "S&P credit rating of the exposure. Annex IV defines no rating, "
+            "score, PD or LGD field anywhere (see the module docstring)."
+        ),
+        canonical_column="sp_rating",
+        synonyms=("s&p_rating",),
+    ),
+    AnnexField(
+        code=None,
+        field_name="cov_lite_flag",
+        description=(
+            "Covenant-lite loan flag. The string \"covenant\" does not occur in "
+            "Annex IV; there is no field to carry this."
+        ),
+        canonical_column="cov_lite_flag",
+        synonyms=("cov_lite", "covenant_lite"),
+    ),
+    AnnexField(
+        code=None,
+        field_name="dip_flag",
+        description="Debtor-in-possession loan flag. Not defined in Annex IV.",
+        canonical_column="dip_flag",
+        synonyms=("dip",),
+    ),
+    AnnexField(
+        code=None,
+        field_name="deferring_flag",
+        description=(
+            "Deferring-security flag. Distinct from ``CRPL31`` payment-in-kind, "
+            "which the source reports separately, and not defined in Annex IV."
+        ),
+        canonical_column="deferring_flag",
+        synonyms=("deferring",),
+    ),
+    AnnexField(
+        code=None,
+        field_name="current_pay_flag",
+        description="Current-pay obligation flag. Not defined in Annex IV.",
+        canonical_column="current_pay_flag",
+        synonyms=("current_pay",),
+    ),
+    AnnexField(
+        code=None,
+        field_name="revolving_flag",
+        description=(
+            "Revolving-obligation flag. ``CRPL24`` debt type can carry a "
+            "revolver classification, but this is a separate boolean the source "
+            "states alongside its own asset type."
+        ),
+        canonical_column="revolving_flag",
+        synonyms=("revolving",),
+    ),
+    AnnexField(
+        code=None,
+        field_name="delayed_drawdown_flag",
+        description="Delayed-drawdown loan flag. Not defined in Annex IV.",
+        canonical_column="delayed_drawdown_flag",
+        synonyms=("delayed_drawdown",),
+    ),
+    AnnexField(
+        code=None,
+        field_name="bridge_flag",
+        description="Bridge-loan flag. Not defined in Annex IV.",
+        canonical_column="bridge_flag",
+        synonyms=("bridge",),
     ),
 )
 
