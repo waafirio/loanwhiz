@@ -15,3 +15,16 @@ disagreed with the output they themselves committed (0.93 vs 0.925). Hit the
 endpoint or recompute — authoritative once is not true now.
 
 Refs: #441
+
+## 2026-09-06 · pattern · #469
+
+Reconcile a parsed tape against the source document's OWN stated aggregates
+before anything downstream trusts it, and refuse rather than return on a
+divergence — counts and per-bucket distributions, not just the grand total,
+which two swapped rows would still satisfy. A trustee report is self-describing:
+its concentration tables enumerate the very vocabularies its detail pages use.
+When a summary table contradicts the same page's stated total, the DOCUMENT is
+wrong rather than the parse — drop that table from the oracle, keep its counts,
+and record the discrepancy as a defect instead of absorbing it.
+
+Refs: #469
