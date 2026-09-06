@@ -69,13 +69,22 @@ import urllib.request
 from collections.abc import Callable
 from enum import Enum
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from loanwhiz.domain.tape_provenance import TapeSourceKind
-from loanwhiz.primitives.collateral_schedule_parser import (
-    extract_report_lines,
-    parse_schedule_text,
-)
-from loanwhiz.primitives.collateral_tape_mapping import MappedCollateralTape, map_schedule
+
+if TYPE_CHECKING:  # pragma: no cover - typing only
+    from loanwhiz.primitives.collateral_tape_mapping import MappedCollateralTape
+
+# The parser and the mapping table are imported lazily, inside the two functions
+# that need them, for two reasons. Layering: ``capability_matrix`` asks this
+# module what a registered tape *is* while deciding a cell, and that decision
+# path is required to stay offline and cheap — it must not drag in a PDF parser.
+# Initialisation order: ``collateral_tape_mapping`` reaches back into
+# ``loanwhiz.domain``, so a module-level import here closes a cycle through
+# ``primitives/__init__`` and fails on a partially initialised
+# ``domain.provenance``. Deferring costs one lookup per derivation, which is
+# already the expensive call.
 
 __all__ = [
     "DerivedTapeScheme",
@@ -141,6 +150,9 @@ def _derive_from_trustee_report(source_url: str, period_label: str) -> MappedCol
     distributions, so an unparseable or foreign report fails loudly instead of
     yielding a plausible-looking tape.
     """
+    from loanwhiz.primitives.collateral_schedule_parser import parse_schedule_text
+    from loanwhiz.primitives.collateral_tape_mapping import map_schedule
+
     text = _read_source_document(source_url)
     schedule = parse_schedule_text(text, period_label=period_label)
     return map_schedule(schedule, source_document=source_url)
@@ -230,6 +242,9 @@ def _read_source_document(source_url: str) -> str:
 
     if parsed.path.lower().endswith(_TEXT_SUFFIXES):
         return payload.decode("utf-8")
+
+    from loanwhiz.primitives.collateral_schedule_parser import extract_report_lines
+
     return extract_report_lines(payload)
 
 
@@ -322,6 +337,8 @@ def derive_tape(
     path = _cache_path(uri, cache_dir)
     if not force_refresh and path.is_file():
         try:
+            from loanwhiz.primitives.collateral_tape_mapping import MappedCollateralTape
+
             tape = MappedCollateralTape.model_validate_json(path.read_text(encoding="utf-8"))
         except Exception:  # noqa: BLE001 — a stale/corrupt cache re-derives
             _log.warning("Ignoring unreadable derived-tape cache at %s", path)

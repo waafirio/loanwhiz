@@ -134,7 +134,11 @@
     "asset_class": "CLO",
     "jurisdiction": "Ireland",
     "prospectus_url": "https://ise-prodnr-eu-west-1-data-integration.s3-eu-west-1.amazonaws.com/202309/9f9dac99-d8fa-4525-928a-d0aab2db8c81.pdf",
-    "tape_urls": [],
+    "tape_urls": [
+      {"date": "2024-12-16", "url": "derived+trustee-report:https://ise-prodnr-eu-west-1-data-integration.s3-eu-west-1.amazonaws.com/202502/4477d1cc-05b3-4e42-a888-de1af838b9e3.pdf#period=December+2024"},
+      {"date": "2025-02-18", "url": "derived+trustee-report:https://ise-prodnr-eu-west-1-data-integration.s3-eu-west-1.amazonaws.com/202503/98ac9e38-15e1-47a3-8b40-b38b768bd3fe.pdf#period=February+2025"},
+      {"date": "2025-03-18", "url": "derived+trustee-report:https://ise-prodnr-eu-west-1-data-integration.s3-eu-west-1.amazonaws.com/202503/3c77fad7-5c02-4a4b-a710-719ae16a2b38.pdf#period=March+2025"}
+    ],
     "investor_report_urls": [
       {"period": "December 2024", "url": "https://ise-prodnr-eu-west-1-data-integration.s3-eu-west-1.amazonaws.com/202502/4477d1cc-05b3-4e42-a888-de1af838b9e3.pdf"},
       {"period": "February 2025", "url": "https://ise-prodnr-eu-west-1-data-integration.s3-eu-west-1.amazonaws.com/202503/98ac9e38-15e1-47a3-8b40-b38b768bd3fe.pdf"},
