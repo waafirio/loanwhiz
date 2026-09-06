@@ -90,7 +90,7 @@ def test_source_kind_is_recoverable_from_the_uri_alone() -> None:
     """A caller holding only the URL string can still tell what the tape is.
 
     This is the property that makes the scheme worth using instead of a sibling
-    registry field: three of ``_load_tape``'s call sites hold nothing but
+    registry field: several of ``_load_tape``'s call sites hold nothing but
     ``tape["url"]``, so any provenance that needed a second field would be
     forgettable at exactly those sites.
     """
@@ -150,7 +150,6 @@ def test_a_derived_tape_states_annex_4_which_detection_cannot_find(cache: Path) 
     report publishes. The tape declares its annex instead of the registry
     guessing one, and ``enterprise_size`` stays a declared absence.
     """
-    from loanwhiz.domain.esma_annex_registry import AnnexRegistry  # noqa: F401
     from loanwhiz.domain.esma_annexes import ANNEX_REGISTRY
 
     uri = _uri("december-2024", "December 2024")
@@ -272,12 +271,14 @@ def test_a_source_that_does_not_reconcile_is_refused_not_returned(
     uri = derived_tape_uri(
         f"file://{truncated}", "December 2024", scheme=DerivedTapeScheme.TRUSTEE_REPORT
     )
-    with pytest.raises(Exception) as excinfo:  # noqa: PT011 - reconciliation or parse
+    with pytest.raises(ValueError):
         derive_tape(uri, cache_dir=cache)
-    assert not isinstance(excinfo.value, AssertionError)
     # Nothing was cached, so a later call re-derives rather than serving a
-    # half-built answer.
-    assert not list(cache.glob("derived-tape-*.json")) if cache.exists() else True
+    # half-built answer. Written as an unconditional assertion: a
+    # ``... if cache.exists() else True`` guard passes vacuously in exactly the
+    # case it is meant to check, since a refused derivation never creates the
+    # directory at all.
+    assert list(cache.glob("derived-tape-*.json")) == []
 
 
 # ---------------------------------------------------------------------------
@@ -308,6 +309,43 @@ def test_cache_and_cold_derivation_agree(cache: Path) -> None:
     assert from_disk.model_dump_json() == cold.model_dump_json()
     assert from_disk.source_kind is cold.source_kind
     assert from_disk.is_regulatory_filing is False
+
+
+def test_the_cache_is_read_from_disk_when_the_source_is_gone(
+    cache: Path, tmp_path: Path
+) -> None:
+    """The disk-cache branch must be exercised by something other than the memo.
+
+    Every other test in this file re-derives or hits the in-process memo, so the
+    read-from-disk path — the one that makes a warm checkout independent of the
+    source document being reachable — would survive deletion untested. This
+    forces it: derive once, drop the memo, then move the source away so a cache
+    hit is the *only* way the call can succeed.
+    """
+    from loanwhiz.primitives import derived_tape as _dt
+
+    source = tmp_path / "report.txt"
+    source.write_bytes(
+        (_FIXTURES / "cairn-clo-xvii-march-2025.txt").read_bytes()
+    )
+    uri = derived_tape_uri(
+        f"file://{source}", "March 2025", scheme=DerivedTapeScheme.TRUSTEE_REPORT
+    )
+
+    first = derive_tape(uri, cache_dir=cache)
+    _dt._MEMO.clear()
+    source.unlink()
+
+    from_cache = derive_tape(uri, cache_dir=cache)
+    assert from_cache.model_dump_json() == first.model_dump_json()
+    assert from_cache.source_kind is first.source_kind
+
+    # And with the cache gone too, the call fails rather than inventing a tape.
+    _dt._MEMO.clear()
+    for stale in cache.glob("derived-tape-*.json"):
+        stale.unlink()
+    with pytest.raises(Exception):  # noqa: B017,PT011 - urllib raises its own type
+        derive_tape(uri, cache_dir=cache)
 
 
 def test_an_unreadable_cache_re_derives_instead_of_failing(cache: Path) -> None:
