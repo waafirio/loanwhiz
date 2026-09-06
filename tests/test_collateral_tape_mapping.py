@@ -19,6 +19,7 @@ Four contracts are pinned here:
 
 from __future__ import annotations
 
+import re
 from decimal import Decimal
 
 # Import a ``primitives`` module before ``loanwhiz.domain`` so the package-init
@@ -40,6 +41,7 @@ from loanwhiz.domain.tape_provenance import (
     Correspondence,
     TapeSourceKind,
 )
+from loanwhiz.primitives import collateral_tape_mapping
 from loanwhiz.primitives.collateral_tape_mapping import (
     ABSENT_COLUMNS,
     SCHEDULE_FIELD_MAP,
@@ -90,6 +92,24 @@ def march_tape(march: CollateralSchedule) -> MappedCollateralTape:
 def test_the_shipped_mapping_table_validates() -> None:
     """The guard that ran at import is re-run here, so it is a test, not a side effect."""
     _validate_mapping()
+
+
+def test_the_guard_is_invoked_at_module_scope() -> None:
+    """The "cannot be imported" half of the claim, which the tests above do not reach.
+
+    Every other guard test calls :func:`_validate_mapping` directly, so all of
+    them still pass if the module-level invocation is deleted — and the contract
+    would silently weaken from "a bad row cannot be loaded" to "a bad row fails
+    only if someone remembers to check". This asserts the call site itself.
+
+    It pins the call, not the raise: that a violating row genuinely aborts the
+    import is what the direct-call tests above establish.
+    """
+    source = Path(collateral_tape_mapping.__file__).read_text()
+    assert re.search(r"^_validate_mapping\(\)$", source, re.MULTILINE), (
+        "_validate_mapping() is no longer called at module scope, so the mapping "
+        "table is validated on demand rather than at import."
+    )
 
 
 def test_guard_refuses_an_approximate_row_carrying_a_regulatory_code() -> None:
