@@ -27,6 +27,12 @@ dependencies = [
     "pytest-asyncio>=0.23",
     "pytest-cov>=5.0",
     "langchain-google-vertexai>=2.0",
+    # PDF text extraction for the LIVE report seams — notes_cash_parser and
+    # collateral_schedule_parser both `from pypdf import PdfReader` lazily. The
+    # test suite runs against committed text fixtures, so an undeclared pypdf is
+    # invisible to it: the suite stays green while every live report/tape load
+    # raises ModuleNotFoundError. See tests/test_live_seam_dependencies.py.
+    "pypdf>=4.0",
 ]
 
 [project.urls]
