@@ -79,8 +79,20 @@ schedule, in three parts joined on facility identifier:
 | S&P CCC Obligations | 13 | the CCC bucket with seniority, rating, **market value** |
 | Portfolio Profile Tests / S&P Industry Concentration / S&P Rating Stratification | 4, 64, 67 | report-stated aggregates |
 
-A naive regex over Part I found **162 distinct facilities, ~EUR 354m par**, and
-we hold **three monthly snapshots**, so it is a time series rather than one cut.
+We hold **three monthly snapshots**, so it is a time series rather than one cut:
+**193 / 191 / 196 assets** (December 2024, February 2025, March 2025) with
+aggregate par of **EUR 407,181,748.22 / 401,342,140.14 / 411,342,140.14**. The
+asset count genuinely moves between periods.
+
+> **Corrected 2026-09-06.** This plan originally recorded *"162 distinct
+> facilities, ~EUR 354m par"*. That figure was wrong: it came from a naive
+> `LX`-only regex run during planning, which silently skipped **34
+> ISIN-identified assets**. #469 established the real figures and pinned each one
+> against the reporting period's own stated aggregates. The error is left visible
+> rather than quietly overwritten — it is the same failure shape as the "trustee
+> reports are unobtainable" premise this project corrected days earlier: a
+> plausible number asserted without being checked, then propagated into durable
+> artifacts.
 
 So the difference between this plan and the rejected version is not the source —
 it is the **target and the provenance**. We are not producing "a CSV". We are
