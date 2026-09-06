@@ -41,6 +41,29 @@ The pipeline uses:
 - **Gemini 2.5 Pro** for LLM-based extraction from identified prospectus sections
 - **Section routing** to scope each LLM call to the relevant portion of the document, reducing hallucination risk and token cost
 
+### Derived loan tapes are not model output
+
+One input class is **deterministic, not LLM-derived**, and the distinction is
+load-bearing for how much a reader should trust it. Cairn CLO XVII DAC publishes
+no machine-readable loan tape, so its tape is *reconstructed* from the collateral
+schedule inside its monthly trustee reports by a `pypdf`/regex parser with no
+model in the loop. The parse is refused outright unless it reconciles to the
+report's own stated asset count, aggregate balance and per-bucket distributions,
+so its failure mode is a loud refusal rather than a plausible hallucination.
+
+Two limits belong on this card rather than only in the data card:
+
+- **A derived tape is not a regulatory filing.** Cairn does file real Article
+  7(1)(a) Loan Reports; LoanWhiz does not have them, and nothing downstream may
+  treat the derived tape as though it were one. Its `TapeSourceKind` is
+  `derived_from_investor_report`, carried on every provenance surface.
+- **Its values are the source document's own, not RTS codes.** An industry here
+  is an S&P or Fitch industry name, not a NACE code; a country is a country, not
+  a NUTS-3 region. `TapeSourceKind.rts_coded_values` is `False`, and a consumer
+  comparing against an RTS coded vocabulary must check it first.
+
+`docs/data-card.md` records exactly what the derived tape covers and omits.
+
 ---
 
 ## Intended Use
@@ -109,7 +132,7 @@ The extraction pipeline correctly resolves the primary waterfall structure of a 
 
 ### Cross-deal extraction completeness
 
-The same extractor runs unchanged on all five registered deals. Completeness is
+The same extractor runs unchanged on all six registered deals. Completeness is
 the real coverage metric from `extraction/assembler.py` (fraction of expected key
 sections — waterfall, definitions, triggers, tranches — located). It degrades
 honestly on the non-English prospectuses; the model is **not** claimed clean
@@ -122,6 +145,7 @@ where it is partial.
 | Green Lion 2026-1 B.V. | Netherlands | **0.75** | Full waterfall, 3 triggers, **0 definitions** |
 | Leone Arancio RMBS 2023-1 S.r.l. | Italy | **0.925** | Full waterfall (23/23/12 steps), 3 triggers, 3 note classes (A1 480m / A2 6,600m / J 920m) |
 | Sol-Lion II RMBS Fondo de Titulización | Spain | **0.925** | Full waterfall (20/15/12 steps), 3 triggers, 8 note classes (A1–A6, B, C) |
+| Cairn CLO XVII DAC | Ireland | **1.0** | Full 8-class stack, Interest / Principal / Post-Acceleration cascades, 10 triggers. Extracted, **not validated** — no answer key is authored. Separately, its loan tape is *derived* from trustee reports by a deterministic parser rather than extracted by the model (see above) |
 
 The Italian and Spanish figures are the **post-#438/#439 re-extractions**; the
 earlier "≈ 0.38 / ≈ 0.30, no waterfall" entries described seeds that predated
@@ -144,7 +168,7 @@ so neither can be externally validated. They remain honest `ran` cells.
 
 ## Limitations
 
-1. **Coverage is broad; external validation is not.** The pipeline runs on 5 of the 6 registered deals — 3 jurisdictions, all RMBS (Dutch / Italian / Spanish) — and extraction completeness is now 0.75–1.0 across all of them, but only **Green Lion 2024-1** is externally validated (engine to the cent against its published Notes & Cash). **Green Lion 2023-1** is also graded to the cent by `GET /quality-matrix` against a committed answer key (#440) — two deals graded, one `validated` capability cell. The Italian and Spanish deals publish no Notes & Cash report, so they cannot be graded at all without inventing ground truth, and none is invented. The Irish CLO is extracted and executes — its own Interest and Principal cascades run through the shared engine over its full eight-class stack — but it carries no answer key, so it shows the pipeline reads and runs a non-RMBS deal and shows nothing about whether its numbers are right; its published reports *are* obtainable, so that gap is an unauthored key rather than an impossibility; CMBS, US RMBS and ABS are absent entirely. The capability matrix (1 validated / 14 ran / 15 not-applicable) is the honest source of truth — never read the coverage as "validated across all deals".
+1. **Coverage is broad; external validation is not.** The pipeline runs on 5 of the 6 registered deals — 3 jurisdictions, all RMBS (Dutch / Italian / Spanish) — and extraction completeness is now 0.75–1.0 across all of them, but only **Green Lion 2024-1** is externally validated (engine to the cent against its published Notes & Cash). **Green Lion 2023-1** is also graded to the cent by `GET /quality-matrix` against a committed answer key (#440) — two deals graded, one `validated` capability cell. The Italian and Spanish deals publish no Notes & Cash report, so they cannot be graded at all without inventing ground truth, and none is invented. The Irish CLO is extracted and executes — its own Interest and Principal cascades run through the shared engine over its full eight-class stack — but it carries no answer key, so it shows the pipeline reads and runs a non-RMBS deal and shows nothing about whether its numbers are right; its published reports *are* obtainable, so that gap is an unauthored key rather than an impossibility; CMBS, US RMBS and ABS are absent entirely. The capability matrix (1 validated / 15 ran / 14 not-applicable) is the honest source of truth — never read the coverage as "validated across all deals".
 
 2. **Cross-reference resolution.** Prospectus definitions frequently reference other defined terms. The pipeline resolves one level of cross-reference; deeply nested chains (term A → term B → term C) may not resolve fully and require human review.
 
