@@ -304,7 +304,7 @@ _MEMO: dict[tuple[str, str], MappedCollateralTape] = {}
 def derive_tape(
     uri: str,
     *,
-    cache_dir: str | Path = DEFAULT_DERIVED_TAPE_CACHE_DIR,
+    cache_dir: str | Path | None = None,
     force_refresh: bool = False,
 ) -> MappedCollateralTape:
     """Return the canonical Annex 4 tape *uri* identifies.
@@ -328,6 +328,11 @@ def derive_tape(
             not caught here — a tape the document itself contradicts must not
             reach a caller.
     """
+    # Resolved here rather than as a parameter default, which would bind the
+    # module constant at definition time and make the cache location impossible
+    # to redirect afterwards — for a test that must not write into the repo
+    # tree, or a deployment that mounts its cache elsewhere.
+    cache_dir = DEFAULT_DERIVED_TAPE_CACHE_DIR if cache_dir is None else cache_dir
     memo_key = (uri, str(cache_dir))
     if not force_refresh and memo_key in _MEMO:
         return _MEMO[memo_key]
@@ -358,9 +363,7 @@ def derive_tape(
     return tape
 
 
-def declared_annex_id_for(
-    url: str, *, cache_dir: str | Path = DEFAULT_DERIVED_TAPE_CACHE_DIR
-) -> str | None:
+def declared_annex_id_for(url: str, *, cache_dir: str | Path | None = None) -> str | None:
     """The annex a derived tape **states** it resolves through, or ``None``.
 
     Annex detection sniffs a signature, and Annex 4's entire signature is

@@ -499,6 +499,37 @@ def test_a_registered_tape_alone_does_not_light_the_reconstruction() -> None:
     assert "tape(s) are registered" in cell.reason
 
 
+def test_cairn_cells_revert_when_the_derived_tape_is_deregistered() -> None:
+    """Registering the tape is reversible, and reverting restores the old reasons.
+
+    The round-trip half of the persistence contract: ``tape_urls`` is a durable
+    registry edit, so the state it moves the matrix out of must still be
+    reachable. Removing the entries returns both tape-driven cells to exactly the
+    #457 wording — which also proves the new reasons are driven by the registry
+    rather than by anything hardcoded about this deal.
+    """
+    ctx = dict(DEAL_REGISTRY["cairn-clo-xvii"])
+    assert ctx["tape_urls"], "precondition: the derived tapes are registered"
+    ctx["tape_urls"] = []
+
+    matrix = build_capability_matrix(
+        {"cairn-clo-xvii": ctx},
+        seed_loader=_load_cached_deal_model,
+        validators=_VALIDATION_BUILDERS,
+    )
+    for capability_key in ("tape_analytics", "collateral_reconciliation"):
+        cell = _cell(matrix, "cairn-clo-xvii", capability_key)
+        assert cell.state == STATE_NOT_APPLICABLE
+        assert "No machine-readable ESMA loan tape is registered" in cell.reason
+        assert cell.evidence.citation == "Deal registry context: tape_urls is empty."
+        assert cell.evidence.detail["tape_count"] == 0
+
+    # And the waterfall qualifier returns to naming the absent source, not the
+    # absent configuration.
+    waterfall = _cell(matrix, "cairn-clo-xvii", "waterfall_execution")
+    assert "no registered tape or Notes & Cash report" in waterfall.reason
+
+
 def test_missing_structural_config_agrees_with_the_api_resolver() -> None:
     """The matrix's predicate and the endpoint's resolver must not drift.
 
