@@ -15,6 +15,8 @@ runner's contract (state vocabulary, mandatory reasons) independent of the data.
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 from fastapi.testclient import TestClient
 
@@ -446,6 +448,29 @@ def test_tape_reasons_do_not_overclaim_that_no_loan_level_data_exists() -> None:
             reason = _cell(matrix, column.deal_id, capability_key).reason.lower()
             for retracted in retracted_claims:
                 assert retracted not in reason, (column.deal_id, capability_key, reason)
+
+
+def test_the_user_facing_no_tape_card_does_not_carry_the_retracted_claim() -> None:
+    """#457 fixed the cell reasons; the UI kept saying the retracted thing.
+
+    ``NoTapesNotice`` is the user-facing counterpart of a ``not-applicable``
+    tape cell, and it still rendered "No loan tapes published for this deal" and
+    "its loan-level ESMA tapes are not published" — a claim about what an issuer
+    discloses, made by a component that only knows what LoanWhiz registered.
+    Guarded from Python because the repo has no JS test runner; the file is a
+    string in either language.
+    """
+    card = (
+        Path(__file__).resolve().parents[1] / "web" / "components" / "page-states.tsx"
+    ).read_text(encoding="utf-8")
+    for retracted in (
+        "No loan tapes published",
+        "loan tapes published for this deal",
+        "ESMA tapes are not published",
+    ):
+        assert retracted not in card, retracted
+    # And it still says the true thing, so this cannot pass by deleting the card.
+    assert "No loan tape is registered for this deal" in card
 
 
 def test_the_clo_tape_cells_report_the_derived_tape_without_claiming_a_filing() -> None:
