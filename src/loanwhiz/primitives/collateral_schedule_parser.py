@@ -210,11 +210,15 @@ _LINE_BREAKS = re.compile(r"[\r\n\v\f\x1c-\x1e\x85\u2028\u2029]+")
 _REPORTING_DATE_RE = re.compile(r"As of\s*:\s*(\d{2}/\d{2}/\d{4})")
 _PAGE_MARKER_RE = re.compile(r"^--- page (\d+) ---$")
 
-#: Non-data furniture that appears on every page.
+#: Non-data furniture that appears on every page. Listing the date header here
+#: as well as the banners means it can never be absorbed as a row continuation,
+#: whichever rendering a report uses.
 _FURNITURE_PREFIXES: tuple[str, ...] = (
     "www.",
     "U.S. Bank",
     "Page ",
+    "As of",
+    "Next Payment",
 )
 
 
@@ -1135,14 +1139,6 @@ def parse_schedule_text(
         }
         assets.append(CollateralAsset(**merged))
 
-    schedule = CollateralSchedule(
-        deal_name=deal_name,
-        period_label=period_label,
-        reporting_date=reporting_date,
-        assets=assets,
-        aggregates=aggregates,
-        defects=defects,
-    )
     for table in aggregates.inconsistent_tables:
         buckets: list[AggregateBucket] = getattr(aggregates, table)
         defects.record(
@@ -1152,6 +1148,15 @@ def parse_schedule_text(
             f"{aggregates.aggregate_principal_balance}; its balances are excluded "
             "from the oracle and its counts are still checked",
         )
+
+    schedule = CollateralSchedule(
+        deal_name=deal_name,
+        period_label=period_label,
+        reporting_date=reporting_date,
+        assets=assets,
+        aggregates=aggregates,
+        defects=defects,
+    )
     if strict:
         reconciliation = reconcile_schedule(schedule)
         if not reconciliation.ok or defects.blocking:

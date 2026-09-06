@@ -34,10 +34,10 @@ FIXTURE_DIR = Path(__file__).parent / "fixtures" / "collateral_schedule"
 #: Each committed report with the figures the report itself states. These are
 #: the document's own numbers (Country Concentration / Rating Stratification
 #: totals), not this parser's output — that is the whole point of the check.
-PERIODS: list[tuple[str, str, int, str]] = [
-    ("December 2024", "cairn-clo-xvii-december-2024.txt", 193, "407181748.22"),
-    ("February 2025", "cairn-clo-xvii-february-2025.txt", 191, "401342140.14"),
-    ("March 2025", "cairn-clo-xvii-march-2025.txt", 196, "411342140.14"),
+PERIODS: list[tuple[str, str, int, str, str]] = [
+    ("December 2024", "cairn-clo-xvii-december-2024.txt", 193, "407181748.22", "16/12/2024"),
+    ("February 2025", "cairn-clo-xvii-february-2025.txt", 191, "401342140.14", "18/02/2025"),
+    ("March 2025", "cairn-clo-xvii-march-2025.txt", 196, "411342140.14", "18/03/2025"),
 ]
 
 
@@ -59,9 +59,9 @@ def march() -> CollateralSchedule:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.parametrize(("period", "filename", "assets", "par"), PERIODS)
+@pytest.mark.parametrize(("period", "filename", "assets", "par", "as_of"), PERIODS)
 def test_every_period_reconciles_to_the_reports_own_totals(
-    period: str, filename: str, assets: int, par: str
+    period: str, filename: str, assets: int, par: str, as_of: str
 ) -> None:
     """A parse is only trustworthy if it ties out — so pin all three periods.
 
@@ -70,6 +70,10 @@ def test_every_period_reconciles_to_the_reports_own_totals(
     """
     schedule = parse_schedule_text(_text(filename), period_label=period)
 
+    # The reporting date is read out of the report, not assumed from the label:
+    # this parses a *report*, and the three are a time series.
+    assert schedule.reporting_date == as_of
+    assert schedule.deal_name == "Cairn CLO XVII DAC"
     assert len(schedule.assets) == assets
     assert schedule.total_principal_balance == Decimal(par)
     # The counts above are the report's own, read back out of the document.
@@ -205,7 +209,7 @@ def test_both_report_renderings_parse_through_one_path() -> None:
     assert "LX226715 AI Sirona T/L B3 (Zentiva) (3/24) - - - - - - - -" in december
     assert "LX226715AI Sirona T/L B3 (Zentiva) (3/24)--------" in march
 
-    for period, filename, count, _par in PERIODS:
+    for period, filename, count, _par, _as_of in PERIODS:
         assert len(_schedule(period, filename).assets) == count
 
 
@@ -352,7 +356,7 @@ def test_fixture_lines_survive_any_read_mode() -> None:
     depends on how the file was opened — and an extra break inside a row is
     exactly what splits an asset in two.
     """
-    for _period, filename, _assets, _par in PERIODS:
+    for _period, filename, _assets, _par, _as_of in PERIODS:
         path = FIXTURE_DIR / filename
         raw = path.read_bytes().decode("utf-8")
         assert path.read_text(encoding="utf-8") == raw, filename
