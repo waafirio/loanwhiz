@@ -54,6 +54,7 @@ import pandas as pd
 from pydantic import BaseModel, Field
 
 from loanwhiz.domain.esma_annexes import ANNEX_REGISTRY, AnnexSpec
+from loanwhiz.primitives import derived_tape
 from loanwhiz.primitives.base import (
     AuditEntry,
     BaseInput,
@@ -92,15 +93,26 @@ _MISSING_BALANCE_THRESHOLD = 0.05
 # (query string stripped).
 _PARQUET_SUFFIXES = (".parquet", ".pq")
 
-# Provenance label for the loaded frame. LoanWhiz's canonical tape ingestion
-# path is the **direct read** — a loan tape is loaded straight from its source
-# URL (HuggingFace CSV/parquet, local ``file://``) via pandas. ``"direct"`` is
-# the only ingestion path, so it is the only provenance value; it is surfaced on
-# ``EsmaTapeOutput.data_source`` so the governance view records honestly where
-# each tape came from. (The field is retained as the provenance contract even
-# though it is currently single-valued; an additional ingestion source would
-# extend it here.)
+# Provenance labels for the loaded frame — the **ingestion channel**, surfaced
+# on ``EsmaTapeOutput.data_source`` so the governance view records honestly how
+# each tape arrived.
+#
+# ``direct``  — read straight from a published tape file (HuggingFace
+#               CSV/parquet, local ``file://``) via pandas.
+# ``derived`` — no published file exists; the rows were reconstructed at ingest
+#               from a source document the deal registers. See
+#               :mod:`loanwhiz.primitives.derived_tape`.
+#
+# The channel is decided by the tape's **identifier**, never by which branch of
+# this loader happened to run, so a derived tape cannot come back labelled
+# ``direct``. Channel is deliberately not the same question as *what the tape
+# is* — that is :class:`~loanwhiz.domain.tape_provenance.TapeSourceKind`,
+# recoverable from the same identifier via ``derived_tape.source_kind_for``.
+# Collapsing the two would assert something this repo has no evidence for:
+# whether the published files the ``direct`` path reads are their originator's
+# Article 7(1)(a) disclosure or a redistribution of it.
 DATA_SOURCE_DIRECT = "direct"
+DATA_SOURCE_DERIVED = "derived"
 
 
 def _load_tape(file_url: str, period: str | None) -> tuple[pd.DataFrame, str]:
@@ -108,12 +120,22 @@ def _load_tape(file_url: str, period: str | None) -> tuple[pd.DataFrame, str]:
 
     Ingestion
     ~~~~~~~~~
-    The tape is read **directly** from *file_url* — the canonical LoanWhiz tape
-    ingestion path — and tagged ``data_source="direct"``. The format is detected
-    from the URL/path extension: a ``.parquet``/``.pq`` suffix is read via
-    :func:`pandas.read_parquet`; anything else via :func:`pandas.read_csv` with
-    ``low_memory=False``. This covers HuggingFace CSV/parquet tapes and local
-    ``file://`` paths — the sources every LoanWhiz deal actually uses.
+    *file_url* identifies the tape, and the identifier decides the channel —
+    which is why this dispatch happens here, at the one seam every tape passes
+    through, rather than at the several call sites that hold nothing but the
+    string:
+
+    - A **derived** URI (``derived+trustee-report:…``, see
+      :mod:`loanwhiz.primitives.derived_tape`) names no published file. Its rows
+      are reconstructed from the source document the URI carries and the frame
+      is tagged ``data_source="derived"``. It is not possible to reach the
+      ``direct`` label down this branch.
+    - Anything else is read **directly** from *file_url* and tagged
+      ``data_source="direct"``. The format is detected from the URL/path
+      extension: a ``.parquet``/``.pq`` suffix is read via
+      :func:`pandas.read_parquet`; anything else via :func:`pandas.read_csv`
+      with ``low_memory=False``. This covers HuggingFace CSV/parquet tapes and
+      local ``file://`` paths.
 
     Combined multi-month tapes (e.g. ``Overall_2024_2025_all_months.parquet``)
     carry many ``reporting_date`` values in one file. Since the LoanWhiz model
@@ -133,22 +155,31 @@ def _load_tape(file_url: str, period: str | None) -> tuple[pd.DataFrame, str]:
     Returns
     -------
     (pandas.DataFrame, str)
-        The loaded tape (sliced to *period* when requested) and its provenance
-        label — always :data:`DATA_SOURCE_DIRECT`.
+        The loaded tape (sliced to *period* when requested) and its ingestion
+        channel — :data:`DATA_SOURCE_DERIVED` for a derived URI,
+        :data:`DATA_SOURCE_DIRECT` otherwise.
 
     Raises
     ------
     ValueError
-        When *period* is set but matches no rows in the tape.
+        When *period* is set but matches no rows in the tape, or (as
+        :class:`~loanwhiz.primitives.derived_tape.DerivationError` /
+        ``ScheduleReconciliationError``) when a derived URI is malformed or its
+        source document does not reconcile to its own stated aggregates.
     """
-    # Strip any query string before matching the extension so signed URLs
-    # (``...parquet?token=...``) still route to the parquet reader.
-    path = file_url.split("?", 1)[0]
-    if path.lower().endswith(_PARQUET_SUFFIXES):
-        df = pd.read_parquet(file_url)
+    if derived_tape.is_derived_uri(file_url):
+        tape = derived_tape.derive_tape(file_url)
+        df = pd.DataFrame(tape.rows, columns=list(tape.columns))
+        data_source = DATA_SOURCE_DERIVED
     else:
-        df = pd.read_csv(file_url, low_memory=False)
-    data_source = DATA_SOURCE_DIRECT
+        # Strip any query string before matching the extension so signed URLs
+        # (``...parquet?token=...``) still route to the parquet reader.
+        path = file_url.split("?", 1)[0]
+        if path.lower().endswith(_PARQUET_SUFFIXES):
+            df = pd.read_parquet(file_url)
+        else:
+            df = pd.read_csv(file_url, low_memory=False)
+        data_source = DATA_SOURCE_DIRECT
 
     if period is not None:
         col_map = {c.lower(): c for c in df.columns}
@@ -229,6 +260,8 @@ class EsmaTapeOutput(BaseModel):
         arrears_breakdown:     Percentage of loans in each arrears bucket:
                                ``current_pct``, ``arrears_1_2m_pct``,
                                ``arrears_180d_plus_pct``, ``default_pct``.
+                               **Empty** when the tape states arrears in no
+                               form — absence, not a clean pool.
         epc_breakdown:         Percentage distribution by EPC label, or
                                ``None`` when the field is absent.
         rate_type_breakdown:   Percentage distribution by rate type (Fixed /
@@ -239,11 +272,16 @@ class EsmaTapeOutput(BaseModel):
                                ``None``.
         annex_detected:        Human-readable Annex label, e.g.
                                ``"Annex 2 (RMBS)"``.
-        data_source:           Ingestion provenance — always ``"direct"``: the
-                               tape was read directly from its source URL
-                               (HuggingFace CSV/parquet, local file), LoanWhiz's
-                               canonical tape ingestion path. Surfaced so the
-                               governance view can show honest data provenance.
+        data_source:           Ingestion **channel** — ``"direct"`` when the
+                               tape was read straight from a published file, or
+                               ``"derived"`` when no published file exists and
+                               the rows were reconstructed at ingest from a
+                               source document (see
+                               :mod:`loanwhiz.primitives.derived_tape`).
+                               Decided by the tape's identifier, so it cannot
+                               disagree with what was loaded. Surfaced so the
+                               governance view shows honest provenance; the
+                               citation carries the fuller disclosure.
     """
 
     reporting_date: str
@@ -288,6 +326,35 @@ def _detect_annex(columns: set[str]) -> AnnexSpec | None:
         rather than falling back to an arbitrary table.
     """
     return ANNEX_REGISTRY.detect(columns)
+
+
+def _resolve_annex(file_url: str, columns: set[str]) -> AnnexSpec | None:
+    """The annex this tape resolves through — **stated** if it can be, else sniffed.
+
+    Detection infers an annex from a signature, which is the only option for a
+    tape of unknown origin. A *derived* tape is not of unknown origin: the
+    derivation targeted a specific annex template and knows which, so it states
+    one and that statement wins. This is what lets the trustee-derived Annex 4
+    tape resolve at all — Annex 4's entire detection signature is
+    ``enterprise_size``, which no trustee report publishes, so widening the
+    signature or fabricating the column were the only alternatives and #470
+    refused both.
+
+    A declared annex that the registry does not know is a hard error rather than
+    a silent fall-back to sniffing: quietly degrading would turn a typo into an
+    unidentified tape whose confidence deduction looks like an honest miss.
+    """
+    declared = derived_tape.declared_annex_id_for(file_url)
+    if declared is None:
+        return _detect_annex(columns)
+    spec = ANNEX_REGISTRY.get(declared)
+    if spec is None:
+        known = ", ".join(sorted(s.annex_id for s in ANNEX_REGISTRY.all()))
+        raise ValueError(
+            f"Tape {file_url!r} states annex_id={declared!r}, which is not "
+            f"registered. Known annexes: {known}."
+        )
+    return spec
 
 
 def _pct_distribution(series: pd.Series) -> dict[str, float]:
@@ -370,6 +437,12 @@ def performing_mask(df: pd.DataFrame) -> pd.Series:
     return ~non_performing_mask(df)
 
 
+#: Columns in which a tape can state arrears or default. A tape carrying none of
+#: them has not said its pool is clean — it has said nothing, and the two must
+#: not produce the same output.
+_ARREARS_STATING_COLUMNS = ("arrears_bucket", "default_crr_flag", "account_status")
+
+
 def _extract_arrears(df: pd.DataFrame) -> dict[str, float]:
     """Compute multi-bucket arrears breakdown as percentages.
 
@@ -381,6 +454,17 @@ def _extract_arrears(df: pd.DataFrame) -> dict[str, float]:
     4. ``current_pct``          — all remaining loans
 
     All as a percentage of total loan count; the four buckets sum to 100.
+
+    **A tape that states arrears in no form gets an empty dict, not a clean
+    pool.** The masks below each fall back to all-``False`` when their column is
+    missing, so a tape with none of :data:`_ARREARS_STATING_COLUMNS` would drop
+    every loan into ``current_pct: 100.0, default_pct: 0.0`` — a pristine
+    performing pool, indistinguishable from a real one and reported with the
+    same confidence. That is exactly the silent zero the derived Annex 4 tape
+    would produce: its source trustee report publishes no arrears, default,
+    recoveries or account-status column at all, and ``collateral_tape_mapping``
+    declares each one *absent* rather than zero. Emitting no bucket keeps that
+    declaration true one layer up — absent, never zero (#470).
     """
     n = len(df)
     if n == 0:
@@ -390,6 +474,9 @@ def _extract_arrears(df: pd.DataFrame) -> dict[str, float]:
             "arrears_180d_plus_pct": 0.0,
             "default_pct": 0.0,
         }
+
+    if not any(col in df.columns for col in _ARREARS_STATING_COLUMNS):
+        return {}
 
     has_arrears_col = "arrears_bucket" in df.columns
 
@@ -525,7 +612,7 @@ class EsmaTapeNormaliser(Primitive[EsmaTapeInput, EsmaTapeOutput]):
         # whichever annex is detected. Each spec resolves its own signature
         # through its own synonyms, so detection needs no pre-resolved columns.
         # -----------------------------------------------------------------
-        annex_spec = _detect_annex(cols)
+        annex_spec = _resolve_annex(input.file_url, cols)
         annex_certain = annex_spec is not None
         annex_detected = annex_spec.label if annex_spec else _UNKNOWN_ANNEX
 
@@ -686,6 +773,14 @@ class EsmaTapeNormaliser(Primitive[EsmaTapeInput, EsmaTapeOutput]):
             if matched_codes
             else ""
         )
+        # A tape whose kind is declared says so here, in the source kind's own
+        # words. ``TapeSourceKind.disclosure`` is written to be quoted verbatim
+        # precisely so this claim cannot drift between the surfaces that render
+        # it; composing a local paraphrase is how a derived tape starts reading
+        # like a filing. An undeclared kind adds nothing — silence about what a
+        # tape is, rather than an invented answer.
+        source_kind = derived_tape.source_kind_for(input.file_url)
+        kind_disclosure = f" {source_kind.disclosure}" if source_kind is not None else ""
         citation = Citation(
             document=input.file_url,
             page_or_row=(
@@ -695,6 +790,7 @@ class EsmaTapeNormaliser(Primitive[EsmaTapeInput, EsmaTapeOutput]):
             excerpt=(
                 f"ESMA {annex_detected} tape with {loan_count} loans "
                 f"(ingested via {data_source})."
+                f"{kind_disclosure}"
                 f"{annex_anchor}"
             ),
         )
