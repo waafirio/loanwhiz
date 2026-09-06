@@ -1,15 +1,24 @@
-# Tape ingestion — the direct-read model
+# Tape ingestion — direct read, and derivation
 
 LoanWhiz analyses ESMA loan-level **tapes** (the loan-by-loan data behind a
 securitisation). This document is the canonical reference for **how a tape gets
-into LoanWhiz**: the ingestion model, the one path it takes, and the provenance
+into LoanWhiz**: the ingestion model, the paths it takes, and the provenance
 it records.
 
-## The canonical path: direct read
+There are two channels, and one seam. Every tape — however it arrives — is
+loaded by `loanwhiz.primitives.esma_tape_normaliser._load_tape`, which decides
+the channel from the tape's **identifier** rather than from configuration held
+somewhere else:
 
-A LoanWhiz tape is **read directly from its source URL**. There is one ingestion
-path and it is the direct read — there is no ETL service, message queue, or
-backend in the loop.
+| Channel | When | `data_source` |
+|---|---|---|
+| **Direct read** | the tape is a published CSV/parquet file | `"direct"` |
+| **Derivation** | no published tape file exists; the rows are reconstructed at ingest from a source document the deal registers | `"derived"` |
+
+## The first path: direct read
+
+A published LoanWhiz tape is **read directly from its source URL**. There is no
+ETL service, message queue, or backend in the loop.
 
 ```
 deal["tape_urls"]  ──►  _load_tape(file_url, period)  ──►  pandas.DataFrame
@@ -55,6 +64,49 @@ df = green_lion.load_tape("2026-04-30")
 the same direct read `_load_tape` performs. Feeding a Green Lion tape URL through
 `EsmaTapeNormaliser` produces an `EsmaTapeOutput` with `data_source="direct"`.
 
+## The second path: derivation from a source document
+
+Some deals publish no machine-readable tape at all, yet publish the loan-level
+detail in another form. **Cairn CLO XVII DAC** is the worked case: European CLOs
+are private transactions for the purposes of the EU Securitisation Regulation,
+so nothing is filed to a securitisation repository, but the monthly trustee
+report carries a full per-asset collateral schedule.
+
+A derived tape has no upstream URL, so its identity is a **URI whose scheme
+names the derivation and whose body is the source document**:
+
+```
+derived+trustee-report:https://…/monthly-report.pdf#period=December%202024
+└──── scheme ────────┘└──── the real source document ────┘└── which cut ──┘
+```
+
+`loanwhiz.primitives.derived_tape` owns that scheme. On a cold cache it fetches
+the report, extracts its text, parses the collateral schedule
+(`collateral_schedule_parser`), **refuses it unless it reconciles to the
+report's own stated aggregates**, and resolves the rows onto canonical Annex 4
+columns (`collateral_tape_mapping`). The result is cached under
+`data/extraction_cache/derived-tape-*.json`, which is an accelerator and never
+an authority — delete it and the same tape is re-derived from the same report.
+
+Two consequences worth stating plainly:
+
+- **The annex is stated, not sniffed.** Annex 4's entire detection signature is
+  `enterprise_size`, which no trustee report publishes. Rather than widen the
+  signature or fabricate the column, a derived tape declares the annex it
+  targeted and `_resolve_annex` prefers that declaration. Detection remains the
+  right answer for a tape of unknown origin; a derivation is not of unknown
+  origin.
+- **Registration is ordinary.** The three URIs sit in `deals.json` under
+  `tape_urls` like any other tape, and `POST /deal/{id}/ingest/tape` accepts one
+  at runtime — it validate-loads through `_load_tape`, so an unreconcilable
+  source is a `422` rather than a persisted lie. No second endpoint exists.
+
+### Adding the next derived source
+
+Register a member on `DerivedTapeScheme`, its source kind, and its deriver. An
+import-time guard refuses a member missing from either table. Nothing in the
+module special-cases Cairn.
+
 ## Provenance
 
 Every ingested tape records where it came from, surfaced through the governance
@@ -62,14 +114,33 @@ evidence pack (see [`governance.md` §7](governance.md)):
 
 | Field | Where | Value |
 |---|---|---|
-| `EsmaTapeOutput.data_source` | `esma_tape_normaliser.py` | always `"direct"` |
+| `EsmaTapeOutput.data_source` | `esma_tape_normaliser.py` | `"direct"` or `"derived"` |
 | `TapeAnalyticsPeriod.data_source` | `GET /deal/{id}/tape-analytics` | the same, per reporting period |
-| Tape citation excerpt | `Citation.excerpt` | `"… (ingested via direct)"`, carried into the agent's citation trail |
+| Tape citation excerpt | `Citation.excerpt` | `"… (ingested via direct)"` / `"… (ingested via derived)"`, plus the source kind's full disclosure sentence for a derived tape |
+| `TapeSourceKind` | `domain/tape_provenance.py` | `derived_from_investor_report` for a derived tape; **not declared** for a published file |
 
-`data_source` is currently single-valued (`"direct"`) because direct read is the
-only ingestion path. The field is retained as the provenance contract: an
-additional ingestion source, if one were ever added, would extend the value here
-and in `_load_tape`.
+### Channel is not the same question as kind
+
+`data_source` says **how the tape arrived**. `TapeSourceKind` says **what it
+is** — and the two are kept apart on purpose.
+
+A derived tape is `DERIVED_FROM_INVESTOR_REPORT`, and every surface that reports
+provenance renders that kind's `disclosure` string verbatim rather than
+composing its own wording, so the claim cannot drift between the citation, the
+capability-matrix cell and the data card.
+
+A published tape read through the direct path has **no declared kind**. That is
+deliberate and is *not* a synonym for `FILED_ARTICLE_7_1_A`: this repo holds no
+evidence about whether a given published file is its originator's Article 7(1)(a)
+disclosure or a redistribution of it, and defaulting to "filed" would make the
+system's most consequential claim by omission. A surface rendering provenance
+must therefore handle three answers — derived, filed, and not declared.
+
+**Why this matters here specifically.** Cairn *does* file real Article 7(1)(a)
+Loan Reports; LoanWhiz does not have them. A derived tape that a reader could
+mistake for that filing would be provenance laundering, so the distinction is
+carried by the tape's identifier rather than by a label someone must remember to
+attach: a derived tape cannot be loaded and come back tagged `"direct"`.
 
 ## Why direct read (and not a deeploans backend)
 

@@ -15,6 +15,8 @@ runner's contract (state vocabulary, mandatory reasons) independent of the data.
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 from fastapi.testclient import TestClient
 
@@ -22,11 +24,14 @@ from loanwhiz.api import app
 from loanwhiz.api.main import _load_cached_deal_model, _VALIDATION_BUILDERS
 from loanwhiz.config import DEAL_REGISTRY
 from loanwhiz.extraction.assembler import DealModel
+from loanwhiz.domain.tape_provenance import TapeSourceKind
 from loanwhiz.primitives.capability_matrix import (
+    ENGINE_STRUCTURAL_CONFIG_KEYS,
     STATE_NOT_APPLICABLE,
     STATE_RAN,
     STATE_VALIDATED,
     CapabilityMatrix,
+    _missing_structural_config,
     build_capability_matrix,
     capability_rows,
 )
@@ -243,6 +248,18 @@ def test_runner_applicability_is_data_driven_not_hardcoded() -> None:
             "deal_name": "Fake Deal",
             "jurisdiction": "Atlantis",
             "tape_urls": [{"url": "u1"}, {"url": "u2"}],
+            # The pool-state reconstruction folds each tape period through the
+            # engine, so it needs these as well as the tapes. A deal with tapes
+            # and no structural config is a real and different case — pinned by
+            # ``test_a_registered_tape_alone_does_not_light_the_reconstruction``.
+            "capital_structure": {
+                "class_a_balance": 1_000.0,
+                "class_a_rate_pct": 3.0,
+                "class_b_balance": 100.0,
+                "class_c_balance": 10.0,
+            },
+            "reserve_account_target": 50.0,
+            "original_pool_balance": 1_110.0,
         },
         "bare": {"deal_name": "Empty Deal", "tape_urls": []},
     }
@@ -408,18 +425,170 @@ def test_engine_validation_reason_is_deal_agnostic() -> None:
 
 
 def test_tape_reasons_do_not_overclaim_that_no_loan_level_data_exists() -> None:
-    """``tape_urls`` encodes tape availability, and the reason must say only that.
+    """No tape reason may claim a deal publishes no loan-level data.
 
-    Cairn publishes loan-level collateral detail in its trustee reports; it is
-    simply not a machine-readable ESMA tape. The old wording ("no loan tapes
-    published for this deal") read as the stronger, false claim.
+    #457 retracted "no loan tapes published for this deal": ``tape_urls`` encodes
+    what *this repo* has registered, never what an issuer discloses. The claim is
+    now checked across every deal and every tape-driven cell, in both directions
+    — a deal whose cell is ``ran`` must not have acquired the wider claim either.
     """
+    # Ban the retracted CLAIM, not any fragment of it: the surviving
+    # not-applicable reason ends "...it does not claim the deal publishes no
+    # loan-level collateral detail in another form", so a crude "publishes no
+    # loan" ban would flag the very sentence that refuses the claim.
+    retracted_claims = (
+        "no loan tapes published",
+        "no loan tapes are published",
+        "this deal publishes no loan",
+        "loan-level esma tapes are not published",
+    )
     matrix = _real_matrix()
+    for column in matrix.deals:
+        for capability_key in ("tape_analytics", "collateral_reconciliation"):
+            reason = _cell(matrix, column.deal_id, capability_key).reason.lower()
+            for retracted in retracted_claims:
+                assert retracted not in reason, (column.deal_id, capability_key, reason)
+
+
+def test_the_user_facing_no_tape_card_does_not_carry_the_retracted_claim() -> None:
+    """#457 fixed the cell reasons; the UI kept saying the retracted thing.
+
+    ``NoTapesNotice`` is the user-facing counterpart of a ``not-applicable``
+    tape cell, and it still rendered "No loan tapes published for this deal" and
+    "its loan-level ESMA tapes are not published" — a claim about what an issuer
+    discloses, made by a component that only knows what LoanWhiz registered.
+    Guarded from Python because the repo has no JS test runner; the file is a
+    string in either language.
+    """
+    card = (
+        Path(__file__).resolve().parents[1] / "web" / "components" / "page-states.tsx"
+    ).read_text(encoding="utf-8")
+    for retracted in (
+        "No loan tapes published",
+        "loan tapes published for this deal",
+        "ESMA tapes are not published",
+    ):
+        assert retracted not in card, retracted
+    # And it still says the true thing, so this cannot pass by deleting the card.
+    assert "No loan tape is registered for this deal" in card
+
+
+def test_the_clo_tape_cells_report_the_derived_tape_without_claiming_a_filing() -> None:
+    """The positive branch is where provenance laundering would happen.
+
+    Registering the derived tape flips ``tape_analytics`` to ``ran``. That cell
+    must say what the tape *is* — reconstructed by LoanWhiz from a trustee report
+    — and must not describe it in the vocabulary of a published or filed ESMA
+    tape. Cairn does file real Article 7(1)(a) Loan Reports; this is not one of
+    them, and no reader may be able to conclude otherwise from this cell.
+    """
+    cell = _cell(_real_matrix(), "cairn-clo-xvii", "tape_analytics")
+    assert cell.state == STATE_RAN
+    assert cell.evidence.detail["tape_source_kinds"] == {
+        TapeSourceKind.DERIVED_FROM_INVESTOR_REPORT.value: 3
+    }
+    # The disclosure is quoted verbatim, not paraphrased, so it cannot drift.
+    assert TapeSourceKind.DERIVED_FROM_INVESTOR_REPORT.disclosure in cell.reason
+    assert "NOT filed under Article 7(1)(a)" in cell.reason
+    # And none of the wording that would read as a regulatory filing. Each entry
+    # is a positive claim; the reason's own "are not published tape files" must
+    # not trip it, so the ban is on the assertion rather than on the noun.
+    for laundering in (
+        "ESMA tape URL",
+        "loan tape(s) published",
+        "filed under Article 7(1)(a) in",
+        "regulatory filing",
+    ):
+        assert laundering not in cell.reason
+
+
+def test_a_registered_tape_alone_does_not_light_the_reconstruction() -> None:
+    """The collateral cell must not claim a reconstruction the endpoint refuses.
+
+    Cairn now registers three tape periods but no structural config, so
+    ``_resolve_structural_config`` answers a labelled 422. Reporting ``ran`` off
+    tape count alone would be #457's mirror-image overclaim: one false reason
+    swapped for another. The cell stays ``not-applicable`` and names the true
+    cause — configuration, not an absent tape.
+    """
+    cell = _cell(_real_matrix(), "cairn-clo-xvii", "collateral_reconciliation")
+    assert cell.state == STATE_NOT_APPLICABLE
+    assert cell.evidence.detail["tape_count"] == 3
+    assert cell.evidence.detail["missing_structural_config"] == [
+        "capital_structure",
+        "reserve_account_target",
+        "original_pool_balance",
+    ]
+    # It must not read as "there is no tape" — that is the retracted claim.
+    assert "No machine-readable ESMA loan tape is registered" not in cell.reason
+    assert "tape(s) are registered" in cell.reason
+
+
+def test_cairn_cells_revert_when_the_derived_tape_is_deregistered() -> None:
+    """Registering the tape is reversible, and reverting restores the old reasons.
+
+    The round-trip half of the persistence contract: ``tape_urls`` is a durable
+    registry edit, so the state it moves the matrix out of must still be
+    reachable. Removing the entries returns both tape-driven cells to exactly the
+    #457 wording — which also proves the new reasons are driven by the registry
+    rather than by anything hardcoded about this deal.
+    """
+    ctx = dict(DEAL_REGISTRY["cairn-clo-xvii"])
+    assert ctx["tape_urls"], "precondition: the derived tapes are registered"
+    ctx["tape_urls"] = []
+
+    matrix = build_capability_matrix(
+        {"cairn-clo-xvii": ctx},
+        seed_loader=_load_cached_deal_model,
+        validators=_VALIDATION_BUILDERS,
+    )
     for capability_key in ("tape_analytics", "collateral_reconciliation"):
         cell = _cell(matrix, "cairn-clo-xvii", capability_key)
         assert cell.state == STATE_NOT_APPLICABLE
-        assert "ESMA loan tape" in cell.reason
-        assert "No loan tapes published" not in cell.reason
+        assert "No machine-readable ESMA loan tape is registered" in cell.reason
+        assert cell.evidence.citation == "Deal registry context: tape_urls is empty."
+        assert cell.evidence.detail["tape_count"] == 0
+
+    # And the waterfall qualifier returns to naming the absent source, not the
+    # absent configuration.
+    waterfall = _cell(matrix, "cairn-clo-xvii", "waterfall_execution")
+    assert "no registered tape or Notes & Cash report" in waterfall.reason
+
+
+def test_missing_structural_config_agrees_with_the_api_resolver() -> None:
+    """The matrix's predicate and the endpoint's resolver must not drift.
+
+    ``_missing_structural_config`` mirrors ``_resolve_structural_config`` rather
+    than importing it (the resolver raises an ``HTTPException`` and lives a layer
+    up). A mirror is only safe while something checks it, so this asserts both
+    the verdict and the named keys over every registered deal — including the
+    coupon rule, where an extracted ``"3m EURIBOR + 0.43"`` yields no usable
+    ``class_a_rate_pct`` and therefore no capital structure.
+    """
+    from loanwhiz.api.main import _extracted_capital_structure, _resolve_structural_config
+
+    for deal_id, ctx in DEAL_REGISTRY.items():
+        model = _load_cached_deal_model(ctx)
+        missing = _missing_structural_config(deal_id, ctx, model)
+        try:
+            _resolve_structural_config(deal_id, dict(ctx))
+            resolver_ok = True
+        except Exception:  # noqa: BLE001 — the labelled 422 is the signal
+            resolver_ok = False
+        assert (missing == ()) is resolver_ok, (deal_id, missing)
+
+        if deal_id == "green-lion-2026-1":
+            continue
+        expected = tuple(
+            key
+            for key in ENGINE_STRUCTURAL_CONFIG_KEYS
+            if ctx.get(key) is None
+            and not (
+                key == "capital_structure"
+                and _extracted_capital_structure(ctx) is not None
+            )
+        )
+        assert missing == expected, (deal_id, missing, expected)
 
 
 def test_the_clo_column_reports_no_validated_cell() -> None:
@@ -460,8 +629,19 @@ def test_waterfall_ran_does_not_contradict_an_endpoint_that_refuses_the_deal() -
             or DEAL_REGISTRY[column.deal_id].get("notes_cash_report_urls")
         )
         assert has_source is registry_has_source
+        # Extended for the second way the registry can prove a refusal: a deal
+        # may register a period source and still be short of the structural
+        # config the reconstruction folds it through. Registering the derived
+        # tape moved Cairn from the first refusal to the second, and falling
+        # silent there would have read as "solved".
+        missing_config = cell.evidence.detail["missing_structural_config"]
         if not has_source:
             assert "per-deal endpoints cannot yet serve this deal" in cell.reason
+            assert "no registered tape or Notes & Cash report" in cell.reason
+        elif missing_config:
+            assert "per-deal endpoints cannot yet serve this deal" in cell.reason
+            for key in missing_config:
+                assert key in cell.reason
         else:
             assert "cannot yet serve" not in cell.reason
 

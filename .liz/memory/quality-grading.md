@@ -27,3 +27,26 @@ is authored" names a deferred decision. Assert the retracted wording is *absent*
 a test checking only the state passes while the prose lies.
 
 Refs: #457
+
+## 2026-09-06 · pitfall · #471
+
+Supplying the missing input moves the overclaim into the **positive** branch.
+When a cell reads `not-applicable` for want of an input and you finally provide
+one, the reason that replaces it is the new risk: check every *other*
+precondition the capability needs before reporting it ran, or the cell claims
+work the endpoint still refuses. Registering a loan tape flipped one cell
+honestly and would have flipped a second onto a reconstruction that 422s for
+want of structural config. Say which precondition is missing, never re-use the
+"no input" wording — those are different findings.
+
+Refs: #471
+
+## 2026-09-06 · gotcha · #471
+
+A grep-for-absence over prose must ban the **claim, not a fragment of it**: a
+reason ending "it does not claim the deal publishes no loan-level detail" trips
+a naive `"publishes no loan"` ban, so the test flags the sentence that *refuses*
+the claim. Ban the whole assertion, lower-cased, and let the retracted wording
+list be the specification.
+
+Refs: #471

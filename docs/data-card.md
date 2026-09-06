@@ -17,7 +17,7 @@ key), and while extraction *coverage* on the non-English prospectuses is now
 high, neither of those deals publishes a report to validate against. The
 capability matrix
 (`GET /capability-matrix`, Showcase view) is the source of truth, tallying
-**1 validated / 14 ran / 15 not-applicable** across its 6 deal columns.
+**1 validated / 15 ran / 14 not-applicable** across its 6 deal columns.
 
 ---
 
@@ -62,7 +62,7 @@ This demonstrates the primitives are deal-agnostic — but
 and extraction completeness is stated honestly per deal. High completeness is a
 *coverage* measure over what the extractor populated; it is not a claim that the
 extracted numbers are correct. The capability matrix (`GET /capability-matrix`, Showcase view) is
-the per-cell source of truth: **1 validated / 14 ran / 15 not-applicable**.
+the per-cell source of truth: **1 validated / 15 ran / 14 not-applicable**.
 
 | Deal | Jurisdiction | Documents | Extraction completeness | What extracted | Validation |
 |---|---|---|---|---|---|
@@ -71,7 +71,7 @@ the per-cell source of truth: **1 validated / 14 ran / 15 not-applicable**.
 | **Green Lion 2023-1 B.V.** | Netherlands | Prospectus (real) + investor reports + **quarterly Notes & Cash (real)** | **1.0** | Full waterfall, 4 triggers | **Graded to the cent** by `GET /quality-matrix` against a committed answer key (#440) — revenue + redemption PoP across all three published periods. The `/deal/{id}/validation` endpoint still returns `available=false`: the fixtures and key are committed, but no validation *builder* is registered, so that endpoint understates what is graded. |
 | **Leone Arancio RMBS 2023-1 S.r.l.** | Italy | Prospectus (real, Italian) + investor reports | **0.925** | Full waterfall (23/23/12 steps), 3 triggers, 3 note classes — A1 480m / A2 6,600m / J 920m | Pipeline ran; tranche sizes reconcile to the curated `deals.json` registry, but **no** Notes & Cash report is published, so no external validation is possible |
 | **Sol-Lion II RMBS Fondo de Titulización** | Spain | Prospectus (real, Spanish) + investor reports | **0.925** | Full waterfall (20/15/12 steps), 3 triggers, 8 note classes — A1–A6, B, C | Pipeline ran; tranche sizes reconcile to the curated `deals.json` registry, but **no** Notes & Cash report is published, so no external validation is possible |
-| **Cairn CLO XVII DAC** *(CLO — extracted, unvalidated)* | Ireland | Listing Particulars (real, 420pp) + 3 monthly trustee reports (real) + Note Valuation Report (real, 83pp) | **1.0** | Full 8-class stack (A, B-1, B-2, C, D, E, F + Subordinated, EUR 404.1m), both Priorities of Payments as distinct cascades (29-step Interest / 23-step Principal / 26-step Post-Acceleration), 10 triggers of which 8 are per-class coverage tests, 25 definitions | **Executes, not validated.** The seed folds through the shared `run_period` kernel with the deal's own cascades (#457). No answer key is authored, so no cell is `validated` — for want of a key, not of a report. `covenant_monitoring` and `waterfall_execution` are `ran`; tape analytics, collateral reconciliation and engine validation stay `not-applicable`, each with a reason true of this deal. The coverage tests carry no thresholds — see the limitation below — so the monitor reports them not-evaluable rather than passing |
+| **Cairn CLO XVII DAC** *(CLO — extracted, unvalidated)* | Ireland | Listing Particulars (real, 420pp) + 3 monthly trustee reports (real) + Note Valuation Report (real, 83pp) | **1.0** | Full 8-class stack (A, B-1, B-2, C, D, E, F + Subordinated, EUR 404.1m), both Priorities of Payments as distinct cascades (29-step Interest / 23-step Principal / 26-step Post-Acceleration), 10 triggers of which 8 are per-class coverage tests, 25 definitions | **Executes, not validated.** The seed folds through the shared `run_period` kernel with the deal's own cascades (#457). No answer key is authored, so no cell is `validated` — for want of a key, not of a report. `covenant_monitoring`, `waterfall_execution` and — since #471 registered the derived tape — `tape_analytics` are `ran`; collateral reconciliation and engine validation stay `not-applicable`, each with a reason true of this deal. Collateral reconciliation stays refused because the deal registers no structural config, not because it has no tape. The coverage tests carry no thresholds — see the limitation below — so the monitor reports them not-evaluable rather than passing |
 
 ### Cairn CLO XVII DAC — what is and is not obtainable
 
@@ -134,14 +134,23 @@ CLO validation is a scope decision for the operator, not something this child to
 **Not obtainable — the negatives, recorded because an absent document set is a
 finding, not a blank.**
 
-- **No machine-readable loan tape.** `tape_urls` is empty. Loan-level collateral
-  data *does* exist and *is* free — the trustee reports carry "Current Asset
-  Characteristics" Parts I–III, "Defaulted Collateral Obligation Detail",
-  "Deferring Collateral Obligation Detail", "Assets Purchased" and "Assets Sold" —
-  but as **PDF tables, not an ESMA Annex tape**. The `esma_tape_normaliser` cannot
-  read them, so registering a tape URL would be a claim the pool analytics would
-  then act on. This is the honest shape: the data is obtainable, the *format* is
-  not ingestible today.
+- **No *filed* loan tape — but a derived one is now registered (#471).** Cairn's
+  own Article 7(1)(a) Loan Reports are distributed to Competent Authorities,
+  Noteholders and prospective investors rather than to a securitisation
+  repository, and LoanWhiz does not have them. What it does have is the trustee
+  reports' loan-level collateral detail — "Current Asset Characteristics" Parts
+  I–III, "Defaulted Collateral Obligation Detail", "Deferring Collateral
+  Obligation Detail", "Assets Purchased" and "Assets Sold". That detail is now
+  parsed, reconciled against each report's own stated aggregates and resolved
+  onto canonical Annex 4 columns, so `tape_urls` carries three **derived** tape
+  entries (see [Derived tape](#the-derived-tape--what-it-is-covers-and-omits)
+  below and [`tape-ingestion.md`](tape-ingestion.md)).
+
+  The earlier entry here said registering a tape URL "would be a claim the pool
+  analytics would then act on". That remains exactly right, and is why the
+  derivation is identified by a `derived+trustee-report:` URI rather than a
+  plain URL: the claim the analytics act on is now *derived, not filed*, at
+  every surface, and no reader can mistake one for the other.
 - **The full monthly series is login-walled.** U.S. Bank's CLO investor-reporting
   portal (`pivot.usbank.com`) requires an account (verified: login / password /
   registration). Only what the exchange filed is public, which is why the three
@@ -223,8 +232,94 @@ key yet".
   unvalidated for want of an authored key, not for want of an obtainable report.
 - `tape_analytics` and `collateral_reconciliation` said "No loan tapes published
   for this deal", which was true of ESMA tapes but read as the stronger claim that
-  no loan-level data exists. Both now say only what `tape_urls` encodes: no
-  machine-readable ESMA loan tape is registered.
+  no loan-level data exists. Both now say only what `tape_urls` encodes.
+
+**#471 moved the same risk into the positive branch, and it needed the same
+discipline.** Registering a derived tape flips these cells off `not-applicable`,
+and the reason that replaces a false negative can be a false positive:
+
+- `tape_analytics` is now `ran`. Its old positive wording called every tape an
+  "ESMA tape URL", which would have described a reconstruction as a published
+  regulatory tape. It now counts tapes by declared source kind and quotes
+  `TapeSourceKind.disclosure` verbatim, so the cell states that these three are
+  **not** filed under Article 7(1)(a).
+- `collateral_reconciliation` is **still `not-applicable`**, and this is the
+  substantive point rather than a technicality. A registered tape is necessary
+  but not sufficient: the per-period pool-state reconstruction folds each period
+  through the engine, which needs `capital_structure`,
+  `reserve_account_target` and `original_pool_balance` — none of which this deal
+  registers, so `GET /deal/cairn-clo-xvii/waterfall` answers a labelled 422.
+  Reporting `ran` off tape count alone would have swapped one false reason for
+  another. The cell names the missing configuration instead, and explicitly says
+  the tape is present.
+- The `waterfall_execution` qualifier moved with it. It previously fired only
+  where the registry proved there was no period source at all; registering the
+  tape would otherwise have silenced it and left the cell reading as though the
+  endpoints now serve this deal. It names the missing structural configuration
+  instead.
+
+### The derived tape — what it is, covers and omits
+
+**What it is.** Three per-period tapes reconstructed by LoanWhiz from Cairn's
+monthly trustee reports and resolved onto canonical ESMA Annex 4 (Corporate)
+columns. **It is not a regulatory filing** and is not Cairn's Article 7(1)(a)
+Loan Report. Each tape's `TapeSourceKind` is `derived_from_investor_report`, and
+every provenance surface — `data_source`, the tape citation in the evidence
+pack, the capability-matrix cell reason, this card — renders that kind's own
+disclosure sentence rather than a local paraphrase.
+
+**What it covers.**
+
+| Period | Reporting date | Assets | Aggregate par (EUR) |
+|---|---|---|---|
+| December 2024 | 2024-12-16 | 193 | 407,181,748.22 |
+| February 2025 | 2025-02-18 | 191 | 401,342,140.14 |
+| March 2025 | 2025-03-18 | 196 | 411,342,140.14 |
+
+Every figure is reconciled at parse time against the source report's own stated
+asset count, aggregate balance and per-bucket distributions; a schedule that
+does not tie back is refused rather than returned (#469). The asset count
+genuinely moves between periods — this is a time series, not one cut repeated.
+
+*(These figures correct an earlier estimate of "162 distinct facilities,
+~EUR 354m par" that appeared in the planning issues: it came from an `LX`-only
+identifier regex that silently skipped 34 ISIN-identified assets.)*
+
+**What it omits.** Twenty-eight canonical columns are emitted with 13 genuine
+`CRPL` locators. Thirteen Annex 4 fields are declared **absent** — meaning the
+source is silent, never that the value is zero, and the key is omitted from the
+row entirely rather than filled with a `0`:
+
+- **Credit performance is not published at all**: arrears balance (`CRPL77`),
+  days in arrears (`CRPL78`), account status (`CRPL79`), default amount
+  (`CRPL81`), cumulative recoveries (`CRPL84`). Because the tape states arrears
+  in no form, the pool analytics emit **no** arrears breakdown for it rather
+  than the `current_pct: 100.0 / default_pct: 0.0` a missing-column fallback
+  would otherwise produce — a clean pool and an unreported one must not look
+  alike.
+- **Original balance** (`CRPL38`) and **Basel segment** (`CRPL15`) are absent.
+- **`enterprise_size`** (`CRPL16`) is absent, which is why the annex is stated
+  rather than detected: it is Annex 4's entire detection signature.
+- **`market_value`** (`CRPL41`) is absent. The schedule's "Market Value" column
+  is a **price per 100 of par** (e.g. `99.72`), not an amount — the report's own
+  Assets Sold page proves it — so it lands on a code-less `market_price_pct`.
+  A market value is derivable as `par × price / 100`, but LoanWhiz does not
+  perform that derivation, and no column here silently stands in for it.
+- **Industry is not NACE.** The report gives S&P and Fitch industry names; they
+  resolve onto code-less columns, **not** `CRPL14`, which is defined as a NACE
+  code.
+- **Country is not NUTS-3.** The report gives a country ("Luxembourg"); it
+  resolves onto a code-less column, **not** `CRPL10`, which is a NUTS-3 region.
+- **Obligor identity** (`CRPL1`, `CRPL4`) is absent: the report names obligors
+  in prose, and a name is not an identifier.
+
+Values are the source document's own words (`Senior Secured Loan`), **not** ESMA
+RTS coded vocabularies (`SNDB`) — `TapeSourceKind.rts_coded_values` is `False`
+for this tape, and any consumer comparing against an RTS code must check it.
+
+**What it still does not unlock.** No `validated` cell. Grading needs a
+committed answer key, which remains a deferred operator decision (#193); nothing
+in #471 authored one.
 
 **The engine executes this deal (#457).** The committed seed folds through the
 existing `run_period` kernel — the same one the RMBS deals use — over the full

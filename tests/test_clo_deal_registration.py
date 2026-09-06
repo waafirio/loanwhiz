@@ -54,6 +54,11 @@ from loanwhiz.config import (
     GREEN_LION,
     _load_deal_registry,
 )
+from loanwhiz.primitives.derived_tape import (
+    is_derived_uri,
+    source_document_for,
+    source_kind_for,
+)
 
 CLO_DEAL_ID = "cairn-clo-xvii"
 CLO_DEAL_NAME = "Cairn CLO XVII DAC"
@@ -227,14 +232,49 @@ def test_asset_class_is_optional_like_jurisdiction_on_the_in_code_default() -> N
 # ---------------------------------------------------------------------------
 
 
-def test_clo_has_no_loan_tape() -> None:
-    """No machine-readable ESMA loan tape is published for this deal.
+def test_clo_registers_only_derived_tapes() -> None:
+    """The CLO's tapes are reconstructed, and every one of them says so.
 
-    Loan-level collateral detail IS obtainable — as PDF tables inside the monthly
-    trustee reports — but the ESMA tape normaliser cannot read those, so claiming
-    a tape here would be a lie the pool analytics would then act on.
+    No machine-readable ESMA loan tape is *published* for this deal — that part
+    of the original finding is unchanged, and Cairn's own Article 7(1)(a) Loan
+    Reports remain out of reach. What changed is that the loan-level collateral
+    detail inside the monthly trustee reports is now parsed, reconciled against
+    each report's own stated aggregates and resolved onto canonical Annex 4
+    columns, so a tape can be registered without claiming to be a filing.
+
+    Pinned per #455: register the document only when the promise can be kept,
+    and pin the shape of what was registered rather than only its presence. An
+    entry here that carried a plain URL would be indistinguishable from a
+    published tape at every downstream reader, which is the failure this asserts
+    against.
     """
-    assert DEAL_REGISTRY[CLO_DEAL_ID]["tape_urls"] == []
+    tapes = DEAL_REGISTRY[CLO_DEAL_ID]["tape_urls"]
+    assert len(tapes) == 3, "one per registered trustee report"
+    for entry in tapes:
+        assert is_derived_uri(entry["url"]), entry
+        kind = source_kind_for(entry["url"])
+        # Asserted by value + predicate rather than by importing the enum:
+        # ``loanwhiz.domain.tape_provenance`` cannot be the first ``loanwhiz``
+        # import in a module (a pre-existing package-init cycle through
+        # ``domain.provenance``), and the serialised value is the durable
+        # contract anyway — it is what a registry entry and an evidence pack
+        # both carry.
+        assert kind is not None and kind.value == "derived_from_investor_report"
+        assert not kind.is_regulatory_filing
+
+
+def test_each_derived_tape_names_a_report_the_deal_actually_registers() -> None:
+    """A derived tape's source must be a document this deal registers, not a new one.
+
+    The whole reason the derivation is reproducible is that its input is already
+    a registry fact. A source URL drifting away from ``investor_report_urls``
+    would quietly make the tape depend on a document nothing else in the deal
+    points at.
+    """
+    deal = DEAL_REGISTRY[CLO_DEAL_ID]
+    registered_reports = {r["url"] for r in deal["investor_report_urls"]}
+    for entry in deal["tape_urls"]:
+        assert source_document_for(entry["url"]) in registered_reports, entry
 
 
 @pytest.mark.parametrize("key", STRUCTURAL_KEYS)

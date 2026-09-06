@@ -558,6 +558,79 @@ def test_ingest_tape_bad_tape_422(ingest_env):
     assert entry not in (main.DEALS["ingest-test-2026-1"].get("tape_urls") or [])
 
 
+def test_ingest_tape_accepts_a_derived_uri_through_the_same_seam(ingest_env, monkeypatch):
+    """#399 is the runtime seam for a derived tape too — no second endpoint.
+
+    The loader is deliberately NOT stubbed here: this proves the whole path, from
+    a ``derived+trustee-report:`` URI through the parser and the reconciliation
+    contract to a persisted entry, using a committed report fixture over
+    ``file://`` so it needs no network. That is the property that makes the
+    generality claim real — the next derived source registers rather than forks.
+    """
+    from loanwhiz.api import main
+    from loanwhiz.primitives import derived_tape as _dt
+    from loanwhiz.primitives.derived_tape import DerivedTapeScheme, derived_tape_uri
+
+    # Keep the derivation cache out of the repo tree, and out of the next run:
+    # a persisted artefact would let a broken derivation pass this test.
+    monkeypatch.setattr(
+        _dt, "DEFAULT_DERIVED_TAPE_CACHE_DIR", Path(ingest_env).parent / "derivation-cache"
+    )
+    monkeypatch.setattr(_dt, "_MEMO", {})
+
+    client.post("/deals", json=_register_body())
+    fixture = (
+        Path(__file__).parent
+        / "fixtures"
+        / "collateral_schedule"
+        / "cairn-clo-xvii-march-2025.txt"
+    ).resolve()
+    entry = {
+        "date": "2025-03-18",
+        "url": derived_tape_uri(
+            f"file://{fixture}", "March 2025", scheme=DerivedTapeScheme.TRUSTEE_REPORT
+        ),
+    }
+
+    resp = client.post("/deal/ingest-test-2026-1/ingest/tape", json=entry)
+    assert resp.status_code == 200, resp.text
+    assert entry in resp.json()["tape_urls"]
+    assert entry in main.DEALS["ingest-test-2026-1"]["tape_urls"]
+
+
+def test_ingest_tape_422s_a_source_that_does_not_reconcile(ingest_env, tmp_path, monkeypatch):
+    """The 422 means something because #469's refusal reaches this seam.
+
+    A document that parses to a schedule contradicting its own stated aggregates
+    must not be persisted as a tape — an unusable entry in the registry is worse
+    than a rejected request, because everything downstream would then act on it.
+    """
+    from loanwhiz.api import main
+    from loanwhiz.primitives import derived_tape as _dt
+    from loanwhiz.primitives.derived_tape import DerivedTapeScheme, derived_tape_uri
+
+    monkeypatch.setattr(
+        _dt, "DEFAULT_DERIVED_TAPE_CACHE_DIR", tmp_path / "derivation-cache"
+    )
+    monkeypatch.setattr(_dt, "_MEMO", {})
+
+    client.post("/deals", json=_register_body())
+    not_a_report = tmp_path / "not-a-trustee-report.txt"
+    not_a_report.write_text("--- page 1 ---\nCairn CLO XVII DAC\nMonthly Report\n")
+    entry = {
+        "date": "2025-03-18",
+        "url": derived_tape_uri(
+            f"file://{not_a_report}",
+            "March 2025",
+            scheme=DerivedTapeScheme.TRUSTEE_REPORT,
+        ),
+    }
+
+    resp = client.post("/deal/ingest-test-2026-1/ingest/tape", json=entry)
+    assert resp.status_code == 422, resp.text
+    assert entry not in (main.DEALS["ingest-test-2026-1"].get("tape_urls") or [])
+
+
 def test_ingest_report_enqueues_202_and_status_polls_succeeded(ingest_env, tmp_path):
     """POST /ingest/report adds the URL + enqueues (202); status polls to succeeded
     against a stubbed resolver — never a real network/LLM extraction."""

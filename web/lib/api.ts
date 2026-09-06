@@ -155,25 +155,35 @@ export interface Citation {
 }
 
 /**
- * Ingestion provenance for an ESMA tape — mirrors the backend
+ * Ingestion **channel** for an ESMA tape — mirrors the backend
  * `EsmaTapeOutput.data_source` (`esma_tape_normaliser.py`, issue #239).
  * `"deeploans"` = fetched through the deeploans ETL backend; `"direct"` = the
- * direct CSV/parquet URL read.
+ * direct CSV/parquet URL read; `"derived"` = no published tape file exists and
+ * the rows were reconstructed at ingest from a source document the deal
+ * registers (issue #471).
+ *
+ * `"derived"` says how the tape arrived, not what it is. What it is — and in
+ * particular that it is **not** an Article 7(1)(a) regulatory filing — is
+ * carried in full in the citation excerpt, which quotes the backend's own
+ * disclosure sentence. Rendering this label alone is not a substitute for
+ * showing that sentence.
  */
-export type DataSource = "deeploans" | "direct";
+export type DataSource = "deeploans" | "direct" | "derived";
+
+const DATA_SOURCES: readonly DataSource[] = ["deeploans", "direct", "derived"];
 
 /**
- * Best-effort read of a tape citation's ingestion provenance. The ESMA tape
- * normaliser records it in the citation excerpt as "(ingested via deeploans)" /
- * "(ingested via direct)"; this parses that marker so the governance surface can
- * show honest provenance without a separate API field. Returns `null` when the
- * citation carries no provenance marker (e.g. a non-tape citation).
+ * Best-effort read of a tape citation's ingestion channel. The ESMA tape
+ * normaliser records it in the citation excerpt as "(ingested via direct)" /
+ * "(ingested via derived)"; this parses that marker so the governance surface
+ * can show honest provenance without a separate API field. Returns `null` when
+ * the citation carries no marker (e.g. a non-tape citation).
  */
 export function citationDataSource(c: Citation): DataSource | null {
-  if (c.data_source === "deeploans" || c.data_source === "direct") {
-    return c.data_source;
+  if (DATA_SOURCES.includes(c.data_source as DataSource)) {
+    return c.data_source as DataSource;
   }
-  const m = /ingested via (deeploans|direct)/i.exec(c.excerpt ?? "");
+  const m = /ingested via (deeploans|direct|derived)/i.exec(c.excerpt ?? "");
   return m ? (m[1].toLowerCase() as DataSource) : null;
 }
 

@@ -2822,10 +2822,13 @@ class TapeAnalyticsPeriod(BaseModel):
     property_type_breakdown: dict[str, float] | None
     geographic_breakdown: dict[str, float] | None
     annex_detected: str
-    # Ingestion provenance — always "direct": the tape was read directly from
-    # its source URL (HuggingFace CSV/parquet, local file), LoanWhiz's canonical
-    # tape ingestion path. Surfaced so the demo's governance view can show honest
-    # data provenance per period.
+    # Ingestion channel: "direct" when the tape was read from a published file
+    # (HuggingFace CSV/parquet, local file), "derived" when no published file
+    # exists and the rows were reconstructed at ingest from a source document
+    # the deal registers (loanwhiz.primitives.derived_tape). Surfaced so the
+    # demo's governance view can show honest provenance per period. The channel
+    # is not the same claim as what the tape IS — a derived tape is not a
+    # regulatory filing, and the citation excerpt carries that sentence in full.
     data_source: str = "direct"
 
 
@@ -2986,9 +2989,11 @@ def primitives() -> list[PrimitiveCatalogueEntry]:
 # typed cell: `validated` (ran AND reconciled to external truth — the only one
 # today is green-lion-2024-1's engine vs. its own published Notes & Cash PoP, to
 # the cent), `ran` (executed, no external truth to check), or `not-applicable`
-# (inputs absent, with the REAL reason — e.g. "no loan tapes published",
-# "waterfall not extracted"). Each cell carries governance evidence (confidence +
-# citation). The C4 demo UI renders this structured data.
+# (inputs absent, with the REAL reason — e.g. "no ESMA loan tape is registered",
+# "waterfall not extracted"). A reason states a fact about this repo, never about
+# what an issuer discloses; "no loan tapes published" is the wording #457
+# retracted for making the wider claim. Each cell carries governance evidence
+# (confidence + citation). The C4 demo UI renders this structured data.
 #
 # Honesty (#193 discipline): the matrix tells the true cross-jurisdiction story,
 # not a wall of green. The same primitive code runs across the Dutch / Italian /

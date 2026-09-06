@@ -6,6 +6,8 @@ triage by opening the entry, not by reading the line.
 - [Quality grading & ground-truth answer keys](quality-grading.md)
   - [2026-09-02 · gotcha · #440](#2026-09-02--gotcha--440) — keywords: answer_keys, quality_harness, _default_series_provider, fold_green_lion, not-applicable, backfill
   - [2026-09-05 · pitfall · #457](#2026-09-05--pitfall--457) — keywords: not-applicable reason, reason string, tape_urls, registry fact, answer key, retracted wording, capability_matrix
+  - [2026-09-06 · pitfall · #471](#2026-09-06--pitfall--471) — keywords: positive branch, overclaim, precondition, ran cell, structural config, missing input, capability cell
+  - [2026-09-06 · gotcha · #471](#2026-09-06--gotcha--471) — keywords: grep-for-absence, banned substring, retracted wording, prose assertion, denial, false positive
 - [Extraction guards & false-positive filters](extraction-guards.md)
   - [2026-09-02 · pitfall · #439](#2026-09-02--pitfall--439) — keywords: _CLASS_LETTERS, tranche, note class, Class J, Class O, false positive, guard, proxy range
   - [2026-09-05 · pitfall · #456](#2026-09-05--pitfall--456) — keywords: widening a guard, newly visible input, N/A cell, scavenged rating, Subordinated Notes, untested downstream
@@ -23,4 +25,5 @@ triage by opening the entry, not by reading the line.
 - [Engine contracts (closed enums, registries, need calculators)](engine-contracts.md)
   - [2026-09-05 · pattern · #453](#2026-09-05--pattern--453) — keywords: NEED_CALCULATORS, register_need, RecipientType, closed enum, registry coverage, import-time assert, silent default, generated calculators
   - [2026-09-05 · pitfall · #453](#2026-09-05--pitfall--453) — keywords: LLM classifier options, deny list, enum growth, near-miss, incentive fee, use_llm=False, unmapped escape
+  - [2026-09-06 · pitfall · #471](#2026-09-06--pitfall--471) — keywords: absent column, all-False mask, arrears breakdown, silent clean pool, degrade, no key not zero
 - [Extracting tables from PDFs](pdf-table-extraction.md) — keywords: visitor_text, text matrix, tm[4], rotated table, extraction_mode layout, row boundary, continuation line, column order, pypdf
