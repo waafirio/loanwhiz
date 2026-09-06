@@ -204,6 +204,9 @@ _AGGREGATE_ROW_RE = re.compile(
     rf"^(?P<label>.*?){_S}(?P<balance>{MONEY}){_S}(?P<percent>\d+\.\d{{2}}){_S}(?P<count>\d+)\s*$"
 )
 
+#: Every character Python's ``str.splitlines()`` treats as a line break.
+_LINE_BREAKS = re.compile(r"[\r\n\v\f\x1c-\x1e\x85\u2028\u2029]+")
+
 _REPORTING_DATE_RE = re.compile(r"As of\s*:\s*(\d{2}/\d{2}/\d{4})")
 _PAGE_MARKER_RE = re.compile(r"^--- page (\d+) ---$")
 
@@ -450,7 +453,13 @@ def extract_report_lines(pdf_bytes: bytes) -> str:
 
         def visit(text: str, cm: Any, tm: Any, font: Any, size: Any) -> None:
             if text and text.strip():
-                runs.append((round(float(tm[4]), 1), text.strip()))
+                # A run *is* one visual line, so any line-break character inside
+                # it is stray (the reports carry a few CRLFs in their prose
+                # pages). Collapsing them to a space keeps the emitted text
+                # identical however the fixture is later read back — text mode
+                # would otherwise translate them into extra lines and split a
+                # row that the in-memory string keeps whole.
+                runs.append((round(float(tm[4]), 1), _LINE_BREAKS.sub(" ", text).strip()))
 
         page.extract_text(visitor_text=visit)
         runs.sort(key=lambda run: run[0])
@@ -856,32 +865,15 @@ def _parse_part_ii(
         identifier, head, cont = _row_text(row)
         known = names.get(identifier)
 
-        # Column 1 — the facility name. Its Part II line-1 fragment is a prefix
-        # of the authoritative Part III name; the split is pinned by requiring
-        # the balance to follow, because a name may legitimately end in a digit
-        # (``...TLB4`` immediately before ``4,500,000.00``) and a greedy prefix
-        # would otherwise eat the balance's leading digit.
+        # Column 1 — the facility name, consumed in full from the authoritative
+        # Part III value (following it into the continuation if it wrapped).
+        # Taking the *whole* name rather than guessing a prefix is what keeps a
+        # name legitimately ending in a digit — ``...TLB4`` sits immediately
+        # before ``4,500,000.00`` — from swallowing the balance's leading digit.
         if known:
-            name = str(known["facility_name"])
-            for size in range(len(name), 0, -1):
-                taken = _consume(head, cont, name[:size])
-                if taken is None:
-                    continue
-                remainder = name[size:]
-                candidate_head, candidate_cont = taken
-                if remainder:
-                    followed = _consume(candidate_head, candidate_cont, remainder)
-                    if followed is not None and re.match(rf"^\s*{MONEY}", followed[0]):
-                        head, cont = followed
-                        break
-                    stripped = _consume(candidate_cont, "", remainder.lstrip())
-                    if stripped is not None and re.match(rf"^\s*{MONEY}", candidate_head):
-                        head, cont = candidate_head, stripped[0]
-                        break
-                    continue
-                if re.match(rf"^\s*{MONEY}", candidate_head):
-                    head, cont = candidate_head, candidate_cont
-                    break
+            taken = _consume(head, cont, str(known["facility_name"]))
+            if taken is not None:
+                head, cont = taken
 
         head, cont = _advance(head, cont)
         balance_match = re.match(rf"^\s*({MONEY})", head)
@@ -1220,14 +1212,11 @@ def reconcile_schedule(schedule: CollateralSchedule) -> ScheduleReconciliation:
             )
         )
 
-    for table, attribute, label in (
-        ("country", "country", "country"),
-        ("sp_industry", "sp_industry", "S&P industry"),
-    ):
+    for table, label in (("country", "country"), ("sp_industry", "S&P industry")):
         buckets: list[AggregateBucket] = getattr(aggregates, table)
         if not buckets:
             continue
-        grouped = _group_by(assets, attribute)
+        grouped = _group_by(assets, table)
         trustworthy = table not in aggregates.inconsistent_tables
         for bucket in buckets:
             balance, count = grouped.get(bucket.label, (Decimal("0"), 0))

@@ -344,6 +344,22 @@ def test_defect_census_counts_a_row_it_cannot_resolve() -> None:
     assert len(lenient.assets) == 195
 
 
+def test_fixture_lines_survive_any_read_mode() -> None:
+    """A fixture must read back identically in text mode and in binary.
+
+    The reports carry stray CRLFs in their prose pages. Left in, a text-mode
+    read translates them into extra line breaks, so the text the parser sees
+    depends on how the file was opened — and an extra break inside a row is
+    exactly what splits an asset in two.
+    """
+    for _period, filename, _assets, _par in PERIODS:
+        path = FIXTURE_DIR / filename
+        raw = path.read_bytes().decode("utf-8")
+        assert path.read_text(encoding="utf-8") == raw, filename
+        # Only "\n" may act as a break, so line counts agree both ways.
+        assert len(raw.splitlines()) == raw.count("\n"), filename
+
+
 # ---------------------------------------------------------------------------
 # Governance envelope
 # ---------------------------------------------------------------------------
