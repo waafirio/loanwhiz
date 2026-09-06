@@ -348,6 +348,31 @@ def test_defect_census_counts_a_row_it_cannot_resolve() -> None:
     assert len(lenient.assets) == 195
 
 
+def test_a_truncated_part_iii_name_cannot_pass_silently() -> None:
+    """Part III anchors every other section, so a short read there must be caught.
+
+    Part III's facility name is the key that splits Part II's name/balance and
+    Part I's issuer/name boundaries. If a continuation were ever dropped — the
+    one shape this parser cannot rule out structurally, since a row's
+    continuation is looked for only on its own page — the name would come back
+    short. Part II independently consumes that whole name from its own
+    rendering, so a short name leaves a fragment where the balance should be
+    and the row is counted rather than quietly accepted.
+    """
+    text = _text("cairn-clo-xvii-march-2025.txt")
+    broken = text.replace(
+        "LX237014Vodafone Spain 7/24 (EUR) Cov-Lite T/L--------",
+        "LX237014Vodafone Spain 7/24 (EUR) Cov-Lite--------",
+        1,
+    )
+    assert broken != text
+
+    with pytest.raises(ScheduleReconciliationError) as raised:
+        parse_schedule_text(broken, period_label="March 2025")
+    assert raised.value.defects.blocking > 0
+    assert any("LX237014" in note for note in raised.value.defects.notes)
+
+
 def test_fixture_lines_survive_any_read_mode() -> None:
     """A fixture must read back identically in text mode and in binary.
 
