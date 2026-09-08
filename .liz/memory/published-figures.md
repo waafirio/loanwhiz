@@ -40,3 +40,16 @@ already-parsed trustee reports state each required level twice. Name the
 document inside the sentence recording the limitation.
 
 Refs: #480
+
+## 2026-09-08 · pattern · #479
+
+Before deriving a figure an operator has been hand-writing, reconcile the
+derivation against their value: agreement is the evidence you derived the same
+quantity, disagreement that you built a second, parallel notion of it. Green
+Lion's declared `projection_base.current_pool_balance` proved to be its newest
+tape's summed `pool_balance_eur`, rounded — which is what licensed deriving it
+for every deal. Keep serving the declared value where one exists (a four-cent
+"improvement" moves a published number for nothing) and pin the agreement as a
+test.
+
+Refs: #479
