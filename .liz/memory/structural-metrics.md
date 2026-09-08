@@ -40,3 +40,4 @@ the blocking input only when doing so provably changes no output, and label that
 a counterfactual, never a deal figure.
 
 Refs: #457
+Refs: #493 — same rule, re-learned when a test would have asserted the refusal.

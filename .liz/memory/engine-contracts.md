@@ -39,3 +39,16 @@ bucket that means "nothing to report", and make "states it in no form" a
 distinct branch from "states it as zero".
 
 Refs: #471
+
+## 2026-09-08 · pattern · #493
+
+Assert a refusal in BOTH directions or it proves nothing. `not_evaluable` is
+reached from several layers — unregistered recipient, absent tranche, missing
+rate — so a test asserting only "this step refused" passes for whichever layer
+refuses first, and keeps passing with the fix reverted. Pair it: supply the one
+missing input, change nothing else, and assert the SAME step flips to
+evaluable. Check which layer refuses first — a deal's extracted,
+jurisdiction-native labels may resolve to no calculator, so the deal that
+motivated the fix can be the one it does not change.
+
+Refs: #493
