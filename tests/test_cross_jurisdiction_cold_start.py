@@ -325,22 +325,29 @@ def test_no_it_es_recipient_resolves_a_canonical_calculator() -> None:
 
 @pytest.mark.parametrize("deal_id", _COLD_START_DEALS)
 @pytest.mark.parametrize("endpoint", ["waterfall", "reconciliation"])
-def test_multi_period_ledger_is_honest_not_modelable_422(
+def test_multi_period_ledger_is_served_with_synthetic_provenance(
     deal_id: str, endpoint: str
 ) -> None:
-    """``/deal/{id}/{waterfall,reconciliation}`` returns the labelled 422.
+    """``/deal/{id}/{waterfall,reconciliation}`` folds the deal's synthetic pool.
 
-    Neither non-Dutch deal has a loan tape or a Notes & Cash report, so the
-    folded multi-period ``DealStateSeries`` cannot be cold-started (the "+report
-    where applicable" clause does NOT apply to IT/ES). The API degrades honestly
-    with ``_not_modelable_deal`` — a 422 that names the deal and the reason —
-    rather than serving an empty cascade that would read as an all-clear result.
+    This used to be a labelled 422: neither non-Dutch deal had a loan tape or a
+    Notes & Cash report, so the multi-period ``DealStateSeries`` could not be
+    cold-started at all. #484 registers each of them a synthetic Annex 2 pool
+    fitted to their own published investor report, so the ledger now folds.
+
+    The honesty that the 422 used to carry has to travel with the numbers
+    instead of replacing them, so this asserts both halves: the endpoint
+    serves, **and** every period of the pool it was built from reports
+    ``synthetic`` provenance rather than the provenance of a filed tape.
     """
     resp = client.get(f"/deal/{deal_id}/{endpoint}")
-    assert resp.status_code == 422, resp.text
-    detail = resp.json()["detail"]
-    assert "not modelable" in detail.lower()
-    assert deal_id in detail
+    assert resp.status_code == 200, resp.text
+
+    analytics = client.get(f"/deal/{deal_id}/tape-analytics")
+    assert analytics.status_code == 200, analytics.text
+    periods = analytics.json()
+    assert periods, "the ledger folded a pool, so the pool must be resolvable"
+    assert {period["data_source"] for period in periods} == {"synthetic"}
 
 
 # ---------------------------------------------------------------------------

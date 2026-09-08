@@ -976,21 +976,24 @@ def test_aggregate_collections_unknown_deal_errors():
 
 
 def test_aggregate_collections_no_tapes_errors():
-    """A registered deal that ships no loan tapes → explicit, honest error."""
-    no_tape_deal = next(
-        (d for d, ctx in DEAL_REGISTRY.items() if not ctx.get("tape_urls")), None
-    )
-    assert no_tape_deal is not None, "expected a tape-less registered deal"
+    """A registered deal that ships no loan tapes → explicit, honest error.
 
-    with patch(
-        "loanwhiz.agent.tools.CollectionsAggregator.execute"
-    ) as mock_exec:
-        result = aggregate_collections.invoke({"deal_id": no_tape_deal})
+    The tape-less deal is constructed rather than scavenged out of the live
+    registry: since #484 gave the last four tape-less deals a synthetic pool,
+    every registered deal has a tape, and a test that hunts for one would
+    silently stop exercising this path.
+    """
+    registry = {**DEAL_REGISTRY, "no-tape-deal": {"deal_name": "No Tape B.V.", "tape_urls": []}}
+
+    with patch("loanwhiz.agent.tools.DEAL_REGISTRY", registry):
+        with patch(
+            "loanwhiz.agent.tools.CollectionsAggregator.execute"
+        ) as mock_exec:
+            result = aggregate_collections.invoke({"deal_id": "no-tape-deal"})
 
     mock_exec.assert_not_called()
     assert "No loan tapes" in result["error"]
     assert result["confidence"] == 0.0
-
 
 # ---------------------------------------------------------------------------
 # get_deal_model — reads the cached extracted DealModel (deal grounding)

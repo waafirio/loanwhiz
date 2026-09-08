@@ -14,6 +14,7 @@ triage by opening the entry, not by reading the line.
 - [Extraction: locating the right section](extraction-section-routing.md) — keywords: descendant span, heading level, section number, Docling, has_payment_list, LLM router, empty result
 - [Published figures & doc drift](published-figures.md) — keywords: stale tally, completeness_score, capability matrix, re-derive, stored metric, published figure
   - [2026-09-06 · pattern · #469](#2026-09-06--pattern--469) — keywords: reconcile to stated aggregates, self-describing report, per-bucket distribution, refuse on divergence, document contradicts itself, source defect
+  - [2026-09-08 · pitfall · #484](#2026-09-08--pitfall--484) — keywords: balance share, count share, generated population, per-bucket draw, stratification, arrears bucket, rendered axis
   - [2026-09-02 · pitfall · #441](#2026-09-02--pitfall--441) — keywords: completeness_score
 - [Registering a deal (deals.json)](deal-registration.md) — keywords: deals.json, notes_cash_report_urls, routing promise, registry key, asset_class, answer key invariant
   - [2026-09-05 · pitfall · #455](#2026-09-05--pitfall--455) — keywords: notes_cash_report_urls, _reconstruct_series

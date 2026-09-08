@@ -169,6 +169,56 @@ byte-identical URL comes back.
 **Adding a synthetic dataset needs no code change**, in any asset class: prefix
 its URL with `synthetic:` when registering it.
 
+### A synthetic pool LoanWhiz generates, rather than one it is handed
+
+Green Lion 2026-1's three tapes arrived ready-made. Four deals — Green Lion
+2023-1 and 2024-1, Leone Arancio 2023-1 and Sol-Lion II — publish no loan tape
+in any form, so LoanWhiz generates one for each (#484). The rows are generated
+**once and committed**, not materialised per read: a synthetic pool comes from
+parameters fixed at authoring time, so there is nothing to defer to read time,
+and committing the rows puts the exact data behind every comparison chart in
+git next to the fit spec that produced it.
+
+Two scripts, both offline and deterministic:
+
+- `scripts/investor_report_pool_fit.py` reads the deal's own published investor
+  report — via a committed text extract under
+  `tests/fixtures/investor_reports/` — into a **fit spec** at
+  `src/loanwhiz/data/pool_fits/<deal>.json`, in which every figure names the
+  report section it came from.
+- `scripts/generate_synthetic_tapes.py` builds the pool from that spec and
+  **refuses to write it** unless it reproduces every fitted aggregate. A
+  synthetic pool that contradicts its own deal's investor report would make the
+  comparison charts confidently wrong rather than honestly empty, so this is a
+  refusal, not a warning.
+
+`docs/data-card.md` records, per deal, what each pool was fitted to and what
+its source states in no form.
+
+### Registering a tape that lives in this repo
+
+A committed tape has no upstream URL, and neither obvious identifier works: an
+absolute path is machine-specific, and the committed tape-analytics seed is
+named `sha256(tape_url).json`, so it would key every seed to the machine that
+wrote it; a bare relative path is resolved by pandas against the *caller's*
+working directory, and `run-demo-v2.sh` starts `uvicorn` without changing
+directory — so the read would fail wherever the demo was launched from, and
+silently, since `_tape_analytics_period` degrades on a per-tape error rather
+than raising.
+
+So the registry holds a **package-relative** body and the seam resolves it:
+
+```
+synthetic:data/tapes/synthetic/green_lion_2023_1_202604_synthetic_loan_tape.csv.gz
+└ scheme ┘└──── resolved against the loanwhiz package root at load ────┘
+```
+
+`_resolve_committed_tape` rewrites that body to an absolute path *before*
+`underlying_url` strips the scheme, so the registry string stays stable across
+machines, the seeds stay valid, and the read no longer depends on where the
+process was started. An identifier that already names a URL or an absolute path
+is returned unchanged.
+
 ### Adding the next derived source
 
 Register a member on `TapeScheme` (in `domain/tape_provenance.py`) with its
