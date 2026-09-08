@@ -494,6 +494,65 @@ def test_wrong_tolerance_grades_failed_not_green() -> None:
     assert m.tally[GRADE_FAILED] >= 1
 
 
+def _key_with_two_covenant_only_periods() -> DealAnswerKey:
+    """Green Lion's all-PoP key plus two periods shaped like trustee-report ones."""
+    key = _gl_key_from_report()
+    covenant_only = [
+        AnswerKeyPeriod(
+            reporting_date=date,
+            period_label=label,
+            covenants=[
+                CovenantResult(name="class_a_par_value_test", threshold=1.2, actual=1.4, passed=True)
+            ],
+        )
+        for date, label in (("2023-12-31", "December 2023"), ("2025-06-30", "June 2025"))
+    ]
+    return key.model_copy(
+        update={"periods": [covenant_only[0], *key.periods, covenant_only[1]]}
+    )
+
+
+def test_a_partly_pop_bearing_key_grades_its_pop_periods_and_reports_the_rest() -> None:
+    """The scorecard's denominator is the graded periods, and it says so (#513).
+
+    A key unioned from two document families (#495) carries a Priority of
+    Payments for only some of its periods. The grade must be over those, and the
+    others must be *reported* — the failure this guards is the tally silently
+    counting all five as graded-and-passed, since a covenant-only period grades
+    vacuously if it is graded at all.
+    """
+    m = build_quality_matrix(
+        {GL_DEAL_ID: {"deal_name": GL_DEAL_NAME}},
+        seed_loader=_load_cached_deal_model,
+        answer_key_loader=_single_loader(GL_DEAL_NAME, _key_with_two_covenant_only_periods()),
+    )
+    rev = _cell(m, GL_DEAL_ID, "revenue_pop")
+
+    assert rev.grade == GRADE_PASSED
+    # Three graded, three passed — never five, which is what counting the
+    # covenant-only periods as graded would produce.
+    assert rev.evidence["periods_checked"] == 3
+    assert rev.evidence["periods_passed"] == 3
+    assert rev.evidence["periods_skipped"] == 2
+    # And the operator-facing reason discloses it: "reconciled across 3 period(s)"
+    # alone would be true of this five-period key and still misleading.
+    assert "2 further period(s) of this key were not graded" in rev.reason
+    assert "publish no Priority of Payments" in rev.reason
+
+
+def test_the_skip_disclosure_is_absent_when_every_period_was_graded() -> None:
+    """An all-PoP key discloses no skips — the clause fires only where it is true."""
+    m = build_quality_matrix(
+        {GL_DEAL_ID: {"deal_name": GL_DEAL_NAME}},
+        seed_loader=_load_cached_deal_model,
+        answer_key_loader=_single_loader(GL_DEAL_NAME, _gl_key_from_report()),
+    )
+    rev = _cell(m, GL_DEAL_ID, "revenue_pop")
+
+    assert rev.evidence["periods_skipped"] == 0
+    assert "not graded" not in rev.reason
+
+
 # ---------------------------------------------------------------------------
 # Pool-statistics grading against the folded engine series
 # ---------------------------------------------------------------------------

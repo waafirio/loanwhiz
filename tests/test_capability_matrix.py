@@ -433,6 +433,55 @@ def test_runner_validated_requires_a_reconciliation_that_passes() -> None:
     assert cell.evidence.detail["passed"] is False
 
 
+def test_a_partly_pop_bearing_key_validates_on_what_it_graded_and_says_so() -> None:
+    """``validated`` on a partly-graded key discloses what it did not grade (#513).
+
+    Cairn's key is the real instance of this shape, but it registers no offline
+    engine series, so the committed data cannot reach this branch — hence the
+    real engine series here with covenant-only periods added to its key. The
+    reconciliation is the real one; only the key's shape is synthetic.
+
+    The bound this pins is the one #481 asks for: a cell reading ``validated``
+    over 3 of a key's 5 periods is making a narrower claim than the badge alone
+    conveys, so the count and the disclosure both have to reach the operator.
+    """
+    full_model = _fake_model(triggers=1, waterfall_steps=4, completeness=0.5)
+    committed_key, committed_series = _committed_key_and_series()
+    covenant_only = AnswerKeyPeriod(
+        reporting_date="2023-12-31",
+        period_label="December 2023",
+        covenants=[CovenantResult(name="class_a_par_value_test", passed=True)],
+    )
+    partly = committed_key.model_copy(
+        update={
+            "periods": [
+                covenant_only,
+                *committed_key.periods,
+                covenant_only.model_copy(
+                    update={"reporting_date": "2025-06-30", "period_label": "June 2025"}
+                ),
+            ]
+        }
+    )
+
+    matrix = build_capability_matrix(
+        {"d": {"deal_name": "Fake Deal", "tape_urls": []}},
+        seed_loader=lambda ctx: full_model,
+        answer_key_loader=lambda ctx: partly,
+        series_provider=lambda deal_id, ctx, model: committed_series,
+    )
+    cell = next(c for c in matrix.cells if c.capability_key == "engine_validation")
+
+    # The graded periods still validate — a skip neither helps nor hurts.
+    assert cell.state == STATE_VALIDATED
+    assert cell.evidence.detail["passed"] is True
+    # But the counts are over the graded set: 3 of 5, never 5 of 5.
+    assert cell.evidence.detail["periods_checked"] == 3
+    assert cell.evidence.detail["periods_passed"] == 3
+    assert cell.evidence.detail["periods_skipped"] == 2
+    assert "2 further period(s) of this key were not graded" in cell.reason
+
+
 # ---------------------------------------------------------------------------
 # API endpoint — real TestClient over the real registry (no mocks)
 # ---------------------------------------------------------------------------
