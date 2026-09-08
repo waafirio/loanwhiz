@@ -21,6 +21,7 @@ import pytest
 from loanwhiz.primitives.step_source_classifier import (  # isort: skip
     _ENGINE_COMPUTED_CANONICAL,
     ENGINE_COMPUTED_RECIPIENTS,
+    _canonical_view,
     build_step_specs,
 )
 from loanwhiz.domain.rules import (  # isort: skip
@@ -353,6 +354,24 @@ def test_recognised_unevaluable_recipient_stays_report_supplied() -> None:
     assert source == {unevaluable: "report-supplied"}
     assert overrides == {unevaluable: 55.0}
     assert RecipientType.unmapped not in _ENGINE_COMPUTED_CANONICAL
+
+
+def test_canonical_view_drops_unplaceable_and_undeclared_names() -> None:
+    """The derivation rule itself, on inputs the real declaration does not have.
+
+    No member of ``ENGINE_COMPUTED_RECIPIENTS`` resolves to ``unmapped`` today, so
+    asserting over the real set cannot tell the ``unmapped`` guard from its
+    absence. Feed the rule a set that does: every string in
+    ``RECOGNISED_UNEVALUABLE_RECIPIENTS`` collapses onto that one member, so
+    admitting it even once would make all of them engine-computed.
+    """
+    unplaceable = "purchase_of_substitute_collateral"
+    assert unplaceable in RECOGNISED_UNEVALUABLE_RECIPIENTS
+
+    view = _canonical_view(
+        frozenset({"class_a_interest", unplaceable, "no_such_recipient_anywhere"})
+    )
+    assert view == {RecipientType.class_a_interest}
 
 
 def test_unspelled_recipient_stays_report_supplied() -> None:

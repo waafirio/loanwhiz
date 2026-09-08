@@ -73,6 +73,31 @@ ENGINE_COMPUTED_RECIPIENTS: frozenset[str] = frozenset(
     }
 )
 
+def _canonical_view(names: frozenset[str]) -> frozenset[RecipientType]:
+    """``names`` resolved into the canonical vocabulary, minus what cannot compute.
+
+    Two strings are dropped, and the second is the subtle one:
+
+    - a name nobody declared (``_canonical_recipient`` answers ``None``); and
+    - a name we **recognise and have decided the engine cannot place**, which
+      answers :attr:`~loanwhiz.domain.rules.RecipientType.unmapped`. Every string
+      in ``RECOGNISED_UNEVALUABLE_RECIPIENTS`` collapses onto that single member,
+      so admitting it once would classify *all* of them ``engine`` at a stroke —
+      the exact inversion of what they mean (#503 named them to keep "we cannot
+      place this" distinguishable from "nobody spelled this").
+
+    Written as a function rather than inlined so that second rule has a seam a
+    test can reach: no member of :data:`ENGINE_COMPUTED_RECIPIENTS` resolves to
+    ``unmapped`` today, so an inline guard would have been correct and
+    permanently unexercised.
+    """
+    return frozenset(
+        resolved
+        for resolved in map(_canonical_recipient, names)
+        if resolved is not None and resolved is not RecipientType.unmapped
+    )
+
+
 #: :data:`ENGINE_COMPUTED_RECIPIENTS` resolved into the canonical vocabulary —
 #: what the classifier actually tests a step against.
 #:
@@ -83,15 +108,10 @@ ENGINE_COMPUTED_RECIPIENTS: frozenset[str] = frozenset(
 #: incoming recipient would therefore have flipped those RMBS steps from
 #: ``engine`` to ``report-supplied`` while fixing the CLO ones.
 #:
-#: :attr:`~loanwhiz.domain.rules.RecipientType.unmapped` is excluded on purpose.
-#: ``_canonical_recipient`` returns it for every string in
-#: ``RECOGNISED_UNEVALUABLE_RECIPIENTS`` — the strings we recognise and have
-#: decided the engine *cannot* place — so letting it into this set would classify
-#: every one of them ``engine``, the exact inversion of what they mean.
-_ENGINE_COMPUTED_CANONICAL: frozenset[RecipientType] = frozenset(
-    resolved
-    for resolved in map(_canonical_recipient, ENGINE_COMPUTED_RECIPIENTS)
-    if resolved is not None and resolved is not RecipientType.unmapped
+#: :attr:`~loanwhiz.domain.rules.RecipientType.unmapped` is excluded on purpose —
+#: see :func:`_canonical_view`.
+_ENGINE_COMPUTED_CANONICAL: frozenset[RecipientType] = _canonical_view(
+    ENGINE_COMPUTED_RECIPIENTS
 )
 
 
