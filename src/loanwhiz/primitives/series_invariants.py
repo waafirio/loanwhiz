@@ -75,13 +75,13 @@ _DEFAULT_TOLERANCE = 1e-6
 # seam (``reporting_date``, ``period_index``, ``revolving``, ``collections``) is
 # excluded — the seam asserts the *balances* carry forward unchanged, not the
 # period stamp.
+#: The non-tranche structural fields compared across the seam. The **tranche**
+#: fields are derived per state from ``DealState.tranches`` rather than listed
+#: here (#478): a fixed ``class_a/b/c`` list checked an 8-class CLO's three
+#: canonical names, of which it has one, and the accessors return ``0.0`` for an
+#: absent class — so ``class_b_balance`` chained 0.0 to 0.0 and the deal passed
+#: the invariant **vacuously**, its seven other classes never compared at all.
 _CHAIN_FIELDS: tuple[str, ...] = (
-    "class_a_balance",
-    "class_b_balance",
-    "class_c_balance",
-    "class_a_pdl",
-    "class_b_pdl",
-    "class_c_pdl",
     "reserve_balance",
     "reserve_target",
     "cumulative_losses",
@@ -91,18 +91,37 @@ _CHAIN_FIELDS: tuple[str, ...] = (
 
 # The non-negative numeric fields the non-negativity invariant checks on every
 # state.
+#: The non-tranche fields the non-negativity invariant checks on every state.
+#: Tranche balances and PDLs are derived per state (see ``_tranche_fields``).
 _NON_NEGATIVE_FIELDS: tuple[str, ...] = (
-    "class_a_balance",
-    "class_b_balance",
-    "class_c_balance",
-    "class_a_pdl",
-    "class_b_pdl",
-    "class_c_pdl",
     "reserve_balance",
     "reserve_target",
     "cumulative_losses",
     "pool_balance",
 )
+
+
+def _tranche_values(state) -> dict[str, float]:
+    """``{<name>_balance: …, <name>_pdl: …}`` for the classes THIS state carries.
+
+    Read straight off ``state.tranches`` — the canonical liability store #363
+    moved the engine onto — so a deal of any depth has every one of its classes
+    checked, and a deal that adds a class gets it checked with no edit here.
+
+    Deliberately **not** ``getattr(state, f"{name}_balance")``: only the three
+    canonical classes have accessors, and those answer ``0.0`` for a class the
+    deal does not have. That is what made a fixed ``class_a/b/c`` list unable to
+    be both short and failing — it compared 0.0 to 0.0 for the classes a CLO
+    lacks and never looked at the ones it has, so the invariant stayed silent
+    exactly where the deal was least like Green Lion.
+
+    The keys are labels for the finding's ``recipient``, not attribute names.
+    """
+    values: dict[str, float] = {}
+    for tranche in state.tranches:
+        values[f"{tranche.name}_balance"] = tranche.balance
+        values[f"{tranche.name}_pdl"] = tranche.pdl_balance
+    return values
 
 
 # ---------------------------------------------------------------------------
@@ -327,8 +346,9 @@ def _check_non_negative(
     """Invariant (c): all balances / ledgers / reserve / losses are non-negative."""
     findings: list[InvariantFinding] = []
     for state in series.states:
-        for field in _NON_NEGATIVE_FIELDS:
-            value = getattr(state, field)
+        checked = {field: getattr(state, field) for field in _NON_NEGATIVE_FIELDS}
+        checked.update(_tranche_values(state))
+        for field, value in checked.items():
             if value < -tolerance:
                 findings.append(
                     InvariantFinding(
@@ -358,9 +378,20 @@ def _check_chaining(
     for n, result in enumerate(series.period_results):
         closing = result.closing_state
         next_state = series.states[n + 1]
-        for field in _CHAIN_FIELDS:
-            produced = getattr(closing, field)
-            carried = getattr(next_state, field)
+        produced_values = {field: getattr(closing, field) for field in _CHAIN_FIELDS}
+        carried_values = {field: getattr(next_state, field) for field in _CHAIN_FIELDS}
+        # Tranche values are keyed by class name, and the union of both sides is
+        # taken deliberately: a class the next opening *dropped* and one it
+        # *invented* are both breaks in the chain, and either would be invisible
+        # if only one side supplied the names. A side that lacks the class
+        # contributes 0.0, so the delta fires.
+        closing_tranches = _tranche_values(closing)
+        next_tranches = _tranche_values(next_state)
+        for label in closing_tranches.keys() | next_tranches.keys():
+            produced_values[label] = closing_tranches.get(label, 0.0)
+            carried_values[label] = next_tranches.get(label, 0.0)
+        for field, produced in produced_values.items():
+            carried = carried_values[field]
             if abs(produced - carried) > tolerance:
                 findings.append(
                     InvariantFinding(
