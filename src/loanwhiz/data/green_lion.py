@@ -35,13 +35,7 @@ import logging
 
 import pandas as pd
 
-# ``loanwhiz.domain``'s package init participates in an import cycle with
-# ``loanwhiz.primitives``; importing a primitives module first resolves it. Same
-# convention as ``tape_provenance``'s own module docstring and its callers.
-import loanwhiz.primitives  # noqa: F401  (import-order side effect)
-
 from loanwhiz.config import GREEN_LION, HF_BASE  # noqa: F401 — re-exported for convenience
-from loanwhiz.domain.tape_provenance import underlying_url
 
 logger = logging.getLogger(__name__)
 
@@ -129,6 +123,18 @@ def load_tape(date: str) -> pd.DataFrame:
     # identifier to the published file this direct-read path actually fetches;
     # handing the raw identifier to pandas raises, and is the bypass
     # ``tests/test_tape_seam_bypass.py`` exists to red.
+    #
+    # Both imports are deferred to call time. ``loanwhiz.domain``'s package init
+    # participates in an import cycle with ``loanwhiz.primitives``, so a
+    # primitives module must be imported first — and doing that at module level
+    # would pull the primitives package (and ``google.genai`` with it) into
+    # every ``import loanwhiz.data.green_lion``, costing this module the light,
+    # pandas-and-stdlib import its docstring promises for callers that only want
+    # ``list_tapes()``.
+    import loanwhiz.primitives  # noqa: F401  (import-order side effect)
+
+    from loanwhiz.domain.tape_provenance import underlying_url
+
     target = underlying_url(url)
     logger.info("Loading Green Lion tape %s from %s", date, target)
     df = pd.read_csv(target)

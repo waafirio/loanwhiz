@@ -22,12 +22,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 import pandas as pd
 
-# ``loanwhiz.domain``'s package init participates in an import cycle with
-# ``loanwhiz.primitives``; importing a primitives module first resolves it.
-import loanwhiz.primitives  # noqa: F401  (import-order side effect)
-
 from loanwhiz.config import GCP_LOCATION, GCP_PROJECT, GREEN_LION, MODEL_FLASH
-from loanwhiz.domain.tape_provenance import underlying_url
 
 # Make the bare ``genai.Client()`` used inside some primitives (e.g.
 # ReportVerifier) route to Vertex AI, matching the project/region configured in
@@ -209,6 +204,14 @@ def section_esma_analytics() -> dict[str, dict]:
     and labels every column from the actual tape date, so a live run is never
     mislabelled and never downloads the full history.
     """
+    # Deferred like every other loanwhiz import in this file, so running the
+    # demo with --help stays instant. ``loanwhiz.domain``'s package init
+    # participates in an import cycle with ``loanwhiz.primitives``, so a
+    # primitives module has to be imported first.
+    import loanwhiz.primitives  # noqa: F401  (import-order side effect)
+
+    from loanwhiz.domain.tape_provenance import underlying_url
+
     tapes = reporting_tapes()
     labels = [_period_label(e["date"]) for e in tapes]
     section(f"2. ESMA TAPE ANALYTICS ({' / '.join(labels)})")
