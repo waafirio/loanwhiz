@@ -277,7 +277,7 @@ def test_the_shortfall_is_exactly_the_rows_no_engine_label_joins(
 
 
 def test_class_b_interest_passes_without_ever_being_compared(
-    recon: ReconciliationReport,
+    recon: ReconciliationReport, nvr_report: NotesCashReport
 ) -> None:
     """The sharpest edge of the join gap: a real payment graded as zero-vs-zero.
 
@@ -292,7 +292,16 @@ def test_class_b_interest_passes_without_ever_being_compared(
     assert class_b.engine_amount == 0.0
     assert class_b.report_amount == 0.0
     assert class_b.passed is True
-    assert CLASS_B_PUBLISHED_INTEREST == pytest.approx(644_398.50, abs=0.01)
+
+    # Read the money off the document, so this reds if the report is ever
+    # re-parsed into a shape where (H) does carry its children's total.
+    (report_period,) = nvr_report.periods
+    published = [s for s in report_period.revenue_pop if s.priority in ("(H)(i)", "(H)(ii)")]
+    assert [s.priority for s in published] == ["(H)(i)", "(H)(ii)"]
+    assert sum(s.amount for s in published) == pytest.approx(
+        CLASS_B_PUBLISHED_INTEREST, abs=0.01
+    )
+    assert not [s for s in report_period.revenue_pop if s.priority == "(H)"]
 
 
 # ---------------------------------------------------------------------------
