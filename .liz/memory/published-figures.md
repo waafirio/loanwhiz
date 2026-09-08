@@ -28,3 +28,15 @@ wrong rather than the parse — drop that table from the oracle, keep its counts
 and record the discrepancy as a defect instead of absorbing it.
 
 Refs: #469
+
+## 2026-09-08 · pitfall · #480
+
+A datum recorded as unobtainable is a claim about the document someone looked
+in, never about the deal — re-ask it of every document already in the registry
+before repeating it. #456 called a CLO's coverage-test thresholds uncapturable
+because the offering circular's alphabetical glossary truncated at 40k, losing
+every test defined under C–F: true of the circular, false of the deal, whose
+already-parsed trustee reports state each required level twice. Name the
+document inside the sentence recording the limitation.
+
+Refs: #480
