@@ -495,3 +495,40 @@ def test_the_deal_level_reader_returns_the_existing_report_shape(monkeypatch) ->
     period = report.period_for("2025-01-08")
     assert period is not None
     assert period.available_revenue_funds == pytest.approx(STATED_INTEREST_AVAILABLE)
+
+
+def test_a_cross_reference_inside_a_wrapped_sentence_is_not_read_as_a_step() -> None:
+    """Step (W)'s text wraps onto a line that opens ``(ii)`` — prose, not a label.
+
+    The report's ``(W)`` reads "... in an amount of the lower of (i) 50.0 per
+    cent. of all remaining Interest Proceeds, and / (ii) the extent necessary to
+    cause such test to be satisfied". Read as a step header, that second line
+    truncates (W)'s description and leaves ``(ii)`` as the parent any following
+    unlabelled row would be filed under. Nothing arithmetic catches either — the
+    amounts are untouched — so it is asserted directly.
+    """
+    period = parse_note_valuation_text(_text(), period_label=PERIOD_LABEL)
+    step = next(s for s in period.revenue_pop if s.priority == "(W)")
+
+    assert step.recipient.endswith("(ii) the extent necessary to cause such test to be satisfied")
+    assert "(i) 50.0 per cent." in step.recipient
+    # The only genuine ``(ii)`` in this waterfall is the hedge breakdown row.
+    # A prose line promoted to a header would leave a second one, or file the
+    # rows after it under ``(ii)`` instead of their own step.
+    assert [s.recipient for s in period.revenue_pop if s.priority == "(ii)"] == [
+        "Defaulted Currency Hedge Termination Payment"
+    ]
+
+
+def test_a_breakdown_row_still_keeps_its_own_lower_case_label(
+    period: NotesCashPeriod,
+) -> None:
+    """The rule above bites headers only — a breakdown row's own ``(a)`` stands.
+
+    Under the Senior Collateral Management Fee step the report breaks the
+    payment out as ``(a) Senior Management Fee`` and ``(a) VAT - Senior
+    Management Fee``, each with its own amount. Those keep their printed labels.
+    """
+    fee = next(s for s in period.revenue_pop if s.recipient == "Senior Management Fee")
+    assert fee.priority == "(a)"
+    assert fee.amount == pytest.approx(155_457.93)

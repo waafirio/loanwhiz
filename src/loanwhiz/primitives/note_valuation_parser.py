@@ -129,6 +129,18 @@ _ROW_TAIL_RE = re.compile(rf"^(?P<description>.*?)\s+(?P<amount>{MONEY})\s+(?P<b
 #: waterfall's. Both are just "one or more parenthesised short tokens".
 _LABEL_RE = re.compile(r"^(?:\((?:[A-Za-z]{1,4}|\d{1,2})\))+")
 
+#: A single parenthesised group whose content is all lower-case — ``(a)``,
+#: ``(ii)``. These label a step's **breakdown rows**, and a breakdown row exists
+#: to carry an amount, so one with no money tail is not a step header: it is
+#: prose. The report proves the distinction matters. Step ``(W)`` wraps onto
+#: ``... the lower of (i) 50.0 per cent. of all remaining Interest Proceeds,
+#: and`` / ``(ii) the extent necessary to cause such test to be satisfied`` —
+#: a cross-reference *inside a sentence*. Read as a header it would truncate
+#: (W)'s text and leave ``(ii)`` as the parent any following unlabelled row
+#: would be filed under. Every genuine header in this report is upper-case or
+#: compound; every bare lower-case group is either a data row or prose.
+_SUBLABEL_RE = re.compile(r"^\([a-z]+\)$")
+
 #: The line that states each waterfall's own available funds, e.g.
 #: ``Interest Priority Of Interest Proceeds (Waterfall) 7,255,062.35``.
 _WATERFALL_TOTAL_RE = re.compile(
@@ -452,7 +464,7 @@ def _parse_waterfall(pages: list[list[str]], section: str) -> tuple[list[PoPStep
                 continue
 
             header = _LABEL_RE.match(line)
-            if header:
+            if header and not _SUBLABEL_RE.match(header.group(0)):
                 parent = header.group(0)
                 continues = None
                 continue
