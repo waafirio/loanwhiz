@@ -48,6 +48,7 @@ column on another annex carries that annex's own code):
 from __future__ import annotations
 
 import time
+from pathlib import Path
 from typing import Any
 
 import pandas as pd
@@ -57,6 +58,7 @@ from loanwhiz.domain.esma_annexes import ANNEX_REGISTRY, AnnexSpec
 from loanwhiz.domain.tape_provenance import (
     TapeChannel,
     channel_for,
+    scheme_for,
     source_kind_for,
     underlying_url,
 )
@@ -129,6 +131,49 @@ DATA_SOURCE_DIRECT = TapeChannel.DIRECT.value
 DATA_SOURCE_DERIVED = TapeChannel.DERIVED.value
 DATA_SOURCE_SYNTHETIC = TapeChannel.SYNTHETIC.value
 
+#: Root that a package-relative tape identifier resolves against — the
+#: ``loanwhiz`` package directory, the same anchor ``api.main`` uses for the
+#: committed tape-analytics seeds and answer keys.
+_PACKAGE_ROOT = Path(__file__).resolve().parents[1]
+
+
+def _resolve_committed_tape(file_url: str) -> str:
+    """Return *file_url* with a package-relative body resolved to an absolute path.
+
+    A tape LoanWhiz ships **in the repo** (#484's four synthetic pools) has no
+    upstream URL, and the two obvious ways to register one are both wrong:
+
+    - an **absolute** path is machine-specific, and the tape-analytics seed is
+      named ``sha256(tape_url).json``, so committing one would key every seed to
+      the machine that generated it;
+    - a **bare relative** path is resolved by pandas against the *caller's* CWD,
+      and ``run-demo-v2.sh`` starts ``uvicorn`` without changing directory — so
+      the read would fail wherever the demo happened to be launched from, and
+      ``_tape_analytics_period`` degrades on a per-tape error rather than
+      raising, silently dropping that period from the Pool page.
+
+    So the registry keeps the stable, repo-portable string and the resolution
+    happens here, at the seam every tape passes through. The scheme is preserved
+    — this normalises *where the file is*, never *what the tape is* — and an
+    identifier that already names a URL or an absolute path is returned
+    unchanged, so this is safe to call on anything.
+    """
+    body = underlying_url(file_url)
+    if "://" in body or body.startswith("/"):
+        return file_url
+
+    resolved = _PACKAGE_ROOT / body
+    if not resolved.exists():
+        raise FileNotFoundError(
+            f"tape {file_url!r} resolves to {resolved}, which does not exist. "
+            "A package-relative tape identifier is resolved against the "
+            f"loanwhiz package root ({_PACKAGE_ROOT}); register the path "
+            "relative to that, or use an absolute path or URL."
+        )
+    scheme = scheme_for(file_url)
+    prefix = "" if scheme is None else f"{scheme.value}:"
+    return f"{prefix}{resolved}"
+
 
 def _load_tape(file_url: str, period: str | None) -> tuple[pd.DataFrame, str]:
     """Load a loan tape from *file_url* as a DataFrame, with its provenance.
@@ -149,7 +194,12 @@ def _load_tape(file_url: str, period: str | None) -> tuple[pd.DataFrame, str]:
       ``.parquet``/``.pq`` suffix is read via :func:`pandas.read_parquet`,
       anything else via :func:`pandas.read_csv` with ``low_memory=False``. This
       covers HuggingFace CSV/parquet tapes, local ``file://`` paths, and
-      ``synthetic:``-identified tapes, which are ordinary files.
+      ``synthetic:``-identified tapes, which are ordinary files. A body that is
+      neither a URL nor an absolute path names a tape **committed in this
+      repo** and is resolved against the ``loanwhiz`` package root first
+      (``_resolve_committed_tape``), so the registry can hold a stable,
+      machine-independent identifier without the read depending on the
+      caller's working directory.
 
     The channel is then read off the identifier by ``channel_for`` — never off
     the branch taken above. A ``synthetic:`` tape travels the same pandas branch
@@ -196,7 +246,10 @@ def _load_tape(file_url: str, period: str | None) -> tuple[pd.DataFrame, str]:
     else:
         # Strip the provenance scheme before looking at the extension: the
         # scheme states what the tape is, the remainder names the file to read.
-        target = underlying_url(file_url)
+        # A package-relative body (a tape committed in this repo) is resolved to
+        # an absolute path first, so the read does not depend on the caller's
+        # working directory — see ``_resolve_committed_tape``.
+        target = underlying_url(_resolve_committed_tape(file_url))
         # Strip any query string before matching the extension so signed URLs
         # (``...parquet?token=...``) still route to the parquet reader.
         path = target.split("?", 1)[0]

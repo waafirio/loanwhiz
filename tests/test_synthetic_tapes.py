@@ -22,6 +22,7 @@ from unittest.mock import patch
 import pytest
 
 from loanwhiz.api import main as api_main
+from loanwhiz.primitives import esma_tape_normaliser
 from loanwhiz.config import DEAL_REGISTRY, GREEN_LION
 
 _SYNTHETIC_TAPE = {
@@ -114,3 +115,67 @@ def test_an_undeclared_identifier_is_treated_as_describing_real_assets():
         )
         is True
     ), "a derived tape describes real loans that someone else stated"
+
+
+# ---------------------------------------------------------------------------
+# A tape committed in this repo must resolve the same from any directory
+# ---------------------------------------------------------------------------
+
+
+def _write_probe_tape(root, name="probe.csv"):
+    tape = root / "data" / "tapes" / "synthetic" / name
+    tape.parent.mkdir(parents=True, exist_ok=True)
+    tape.write_text(
+        "loan_identifier,current_balance,current_interest_rate_pct\n"
+        "L1,100000.0,3.0\nL2,200000.0,4.0\n",
+        encoding="utf-8",
+    )
+    return f"data/tapes/synthetic/{name}"
+
+
+def test_a_committed_tape_resolves_independently_of_the_working_directory(
+    tmp_path, monkeypatch
+):
+    """``run-demo-v2.sh`` starts uvicorn without cd-ing to the repo root.
+
+    A bare relative identifier would therefore be read against whatever
+    directory the demo was launched from, and ``_tape_analytics_period``
+    degrades on a per-tape error rather than raising — so the Pool page would
+    silently lose the period instead of failing.
+    """
+    body = _write_probe_tape(tmp_path)
+    monkeypatch.setattr(esma_tape_normaliser, "_PACKAGE_ROOT", tmp_path)
+
+    elsewhere = tmp_path / "some" / "other" / "cwd"
+    elsewhere.mkdir(parents=True)
+    monkeypatch.chdir(elsewhere)
+
+    frame, channel = esma_tape_normaliser._load_tape(f"synthetic:{body}", None)
+
+    assert len(frame) == 2
+    assert channel == "synthetic", "the scheme survives the path resolution"
+
+
+def test_resolution_leaves_urls_and_absolute_paths_alone(tmp_path, monkeypatch):
+    """Only a package-relative body is rewritten; everything else is untouched."""
+    monkeypatch.setattr(esma_tape_normaliser, "_PACKAGE_ROOT", tmp_path)
+
+    for identifier in (
+        "https://example.invalid/tape.csv",
+        "synthetic:https://example.invalid/tape.csv",
+        "file:///tmp/tape.csv",
+        "/tmp/tape.csv",
+    ):
+        assert esma_tape_normaliser._resolve_committed_tape(identifier) == identifier
+
+
+def test_a_missing_committed_tape_names_the_path_it_looked_for(tmp_path, monkeypatch):
+    """A silent skip is the failure mode here, so the message has to be diagnosable."""
+    monkeypatch.setattr(esma_tape_normaliser, "_PACKAGE_ROOT", tmp_path)
+
+    with pytest.raises(FileNotFoundError) as excinfo:
+        esma_tape_normaliser._resolve_committed_tape("synthetic:data/tapes/nope.csv")
+
+    message = str(excinfo.value)
+    assert "data/tapes/nope.csv" in message
+    assert str(tmp_path) in message
