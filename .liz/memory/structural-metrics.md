@@ -40,3 +40,16 @@ the blocking input only when doing so provably changes no output, and label that
 a counterfactual, never a deal figure.
 
 Refs: #457
+
+## 2026-09-08 · pitfall · #478
+
+Derive a checker's field list from the **instance**, never a fixed tuple of
+names. A hardcoded `class_a/b/c` list read through accessors answering `0.0`
+for an absent class cannot be both short and failing: on an 8-class CLO it
+compared 0.0 to 0.0 for the two classes the deal lacks, never looked at the
+seven it has, and passed **vacuously** — silent exactly where the deal was
+least like the reference one. Read the values off the canonical collection
+too: `getattr(state, f"{name}_balance")` resolves only for the names that
+happen to have accessors.
+
+Refs: #478

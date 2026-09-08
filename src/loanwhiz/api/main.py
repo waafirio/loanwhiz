@@ -60,6 +60,11 @@ from loanwhiz.primitives.collections_aggregator import (
     CollectionsInput,
 )
 from loanwhiz.primitives.base import Citation
+from loanwhiz.primitives.capital_structure import (
+    CapitalStructure,
+    UnresolvableCapitalStructure,
+    senior_tranche_name,
+)
 from loanwhiz.primitives.capability_matrix import (
     CapabilityMatrix,
     build_capability_matrix,
@@ -1462,21 +1467,31 @@ _GREEN_LION_DEAL_ID = "green-lion-2026-1"
 
 
 def _extracted_capital_structure(deal: dict) -> dict | None:
-    """Build a complete capital-structure dict from the deal's extracted model.
+    """Build the deal's capital structure from its extracted model, or ``None``.
 
     Bridges the cached extracted :class:`DealModel` (``tranche_structure``) onto
-    the four-field ``capital_structure`` shape the engine consumes
-    (``class_a_balance``, ``class_a_rate_pct``, ``class_b_balance``,
-    ``class_c_balance``). Returns ``None`` unless ALL four fields can be filled
-    from the extraction — the engine needs a *complete*, numeric structure, so a
-    partial extraction (e.g. a non-numeric coupon string like
-    ``"3m EURIBOR + 0.42"`` from which no ``class_a_rate_pct`` can be parsed, or a
-    missing class) is "no value here", not a half-built structure. Best-effort
-    and failure-isolated: any malformed model yields ``None``, never an exception.
+    the ``{<name>_balance, <name>_rate_pct}`` mapping the engine consumes.
+    **Every** class the document states is carried through, whatever the stack's
+    depth or how its seniority ordinals are numbered — Cairn's run
+    ``0, 101, 102, 200, 300, 400, 500, 2600`` across eight classes, and the
+    previous four-key/``seniority 0/1/2`` shape could express neither.
 
-    This is the *secondary* config source (below the deal's explicit ``deals.json``
-    context key, above the Green Lion last-resort fallback) — see
-    ``_resolve_structural_config``.
+    The single builder is :meth:`CapitalStructure.from_tranche_structure`, which
+    **refuses** a stack it cannot place in full rather than returning a
+    truncated one (#478). A partial stack would be the dangerous answer here:
+    the total is a denominator for the coverage metrics, so dropping a class
+    reports subordination the deal does not have.
+
+    A tranche whose coupon is a reference rate (``"3 month EURIBOR + 1.80%"``)
+    contributes a balance but **no** rate key — a margin is not a coupon and is
+    deliberately not coerced. Resolving the senior coupon is a separate tier of
+    ``_resolve_structural_config``, so "we know the stack but not the rate" is a
+    distinct, nameable state rather than a blanket "no structure".
+
+    This is the *secondary* config source (below the deal's explicit
+    ``deals.json`` context key, above the Green Lion last-resort fallback) — see
+    ``_resolve_structural_config``. Best-effort and failure-isolated: any
+    malformed model yields ``None``, never an exception.
     """
     try:
         model = _load_cached_deal_model(deal)
@@ -1484,62 +1499,49 @@ def _extracted_capital_structure(deal: dict) -> dict | None:
         return None
     if model is None:
         return None
-
-    # Map tranche balances by seniority (0 = senior = Class A).
-    by_seniority: dict[int, dict] = {}
-    for tranche in model.tranche_structure or []:
-        if not isinstance(tranche, dict):
-            continue
-        seniority = tranche.get("seniority")
-        if isinstance(seniority, int):
-            by_seniority.setdefault(seniority, tranche)
-
-    def _balance(seniority: int) -> float | None:
-        tranche = by_seniority.get(seniority)
-        if tranche is None:
-            return None
-        size = tranche.get("size_eur")
-        return float(size) if isinstance(size, (int, float)) else None
-
-    class_a_balance = _balance(0)
-    class_b_balance = _balance(1)
-    class_c_balance = _balance(2)
-    class_a_rate_pct = _numeric_rate_pct(by_seniority.get(0))
-
-    if None in (class_a_balance, class_b_balance, class_c_balance, class_a_rate_pct):
+    try:
+        return CapitalStructure.from_tranche_structure(
+            model.tranche_structure
+        ).to_engine_mapping()
+    except UnresolvableCapitalStructure:
+        # The seed states no placeable stack — "no value here", so the resolver
+        # falls through to its next tier (and, for a non-GL deal, refuses).
+        return None
+    except Exception:  # noqa: BLE001 — a malformed model is not an endpoint 500
         return None
 
-    return {
-        "class_a_balance": class_a_balance,
-        "class_a_rate_pct": class_a_rate_pct,
-        "class_b_balance": class_b_balance,
-        "class_c_balance": class_c_balance,
-    }
 
+def _with_senior_coupon(
+    deal_id: str, capital_structure: dict, *, is_green_lion: bool
+) -> dict:
+    """Ensure the resolved structure carries a coupon for its senior class.
 
-def _numeric_rate_pct(tranche: dict | None) -> float | None:
-    """Return a tranche's coupon as a numeric percent, or ``None`` if not numeric.
+    Balances and coupons are resolved as **separate values** (#478), because
+    they are separately available: a trustee report or prospectus routinely
+    states the whole stack while quoting the notes as ``INDEX + margin``, from
+    which no coupon follows without that period's index fixing.
 
-    The extracted ``rate`` is free-form (e.g. ``3.62``, ``"3.62"``,
-    ``"3.62%"``, or a non-numeric ``"3m EURIBOR + 0.43"`` reference rate). The
-    engine needs a numeric ``class_a_rate_pct``; only a value that is itself a
-    plain number (optionally with a trailing ``%``) is usable. A EURIBOR/margin
-    reference string is deliberately NOT coerced — guessing a fixed equivalent
-    would fabricate a rate — so it returns ``None`` and the resolver falls
-    through to the next config source.
+    Splitting them is what lets the refusal name the thing that is actually
+    missing. Before this, a deal with a perfectly good eight-class stack and no
+    resolved coupon was reported as "missing required config
+    ``capital_structure``" — true of nothing, and it sent the reader to
+    ``deals.json`` to hand-write a structure the seed already had.
+
+    The tiering matches ``_resolve_structural_config``'s: an explicitly declared
+    rate wins, then the extracted one, then — for the Green Lion deal only — its
+    last-resort constant. Any other deal fails loudly and by name. There is no
+    zero default: a 0% coupon is a real modelling claim (an interest-free note)
+    and would understate the revenue waterfall's need rather than refuse.
     """
-    if tranche is None:
-        return None
-    rate = tranche.get("rate")
-    if isinstance(rate, (int, float)):
-        return float(rate)
-    if isinstance(rate, str):
-        cleaned = rate.strip().rstrip("%").strip()
-        try:
-            return float(cleaned)
-        except ValueError:
-            return None
-    return None
+    senior = senior_tranche_name(capital_structure)
+    if senior is None:
+        raise _misconfigured_deal(deal_id, "capital_structure")
+    rate_key = f"{senior}_rate_pct"
+    if capital_structure.get(rate_key) is not None:
+        return capital_structure
+    if is_green_lion:
+        return {**capital_structure, rate_key: _GREEN_LION_CLASS_A_RATE_PCT}
+    raise _misconfigured_deal(deal_id, rate_key)
 
 
 def _resolve_structural_config(deal_id: str, deal: dict) -> tuple[dict, float, float]:
@@ -1570,6 +1572,12 @@ def _resolve_structural_config(deal_id: str, deal: dict) -> tuple[dict, float, f
         if not is_green_lion:
             raise _misconfigured_deal(deal_id, "capital_structure")
         capital_structure = _GREEN_LION_CAPITAL_STRUCTURE
+    # The stack and its senior coupon resolve independently (#478): a deal can
+    # state every class and still quote them as ``INDEX + margin``, and the
+    # refusal must name the coupon rather than the structure it does have.
+    capital_structure = _with_senior_coupon(
+        deal_id, capital_structure, is_green_lion=is_green_lion
+    )
 
     reserve_target = deal.get("reserve_account_target")
     if reserve_target is None:
@@ -1630,6 +1638,42 @@ def _latest_tape_amort_schedule(deal: dict, months: int) -> list[float] | None:
     except Exception:  # noqa: BLE001 — any load failure → proxy fallback
         return None
     return pool_scheduled_principal_schedule(df, months)
+
+
+def _collections_tranche_args(deal_id: str, capital_structure: dict) -> dict:
+    """The tranche arguments ``CollectionsInput`` takes, or a labelled 422.
+
+    ``CollectionsInput`` is still shaped for exactly three classes
+    (``class_a``/``class_b``/``class_c``), so the tape-driven reconstruction
+    cannot yet consume a deeper stack even though the *config* now expresses one
+    (#478 generalised the structure; the collections leg is a separate seam).
+
+    Rather than let that surface as a ``KeyError`` — a 500 that names nothing —
+    this refuses in the same loud, deal-named way every other unmet structural
+    precondition does. A deal whose stack this leg cannot represent gets a 422
+    saying so; it never gets three of its classes silently selected, which would
+    publish a waterfall computed over part of the deal.
+    """
+    required = (
+        "class_a_balance",
+        "class_a_rate_pct",
+        "class_b_balance",
+        "class_c_balance",
+    )
+    missing = [key for key in required if capital_structure.get(key) is None]
+    if missing:
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                f"Deal '{deal_id}' has a capital structure the tape-driven "
+                f"reconstruction cannot represent: its collections leg is shaped "
+                f"for class_a/class_b/class_c and this deal supplies "
+                f"{sorted(k for k in capital_structure if k.endswith('_balance'))}, "
+                f"leaving {missing} unresolved. Refusing to run the waterfall over "
+                f"a subset of the deal's classes."
+            ),
+        )
+    return {key: float(capital_structure[key]) for key in required}
 
 
 def _misconfigured_deal(deal_id: str, missing_key: str) -> HTTPException:
@@ -1807,10 +1851,7 @@ def _reconstruct_series_from_tapes(deal_id: str, deal: dict) -> DealStateSeries:
             reporting_period=cur_tape["date"],
             prev_tape_file_url=prev_tape["url"],
             days_in_period=days,
-            class_a_rate_pct=cap["class_a_rate_pct"],
-            class_a_balance=cap["class_a_balance"],
-            class_b_balance=cap["class_b_balance"],
-            class_c_balance=cap["class_c_balance"],
+            **_collections_tranche_args(deal_id, cap),
         )
         collections_result = aggregator.execute(collections_input)
         _audit(aggregator, collections_input, collections_result)
@@ -2215,9 +2256,9 @@ def _projected_series_from_canonical(
             scheduled_principal_schedule=amort_schedule,
         )
         rates = {
-            k: float(capital_structure[k])
-            for k in ("class_a_rate_pct", "class_b_rate_pct", "class_c_rate_pct")
-            if k in capital_structure
+            k: float(v)
+            for k, v in capital_structure.items()
+            if k.endswith("_rate_pct") and v is not None
         }
         rates.setdefault("class_a_rate_pct", base["class_a_rate_pct"])
         # Execute the deal's OWN extracted cascade when a model is available;
@@ -3643,9 +3684,9 @@ def deal_project(deal_id: str, req: ProjectRequest) -> dict:
 
         # Fold the synthetic stream through the same kernel history uses.
         rates = {
-            k: float(capital_structure[k])
-            for k in ("class_a_rate_pct", "class_b_rate_pct", "class_c_rate_pct")
-            if k in capital_structure
+            k: float(v)
+            for k, v in capital_structure.items()
+            if k.endswith("_rate_pct") and v is not None
         }
         rates.setdefault("class_a_rate_pct", base["class_a_rate_pct"])
         states = [seed]
@@ -3848,9 +3889,9 @@ def _run_stress_matrix(deal_id: str, deal: dict, req: StressMatrixRequest) -> di
 
     generator = ScenarioGenerator()
     rates = {
-        k: float(capital_structure[k])
-        for k in ("class_a_rate_pct", "class_b_rate_pct", "class_c_rate_pct")
-        if k in capital_structure
+        k: float(v)
+        for k, v in capital_structure.items()
+        if k.endswith("_rate_pct") and v is not None
     }
     rates.setdefault("class_a_rate_pct", base["class_a_rate_pct"])
     # Execute the deal's OWN extracted cascade when a model is available; fall

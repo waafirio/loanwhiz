@@ -278,6 +278,42 @@ def test_capital_structure_no_sizes_raises() -> None:
         capital_structure_from_deal_model({"tranche_structure": []})
 
 
+def test_capital_structure_carries_a_deep_stack_whole_rather_than_its_top_three() -> None:
+    """An 8-class CLO is not three classes and five discards (#478).
+
+    This mapper used to take the first three tranches by seniority and zero-fill
+    the rest. On a three-class RMBS that was invisible; on Cairn it would have
+    read Class A / B-1 / B-2 as A / B / C and dropped five classes — publishing a
+    capital structure 39% short of the deal, with nothing raised anywhere. The
+    total matters because it is a *denominator*: a short stack reports
+    subordination the deal does not have, so it reads as health.
+    """
+    model = {
+        "tranche_structure": [
+            {"name": "Class A", "size_eur": 248_000_000.0, "rate": "3 month EURIBOR + 1.80%", "seniority": 0},
+            {"name": "Class B-1", "size_eur": 24_600_000.0, "rate": "3 month EURIBOR + 2.75%", "seniority": 101},
+            {"name": "Class B-2", "size_eur": 15_000_000.0, "rate": "6.87%", "seniority": 102},
+            {"name": "Class C", "size_eur": 23_100_000.0, "rate": None, "seniority": 200},
+            {"name": "Class D", "size_eur": 26_500_000.0, "rate": None, "seniority": 300},
+            {"name": "Class E", "size_eur": 17_200_000.0, "rate": None, "seniority": 400},
+            {"name": "Class F", "size_eur": 14_600_000.0, "rate": None, "seniority": 500},
+            {"name": "Subordinated Notes", "size_eur": 35_100_000.0, "rate": None, "seniority": 2600},
+        ]
+    }
+    cap = capital_structure_from_deal_model(model)
+
+    balances = {k: v for k, v in cap.items() if k.endswith("_balance")}
+    assert len(balances) == 8
+    assert sum(balances.values()) == pytest.approx(404_100_000.0)
+    assert "class_b_1_balance" in balances and "subordinated_notes_balance" in balances
+    # No canonical zero-fill on a non-canonical stack: inventing a class_c of 0.0
+    # beside a real Class C would be a second, phantom tranche.
+    assert cap["class_c_balance"] == 23_100_000.0
+    # The one genuinely fixed-rate tranche parses; the reference rates do not.
+    assert cap["class_b_2_rate_pct"] == pytest.approx(6.87)
+    assert "class_a_rate_pct" not in cap
+
+
 # ===========================================================================
 # 3. build_period_inputs — engine input list keyed by reporting date
 # ===========================================================================

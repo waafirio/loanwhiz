@@ -20,6 +20,7 @@ triage by opening the entry, not by reading the line.
   - [2026-09-05 · pitfall · #452](#2026-09-05--pitfall--452) — keywords: attachment point, senior-or-equal walk, denominator, coverage ratio, OC, IC, silent health, unplaceable tranche
   - [2026-09-05 · decision · #452](#2026-09-05--decision--452) — keywords: classless default, senior class, positional metric, unmapped escape, alias row, LLM invents a position
   - [2026-09-05 · pitfall · #457](#2026-09-05--pitfall--457) — keywords: layered refusal, not_evaluable, documented cause, coverage threshold, equity tranche, unplaceable, counterfactual
+  - [2026-09-08 · pitfall · #478](#2026-09-08--pitfall--478) — keywords: fixed field list, vacuous invariant, accessor default, series_invariants, chaining, non-negativity, derive from instance
 - [Extraction determinism & LLM caching](extraction-determinism.md) — keywords: classify_segments_llm, section router, determinism cache, prompt hash, force_refresh, sections_found, completeness_score, degrade-to-default
 - [Regulatory mapping tables (ESMA annexes, field codes, locators)](regulatory-mapping-tables.md) — keywords: AnnexField, extension field, code=None, field code, locator, ESMA RTS, annex numbering, CRPL, AUTL, RREL, borrowed code
   - [2026-09-06 · decision · #470](#2026-09-06--decision--470) — keywords: field identity, value conformance, NACE, NUTS-3, market price vs value, unit mismatch, obligor identifier, RTS vocabulary, derived tape
@@ -27,6 +28,7 @@ triage by opening the entry, not by reading the line.
   - [2026-09-05 · pattern · #453](#2026-09-05--pattern--453) — keywords: NEED_CALCULATORS, register_need, RecipientType, closed enum, registry coverage, import-time assert, silent default, generated calculators
   - [2026-09-05 · pitfall · #453](#2026-09-05--pitfall--453) — keywords: LLM classifier options, deny list, enum growth, near-miss, incentive fee, use_llm=False, unmapped escape
   - [2026-09-06 · pitfall · #471](#2026-09-06--pitfall--471) — keywords: absent column, all-False mask, arrears breakdown, silent clean pool, degrade, no key not zero
+  - [2026-09-08 · pitfall · #478](#2026-09-08--pitfall--478) — keywords: untyped dict shape, divergent mappers, capital_structure, hand-copy drift, total-preservation guard, one builder
 - [Extracting tables from PDFs](pdf-table-extraction.md)
   - [2026-09-06 · pitfall · #469](#2026-09-06--pitfall--469) — keywords: visitor_text, text matrix, tm[4], rotated table, extraction_mode layout, row boundary, continuation line, column order, pypdf
   - [2026-09-08 · pitfall · #480](#2026-09-08--pitfall--480) — keywords: column header, required level, guessed order, like-typed columns, stated twice, cross-check, coverage test, refuse unrecognised header

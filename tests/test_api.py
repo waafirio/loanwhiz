@@ -3143,12 +3143,19 @@ def test_extracted_capital_structure_complete_numeric_rate():
     }
 
 
-def test_extracted_capital_structure_non_numeric_rate_returns_none():
-    """A EURIBOR/margin reference coupon is not coerced — bridge yields None.
+def test_extracted_capital_structure_non_numeric_rate_yields_balances_without_a_coupon():
+    """A EURIBOR/margin reference coupon is not coerced — but the stack still resolves.
 
-    The engine needs a numeric ``class_a_rate_pct``; a reference-rate string
-    ("3m EURIBOR + 0.42") cannot be turned into one without fabricating a value,
-    so the bridge reports "no usable value" and resolution falls through.
+    A margin is not a rate: turning "3m EURIBOR + 0.42" into a coupon needs the
+    period's index fixing, and inventing one is what the engine's refusal exists
+    to prevent. That has not changed.
+
+    What changed (#478) is that this no longer discards the balances too. The
+    classes are stated plainly and the coupon is not, so the structure carries
+    every balance and simply omits the rate key — the caller that needs a rate
+    refuses for want of a rate, by name. Emitting ``class_a_rate_pct: 0.0``
+    instead would model an interest-free senior note and understate the revenue
+    waterfall's need without any error.
     """
     from loanwhiz.api import main as api_main
 
@@ -3160,15 +3167,89 @@ def test_extracted_capital_structure_non_numeric_rate_returns_none():
         ]
     )
     with patch("loanwhiz.api.main._load_cached_deal_model", return_value=model):
-        assert api_main._extracted_capital_structure(_sponsor_deal()) is None
+        cap = api_main._extracted_capital_structure(_sponsor_deal())
+
+    assert cap == {
+        "class_a_balance": 480_000_000.0,
+        "class_b_balance": 15_000_000.0,
+        "class_c_balance": 5_000_000.0,
+    }
+    assert "class_a_rate_pct" not in cap
 
 
-def test_extracted_capital_structure_missing_class_returns_none():
+def test_unresolved_senior_coupon_refuses_by_name_not_as_a_missing_structure():
+    """The refusal names the coupon, and never borrows Green Lion's.
+
+    The deal states its whole capital structure; only the coupon is unresolved.
+    Reporting that as "missing required config ``capital_structure``" — which is
+    what the four-field shape had to say — sent the reader to hand-write a
+    structure the extraction already had.
+    """
+    from fastapi import HTTPException
+
+    from loanwhiz.api import main as api_main
+
+    model = _build_deal_model(
+        [
+            {"name": "Class A", "size_eur": 480_000_000.0, "rate": "3m EURIBOR + 0.42", "seniority": 0},
+            {"name": "Class B", "size_eur": 15_000_000.0, "rate": None, "seniority": 1},
+        ]
+    )
+    sponsor = _sponsor_deal(
+        reserve_account_target=5_000_000.0,
+        original_pool_balance=500_000_000.0,
+    )
+    with patch("loanwhiz.api.main._load_cached_deal_model", return_value=model):
+        with pytest.raises(HTTPException) as excinfo:
+            api_main._resolve_structural_config("sponsor-2025-1", sponsor)
+
+    detail = excinfo.value.detail
+    assert excinfo.value.status_code == 422
+    assert "class_a_rate_pct" in detail
+    assert "sponsor-2025-1" in detail
+    assert "Refusing to fall back to Green Lion" in detail
+    assert "capital_structure'" not in detail
+
+
+def test_extracted_capital_structure_states_exactly_the_classes_the_document_does():
+    """A shallower deal is a shallower deal — not a failure to be three classes.
+
+    The retired shape required seniority ``0/1/2`` present, so it rejected any
+    stack that was not RMBS-shaped: a one-class extraction and an eight-class
+    CLO failed identically. The guarantee that replaced it is about *mapping
+    fidelity* — every row the document states survives into the structure — and
+    is asserted by the total-preservation tests in
+    ``tests/test_capital_structure.py``. A stack of one class is faithful to a
+    document stating one class.
+    """
     from loanwhiz.api import main as api_main
 
     model = _build_deal_model(
         [
             {"name": "Class A", "size_eur": 480_000_000.0, "rate": 4.10, "seniority": 0},
+        ]
+    )
+    with patch("loanwhiz.api.main._load_cached_deal_model", return_value=model):
+        cap = api_main._extracted_capital_structure(_sponsor_deal())
+
+    assert cap == {"class_a_balance": 480_000_000.0, "class_a_rate_pct": 4.10}
+
+
+def test_extracted_capital_structure_refuses_a_class_it_cannot_size():
+    """An unsized class is refused outright, never dropped from the stack.
+
+    This is the case the old "is the structure complete?" check was really
+    guarding, and the one that still matters: a row the document states but the
+    mapper cannot place. Dropping it would shrink the stack total, which is a
+    denominator — so the deal would report subordination it does not have, and
+    read as healthier rather than broken.
+    """
+    from loanwhiz.api import main as api_main
+
+    model = _build_deal_model(
+        [
+            {"name": "Class A", "size_eur": 480_000_000.0, "rate": 4.10, "seniority": 0},
+            {"name": "Class B", "size_eur": None, "rate": None, "seniority": 1},
         ]
     )
     with patch("loanwhiz.api.main._load_cached_deal_model", return_value=model):
