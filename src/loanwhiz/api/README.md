@@ -214,5 +214,14 @@ balance, tranche balances, reserve, cumulative losses) plus a real Class A
 
 The projection seed (capital structure, reserve target, original pool balance,
 opening pool balance, coupon rate) is resolved from the deal's own
-`projection_base` / structural config; a non-Green-Lion deal missing that config
-fails loudly (422) rather than borrowing Green Lion's numbers.
+`projection_base` / structural config; a non-Green-Lion deal that resolves
+neither fails loudly (422) rather than borrowing Green Lion's numbers.
+
+`projection_base` need not be hand-written. It resolves from the deal's
+`deals.json` key if declared, else is **derived** (#479) from the senior coupon
+the structural config already resolved plus the deal's latest loan tape (its
+summed current balances). A deal short of either — no numeric senior coupon, or
+no tape to read a current pool balance from — is refused by name; there is no
+half-built base and no borrowed one. The structural config is resolved first, so
+a deal missing its senior coupon refuses by that key rather than by
+`projection_base`.

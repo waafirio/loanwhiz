@@ -3076,25 +3076,44 @@ def test_resolve_structural_config_non_gl_missing_key_raises_422(missing_key, su
 
 
 def test_resolve_projection_base_non_gl_missing_raises_422():
+    """No declared base and nothing to derive one from ⇒ a labelled 422.
+
+    The deal is given a resolvable capital structure and NO tape, so the
+    derived tier (#479) has a senior coupon but no current pool balance —
+    the "incomplete is no value here" branch, which must refuse rather than
+    return a base carrying one real number.
+    """
     from fastapi import HTTPException
 
     from loanwhiz.api import main as api_main
 
     with pytest.raises(HTTPException) as exc:
-        api_main._resolve_projection_base("sponsor-2025-1", _sponsor_deal())
+        api_main._resolve_projection_base(
+            "sponsor-2025-1",
+            _sponsor_deal(tape_urls=[]),
+            _sponsor_capital_structure(),
+        )
     assert exc.value.status_code == 422
     assert "projection_base" in exc.value.detail
     assert "sponsor-2025-1" in exc.value.detail
 
 
 def test_resolve_projection_base_green_lion_uses_last_resort():
+    """Green Lion still resolves its own constant, value for value.
+
+    Its registry context omits the key because the constant IS its declared
+    config, so it resolves at the declared tier rather than by derivation —
+    which is what keeps its projection output byte-identical (#479).
+    """
     from loanwhiz.api import main as api_main
 
     gl = api_main.DEALS["green-lion-2026-1"]
-    assert (
-        api_main._resolve_projection_base("green-lion-2026-1", gl)
-        is api_main._GREEN_LION_PROJECTION_BASE
+    base = api_main._resolve_projection_base(
+        "green-lion-2026-1", gl, api_main._GREEN_LION_CAPITAL_STRUCTURE
     )
+    constant = api_main._GREEN_LION_PROJECTION_BASE
+    assert base.current_pool_balance == constant["current_pool_balance"]
+    assert base.senior_rate_pct == constant["class_a_rate_pct"]
 
 
 # --- unit: extracted-model bridge --------------------------------------------
@@ -3334,7 +3353,16 @@ def test_project_misconfigured_non_gl_deal_returns_422():
         )
 
     assert resp.status_code == 422
-    assert "projection_base" in resp.json()["detail"]
+    # This deal is short of EVERY structural key. Since #479 the endpoint
+    # resolves the structural config before the projection base — the base
+    # consumes the senior coupon that resolution produces — so the refusal now
+    # names the first key genuinely unresolvable rather than ``projection_base``,
+    # which is derivable once the others are. The contract this pins is
+    # refusal-not-fallback; ``tests/test_projection_base.py`` pins the base's own.
+    detail = resp.json()["detail"]
+    assert "sponsor-2025-1" in detail
+    assert "capital_structure" in detail
+    assert "Refusing to fall back to Green Lion" in detail
 
 
 def test_waterfall_self_configured_non_gl_deal_does_not_consult_green_lion(tmp_path):
