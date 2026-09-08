@@ -43,6 +43,7 @@ from typing import Literal
 import pandas as pd
 from pydantic import BaseModel, Field
 
+from loanwhiz.domain.tape_provenance import source_kind_for
 from loanwhiz.primitives.base import (
     AuditEntry,
     BaseInput,
@@ -631,12 +632,20 @@ class PoolStratification(
             unavailable_dimensions=unavailable,
         )
 
+        # A tape whose kind is declared says so here, in the source kind's own
+        # words — the same sentence esma_tape_normaliser quotes, for the same
+        # reason: a concentration figure computed from a synthetic pool must not
+        # read like one computed from a filed regulatory tape. The channel alone
+        # ("ingested via synthetic") names how the rows arrived, not what they
+        # are worth; before #483 this surface stated only the channel.
+        source_kind = source_kind_for(input.file_url)
+        kind_disclosure = f" {source_kind.disclosure}" if source_kind is not None else ""
         citation = Citation(
             document=input.file_url,
             page_or_row=f"rows 1-{len(df_a_lower)}",
             excerpt=(
                 f"Pool stratified across {dimensions} into {len(strata)} cells "
-                f"(ingested via {data_source})"
+                f"(ingested via {data_source}).{kind_disclosure}"
             ),
         )
 

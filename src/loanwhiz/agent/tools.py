@@ -123,10 +123,12 @@ def load_esma_tape(file_url: str, reporting_date: str | None = None) -> dict:
     """Load and analyse an ESMA-format loan-level tape CSV.
 
     Returns pool statistics, weighted averages, arrears breakdown, EPC
-    distribution, and the ingestion ``data_source`` (always ``"direct"`` — the
-    tape is read directly from its source CSV/parquet URL, LoanWhiz's canonical
-    tape ingestion path) so the answer's governance evidence records honest
-    data provenance.
+    distribution, and the ingestion ``data_source`` — one of ``"direct"`` (read
+    straight from a published CSV/parquet URL), ``"derived"`` (reconstructed
+    from a source document the deal registers) or ``"synthetic"`` (read from a
+    published file whose rows LoanWhiz generated, describing no real obligor).
+    The channel is resolved from the tape's identifier, so the answer's
+    governance evidence records honest data provenance.
     Use for: understanding pool composition, computing arrears rates, checking EPC mix.
     """
     primitive = EsmaTapeNormaliser()
