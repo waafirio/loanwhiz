@@ -605,6 +605,13 @@ def _report_header(pages: list[list[str]]) -> tuple[str | None, str | None]:
             if match:
                 return deal_name, match.group(1)
     return deal_name, None
+def _report_document_name(deal_name: str | None, period_label: str) -> str:
+    """The citation document string for one report."""
+    return (
+        f"{deal_name} — Monthly Trustee Report ({period_label})"
+        if deal_name
+        else f"Monthly Trustee Report ({period_label})"
+    )
 
 
 def _is_furniture(line: str) -> bool:
@@ -1345,11 +1352,7 @@ def parse_schedule_text_result(
     schedule = parse_schedule_text(text, period_label=period_label)
     duration_ms = (time.perf_counter() - started) * 1000.0
 
-    document = (
-        f"{schedule.deal_name} — Monthly Trustee Report ({period_label})"
-        if schedule.deal_name
-        else f"Monthly Trustee Report ({period_label})"
-    )
+    document = _report_document_name(schedule.deal_name, period_label)
     citations = [
         Citation(
             document=document,
@@ -1464,8 +1467,6 @@ _ORDER_MARKERS: dict[str, _ColumnOrder] = {
 #: there is no code path in this module that writes any other value.
 _LIABILITY_PROVENANCE_SOURCE: Final[str] = "report"
 
-_PRIMITIVE_VERSION_LIABILITY = "0.1.0"
-
 
 def _trigger_key(name: str) -> str:
     """Canonical key for a coverage test, from the name the report prints.
@@ -1536,6 +1537,14 @@ class ReportLiabilitySummary(BaseModel):
 
     stated_total_balance: Decimal | None = None
     stated_total_periodic_interest: Decimal | None = None
+
+    #: Whether this summary passed :func:`reconcile_liability_summary`. Recorded
+    #: by the parser, which is the only thing that knows; **not** a claim any
+    #: caller can make. It defaults to ``False`` because a summary that has not
+    #: been through the check has not passed it, and it is what
+    #: :func:`liability_provenance` reports as ``FieldProvenance.reconciled`` —
+    #: the signal the human-review gate routes unverified fields by.
+    reconciled: bool = False
 
     @property
     def total_note_balance(self) -> Decimal:
@@ -1754,6 +1763,7 @@ def parse_liability_summary_text(
         reconciliation = reconcile_liability_summary(summary)
         if not reconciliation.ok:
             raise LiabilitySummaryReconciliationError(reconciliation)
+        summary.reconciled = True
     return summary
 
 
@@ -1808,20 +1818,21 @@ def reconcile_liability_summary(summary: ReportLiabilitySummary) -> ScheduleReco
     return ScheduleReconciliation(checks=checks)
 
 
-def liability_provenance(
-    summary: ReportLiabilitySummary,
-    *,
-    reconciled: bool = True,
-) -> ProvenanceMap:
+def liability_provenance(summary: ReportLiabilitySummary) -> ProvenanceMap:
     """Per-field provenance for every figure this summary states.
 
     Keyed by dotted field path, the sidecar shape
     :mod:`loanwhiz.domain.provenance` already defines — this adds no parallel
     provenance record.
 
-    **There is no ``source`` parameter**, and that is the point. Every entry
-    carries ``source="report"``, so a coupon lifted from a trustee report cannot
-    be presented as an extracted prospectus term by any caller of this function.
+    **There is no ``source`` parameter, and no ``reconciled`` one either** —
+    that is the point. Every entry carries ``source="report"``, so a coupon
+    lifted from a trustee report cannot be presented as an extracted prospectus
+    term by any caller. ``reconciled`` is read off the summary, where the parser
+    recorded whether the check actually ran and passed: it is the signal the
+    human-review gate routes *unreconciled, low-confidence* fields to a person
+    by, so a caller able to assert it could route a never-verified figure past
+    the reviewer who would have caught it.
 
     A class whose coupon or periodic interest the report does not state gets
     **no key** for it, rather than a key with a null value: absence of a fact
@@ -1843,7 +1854,7 @@ def liability_provenance(
             method="deterministic",
             confidence=_DETERMINISTIC_CONFIDENCE,
             citation=Citation(document=document, page_or_row=section, excerpt=excerpt),
-            reconciled=reconciled,
+            reconciled=summary.reconciled,
         )
 
     provenance: ProvenanceMap = {}
@@ -1878,14 +1889,6 @@ def liability_provenance(
         )
     return provenance
 
-
-def _report_document_name(deal_name: str | None, period_label: str) -> str:
-    """The citation document string for one report."""
-    return (
-        f"{deal_name} — Monthly Trustee Report ({period_label})"
-        if deal_name
-        else f"Monthly Trustee Report ({period_label})"
-    )
 
 
 def parse_liability_summary_text_result(
@@ -1924,7 +1927,7 @@ def parse_liability_summary_text_result(
     ]
     audit = AuditEntry.now(
         primitive_name=_PRIMITIVE_NAME,
-        version=_PRIMITIVE_VERSION_LIABILITY,
+        version=_PRIMITIVE_VERSION,
         input_hash=parse_input.input_hash(),
         duration_ms=duration_ms,
     )

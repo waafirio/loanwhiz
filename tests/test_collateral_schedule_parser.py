@@ -798,6 +798,31 @@ def test_a_report_figure_can_only_present_as_report_derived(
     ].citation.page_or_row == "Interest Coverage Tests Detail"
 
 
+def test_provenance_cannot_claim_a_reconciliation_that_did_not_run() -> None:
+    """``reconciled`` is a recorded fact, not something a caller can assert.
+
+    ``FieldProvenance.reconciled`` is the strong correctness signal the
+    human-review gate routes by: it sends *unreconciled, low-confidence* fields
+    to a person. A caller able to set it could route a figure that was never
+    cross-checked straight past that reviewer — so the parser records whether
+    the check ran and passed, and `liability_provenance` takes no argument for
+    it at all.
+    """
+    text = _text("cairn-clo-xvii-march-2025.txt")
+
+    checked = parse_liability_summary_text(text, period_label="March 2025")
+    assert checked.reconciled is True
+    assert {p.reconciled for p in liability_provenance(checked).values()} == {True}
+
+    # strict=False is the documented inspection path: nothing was verified, and
+    # the provenance must say so rather than inherit an optimistic default.
+    unchecked = parse_liability_summary_text(
+        text, period_label="March 2025", strict=False
+    )
+    assert unchecked.reconciled is False
+    assert {p.reconciled for p in liability_provenance(unchecked).values()} == {False}
+
+
 def test_an_unstated_figure_gets_no_provenance_key_at_all(
     march_liabilities: ReportLiabilitySummary,
 ) -> None:
