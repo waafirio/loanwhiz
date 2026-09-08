@@ -45,6 +45,7 @@ triage by opening the entry, not by reading the line.
   - [2026-09-05 · pitfall · #453](#2026-09-05--pitfall--453) — keywords: LLM classifier options, deny list, enum growth, near-miss, incentive fee, use_llm=False, unmapped escape
   - [2026-09-06 · pitfall · #471](#2026-09-06--pitfall--471) — keywords: absent column, all-False mask, arrears breakdown, silent clean pool, degrade, no key not zero
   - [2026-09-08 · pattern · #493](#2026-09-08--pattern--493) — keywords: not_evaluable, layered refusal, paired assertion, unresolved coupon, rate_pct, silent zero, false green
+  - [2026-09-08 · pitfall · #511](#2026-09-08--pitfall--511) — keywords: canonicalise both sides, membership test, ENGINE_COMPUTED_RECIPIENTS, mixed vocabulary, legacy spelling, unmapped leak, derived set
 - [Extracting tables from PDFs](pdf-table-extraction.md) — keywords: visitor_text, text matrix, tm[4], rotated table, extraction_mode layout, row boundary, continuation line, column order, pypdf
   - [2026-09-06 · pitfall · #469](#2026-09-06--pitfall--469) — keywords: extract_text(), extraction_mode="layout", visitor_text=, tm[4]
   - [2026-09-08 · pitfall · #494](#2026-09-08--pitfall--494) — keywords: page furniture, banner prefix, data row first, footer eats a row, numeric tail, prefix filter ordering

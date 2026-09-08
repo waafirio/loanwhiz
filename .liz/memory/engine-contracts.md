@@ -103,3 +103,16 @@ a code path, assert they agree over the real corpus: neither one's own tests can
 see the disagreement.
 
 Refs: #503
+
+## 2026-09-08 · pitfall · #511
+
+Canonicalise **both sides** of a membership test, never only the incoming value.
+A frozenset named for "recipients the engine can compute" read as canonical but
+held three legacy spellings whose canonical forms were absent from it, so
+resolving just the extracted name would have fixed the CLO steps and silently
+reclassified the RMBS ones. Derive the compared set through the same resolver,
+and exclude its "recognised but unplaceable" answer — letting `unmapped` into a
+computable set would classify every denied string computable at once. Check what
+a declared set is spelled in before trusting the name it is filed under.
+
+Refs: #511
