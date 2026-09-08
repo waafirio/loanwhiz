@@ -1,0 +1,208 @@
+{
+  "format_version": 1,
+  "deal_id": "sol-lion-ii",
+  "deal_name": "Sol-Lion II RMBS Fondo de Titulización",
+  "source": {
+    "family": "iberian_monthly",
+    "period": "May 2026",
+    "url": "https://ing.com/binaries/content/assets/documents/fixed-income-bank/sol-lion-ii-investor-report---may-2026.pdf"
+  },
+  "reporting_date": "2026-04-30",
+  "fitted": {
+    "loan_count": {
+      "value": 168712.0,
+      "unit": "loans",
+      "cited": "section 1 Summary (p3) · Number of Loans"
+    },
+    "pool_balance_eur": {
+      "value": 15425568061.22,
+      "unit": "EUR",
+      "cited": "section 1 Summary (p3) · Of which Active Outstanding Notional Amount"
+    },
+    "wtd_coupon_pct": {
+      "value": 2.76,
+      "unit": "percent",
+      "cited": "section 1 Summary (p3) · Coupon: Weighted Average"
+    },
+    "wtd_ltv_pct": {
+      "value": 44.83,
+      "unit": "percent",
+      "cited": "section 1 Summary (p3) · Weighted Average Current Loan to Indexed Market Value"
+    },
+    "wtd_remaining_term_months": {
+      "value": 291.59,
+      "unit": "months",
+      "cited": "section 1 Summary (p3) · Remaining Tenor (months): Weighted Average"
+    },
+    "wtd_seasoning_months": {
+      "value": 80.31,
+      "unit": "months",
+      "cited": "section 1 Summary (p3) · Seasoning (months): Weighted Average"
+    }
+  },
+  "distributions": {
+    "arrears_bucket": {
+      "cited": "section Arrears (p32)",
+      "buckets": [
+        {
+          "label": "No Arrear",
+          "balance": 15331126435.0,
+          "count": 167782
+        },
+        {
+          "label": "30 - 59 Days",
+          "balance": 20634591.0,
+          "count": 203
+        },
+        {
+          "label": "60 - 89 Days",
+          "balance": 17035061.0,
+          "count": 170
+        },
+        {
+          "label": "90 - 179 Days",
+          "balance": 9998642.0,
+          "count": 101
+        },
+        {
+          "label": "180 - 365 Days",
+          "balance": 21736478.0,
+          "count": 206
+        },
+        {
+          "label": "Defaulted (>12M)",
+          "balance": 25036853.0,
+          "count": 250
+        }
+      ]
+    },
+    "province": {
+      "cited": "section Geography Region (p20)",
+      "buckets": [
+        {
+          "label": "Andalucía",
+          "balance": 1838271691.0,
+          "count": 25108
+        },
+        {
+          "label": "Aragón",
+          "balance": 238806326.0,
+          "count": 3118
+        },
+        {
+          "label": "Baleares",
+          "balance": 561786588.0,
+          "count": 4841
+        },
+        {
+          "label": "Canarias",
+          "balance": 706085809.0,
+          "count": 8727
+        },
+        {
+          "label": "Cantabria",
+          "balance": 102752222.0,
+          "count": 1408
+        },
+        {
+          "label": "Castilla la Mancha",
+          "balance": 462889584.0,
+          "count": 5619
+        },
+        {
+          "label": "Castilla y León",
+          "balance": 322745831.0,
+          "count": 4549
+        },
+        {
+          "label": "Cataluña",
+          "balance": 4581473401.0,
+          "count": 42388
+        },
+        {
+          "label": "Ceuta",
+          "balance": 983161.0,
+          "count": 14
+        },
+        {
+          "label": "Extremadura",
+          "balance": 53776.0,
+          "count": 1
+        },
+        {
+          "label": "Galicia",
+          "balance": 235992580.0,
+          "count": 3271
+        },
+        {
+          "label": "La Rioja",
+          "balance": 43533648.0,
+          "count": 548
+        },
+        {
+          "label": "Madrid",
+          "balance": 4396824203.0,
+          "count": 43659
+        },
+        {
+          "label": "Melilla",
+          "balance": 1333679.0,
+          "count": 18
+        },
+        {
+          "label": "Murcia",
+          "balance": 257654291.0,
+          "count": 3664
+        },
+        {
+          "label": "Navarra",
+          "balance": 40080900.0,
+          "count": 434
+        },
+        {
+          "label": "Pais Vasco",
+          "balance": 154703584.0,
+          "count": 1805
+        },
+        {
+          "label": "Principado de Asturias",
+          "balance": 96097902.0,
+          "count": 1464
+        },
+        {
+          "label": "Valencia",
+          "balance": 1383006049.0,
+          "count": 18073
+        },
+        {
+          "label": "Blank",
+          "balance": 492836.0,
+          "count": 3
+        }
+      ]
+    },
+    "rate_type": {
+      "cited": "section Interest Type (p11)",
+      "shares_pct": {
+        "Fixed": 49.91,
+        "Floating": 50.09
+      }
+    }
+  },
+  "absent": [
+    {
+      "canonical_column": "epc_label",
+      "rts_code": "RREL17",
+      "reason": "The Monthly Investor Report publishes no energy-performance stratification; the Dutch Portfolio and Performance Report does."
+    },
+    {
+      "canonical_column": "property_type",
+      "rts_code": "RREL16",
+      "reason": "The Monthly Investor Report stratifies by loan product and occupancy, neither of which is the property's type."
+    }
+  ],
+  "notes": [
+    "arrears_bucket carries the tape's closed vocabulary, not the report's own words: the normaliser reads only '<29d', '180+d' and default_crr_flag, so the report's finer buckets are mapped (see ARREARS_MAP) and the report bucket's own lower bound is preserved in days_in_arrears.",
+    "Only the aggregates under 'fitted' and the distributions under 'distributions' are fitted. Per-loan dispersion within a bucket is generated, not published, and no figure computed from it is evidence about the real pool."
+  ]
+}

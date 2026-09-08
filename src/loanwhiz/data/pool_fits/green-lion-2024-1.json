@@ -1,0 +1,273 @@
+{
+  "format_version": 1,
+  "deal_id": "green-lion-2024-1",
+  "deal_name": "Green Lion 2024-1 B.V.",
+  "source": {
+    "family": "dutch_portfolio_performance",
+    "period": "April 2026",
+    "url": "https://ing.com/binaries/content/assets/documents/fixed-income-bank/monthly-investor-report-green-lion-2024-1-april-2026.pdf"
+  },
+  "reporting_date": "2026-04-30",
+  "fitted": {
+    "loan_count": {
+      "value": 3316.0,
+      "unit": "loans",
+      "cited": "section 1 Key Characteristics (p7) · Number of loans"
+    },
+    "pool_balance_eur": {
+      "value": 1046875200.07,
+      "unit": "EUR",
+      "cited": "section 1 Key Characteristics (p7) · Net principal balance"
+    },
+    "wtd_coupon_pct": {
+      "value": 2.85,
+      "unit": "percent",
+      "cited": "section 1 Key Characteristics (p7) · Weighted average current interest rate"
+    },
+    "wtd_ltv_pct": {
+      "value": 72.05,
+      "unit": "percent",
+      "cited": "section 1 Key Characteristics (p7) · Weighted average CLTOMV"
+    },
+    "wtd_remaining_term_months": {
+      "value": 311.4,
+      "unit": "months",
+      "cited": "section 1 Key Characteristics (p7) · Weighted average maturity (in years), x12"
+    },
+    "wtd_seasoning_months": {
+      "value": 41.76,
+      "unit": "months",
+      "cited": "section 1 Key Characteristics (p7) · Weighted average seasoning (in years), x12"
+    }
+  },
+  "distributions": {
+    "arrears_bucket": {
+      "cited": "section 2 Delinquencies (p8)",
+      "buckets": [
+        {
+          "label": "Performing",
+          "balance": 1043083310.78,
+          "count": 6513
+        },
+        {
+          "label": "< 29 days",
+          "balance": 531689.93,
+          "count": 3
+        },
+        {
+          "label": "30 days - 59 days",
+          "balance": 0.0,
+          "count": 0
+        },
+        {
+          "label": "60 days - 89 days",
+          "balance": 323162.51,
+          "count": 1
+        },
+        {
+          "label": "90 days - 119 days",
+          "balance": 849293.04,
+          "count": 3
+        },
+        {
+          "label": "120 days - 149 days",
+          "balance": 0.0,
+          "count": 0
+        },
+        {
+          "label": "150 days - 179 days",
+          "balance": 252304.27,
+          "count": 4
+        },
+        {
+          "label": "180 days >",
+          "balance": 1835439.54,
+          "count": 5
+        }
+      ]
+    },
+    "epc_label": {
+      "cited": "section 21 Energy Performance Certificate (p28)",
+      "buckets": [
+        {
+          "label": "A++++",
+          "balance": 66571734.68,
+          "count": 184
+        },
+        {
+          "label": "A+++",
+          "balance": 202024781.52,
+          "count": 610
+        },
+        {
+          "label": "A++",
+          "balance": 66268135.16,
+          "count": 192
+        },
+        {
+          "label": "A+",
+          "balance": 125403523.86,
+          "count": 404
+        },
+        {
+          "label": "A",
+          "balance": 586306504.11,
+          "count": 1925
+        },
+        {
+          "label": "B",
+          "balance": 300520.74,
+          "count": 1
+        },
+        {
+          "label": "C",
+          "balance": 0.0,
+          "count": 0
+        },
+        {
+          "label": "D",
+          "balance": 0.0,
+          "count": 0
+        },
+        {
+          "label": "E",
+          "balance": 0.0,
+          "count": 0
+        },
+        {
+          "label": "F",
+          "balance": 0.0,
+          "count": 0
+        },
+        {
+          "label": "G",
+          "balance": 0.0,
+          "count": 0
+        },
+        {
+          "label": "Unknown",
+          "balance": 0.0,
+          "count": 0
+        }
+      ]
+    },
+    "property_type": {
+      "cited": "section 15 Property Description (p22)",
+      "buckets": [
+        {
+          "label": "House",
+          "balance": 790521361.9,
+          "count": 2312
+        },
+        {
+          "label": "Apartment",
+          "balance": 256353838.17,
+          "count": 1004
+        },
+        {
+          "label": "House / Business (< 50%)",
+          "balance": 0.0,
+          "count": 0
+        },
+        {
+          "label": "House / Business (> 50%)",
+          "balance": 0.0,
+          "count": 0
+        },
+        {
+          "label": "Business",
+          "balance": 0.0,
+          "count": 0
+        },
+        {
+          "label": "Other",
+          "balance": 0.0,
+          "count": 0
+        }
+      ]
+    },
+    "province": {
+      "cited": "section 16 Geographical Distribution (by province) (p23)",
+      "buckets": [
+        {
+          "label": "Drenthe",
+          "balance": 23171524.04,
+          "count": 88
+        },
+        {
+          "label": "Flevoland",
+          "balance": 92023814.81,
+          "count": 294
+        },
+        {
+          "label": "Friesland",
+          "balance": 21554030.37,
+          "count": 85
+        },
+        {
+          "label": "Gelderland",
+          "balance": 91118788.56,
+          "count": 316
+        },
+        {
+          "label": "Groningen",
+          "balance": 23026769.21,
+          "count": 91
+        },
+        {
+          "label": "Limburg",
+          "balance": 17608485.56,
+          "count": 70
+        },
+        {
+          "label": "Noord-Brabant",
+          "balance": 123190039.63,
+          "count": 389
+        },
+        {
+          "label": "Noord-Holland",
+          "balance": 220353289.12,
+          "count": 629
+        },
+        {
+          "label": "Overijssel",
+          "balance": 42659232.08,
+          "count": 143
+        },
+        {
+          "label": "Utrecht",
+          "balance": 93880271.12,
+          "count": 280
+        },
+        {
+          "label": "Zeeland",
+          "balance": 13894112.9,
+          "count": 51
+        },
+        {
+          "label": "Zuid-Holland",
+          "balance": 284394842.67,
+          "count": 880
+        },
+        {
+          "label": "Unknown / Not specified",
+          "balance": 0.0,
+          "count": 0
+        }
+      ]
+    },
+    "rate_type": {
+      "cited": "section 14 Interest Payment Type (p21)",
+      "shares_pct": {
+        "Fixed": 99.91,
+        "Floating": 0.09
+      }
+    }
+  },
+  "absent": [],
+  "notes": [
+    "arrears_bucket carries the tape's closed vocabulary, not the report's own words: the normaliser reads only '<29d', '180+d' and default_crr_flag, so the report's finer buckets are mapped (see ARREARS_MAP) and the report bucket's own lower bound is preserved in days_in_arrears.",
+    "Only the aggregates under 'fitted' and the distributions under 'distributions' are fitted. Per-loan dispersion within a bucket is generated, not published, and no figure computed from it is evidence about the real pool.",
+    "The Dutch report counts Delinquencies by loanpart and Property/EPC/province by loan, so only the balance column of each distribution is comparable across tables; the generated tape is loan-level and is fitted on balance."
+  ]
+}

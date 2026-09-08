@@ -1,0 +1,124 @@
+{
+  "format_version": 1,
+  "deal_id": "leone-arancio-2023-1",
+  "deal_name": "Leone Arancio RMBS 2023-1 S.r.l.",
+  "source": {
+    "family": "iberian_monthly",
+    "period": "May 2026",
+    "url": "https://ing.com/binaries/content/assets/documents/fixed-income-bank/monthly-investor-report-leone-arancio-rmbs-s.r.l-may-2026.pdf"
+  },
+  "reporting_date": "2026-03-31",
+  "fitted": {
+    "loan_count": {
+      "value": 69846.0,
+      "unit": "loans",
+      "cited": "section 1 Summary (p3) · Number of Loans"
+    },
+    "pool_balance_eur": {
+      "value": 6413454745.03,
+      "unit": "EUR",
+      "cited": "section 1 Summary (p3) · Of which Active Outstanding Notional Amount"
+    },
+    "wtd_coupon_pct": {
+      "value": 3.88,
+      "unit": "percent",
+      "cited": "section 1 Summary (p3) · Coupon: Weighted Average"
+    },
+    "wtd_ltv_pct": {
+      "value": 51.83,
+      "unit": "percent",
+      "cited": "section 1 Summary (p3) · Weighted Average Loan to Market Value"
+    },
+    "wtd_remaining_term_months": {
+      "value": 248.32,
+      "unit": "months",
+      "cited": "section 1 Summary (p3) · Remaining Tenor (months): Weighted Average"
+    },
+    "wtd_seasoning_months": {
+      "value": 71.17,
+      "unit": "months",
+      "cited": "section 1 Summary (p3) · Seasoning (months): Weighted Average"
+    }
+  },
+  "distributions": {
+    "arrears_bucket": {
+      "cited": "section Arrears (p25)",
+      "buckets": [
+        {
+          "label": "No Arrears",
+          "balance": 6308410227.0,
+          "count": 68796
+        },
+        {
+          "label": "30 - 59 Days",
+          "balance": 47030461.0,
+          "count": 481
+        },
+        {
+          "label": "90 - 179 Days",
+          "balance": 17163442.0,
+          "count": 177
+        },
+        {
+          "label": "180 - 365 Days",
+          "balance": 11582828.0,
+          "count": 116
+        },
+        {
+          "label": "Defaulted (>12M)",
+          "balance": 16579068.0,
+          "count": 157
+        },
+        {
+          "label": "Payment Holiday",
+          "balance": 12688719.0,
+          "count": 119
+        }
+      ]
+    },
+    "province": {
+      "cited": "section Geography Region (p11)",
+      "buckets": [
+        {
+          "label": "Central Italy",
+          "balance": 1548332191.0,
+          "count": 16183
+        },
+        {
+          "label": "Northern Italy",
+          "balance": 2821482972.0,
+          "count": 30331
+        },
+        {
+          "label": "Southern Italy",
+          "balance": 2043639582.0,
+          "count": 23332
+        }
+      ]
+    },
+    "rate_type": {
+      "cited": "section Interest Type (p10)",
+      "shares_pct": {
+        "Fixed": 74.36,
+        "Floating": 25.64
+      }
+    }
+  },
+  "absent": [
+    {
+      "canonical_column": "epc_label",
+      "rts_code": "RREL17",
+      "reason": "The Monthly Investor Report publishes no energy-performance stratification; the Dutch Portfolio and Performance Report does."
+    },
+    {
+      "canonical_column": "property_type",
+      "rts_code": "RREL16",
+      "reason": "The Monthly Investor Report stratifies by loan product and occupancy, neither of which is the property's type."
+    }
+  ],
+  "notes": [
+    "arrears_bucket carries the tape's closed vocabulary, not the report's own words: the normaliser reads only '<29d', '180+d' and default_crr_flag, so the report's finer buckets are mapped (see ARREARS_MAP) and the report bucket's own lower bound is preserved in days_in_arrears.",
+    "Only the aggregates under 'fitted' and the distributions under 'distributions' are fitted. Per-loan dispersion within a bucket is generated, not published, and no figure computed from it is evidence about the real pool.",
+    "Payment Holiday (0.198% of balance, 119 loans, section Arrears (p25)) sits outside the report's days-past-due ladder. The tape's arrears vocabulary cannot express forbearance, so these loans are written as Performing; the report does not state them as in arrears."
+  ]
+}
