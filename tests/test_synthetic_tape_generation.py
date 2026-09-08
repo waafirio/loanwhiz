@@ -247,3 +247,24 @@ def test_the_tape_carries_no_column_its_fit_spec_declares_absent(deal_id):
             assert "rate_type" in columns
         else:
             assert column in columns or column == "arrears_bucket"
+
+
+@pytest.mark.parametrize("deal_id", DEAL_IDS)
+def test_the_registry_points_at_the_tape_the_generator_writes(deal_id):
+    """The registered identifier and the generator's filename must agree.
+
+    They are produced in two places — ``deals.json`` by hand, the file by the
+    script — so a regenerated tape under a new reporting period would leave the
+    registry pointing at the old name. That fails loudly at load today, but only
+    for someone who runs it; this pins the pair.
+    """
+    from loanwhiz.config import DEAL_REGISTRY
+
+    spec = _spec(deal_id)
+    registered = [tape["url"] for tape in DEAL_REGISTRY[deal_id]["tape_urls"]]
+
+    assert registered == [generator.registered_url(spec)]
+    assert generator.tape_filename(spec) in registered[0]
+    assert "synthetic" in generator.tape_filename(spec), (
+        "the registry census in test_tape_provenance keys off the filename"
+    )

@@ -98,20 +98,6 @@ def _seed(deal_id: str) -> int:
 # ---------------------------------------------------------------------------
 
 
-def draw_balances(rng: np.random.Generator, count: int, total: float) -> np.ndarray:
-    """Draw *count* loan balances summing to *total* to the cent.
-
-    Rescaled and then cent-rounded, with the rounding residual absorbed by the
-    largest loan — so the pool balance the report states is reproduced exactly
-    rather than approximately.
-    """
-    raw = rng.lognormal(mean=0.0, sigma=_BALANCE_SIGMA, size=count)
-    scaled = raw / raw.sum() * total
-    rounded = np.round(scaled, 2)
-    rounded[int(np.argmax(rounded))] += round(total - rounded.sum(), 2)
-    return rounded
-
-
 def draw_weighted(
     rng: np.random.Generator,
     balances: np.ndarray,
