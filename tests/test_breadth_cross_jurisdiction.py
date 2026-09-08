@@ -31,7 +31,9 @@ from __future__ import annotations
 
 import pytest
 
-from loanwhiz.api.main import _load_cached_deal_model, _VALIDATION_BUILDERS
+from loanwhiz.api.main import _load_cached_deal_model
+from loanwhiz.primitives.quality_harness import _default_series_provider
+from loanwhiz.primitives.reconciliation_answer_key import load_answer_key
 from loanwhiz.config import DEAL_REGISTRY
 from loanwhiz.primitives.capability_matrix import (
     STATE_NOT_APPLICABLE,
@@ -76,7 +78,8 @@ def matrix():
     return build_capability_matrix(
         DEAL_REGISTRY,
         seed_loader=_load_cached_deal_model,
-        validators=_VALIDATION_BUILDERS,
+        answer_key_loader=load_answer_key,
+        series_provider=_default_series_provider(),
     )
 
 
@@ -236,8 +239,12 @@ def test_spanish_waterfall_executes_with_extracted_cascade(matrix):
 
 
 def test_breadth_is_not_a_wall_of_green(matrix):
-    # The honest cross-jurisdiction story: exactly one validated cell, and more
-    # not-applicable than validated. Pins the same honesty headline the harness
-    # complements with live runs.
-    assert matrix.tally[STATE_VALIDATED] == 1
+    # The honest cross-jurisdiction story: validation is the exception, and every
+    # validated cell is one deal's engine reconciled to its own published PoP.
+    # Pins the same honesty headline the harness complements with live runs.
+    # Not a count (#492 makes it data-driven) — the SHAPE: refusals dominate, and
+    # only the externally-reconciled row can be green.
     assert matrix.tally[STATE_NOT_APPLICABLE] > matrix.tally[STATE_VALIDATED]
+    validated = [c for c in matrix.cells if c.state == STATE_VALIDATED]
+    assert {c.capability_key for c in validated} == {"engine_validation"}
+    assert len(validated) < len(matrix.deals), "no deal-wide wall of green"

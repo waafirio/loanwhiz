@@ -18,15 +18,27 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
+from functools import lru_cache
 from fastapi.testclient import TestClient
 
 from loanwhiz.api import app
-from loanwhiz.api.main import _load_cached_deal_model, _VALIDATION_BUILDERS
+from loanwhiz.api.main import _load_cached_deal_model
 from loanwhiz.config import DEAL_REGISTRY
 from loanwhiz.extraction.assembler import DealModel
 from loanwhiz.domain.tape_provenance import TapeSourceKind
+from loanwhiz.primitives.quality_harness import _default_series_provider
+from loanwhiz.primitives.reconciliation_answer_key import (
+    AnswerKeyPeriod,
+    AnswerKeyPopStep,
+    CovenantResult,
+    DealAnswerKey,
+    load_answer_key,
+)
 from loanwhiz.primitives.capability_matrix import (
     ENGINE_STRUCTURAL_CONFIG_KEYS,
+    _NO_ANSWER_KEY,
+    _NO_ENGINE_SERIES,
+    _NO_POP_SECTION,
     STATE_NOT_APPLICABLE,
     STATE_RAN,
     STATE_VALIDATED,
@@ -38,6 +50,10 @@ from loanwhiz.primitives.capability_matrix import (
 
 client = TestClient(app)
 
+#: The closed set of engine-validation refusals — imported, never transcribed, so
+#: a reworded reason cannot silently pass a test asserting the old sentence.
+_REFUSAL_VOCABULARY = frozenset({_NO_ANSWER_KEY, _NO_POP_SECTION, _NO_ENGINE_SERIES})
+
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -45,12 +61,61 @@ client = TestClient(app)
 
 
 def _real_matrix() -> CapabilityMatrix:
-    """Build the matrix over the real registry + committed seeds + builders."""
+    """Build the matrix over the real registry + committed seeds + answer keys."""
     return build_capability_matrix(
         DEAL_REGISTRY,
         seed_loader=_load_cached_deal_model,
-        validators=_VALIDATION_BUILDERS,
+        answer_key_loader=load_answer_key,
+        series_provider=_default_series_provider(),
     )
+
+
+def _no_answer_keys(_ctx):
+    """Answer-key loader that resolves nothing — the "no committed key" branch."""
+    return None
+
+
+def _no_series(_deal_id, _ctx, _model):
+    """Series provider that registers no deal — the "no engine series" branch."""
+    return None
+
+
+def _fake_answer_key(deal_id: str, deal_name: str, *, pop: bool) -> DealAnswerKey:
+    """A committed-shaped key, with or without a Priority-of-Payments section.
+
+    ``pop=False`` is the real Cairn CLO XVII shape (#481): a genuine key authored
+    from published coverage-test outcomes, carrying covenants and deliberately no
+    PoP. It must not be mistaken for engine-validation ground truth.
+    """
+    return DealAnswerKey(
+        deal_id=deal_id,
+        deal_name=deal_name,
+        periods=[
+            AnswerKeyPeriod(
+                reporting_date="2025-03-31",
+                period_label="March 2025",
+                available_revenue_funds=1_000.0 if pop else None,
+                revenue_pop=(
+                    [AnswerKeyPopStep(priority="(a)", amount=1_000.0)] if pop else []
+                ),
+                covenants=[] if pop else [CovenantResult(name="par_coverage", passed=True)],
+            )
+        ],
+    )
+
+
+@lru_cache(maxsize=1)
+def _committed_key_and_series():
+    """Green Lion 2024-1's committed answer key + committed offline engine series.
+
+    The real reconciling pair, reused under *synthetic* deal ids so a test can
+    prove the validated cell follows the injected data rather than any deal id.
+    Cached because the fold is the expensive part.
+    """
+    from loanwhiz.primitives.reconciler import fold_green_lion_2024_1
+
+    series, _ = fold_green_lion_2024_1()
+    return load_answer_key("Green Lion 2024-1 B.V."), series
 
 
 def _cell(matrix: CapabilityMatrix, deal_id: str, capability_key: str):
@@ -125,16 +190,55 @@ def test_matrix_is_not_a_wall_of_green() -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_green_lion_2024_1_engine_validation_is_validated_and_unique() -> None:
-    matrix = _real_matrix()
-    cell = _cell(matrix, "green-lion-2024-1", "engine_validation")
+def test_green_lion_2024_1_engine_validation_survives_the_answer_key_swap() -> None:
+    """The #492 regression: 2024-1's cell is unchanged by the move off builders.
+
+    Its state, confidence and every evidence value are re-derived here from the
+    committed answer key rather than from ``validate_green_lion_2024_1``, so an
+    identical cell is what proves the swap behaviour-preserving.
+    """
+    cell = _cell(_real_matrix(), "green-lion-2024-1", "engine_validation")
     assert cell.state == STATE_VALIDATED
-    assert cell.evidence.detail.get("passed") is True
-    assert cell.evidence.detail.get("tolerance_eur") == pytest.approx(0.01)
-    # It is the ONLY validated cell — the single externally-reconciled proof.
-    validated = [c for c in matrix.cells if c.state == STATE_VALIDATED]
-    assert len(validated) == 1
-    assert validated[0].deal_id == "green-lion-2024-1"
+    assert cell.evidence.confidence == pytest.approx(1.0)
+    assert cell.evidence.detail == {
+        "passed": True,
+        "periods_checked": 3,
+        "periods_passed": 3,
+        "tolerance_eur": pytest.approx(0.01),
+    }
+    assert "reconciled to the cent" in cell.evidence.citation
+
+
+def test_validated_is_exactly_the_deals_carrying_committed_pop_ground_truth() -> None:
+    """``validated`` is a property of committed data, not of a curated list (#492).
+
+    The honest cross-deal story is still not a wall of green — most cells remain
+    not-applicable — but the set that IS validated must be *derivable*: exactly
+    the registered deals with a committed answer key carrying a
+    Priority-of-Payments section AND a committed offline engine series. Asserting
+    the set rather than a count is what keeps this true as deals are registered.
+    """
+    matrix = _real_matrix()
+    series_provider = _default_series_provider()
+
+    expected = set()
+    for deal_id, ctx in DEAL_REGISTRY.items():
+        key = load_answer_key(ctx)
+        if key is None or not any(p.revenue_pop or p.redemption_pop for p in key.periods):
+            continue
+        if series_provider(deal_id, ctx, None) is None:
+            continue
+        expected.add(deal_id)
+
+    validated = {c.deal_id for c in matrix.cells if c.state == STATE_VALIDATED}
+    assert validated == expected
+    assert "green-lion-2024-1" in validated, "the headline proof must not regress"
+    # Still the minority story, never a wall of green (#193).
+    assert matrix.tally[STATE_NOT_APPLICABLE] > matrix.tally[STATE_VALIDATED]
+    # Only the engine-validation row can reach it.
+    assert {c.capability_key for c in matrix.cells if c.state == STATE_VALIDATED} == {
+        "engine_validation"
+    }
 
 
 def test_green_lion_2026_1_synthetic_runs_most_primitives() -> None:
@@ -232,16 +336,13 @@ def _fake_model(*, triggers: int, waterfall_steps: int, completeness: float) -> 
 
 
 def test_runner_applicability_is_data_driven_not_hardcoded() -> None:
-    # A synthetic deal WITH tapes + full model + a validation builder: every
-    # capability is live, and engine validation is validated.
+    # A synthetic deal WITH tapes + full model + a committed answer key and
+    # engine series: every capability is live, and engine validation is
+    # validated. The key/series pair is Green Lion 2024-1's real committed data
+    # supplied under the deal id "rich", so reaching `validated` proves the
+    # classifier reads the injected data and holds no deal id of its own (#492).
     full_model = _fake_model(triggers=3, waterfall_steps=11, completeness=0.9)
-
-    class _Report:
-        passed = True
-        deal_name = "Fake Deal"
-        periods_checked = 2
-        periods_passed = 2
-        tolerance_eur = 0.01
+    committed_key, committed_series = _committed_key_and_series()
 
     deals = {
         "rich": {
@@ -270,7 +371,10 @@ def test_runner_applicability_is_data_driven_not_hardcoded() -> None:
     matrix = build_capability_matrix(
         deals,
         seed_loader=loader,
-        validators={"rich": lambda: _Report()},
+        answer_key_loader=lambda ctx: committed_key if ctx.get("tape_urls") else None,
+        series_provider=lambda deal_id, ctx, model: (
+            committed_series if deal_id == "rich" else None
+        ),
     )
 
     # Rich deal: everything runs; engine validation is validated.
@@ -281,7 +385,7 @@ def test_runner_applicability_is_data_driven_not_hardcoded() -> None:
     assert rich["collateral_reconciliation"].state == STATE_RAN
     assert rich["engine_validation"].state == STATE_VALIDATED
 
-    # Bare deal: no model, no tapes, no builder → all not-applicable with reasons.
+    # Bare deal: no model, no tapes, no answer key → all not-applicable with reasons.
     bare = {c.capability_key: c for c in matrix.cells if c.deal_id == "bare"}
     assert all(c.state == STATE_NOT_APPLICABLE for c in bare.values())
     assert all(c.reason.strip() for c in bare.values())
@@ -292,25 +396,29 @@ def test_runner_applicability_is_data_driven_not_hardcoded() -> None:
     assert juris["bare"] == "Netherlands"
 
 
-def test_runner_validated_requires_passing_builder() -> None:
-    # A builder that does NOT pass must not produce a validated cell.
-    full_model = _fake_model(triggers=1, waterfall_steps=4, completeness=0.5)
+def test_runner_validated_requires_a_reconciliation_that_passes() -> None:
+    """A key the engine does NOT reproduce yields ``ran``, never ``validated``.
 
-    class _Failing:
-        passed = False
-        deal_name = "Fake Deal"
-        periods_checked = 1
-        periods_passed = 0
-        tolerance_eur = 0.01
+    Perturbs one published amount in the committed key by EUR 1_000 and reconciles
+    the *real* engine series against it, so the ``ran`` branch is reached through
+    the same to-the-cent reconciler the passing branch uses — not a stubbed report
+    asserting its own verdict.
+    """
+    full_model = _fake_model(triggers=1, waterfall_steps=4, completeness=0.5)
+    committed_key, committed_series = _committed_key_and_series()
+    perturbed = committed_key.model_copy(deep=True)
+    perturbed.periods[0].revenue_pop[0].amount += 1_000.0
 
     matrix = build_capability_matrix(
         {"d": {"deal_name": "Fake Deal", "tape_urls": []}},
         seed_loader=lambda ctx: full_model,
-        validators={"d": lambda: _Failing()},
+        answer_key_loader=lambda ctx: perturbed,
+        series_provider=lambda deal_id, ctx, model: committed_series,
     )
     cell = next(c for c in matrix.cells if c.capability_key == "engine_validation")
     assert cell.state == STATE_RAN  # ran but did not reconcile → not validated
     assert cell.state != STATE_VALIDATED
+    assert cell.evidence.detail["passed"] is False
 
 
 # ---------------------------------------------------------------------------
@@ -326,7 +434,9 @@ def test_capability_matrix_endpoint_returns_structured_matrix() -> None:
     assert len(body["deals"]) == len(DEAL_REGISTRY)
     assert len(body["cells"]) == len(body["capabilities"]) * len(body["deals"])
     # The endpoint surfaces the honest cross-jurisdiction story.
-    assert body["tally"]["validated"] == 1
+    # Re-derived from the matrix the endpoint serves, never transcribed (#441).
+    assert body["tally"] == _real_matrix().tally
+    assert body["tally"]["validated"] >= 1
     assert body["tally"]["not-applicable"] > body["tally"]["validated"]
     # Every cell over the wire carries a non-empty reason.
     assert all(c["reason"].strip() for c in body["cells"])
@@ -404,8 +514,13 @@ def test_engine_validation_never_claims_a_published_report_is_missing() -> None:
         cell = _cell(matrix, column.deal_id, "engine_validation")
         if cell.state == STATE_VALIDATED:
             continue
-        assert "No offline validation builder is committed" in cell.reason
-        assert cell.evidence.detail["has_validation_builder"] is False
+        # The reason names a committed artifact this repo can check for, and
+        # says so explicitly.
+        assert cell.reason in _REFUSAL_VOCABULARY, f"{column.deal_id}: {cell.reason!r}"
+        assert "not about what the deal publishes" in cell.reason
+        assert cell.evidence.detail["has_answer_key"] is (
+            load_answer_key(DEAL_REGISTRY[column.deal_id]) is not None
+        )
         # Neither overclaim, in the shapes each could return as.
         for overclaim in (
             "No published Notes & Cash",
@@ -416,12 +531,91 @@ def test_engine_validation_never_claims_a_published_report_is_missing() -> None:
             assert overclaim not in cell.reason, f"{column.deal_id}: {overclaim!r}"
 
 
-def test_engine_validation_reason_is_deal_agnostic() -> None:
-    """One verified statement, so no deal can be told a story true only of another."""
+def test_engine_validation_reasons_come_from_a_closed_verified_vocabulary() -> None:
+    """No deal may be told a story true only of another (#457/#471).
+
+    Before #492 there was one refusal, so this held trivially. A key-driven
+    classifier distinguishes three preconditions — no key, a key without a PoP
+    section, no engine series — and telling a deal the wrong one is exactly the
+    failure #471 records. The guard is therefore that every reason is drawn from
+    the closed vocabulary AND matches the condition that actually holds, not that
+    there is only one of them.
+    """
     matrix = _real_matrix()
-    cells = [c for c in matrix.cells if c.capability_key == "engine_validation"]
-    reasons = {c.reason for c in cells if c.state != STATE_VALIDATED}
-    assert len(reasons) == 1
+    for cell in matrix.cells:
+        if cell.capability_key != "engine_validation" or cell.state == STATE_VALIDATED:
+            continue
+        key = load_answer_key(DEAL_REGISTRY[cell.deal_id])
+        if key is None:
+            expected = _NO_ANSWER_KEY
+        elif not any(p.revenue_pop or p.redemption_pop for p in key.periods):
+            expected = _NO_POP_SECTION
+        else:
+            expected = _NO_ENGINE_SERIES
+        assert cell.reason == expected, cell.deal_id
+
+
+def test_a_key_without_a_priority_of_payments_section_is_not_ground_truth() -> None:
+    """Cairn's real shape (#481): a genuine key carrying covenants and no PoP.
+
+    It grades a `covenants` row on /quality-matrix and must still refuse here,
+    with the reason that names *which* input is missing — never the no-key one.
+    """
+    key = _fake_answer_key("cairn-clo-xvii", "Cairn CLO XVII DAC", pop=False)
+    _, committed_series = _committed_key_and_series()
+    matrix = build_capability_matrix(
+        {"cairn-clo-xvii": {"deal_name": "Cairn CLO XVII DAC", "tape_urls": []}},
+        seed_loader=lambda ctx: None,
+        answer_key_loader=lambda ctx: key,
+        series_provider=lambda deal_id, ctx, model: committed_series,
+    )
+    cell = _cell(matrix, "cairn-clo-xvii", "engine_validation")
+    assert cell.state == STATE_NOT_APPLICABLE
+    assert cell.reason == _NO_POP_SECTION
+    assert cell.evidence.detail == {"has_answer_key": True, "has_pop_section": False}
+
+
+def test_a_pop_bearing_key_without_an_engine_series_refuses_on_the_series() -> None:
+    """The #440 half nobody sees until it bites: a key alone grades nothing.
+
+    A committed PoP-bearing key with no registered offline fold must say the
+    series is what is missing — the deal HAS published ground truth here, so the
+    no-key reason would be false of it.
+    """
+    key = _fake_answer_key("future-deal", "Future Deal 2027-1 B.V.", pop=True)
+    matrix = build_capability_matrix(
+        {"future-deal": {"deal_name": "Future Deal 2027-1 B.V.", "tape_urls": []}},
+        seed_loader=lambda ctx: None,
+        answer_key_loader=lambda ctx: key,
+        series_provider=_no_series,
+    )
+    cell = _cell(matrix, "future-deal", "engine_validation")
+    assert cell.state == STATE_NOT_APPLICABLE
+    assert cell.reason == _NO_ENGINE_SERIES
+    assert cell.evidence.detail == {
+        "has_answer_key": True,
+        "has_pop_section": True,
+        "has_engine_series": False,
+    }
+
+
+def test_no_deal_id_is_hardcoded_in_the_engine_validation_classifier() -> None:
+    """Withdraw the committed data and the headline proof goes with it (#492).
+
+    ``validated`` must be earned by the injected key + series, so the same real
+    registry with no answer keys must reach it for nobody. This is the falsifier
+    for "the cell is data-driven": a residual hardcode would survive this.
+    """
+    matrix = build_capability_matrix(
+        DEAL_REGISTRY,
+        seed_loader=_load_cached_deal_model,
+        answer_key_loader=_no_answer_keys,
+        series_provider=_default_series_provider(),
+    )
+    assert matrix.tally[STATE_VALIDATED] == 0
+    for cell in matrix.cells:
+        if cell.capability_key == "engine_validation":
+            assert cell.reason == _NO_ANSWER_KEY
 
 
 def test_tape_reasons_do_not_overclaim_that_no_loan_level_data_exists() -> None:
@@ -540,7 +734,8 @@ def test_cairn_cells_revert_when_the_derived_tape_is_deregistered() -> None:
     matrix = build_capability_matrix(
         {"cairn-clo-xvii": ctx},
         seed_loader=_load_cached_deal_model,
-        validators=_VALIDATION_BUILDERS,
+        answer_key_loader=load_answer_key,
+        series_provider=_default_series_provider(),
     )
     for capability_key in ("tape_analytics", "collateral_reconciliation"):
         cell = _cell(matrix, "cairn-clo-xvii", capability_key)
