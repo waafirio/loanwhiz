@@ -1,7 +1,7 @@
 ---
 id: 2026-09-08-clo-pop-validation
 title: "Validate the CLO: parse the Note Valuation Report's Priorities of Payments and reconcile the engine to the cent"
-status: draft
+status: decomposed
 created: 2026-09-08
 updated: 2026-09-08
 epics: []
