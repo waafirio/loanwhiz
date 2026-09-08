@@ -105,6 +105,7 @@ from loanwhiz.primitives.notes_cash_parser import NotesCashPeriod, NotesCashRepo
 from loanwhiz.primitives.period_state_machine import (
     DealStateSeries,
     PeriodInput,
+    published_rate_inputs,
     reconstruct_period_series,
     run_period,
 )
@@ -2274,6 +2275,41 @@ def _report_coupon_pct(report: NotesCashReport) -> float:
     return _period_coupon_pct(report.periods[0]) if report.periods else 0.0
 
 
+def _report_period_rates(period: NotesCashPeriod) -> dict[str, float]:
+    """The per-tranche coupon inputs for ONE report period — published rate first.
+
+    Two sources, in that order of trust:
+
+    - **the rate the report publishes** for each class this period
+      (``NoteClassBalance.interest_rate_applied``; a CLO Note Valuation Report
+      prints one per class in its Distribution Summary). It is a deal input read
+      straight off the document, and it is the only thing that lets a class
+      whose prospectus coupon is a floating margin accrue at all — the
+      capital structure rightly refuses to coerce ``"3 month EURIBOR + 1.80%"``
+      into a number, so without it the class reaches
+      ``_make_tranche_interest_need`` with nothing to accrue and is refused
+      (#493). What is never read is the report's *distributed amount*: the rate
+      is an input, the amount is the answer being checked.
+    - **Class A's rate recovered** from the report's own interest and balance
+      (:func:`_period_coupon_pct`) — an RMBS Notes & Cash report prints no rate
+      column at all, so Green Lion has nothing else to go on. It is a fallback,
+      never an override: a published rate always wins, so a deal that prints its
+      rates never has an amount-derived figure substituted for one.
+
+    Both halves are per period, because a floating class's applied rate moves
+    every payment date. A class the report publishes no rate for, and that is
+    not Class A, carries no key here — its coupon stays unresolved and its
+    interest need is reported ``not_evaluable`` rather than accrued as zero.
+    Cairn's Subordinated Notes are the live instance, and are excluded from the
+    committed answer key for the same reason.
+    """
+    rates = published_rate_inputs(
+        {b.note_class: b.interest_rate_applied for b in period.note_balances}
+    )
+    rates.setdefault("class_a_rate_pct", _period_coupon_pct(period))
+    return rates
+
+
 def _reconstruct_series_from_reports(deal_id: str, deal: dict) -> DealStateSeries:
     """Build the deal's ``DealStateSeries`` from its published reports (report path).
 
@@ -2439,8 +2475,11 @@ def fold_report_series(
 
     - the residual sweep step is flagged (``_report_step_specs``) so the revenue
       ``(k)`` line ties the pot out;
-    - the Class A coupon is recovered **per period** (the notes are floating-rate),
-      so each quarter's engine-computed Class A interest is exact.
+    - the coupon rates are resolved **per period** (:func:`_report_period_rates`),
+      because the notes are floating-rate: a report that publishes its applied
+      rates supplies one per class, and Class A's is recovered from the report's
+      own interest and balance where it does not. Either way each quarter's
+      engine-computed note interest is that quarter's, never the deal's first.
 
     No Green-Lion-2026-1 constant is consulted — the seed and the rates both come
     from the report.
@@ -2453,7 +2492,7 @@ def fold_report_series(
     period_results = []
     current = seed
     for period_inputs, report_period in zip(inputs, report.periods):
-        rates = {"class_a_rate_pct": _period_coupon_pct(report_period)}
+        rates = _report_period_rates(report_period)
         result = run_period(
             current,
             period_inputs,
