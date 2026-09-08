@@ -59,6 +59,17 @@ _COUPONLESS_STRUCTURE = {
 }
 
 
+#: A deal that resolves its structural config and declares no base — the only
+#: shape that reaches the Green Lion fallback guard. No registered deal has it
+#: (see ``TestRefusalNotFallback``), so the registry-wide sweeps need it supplied.
+_SELF_CONFIGURED_NO_BASE = {
+    "capital_structure": _RESOLVED_STRUCTURE,
+    "reserve_account_target": 5_000_000.0,
+    "original_pool_balance": 500_000_000.0,
+    "tape_urls": [],
+}
+
+
 def _deal(**extra) -> dict:
     deal = {
         "deal_name": "Sponsor Deal 2025-1 B.V.",
@@ -301,16 +312,28 @@ class TestTheDerivationReproducesTheDeclaredValue:
 
 class TestRefusalNotFallback:
     def test_no_non_green_lion_deal_ever_resolves_a_green_lion_figure(self) -> None:
-        """Asserted over every registered deal, so a future tier is covered too.
+        """No non-GL deal resolves a Green Lion figure — registry, plus one shape.
 
-        This is the guard on the whole change: adding a tier must not have made
-        any deal resolvable by quietly reaching Green Lion's numbers.
+        Swept over every registered deal so a future tier is covered by
+        construction. **The registry alone makes this vacuous**, which is the
+        #478 lesson landing on the test written to prevent it: every registered
+        non-GL deal either refuses at the structural config (the two older Green
+        Lions, the CLO — no resolved senior coupon) or declares its own
+        ``projection_base`` (leone-arancio, sol-lion-ii), so **none of them ever
+        reaches the Green Lion fallback guard**. Dropping that guard entirely
+        left this sweep green.
+
+        ``_SELF_CONFIGURED_NO_BASE`` is the missing shape — structural config it
+        resolves, no declared base — and it is what actually exercises the
+        guard. Keep it here rather than in its own test: the sweep is the
+        registry-wide claim, and a claim no member can falsify is not one.
         """
         green_lion_figures = {
             api_main._GREEN_LION_PROJECTION_BASE["current_pool_balance"],
             api_main._GREEN_LION_PROJECTION_BASE["class_a_rate_pct"],
         }
-        for deal_id, ctx in DEAL_REGISTRY.items():
+        deals = {**DEAL_REGISTRY, "sponsor-2025-1": _deal(**_SELF_CONFIGURED_NO_BASE)}
+        for deal_id, ctx in deals.items():
             if deal_id == _GREEN_LION_DEAL_ID:
                 continue
             ctx = dict(ctx)
