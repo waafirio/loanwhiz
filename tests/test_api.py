@@ -3525,19 +3525,33 @@ def test_no_inputs_deal_waterfall_returns_422_not_modelable():
     assert "not modelable" in resp.json()["detail"]
 
 
-def test_report_deal_without_committed_model_is_not_modelable():
-    """A report-listed deal with no committed model / offline loader is 422 (not 200 empty).
+def test_deal_with_neither_tape_nor_report_is_not_modelable():
+    """A deal the engine cannot cold-start is a labelled 422, not an empty cascade.
 
-    Leone Arancio has a ``notes_cash_report_urls`` list but no committed extracted
-    model and no offline report loader, so it cannot be cold-started in the request
-    path (we never fetch a PDF live) — surfaced honestly as not-modelable rather
-    than a silent empty cascade.
+    The deal is constructed rather than taken from the registry: Leone Arancio
+    used to be the live example, but #484 gave it a synthetic pool fitted to its
+    own investor report, so it now folds a ledger. The honest-degradation path
+    still has to be exercised, and a test that depended on some registered deal
+    happening to lack data would have stopped exercising it silently.
     """
     api_main._RECONSTRUCTION_MEMO.clear()
-    resp = client.get("/deal/leone-arancio-2023-1/waterfall")
+    with patch.dict(
+        api_main.DEALS, {"bare-deal": {"deal_name": "Bare B.V.", "tape_urls": []}}
+    ):
+        resp = client.get("/deal/bare-deal/waterfall")
+
     assert resp.status_code == 422
     assert "not modelable" in resp.json()["detail"]
 
+
+def test_leone_arancio_folds_a_ledger_from_its_synthetic_pool():
+    """The deal that used to be not-modelable now runs, with stated provenance."""
+    api_main._RECONSTRUCTION_MEMO.clear()
+    resp = client.get("/deal/leone-arancio-2023-1/waterfall")
+    assert resp.status_code == 200, resp.text
+
+    analytics = client.get("/deal/leone-arancio-2023-1/tape-analytics").json()
+    assert [period["data_source"] for period in analytics] == ["synthetic"]
 
 def test_green_lion_2024_1_cold_start_waterfall():
     """GL-2024-1 (no tape) cold-starts through /waterfall via the report path, offline.

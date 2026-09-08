@@ -16,6 +16,7 @@ rather than becoming not-modelable.
 
 from __future__ import annotations
 
+import json
 from copy import deepcopy
 from unittest.mock import patch
 
@@ -179,3 +180,59 @@ def test_a_missing_committed_tape_names_the_path_it_looked_for(tmp_path, monkeyp
     message = str(excinfo.value)
     assert "data/tapes/nope.csv" in message
     assert str(tmp_path) in message
+
+
+# ---------------------------------------------------------------------------
+# The registry's own committed tapes
+# ---------------------------------------------------------------------------
+
+
+def _registered_committed_tapes() -> list[tuple[str, str]]:
+    """Every registered tape whose identifier names a file inside this repo."""
+    from loanwhiz.domain.tape_provenance import underlying_url
+
+    found = []
+    for deal_id, deal in DEAL_REGISTRY.items():
+        for tape in deal.get("tape_urls") or []:
+            body = underlying_url(tape["url"])
+            if "://" not in body and not body.startswith("/"):
+                found.append((deal_id, tape["url"]))
+    return found
+
+
+def test_the_registry_holds_committed_tapes():
+    """Guards the two tests below against passing on an empty list."""
+    assert len(_registered_committed_tapes()) >= 4
+
+
+@pytest.mark.parametrize(
+    "deal_id,url", _registered_committed_tapes(), ids=lambda v: str(v)[:40]
+)
+def test_every_committed_tape_resolves_and_loads(deal_id, url, tmp_path, monkeypatch):
+    """From a foreign working directory, which is how the demo actually starts.
+
+    ``run-demo-v2.sh`` launches uvicorn without changing directory, and a tape
+    that failed to resolve would be swallowed by ``_tape_analytics_period`` and
+    disappear from the Pool page rather than raising.
+    """
+    monkeypatch.chdir(tmp_path)
+
+    frame, channel = esma_tape_normaliser._load_tape(url, None)
+
+    assert channel == "synthetic"
+    assert len(frame) > 0
+    assert "current_balance" in {column.lower() for column in frame.columns}
+
+
+@pytest.mark.parametrize(
+    "deal_id,url", _registered_committed_tapes(), ids=lambda v: str(v)[:40]
+)
+def test_every_committed_tape_has_its_analytics_seed(deal_id, url):
+    """#483: the seed is named ``sha256(tape_url)``, so a re-identified tape
+    orphans its seed and the offline demo silently drops that period."""
+    from loanwhiz.api.main import _tape_seed_path
+
+    seed = _tape_seed_path(url)
+    assert seed.exists(), f"{deal_id}: no committed seed for {url}"
+    payload = json.loads(seed.read_text(encoding="utf-8"))
+    assert payload["data_source"] == "synthetic"
