@@ -529,12 +529,18 @@ def test_clo_cannot_reach_validated_and_the_reason_is_the_missing_series() -> No
     ``_VALIDATION_BUILDERS``; the map survives only for
     ``GET /deal/{id}/validation``, and it must still refuse the CLO.
 
-    The *other* half of the refusal moved in #495. The cell used to say the
-    committed key carried no Priority-of-Payments section; it now does, so what
-    is missing is the offline engine series to reconcile it against (#496). This
-    asserts the reason that actually holds and asserts the retracted one is
-    **absent** — a cell that keeps the old wording is telling this deal a story
-    that stopped being true, which is exactly the #457/#471 failure.
+    The *other* half of the refusal has now moved twice, and the movement is the
+    point. Before epic #477 was merged in, this asserted no key was committed at
+    all; #481's key made that false, so it was re-founded on the premise that the
+    key carried **no Priority-of-Payments section** — explicitly "until one is
+    authored from the Note Valuation Report (#495)". #495 has authored one, so it
+    is re-founded once more, on the precondition that is now the one genuinely
+    missing: no offline engine series (#496).
+
+    Both the new premise and the retracted reason are asserted, because a cell
+    that keeps wording that stopped being true is telling this deal a story true
+    only of its past — the #457/#471 failure, and the reason this test has had to
+    move rather than be deleted each time.
     """
     from loanwhiz.api.main import _VALIDATION_BUILDERS
 
@@ -542,11 +548,20 @@ def test_clo_cannot_reach_validated_and_the_reason_is_the_missing_series() -> No
         STATE_NOT_APPLICABLE,
         _NO_ENGINE_SERIES,
         _NO_POP_SECTION,
+        _has_pop_section,
     )
     from loanwhiz.primitives.quality_harness import _default_series_provider
+    from loanwhiz.primitives.reconciliation_answer_key import load_answer_key
 
     assert CLO_DEAL_ID not in _VALIDATION_BUILDERS
-    # No offline fold is registered for this deal — the precondition #496 supplies.
+
+    # The premise the previous refusal rested on, now inverted: the key does
+    # carry a Priority-of-Payments section, so that reason no longer applies.
+    key = load_answer_key(DEAL_REGISTRY[CLO_DEAL_ID])
+    assert key is not None, "the CLO's answer key should be committed"
+    assert _has_pop_section(key), "#495 authored the PoP section this test rests on"
+
+    # And the precondition that is actually missing — #496 supplies it.
     assert (
         _default_series_provider()(CLO_DEAL_ID, DEAL_REGISTRY[CLO_DEAL_ID], None) is None
     )
