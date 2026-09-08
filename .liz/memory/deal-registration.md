@@ -15,6 +15,7 @@ absence with the *reason* — "published but not yet extracted" and "no such rep
 exists" are opposite findings that the same empty key would otherwise flatten.
 
 Refs: #455
+Refs: #484 — `tape_urls` is the same shape: it selects the series adapter.
 
 ## 2026-09-08 · pitfall · #483
 
