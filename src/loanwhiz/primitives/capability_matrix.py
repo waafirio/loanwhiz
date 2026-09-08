@@ -635,6 +635,14 @@ _NO_ENGINE_SERIES = (
     f"not been run against that ground truth here. {_VALIDATION_DISCLAIMER}"
 )
 
+#: A malformed key/series pair degrades this one cell rather than the endpoint.
+#: Unlike the three refusals above this reason carries the exception text, so it
+#: is a prefix rather than a fixed sentence.
+_RECONCILE_ERROR_PREFIX = (
+    "This deal's committed answer key and committed engine series could not be "
+    "reconciled — "
+)
+
 
 def _has_pop_section(answer_key: "DealAnswerKey") -> bool:
     """Does this key carry Priority-of-Payments ground truth to reconcile against?
@@ -717,7 +725,32 @@ def _classify_engine_validation(
 
     from loanwhiz.primitives.reconciliation_answer_key import reconcile_against_answer_key
 
-    report: ReconciliationReport = reconcile_against_answer_key(series, answer_key)
+    try:
+        report: ReconciliationReport = reconcile_against_answer_key(series, answer_key)
+    except Exception as exc:  # noqa: BLE001 — per-cell degradation, never a 500
+        # One deal's malformed pair must not sink the whole matrix. The commonest
+        # cause is a join mismatch — a key whose period count differs from the
+        # fold's — which `reconcile_series` raises on rather than grading a
+        # partial answer. Surface it as this cell's reason (the same per-cell
+        # degradation `quality_harness` uses) so the endpoint stays a 200 and the
+        # broken pair is named rather than hidden behind a stack trace.
+        return (
+            STATE_NOT_APPLICABLE,
+            f"{_RECONCILE_ERROR_PREFIX}{type(exc).__name__}: {exc} {_VALIDATION_DISCLAIMER}",
+            CellEvidence(
+                confidence=None,
+                citation=(
+                    f"Committed answer key for {answer_key.deal_name} could not be "
+                    "reconciled against this deal's committed engine series."
+                ),
+                detail={
+                    "has_answer_key": True,
+                    "has_pop_section": True,
+                    "has_engine_series": True,
+                    "reconcile_error": type(exc).__name__,
+                },
+            ),
+        )
     passed = report.passed
     return (
         STATE_VALIDATED if passed else STATE_RAN,

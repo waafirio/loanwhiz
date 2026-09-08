@@ -17,8 +17,9 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import pytest
 from functools import lru_cache
+
+import pytest
 from fastapi.testclient import TestClient
 
 from loanwhiz.api import app
@@ -26,19 +27,12 @@ from loanwhiz.api.main import _load_cached_deal_model
 from loanwhiz.config import DEAL_REGISTRY
 from loanwhiz.extraction.assembler import DealModel
 from loanwhiz.domain.tape_provenance import TapeSourceKind
-from loanwhiz.primitives.quality_harness import _default_series_provider
-from loanwhiz.primitives.reconciliation_answer_key import (
-    AnswerKeyPeriod,
-    AnswerKeyPopStep,
-    CovenantResult,
-    DealAnswerKey,
-    load_answer_key,
-)
 from loanwhiz.primitives.capability_matrix import (
     ENGINE_STRUCTURAL_CONFIG_KEYS,
     _NO_ANSWER_KEY,
     _NO_ENGINE_SERIES,
     _NO_POP_SECTION,
+    _RECONCILE_ERROR_PREFIX,
     STATE_NOT_APPLICABLE,
     STATE_RAN,
     STATE_VALIDATED,
@@ -46,6 +40,14 @@ from loanwhiz.primitives.capability_matrix import (
     _missing_structural_config,
     build_capability_matrix,
     capability_rows,
+)
+from loanwhiz.primitives.quality_harness import _default_series_provider
+from loanwhiz.primitives.reconciliation_answer_key import (
+    AnswerKeyPeriod,
+    AnswerKeyPopStep,
+    CovenantResult,
+    DealAnswerKey,
+    load_answer_key,
 )
 
 client = TestClient(app)
@@ -597,6 +599,32 @@ def test_a_pop_bearing_key_without_an_engine_series_refuses_on_the_series() -> N
         "has_pop_section": True,
         "has_engine_series": False,
     }
+
+
+def test_a_broken_key_series_pair_degrades_one_cell_not_the_endpoint() -> None:
+    """A malformed pair must not 500 the matrix — it refuses, naming the error.
+
+    Making the cell data-driven widened who can raise here: before #492 only a
+    registered builder could, and there was one. `reconcile_series` raises on a
+    join mismatch (a key whose period count differs from the fold's), which is
+    exactly what a freshly committed key gets wrong, so the whole matrix must not
+    depend on every committed pair being well-formed.
+    """
+    committed_key, committed_series = _committed_key_and_series()
+    short = committed_key.model_copy(deep=True)
+    del short.periods[1:]  # 1 key period vs the fold's 3 → join mismatch
+
+    matrix = build_capability_matrix(
+        {"d": {"deal_name": "Mismatched Deal", "tape_urls": []}},
+        seed_loader=lambda ctx: None,
+        answer_key_loader=lambda ctx: short,
+        series_provider=lambda deal_id, ctx, model: committed_series,
+    )
+    cell = _cell(matrix, "d", "engine_validation")
+    assert cell.state == STATE_NOT_APPLICABLE
+    assert cell.reason.startswith(_RECONCILE_ERROR_PREFIX)
+    assert "not about what the deal publishes" in cell.reason
+    assert cell.evidence.detail["reconcile_error"] == "ValueError"
 
 
 def test_no_deal_id_is_hardcoded_in_the_engine_validation_classifier() -> None:
