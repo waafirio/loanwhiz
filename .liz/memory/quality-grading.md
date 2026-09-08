@@ -16,6 +16,7 @@ same PR, then assert a `passed` cell; a key alone silently grades nothing.
 
 Refs: #440
 Refs: #492 — same pairing needed when the capability matrix left the builder map.
+Refs: #495 — committing a CLO's PoP key changed no cell's grade, only its reason.
 
 ## 2026-09-05 · pitfall · #457
 
@@ -73,3 +74,16 @@ where the grade is published. Apply the mutant that should NOT red alongside
 those that should — what a cell cannot detect is the honest half of the finding.
 
 Refs: #481
+
+## 2026-09-08 · pattern · #495
+
+When one entity's ground truth comes from **several documents**, give each
+document its own constructor and union them — never one reading both, or neither
+document's regressions have anything left to hold.
+
+Assert what each record may claim **per period, not per key**. A key-level "this
+key carries no Priority of Payments" stops covering anything the moment a second
+document supplies one; the per-period form gets *stricter*, because it also pins
+that the two documents stay unmixed.
+
+Refs: #495

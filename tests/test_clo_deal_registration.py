@@ -10,11 +10,13 @@ registered as *data*, not code, via ``src/loanwhiz/data/deals.json``, which
 **This began as registration only — no extraction (#456) and no engine wiring
 (#457)** — and these tests exist to pin what is *absent* as hard as what is
 present, so a later change that quietly fabricates a green cell for this deal
-reds here. Extraction (#456) and an answer key authored from the trustee reports'
-published coverage-test results (#481) have since landed, so some assertions here
-are now positive; the standard did not move, the evidence did. What is still
-absent and still pinned: no validation builder, no PoP ground truth, and no
-structural config invented for the deal.
+reds here. Extraction (#456), an answer key authored from the trustee reports'
+published coverage-test results (#481) and — since #495 — a Priority-of-Payments
+section authored from the Note Valuation Report have since landed, so some
+assertions here are now positive; the standard did not move, the evidence did.
+What is still absent and still pinned: no validation builder, no offline engine
+series to reconcile that PoP against, and no structural config invented for the
+deal.
 
 What the sourcing established, and what these tests pin
 -------------------------------------------------------
@@ -24,17 +26,18 @@ What the sourcing established, and what these tests pin
   Valuation Report (as-of 08/01/2025).
 * **The Note Valuation Report is the CLO analogue of an RMBS Notes & Cash
   report** — it is the only one of the five documents carrying both an *Interest
-  Priority of Payments* and a *Principal Priority of Payments*. It is nevertheless
-  **deliberately NOT registered under** ``notes_cash_report_urls`` yet: that key is
-  a *routing promise*, not a URL slot. ``_reconstruct_series`` dispatches on it and
+  Priority of Payments* and a *Principal Priority of Payments*. It was
+  **deliberately NOT registered under** ``notes_cash_report_urls`` until #495,
+  because that key is a *routing promise*, not a URL slot: ``_reconstruct_series``
+  dispatches on it and
   ``test_quality_harness.test_answer_keys_exist_exactly_where_published_ground_truth_does``
   treats its presence as an assertion that a **PoP-bearing** answer key exists.
-  Setting it with no parser for the CLO report format and no PoP ground truth would
-  assert a promise this deal cannot keep. #481 committed a key for this deal by the
-  other route — published coverage-test results, no Priority of Payments — which is
-  why that invariant now distinguishes the two. The NVR's URL is recorded in ``docs/data-card.md`` so
-  nothing has to be re-sourced, and ``NVR_URL_NOT_YET_REGISTERED`` below keeps the
-  omission deliberate and greppable rather than an oversight.
+  #481 committed a key by the *other* route — published coverage-test results, no
+  Priority of Payments — which is why that invariant distinguishes the two. #494
+  then parsed the report and #495 committed the PoP section, so the promise can
+  now be kept and the URL is registered. What the registration does **not** claim
+  is asserted just as hard: the deal still has no offline engine series, so
+  nothing has yet reconciled an engine cascade against that ground truth.
 * **No machine-readable loan tape exists**, so ``tape_urls`` is empty by design.
   Loan-level collateral detail *is* published — as PDF tables inside the trustee
   reports — but that is not an ESMA Annex tape and the normaliser cannot read it.
@@ -79,12 +82,35 @@ EURONEXT_DOC_HOST = (
 #: contiguous and nothing is interpolated to make it look complete.
 EXPECTED_REPORT_PERIODS = ["December 2024", "February 2025", "March 2025"]
 
-#: The Note Valuation Report (as-of 08/01/2025, 83pp) — sourced and verified
-#: obtainable, but **deliberately not registered** (see the module docstring).
-#: Held here so the finding is machine-visible and #456 need not re-source it.
-NVR_URL_NOT_YET_REGISTERED = (
-    EURONEXT_DOC_HOST + "202502/12423666-a060-4e34-b3e8-f5510297ac6f.pdf"
-)
+#: The Note Valuation Report (as-of 08/01/2025, 83pp), registered under
+#: ``notes_cash_report_urls`` since #495. Transcribed here independently of the
+#: registry so the assertion below compares the data file against a figure this
+#: test states, rather than against itself.
+NVR_URL = EURONEXT_DOC_HOST + "202502/12423666-a060-4e34-b3e8-f5510297ac6f.pdf"
+
+#: The period the Note Valuation Report covers. It is exactly the month the
+#: trustee-report series is missing, so the deal's two document sets cover
+#: disjoint reporting dates and nothing has to be reconciled across them.
+NVR_PERIOD = "January 2025"
+
+#: The Note Valuation Report's own ``As of: 08/01/2025``, transcribed here from
+#: the document rather than read from the parse. It is the genuinely ambiguous
+#: shape — ``08/01/2025`` is a valid date read either way round — so the key's
+#: reporting date for this period is worth checking against a figure stated by
+#: hand, exactly as the trustee periods are checked against the tape dates.
+NVR_AS_OF = "2025-01-08"
+
+#: Every period the committed answer key carries, in reporting-date order — the
+#: three trustee months plus the Note Valuation Report's January. Which document
+#: a period came from decides what it may claim, which is what the assertions
+#: below pin: a covenant period states no Priority of Payments and a PoP period
+#: states no coverage test, because neither document states the other's figures.
+EXPECTED_KEY_PERIODS = [
+    "December 2024",
+    "January 2025",
+    "February 2025",
+    "March 2025",
+]
 
 #: The four RMBS deals that predate this one. The CLO must not become the
 #: registry's special case: every one of them carries ``asset_class`` too.
@@ -173,35 +199,61 @@ def test_clo_trustee_reports_registered_as_investor_reports() -> None:
         assert entry["url"].endswith(".pdf")
 
 
-def test_clo_note_valuation_report_is_obtainable_but_not_yet_registered() -> None:
-    """A **not-yet**, not a never — and the distinction is the whole finding.
+def test_clo_note_valuation_report_is_registered_now_that_it_can_be_kept() -> None:
+    """The not-yet became a yes, and the distinction it drew survives it.
 
-    Leone Arancio and Sol-Lion II carry no ``notes_cash_report_urls`` because no
-    such report is published *at all*. Cairn carries none for the opposite reason:
-    its Note Valuation Report **is** published, free and unauthenticated, and
-    carries both an Interest and a Principal Priority of Payments — it simply has
-    not been extracted, parsed or graded, so claiming the key would assert a
-    routing promise the deal cannot keep (see the module docstring). Flattening
-    those two absences into "another deal with no report" would understate what
-    was found, which is as dishonest as overstating it.
+    The registry key was withheld until the promise could be kept: the report had
+    to be parsed (#494) and a PoP-bearing key committed (#495) before setting it
+    stopped being a claim this deal could not honour. Both halves are asserted —
+    the key is set, *and* the answer key it promises genuinely carries a Priority
+    of Payments, so this can never pass on the URL alone.
+
+    The finding it used to pin has not gone away, it has moved: Leone Arancio and
+    Sol-Lion II still carry no ``notes_cash_report_urls`` because no such report is
+    published *at all*, which was never the same absence as Cairn's. Asserting
+    that here keeps "published but unread" and "not published" from flattening
+    into one state now that Cairn has left the first.
     """
-    assert "notes_cash_report_urls" not in DEAL_REGISTRY[CLO_DEAL_ID]
-    # The document exists and its location is known — recorded, not registered.
-    assert NVR_URL_NOT_YET_REGISTERED.startswith(EURONEXT_DOC_HOST)
-    assert NVR_URL_NOT_YET_REGISTERED.endswith(".pdf")
-    registered = {
-        DEAL_REGISTRY[CLO_DEAL_ID]["prospectus_url"],
-        *(e["url"] for e in DEAL_REGISTRY[CLO_DEAL_ID]["investor_report_urls"]),
-    }
-    assert NVR_URL_NOT_YET_REGISTERED not in registered
+    from loanwhiz.primitives.reconciliation_answer_key import load_answer_key
+
+    entries = DEAL_REGISTRY[CLO_DEAL_ID]["notes_cash_report_urls"]
+    assert [e["period"] for e in entries] == [NVR_PERIOD]
+    assert [e["url"] for e in entries] == [NVR_URL]
+
+    # The promise the key makes, kept: a PoP-bearing answer key really exists.
+    key = load_answer_key(DEAL_REGISTRY[CLO_DEAL_ID])
+    assert key is not None
+    assert any(p.revenue_pop or p.redemption_pop for p in key.periods)
+
+    # And the opposite absence still reads as itself, not as Cairn's old one.
+    for deal_id in ("leone-arancio-2023-1", "sol-lion-ii"):
+        assert not DEAL_REGISTRY[deal_id].get("notes_cash_report_urls")
+        assert load_answer_key(DEAL_REGISTRY[deal_id]) is None
 
 
 def test_every_registered_document_url_is_distinct() -> None:
-    """Four distinct registered documents — no URL copy-pasted across two slots."""
+    """Every registered document is a distinct one — no URL copied across slots.
+
+    The Note Valuation Report joined this set in #495, and it is the slot where a
+    copy-paste would do most damage: pointing ``notes_cash_report_urls`` at a
+    trustee report would route the PoP reader at a document that states no
+    Priority of Payments.
+    """
     deal = DEAL_REGISTRY[CLO_DEAL_ID]
-    urls = [deal["prospectus_url"], *(e["url"] for e in deal["investor_report_urls"])]
-    assert len(urls) == 4
-    assert len(set(urls)) == 4
+    urls = [
+        deal["prospectus_url"],
+        *(e["url"] for e in deal["investor_report_urls"]),
+        *(e["url"] for e in deal["notes_cash_report_urls"]),
+    ]
+    # Both halves matter: the count catches a document silently dropped from the
+    # registry, the set catches one URL doing two jobs. Asserting only that a
+    # deduplicated list has no duplicates asserts nothing at all.
+    assert len(urls) == 5
+    assert len(set(urls)) == 5
+    assert NVR_URL not in {
+        deal["prospectus_url"],
+        *(e["url"] for e in deal["investor_report_urls"]),
+    }
 
 
 def test_the_clo_is_not_the_registry_special_case() -> None:
@@ -393,11 +445,14 @@ def test_clo_answer_key_carries_published_test_results_and_claims_nothing_else()
     ``test_quality_harness.test_committed_clo_answer_key_regenerates_from_its_report_fixtures``
     for the guard that the committed bytes are what the documents say.
 
-    What the key must NOT claim is asserted as hard as what it carries. The Note
-    Valuation Report publishes both Priorities of Payments and would make a PoP
-    key *feasible*, but it is still unregistered and unparsed (see the module
-    docstring), so every PoP section here must be empty. A key that quietly grew
-    one would be claiming a reconciliation nothing in this repo performs.
+    What the key must NOT claim is asserted as hard as what it carries, and since
+    #495 that runs **per period** rather than over the key as a whole. Two
+    documents contribute, and neither states the other's figures: a trustee report
+    publishes coverage-test results and no Priority of Payments, the Note
+    Valuation Report publishes both Priorities of Payments and no coverage test.
+    A period claiming both would be claiming a figure no document states, which is
+    the failure this pins — a key-wide "some period has covenants" check would not
+    see it.
 
     Resolved through the real ``load_answer_key`` rather than a hardcoded
     filename: a key committed under any other slug would slip past a filename
@@ -409,22 +464,34 @@ def test_clo_answer_key_carries_published_test_results_and_claims_nothing_else()
     assert key is not None, "the CLO answer key is not committed"
     assert key.deal_id == CLO_DEAL_ID
     assert key.deal_name == CLO_DEAL_NAME
-    assert [p.period_label for p in key.periods] == EXPECTED_REPORT_PERIODS
+    assert [p.period_label for p in key.periods] == EXPECTED_KEY_PERIODS
 
-    for period in key.periods:
+    covenant_periods = [p for p in key.periods if p.period_label != NVR_PERIOD]
+    assert [p.period_label for p in covenant_periods] == EXPECTED_REPORT_PERIODS
+    for period in covenant_periods:
         assert period.covenants, f"{period.period_label} carries no published results"
         for covenant in period.covenants:
             # A published result without its published level is not gradeable
             # ground truth — the level is the half the prospectus never stated.
             assert covenant.threshold is not None
             assert covenant.actual is not None
-        # No Priority of Payments is claimed, and no pool statistic: the trustee
-        # report states neither, and the NVR is not registered.
+        # A trustee report states no Priority of Payments and no pool statistic.
         assert period.revenue_pop == []
         assert period.redemption_pop == []
         assert period.available_revenue_funds is None
         assert period.available_principal_funds is None
         assert period.pool_stats == {}
+
+    (pop_period,) = [p for p in key.periods if p.period_label == NVR_PERIOD]
+    assert pop_period.revenue_pop and pop_period.redemption_pop
+    assert pop_period.available_revenue_funds is not None
+    assert pop_period.available_principal_funds is not None
+    # Every published rate is a per-class applied rate the report states; the
+    # document publishes no index fixing, so the key records none.
+    assert pop_period.pool_stats
+    assert all(k.startswith("applied_rate_") for k in pop_period.pool_stats)
+    # And the Note Valuation Report states no coverage test, so none is claimed.
+    assert pop_period.covenants == []
 
     # Exactly one committed key file names this deal, under the seed model's slug.
     assert [p.name for p in ANSWER_KEY_DATA_DIR.glob("*cairn*")] == ["cairn-clo-xvii-dac.json"]
@@ -453,40 +520,64 @@ def test_clo_answer_key_states_only_the_required_levels_the_reports_do() -> None
     assert "class_f_par_value_test" in expected, "fixture no longer states Class F"
     del expected["class_f_par_value_test"]
 
-    for period in key.periods:
+    graded = [p for p in key.periods if p.covenants]
+    assert [p.period_label for p in graded] == EXPECTED_REPORT_PERIODS
+    for period in graded:
         assert {c.name: c.threshold for c in period.covenants} == expected
 
 
-def test_clo_has_no_validation_builder() -> None:
-    """Neither ground-truth surface admits the CLO, so it cannot reach ``validated``.
+def test_clo_cannot_reach_validated_and_the_reason_is_the_missing_series() -> None:
+    """It still cannot reach ``validated`` — but for a different reason than before.
 
     Since #492 the capability matrix reads the answer-key registry rather than
     ``_VALIDATION_BUILDERS``; the map survives only for
-    ``GET /deal/{id}/validation``. Both must refuse the CLO, and asserting only
-    the retired one would pass while the live surface silently admitted it.
+    ``GET /deal/{id}/validation``, and it must still refuse the CLO.
 
-    The CLO *does* carry a committed key (#481, authored from its trustee
-    reports' published coverage-test outcomes), so the live surface refuses it
-    for the reason that is actually true: the key carries **no
-    Priority-of-Payments section**. Asserting ``load_answer_key(...) is None``
-    here — as this test did before epic #477 was promoted and merged in — is a
-    premise the sibling test above (``key is not None``) already contradicts,
-    and it would go green again the moment #495 authors a PoP section, which is
-    exactly when this refusal is supposed to stop holding.
+    The *other* half of the refusal has now moved twice, and the movement is the
+    point. Before epic #477 was merged in, this asserted no key was committed at
+    all; #481's key made that false, so it was re-founded on the premise that the
+    key carried **no Priority-of-Payments section** — explicitly "until one is
+    authored from the Note Valuation Report (#495)". #495 has authored one, so it
+    is re-founded once more, on the precondition that is now the one genuinely
+    missing: no offline engine series (#496).
+
+    Both the new premise and the retracted reason are asserted, because a cell
+    that keeps wording that stopped being true is telling this deal a story true
+    only of its past — the #457/#471 failure, and the reason this test has had to
+    move rather than be deleted each time.
     """
     from loanwhiz.api.main import _VALIDATION_BUILDERS
 
-    from loanwhiz.primitives.capability_matrix import _has_pop_section
+    from loanwhiz.primitives.capability_matrix import (
+        STATE_NOT_APPLICABLE,
+        _NO_ENGINE_SERIES,
+        _NO_POP_SECTION,
+        _has_pop_section,
+    )
+    from loanwhiz.primitives.quality_harness import _default_series_provider
     from loanwhiz.primitives.reconciliation_answer_key import load_answer_key
 
     assert CLO_DEAL_ID not in _VALIDATION_BUILDERS
 
+    # The premise the previous refusal rested on, now inverted: the key does
+    # carry a Priority-of-Payments section, so that reason no longer applies.
     key = load_answer_key(DEAL_REGISTRY[CLO_DEAL_ID])
-    assert key is not None, "the CLO's coverage-test key (#481) should be committed"
-    assert not _has_pop_section(key), (
-        "the CLO key must carry no Priority-of-Payments section until one is "
-        "authored from the Note Valuation Report (#495)"
+    assert key is not None, "the CLO's answer key should be committed"
+    assert _has_pop_section(key), "#495 authored the PoP section this test rests on"
+
+    # And the precondition that is actually missing — #496 supplies it.
+    assert (
+        _default_series_provider()(CLO_DEAL_ID, DEAL_REGISTRY[CLO_DEAL_ID], None) is None
     )
+
+    (cell,) = [
+        c
+        for c in _live_matrix().cells
+        if c.deal_id == CLO_DEAL_ID and c.capability_key == "engine_validation"
+    ]
+    assert cell.state == STATE_NOT_APPLICABLE
+    assert cell.reason == _NO_ENGINE_SERIES
+    assert cell.reason != _NO_POP_SECTION
 
 
 def test_clo_is_registered_but_not_modelable() -> None:
@@ -591,10 +682,57 @@ def test_answer_key_periods_agree_with_the_registered_tape_dates() -> None:
     it thinks it does; a silent off-by-one or a day/month swap — ``16/12/2024``
     is unambiguous, but ``12/02/2025`` would not be — would show up here rather
     than as covenants that quietly match nothing.
+
+    The Note Valuation Report's period has no derived tape to corroborate
+    against, so it is checked against ``NVR_AS_OF`` instead — transcribed by hand
+    from the document. It is the case that most needs it: ``08/01/2025`` reads as
+    a valid date either way round, and a swap would file the period in August.
     """
     from loanwhiz.primitives.reconciliation_answer_key import load_answer_key
 
     key = load_answer_key(DEAL_REGISTRY[CLO_DEAL_ID])
     assert key is not None
     registered = [t["date"] for t in DEAL_REGISTRY[CLO_DEAL_ID]["tape_urls"]]
-    assert [p.reporting_date for p in key.periods] == registered
+    covenant_dates = [p.reporting_date for p in key.periods if p.covenants]
+    assert covenant_dates == registered
+
+    (pop_period,) = [p for p in key.periods if p.period_label == NVR_PERIOD]
+    assert pop_period.reporting_date == NVR_AS_OF
+    assert pop_period.reporting_date not in registered
+
+
+def test_the_committed_pop_period_is_the_shape_the_published_bound_rests_on() -> None:
+    """The figures the answer-keys README and data-card state, as assertions.
+
+    Both documents publish a bound on what a graded redemption row could ever
+    prove: the report states EUR 0.00 of available principal funds, so all of its
+    Principal steps are zero and an engine that never pays reproduces that
+    waterfall exactly, while the Interest side distributes real money across a
+    minority of its steps. That claim is the honest half of committing this
+    ground truth — and as prose it is transcription, which a re-parse would leave
+    silently stale.
+
+    So the figures live here too, where a change reds. This does not duplicate
+    the byte-for-byte regeneration test: that one asks whether the committed key
+    matches the documents, and would stay green through a parser change (the key
+    would simply be regenerated). This asks whether the *claim published about*
+    the key is still true of it.
+    """
+    from loanwhiz.primitives.reconciliation_answer_key import load_answer_key
+
+    key = load_answer_key(DEAL_REGISTRY[CLO_DEAL_ID])
+    assert key is not None
+    (period,) = [p for p in key.periods if p.period_label == NVR_PERIOD]
+
+    # The Principal waterfall ran on nothing and paid nothing, every step of it.
+    assert period.available_principal_funds == 0.0
+    assert len(period.redemption_pop) == 62
+    assert all(step.amount == 0.0 for step in period.redemption_pop)
+
+    # The Interest waterfall is where the signal is: the steps sum to the funds
+    # the report states, which is the parser's own tie-out, re-asserted on the
+    # committed figures rather than on the parse.
+    assert period.available_revenue_funds == 7_255_062.35
+    assert len(period.revenue_pop) == 62
+    assert sum(1 for step in period.revenue_pop if step.amount) == 22
+    assert round(sum(step.amount for step in period.revenue_pop), 2) == 7_255_062.35

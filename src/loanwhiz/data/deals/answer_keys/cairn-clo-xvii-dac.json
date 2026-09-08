@@ -72,6 +72,646 @@
       "pool_stats": {}
     },
     {
+      "reporting_date": "2025-01-08",
+      "period_label": "January 2025",
+      "available_revenue_funds": 7255062.35,
+      "available_principal_funds": 0.0,
+      "revenue_pop": [
+        {
+          "priority": "(A)(i)",
+          "amount": 6388.0,
+          "recipient": "Taxes CSP"
+        },
+        {
+          "priority": "(A)(i)",
+          "amount": 57.5,
+          "recipient": "Taxes USB"
+        },
+        {
+          "priority": "(A)(ii)",
+          "amount": 250.0,
+          "recipient": "Payment of the Issuer Profit Amount to be retained by the Issuer"
+        },
+        {
+          "priority": "(B)",
+          "amount": 1250.0,
+          "recipient": "Payment of accrued and unpaid Trustee Fees and Expenses, up to an amount equal to the Senior Expenses Cap"
+        },
+        {
+          "priority": "(C)",
+          "amount": 8750.0,
+          "recipient": "U.S. Bank Europe DAC"
+        },
+        {
+          "priority": "(C)",
+          "amount": 15818.69,
+          "recipient": "U.S. Bank Global Corporate Trust Limited"
+        },
+        {
+          "priority": "(C)",
+          "amount": 47000.0,
+          "recipient": "Fitch Ratings Ltd"
+        },
+        {
+          "priority": "(C)",
+          "amount": 20578.18,
+          "recipient": "Walkers"
+        },
+        {
+          "priority": "(C)",
+          "amount": 0.0,
+          "recipient": "US Bank - Other Fees"
+        },
+        {
+          "priority": "(C)",
+          "amount": 5512.5,
+          "recipient": "FinDox Inc - ESMA Reporting Services"
+        },
+        {
+          "priority": "(C)",
+          "amount": 29273.55,
+          "recipient": "Cairn Loan Investments II LLP"
+        },
+        {
+          "priority": "(C)",
+          "amount": 39593.7,
+          "recipient": "KPMG - Professional Services"
+        },
+        {
+          "priority": "(C)",
+          "amount": 490.47,
+          "recipient": "Finsight Group"
+        },
+        {
+          "priority": "(D)",
+          "amount": 0.0,
+          "recipient": "Payment of an amount, at the Collateral Manager?s discretion, to the Expense Reserve Account"
+        },
+        {
+          "priority": "(a)",
+          "amount": 155457.93,
+          "recipient": "Senior Management Fee"
+        },
+        {
+          "priority": "(a)",
+          "amount": 0.0,
+          "recipient": "VAT - Senior Management Fee"
+        },
+        {
+          "priority": "(b)",
+          "amount": 0.0,
+          "recipient": "Transfer to Default Cash Account - Interest Proceeds"
+        },
+        {
+          "priority": "(c)",
+          "amount": 0.0,
+          "recipient": "Transfer to Default Cash Account - Interest Proceeds"
+        },
+        {
+          "priority": "(i)",
+          "amount": 0.0,
+          "recipient": "Scheduled Periodic Hedge Issuer Payments"
+        },
+        {
+          "priority": "(ii)",
+          "amount": 0.0,
+          "recipient": "Defaulted Currency Hedge Termination Payment"
+        },
+        {
+          "priority": "(iii)",
+          "amount": 0.0,
+          "recipient": "Interest Rate Hedge Issuer Termination Payment"
+        },
+        {
+          "priority": "(G)",
+          "amount": 3277457.78,
+          "recipient": "Interest Amounts due and payable on the Class A Notes"
+        },
+        {
+          "priority": "(H)(i)",
+          "amount": 386773.5,
+          "recipient": "Interest Amounts due and payable on the Class B-1 Notes"
+        },
+        {
+          "priority": "(H)(ii)",
+          "amount": 257625.0,
+          "recipient": "Interest Amounts due and payable on the Class B-2 Notes"
+        },
+        {
+          "priority": "(I)",
+          "amount": 0.0,
+          "recipient": "if the Class A/B Par Value Test is not satisfied, to the redemption of the Notes in accordance with the Note Payment Sequence to the extent necessary to cause such test to be satisfied"
+        },
+        {
+          "priority": "(I)",
+          "amount": 0.0,
+          "recipient": "if the Class A/B Interest Coverage Test is not satisfied, beginning on the second payment date, to the redemption of the Notes in accordance with the Note Payment Sequence to the extent necessary to cause such test to be satisfied"
+        },
+        {
+          "priority": "(J)",
+          "amount": 415004.33,
+          "recipient": "Interest Amounts due and payable on the Class C Notes (including any interest on Deferred Interest)"
+        },
+        {
+          "priority": "(K)",
+          "amount": 0.0,
+          "recipient": "Deferred Interest on the Class C Notes"
+        },
+        {
+          "priority": "(L)",
+          "amount": 0.0,
+          "recipient": "if the Class C Par Value Test is not satisfied, to the redemption of the Notes in accordance with the Note Payment Sequence to the extent necessary to cause such test to be satisfied"
+        },
+        {
+          "priority": "(L)",
+          "amount": 0.0,
+          "recipient": "if the Class C Interest Coverage Test is not satisfied, beginning on the second payment date, to the redemption of the Notes in accordance with the Note Payment Sequence to the extent necessary to cause such test to be satisfied"
+        },
+        {
+          "priority": "(M)",
+          "amount": 594969.17,
+          "recipient": "Interest Amounts due and payable on the Class D Notes (including any interest on Deferred Interest)"
+        },
+        {
+          "priority": "(N)",
+          "amount": 0.0,
+          "recipient": "Deferred Interest on the Class D Notes"
+        },
+        {
+          "priority": "(O)",
+          "amount": 0.0,
+          "recipient": "if the Class D Par Value Test is not satisfied, to the redemption of the Notes in accordance with the Note Payment Sequence to the extent necessary to cause such test to be satisfied"
+        },
+        {
+          "priority": "(O)",
+          "amount": 0.0,
+          "recipient": "if the Class D Interest Coverage Test is not satisfied, beginning on the second payment date, to the redemption of the Notes in accordance with the Note Payment Sequence to the extent necessary to cause such test to be satisfied"
+        },
+        {
+          "priority": "(P)",
+          "amount": 484208.67,
+          "recipient": "Interest Amounts due and payable on the Class E Notes (including any interest on Deferred Interest)"
+        },
+        {
+          "priority": "(Q)",
+          "amount": 0.0,
+          "recipient": "Deferred Interest on the Class E Notes"
+        },
+        {
+          "priority": "(R)",
+          "amount": 0.0,
+          "recipient": "if the Class E Par Value Test is not satisfied, to the redemption of the Notes in accordance with the Note Payment Sequence to the extent necessary to cause such test to be satisfied"
+        },
+        {
+          "priority": "(S)",
+          "amount": 495004.89,
+          "recipient": "Interest Amounts due and payable on the Class F Notes (including any interest on Deferred Interest)"
+        },
+        {
+          "priority": "(T)",
+          "amount": 0.0,
+          "recipient": "Deferred Interest on the Class F Notes"
+        },
+        {
+          "priority": "(U)",
+          "amount": 0.0,
+          "recipient": "if the Class F Par Value Test is not satisfied, to the redemption of the Notes in accordance with the Note Payment Sequence to the extent necessary to cause such test to be satisfied"
+        },
+        {
+          "priority": "(V)",
+          "amount": 0.0,
+          "recipient": "in the event of an Effective Date Rating Event, to redeem the Rated Notes in full in accordance with the Note Payment Sequence"
+        },
+        {
+          "priority": "(W)",
+          "amount": 0.0,
+          "recipient": "during the Reinvestment Period, if the Reinvestment Overcollateralisation Test is not satisfied, transfer to the Principal Account for the acquisition of additional Collateral Debt Obligations in an amount of the lower of (i) 50.0 per cent. of all remaining Interest Proceeds, and (ii) the extent necessary to cause such test to be satisfied"
+        },
+        {
+          "priority": "(a)",
+          "amount": 362735.16,
+          "recipient": "Subordinated Management Fee"
+        },
+        {
+          "priority": "(a)",
+          "amount": 0.0,
+          "recipient": "VAT - Sub Management Fee"
+        },
+        {
+          "priority": "(b)",
+          "amount": 0.0,
+          "recipient": "Transfer to Default Cash Account - Interest Proceeds"
+        },
+        {
+          "priority": "(c)",
+          "amount": 0.0,
+          "recipient": "Transfer to Default Cash Account - Principal Proceeds"
+        },
+        {
+          "priority": "(Y)",
+          "amount": 0.0,
+          "recipient": "Payment of Trustee Fees and Expenses (if any) not paid by reason of the Senior Expenses Cap"
+        },
+        {
+          "priority": "(Z)",
+          "amount": 0.0,
+          "recipient": "U.S. Bank Europe DAC"
+        },
+        {
+          "priority": "(Z)",
+          "amount": 0.0,
+          "recipient": "U.S. Bank Global Corporate Trust Limited"
+        },
+        {
+          "priority": "(Z)",
+          "amount": 0.0,
+          "recipient": "Fitch Ratings Ltd"
+        },
+        {
+          "priority": "(Z)",
+          "amount": 0.0,
+          "recipient": "Walkers"
+        },
+        {
+          "priority": "(Z)",
+          "amount": 0.0,
+          "recipient": "US Bank - Other Fees"
+        },
+        {
+          "priority": "(Z)",
+          "amount": 0.0,
+          "recipient": "FinDox Inc - ESMA Reporting Services"
+        },
+        {
+          "priority": "(Z)",
+          "amount": 0.0,
+          "recipient": "Cairn Loan Investments II LLP"
+        },
+        {
+          "priority": "(Z)",
+          "amount": 0.0,
+          "recipient": "KPMG - Professional Services"
+        },
+        {
+          "priority": "(Z)",
+          "amount": 0.0,
+          "recipient": "Finsight Group"
+        },
+        {
+          "priority": "(AA)",
+          "amount": 0.0,
+          "recipient": "Payment on a pro rata basis of any Defaulted Currency Hedge Termination Payments"
+        },
+        {
+          "priority": "(BB)",
+          "amount": 0.0,
+          "recipient": "During the Reinvestment Period at the direction and in the discretion of the Investment Manager, to transfer to the Collateral Enhancement Account, any Collateral Enhancement Amount"
+        },
+        {
+          "priority": "(CC)(1)(a)",
+          "amount": 650863.33,
+          "recipient": "Until the IRR Threshold has been reached, to the payment of Interest on the Class Subordinated Notes"
+        },
+        {
+          "priority": "(CC)(2)(I)",
+          "amount": 0.0,
+          "recipient": "Once the IRR Threshold has been reached, 20 per cent. of any remaining Interest Proceeds to the payment of the Incentive Investment Management Fee"
+        },
+        {
+          "priority": "(CC)(2)(II)",
+          "amount": 0.0,
+          "recipient": "VAT in respect of the Incentive Investment Management Fee"
+        },
+        {
+          "priority": "(CC)(2)(III)(a)",
+          "amount": 0.0,
+          "recipient": "Any remaining Interest Proceeds to the Class Subordinated Notes"
+        }
+      ],
+      "redemption_pop": [
+        {
+          "priority": "(A)(A)(i)",
+          "amount": 0.0,
+          "recipient": "Taxes CSP"
+        },
+        {
+          "priority": "(A)(A)(i)",
+          "amount": 0.0,
+          "recipient": "Taxes USB"
+        },
+        {
+          "priority": "(A)(A)(ii)",
+          "amount": 0.0,
+          "recipient": "Payment of the Issuer Profit Amount to be retained by the Issuer"
+        },
+        {
+          "priority": "(A)(C)",
+          "amount": 0.0,
+          "recipient": "U.S. Bank Europe DAC"
+        },
+        {
+          "priority": "(A)(C)",
+          "amount": 0.0,
+          "recipient": "U.S. Bank Global Corporate Trust Limited"
+        },
+        {
+          "priority": "(A)(C)",
+          "amount": 0.0,
+          "recipient": "Fitch Ratings Ltd"
+        },
+        {
+          "priority": "(A)(C)",
+          "amount": 0.0,
+          "recipient": "Walkers"
+        },
+        {
+          "priority": "(A)(C)",
+          "amount": 0.0,
+          "recipient": "US Bank - Other Fees"
+        },
+        {
+          "priority": "(A)(C)",
+          "amount": 0.0,
+          "recipient": "FinDox Inc - ESMA Reporting Services"
+        },
+        {
+          "priority": "(A)(C)",
+          "amount": 0.0,
+          "recipient": "Cairn Loan Investments II LLP"
+        },
+        {
+          "priority": "(A)(C)",
+          "amount": 0.0,
+          "recipient": "KPMG - Professional Services"
+        },
+        {
+          "priority": "(A)(C)",
+          "amount": 0.0,
+          "recipient": "Finsight Group"
+        },
+        {
+          "priority": "(A)(D)",
+          "amount": 0.0,
+          "recipient": "Payment of an amount, at the Collateral Manager?s discretion, to the Expense Reserve Account"
+        },
+        {
+          "priority": "(a)",
+          "amount": 0.0,
+          "recipient": "Senior Management Fee"
+        },
+        {
+          "priority": "(a)",
+          "amount": 0.0,
+          "recipient": "VAT - Senior Management Fee"
+        },
+        {
+          "priority": "(b)",
+          "amount": 0.0,
+          "recipient": "Transfer to Default Cash Account - Interest Proceeds"
+        },
+        {
+          "priority": "(c)",
+          "amount": 0.0,
+          "recipient": "Transfer to Default Cash Account - Interest Proceeds"
+        },
+        {
+          "priority": "(i)",
+          "amount": 0.0,
+          "recipient": "Scheduled Periodic Hedge Issuer Payments"
+        },
+        {
+          "priority": "(ii)",
+          "amount": 0.0,
+          "recipient": "Defaulted Currency Hedge Termination Payment"
+        },
+        {
+          "priority": "(iii)",
+          "amount": 0.0,
+          "recipient": "Interest Rate Hedge Issuer Termination Payment"
+        },
+        {
+          "priority": "(A)(G)",
+          "amount": 0.0,
+          "recipient": "Interest Amounts due and payable on the Class A Notes"
+        },
+        {
+          "priority": "(A)(H)(i)",
+          "amount": 0.0,
+          "recipient": "Interest Amounts due and payable on the Class B-1 Notes"
+        },
+        {
+          "priority": "(A)(H)(ii)",
+          "amount": 0.0,
+          "recipient": "Interest Amounts due and payable on the Class B-2 Notes"
+        },
+        {
+          "priority": "(A)(I)",
+          "amount": 0.0,
+          "recipient": "if the Class A/B Par Value Test is not satisfied, to the redemption of the Notes in accordance with the Note Payment Sequence to the extent necessary to cause such test to be satisfied"
+        },
+        {
+          "priority": "(A)(I)",
+          "amount": 0.0,
+          "recipient": "if the Class A/B Interest Coverage Test is not satisfied, beginning on the second payment date, to the redemption of the Notes in accordance with the Note Payment Sequence to the extent necessary to cause such test to be satisfied"
+        },
+        {
+          "priority": "(B)(J)",
+          "amount": 0.0,
+          "recipient": "Interest Amounts due and payable on the Class C Notes (including any interest on Deferred Interest), but to the extent that the Class C Notes are the Controlling Class;"
+        },
+        {
+          "priority": "(C)(K)",
+          "amount": 0.0,
+          "recipient": "Deferred Interest on the Class C Notes"
+        },
+        {
+          "priority": "(D)(L)",
+          "amount": 0.0,
+          "recipient": "if the Class C Par Value Test is not satisfied, to the redemption of the Notes in accordance with the Note Payment Sequence to the extent necessary to cause such test to be satisfied, only to the extent that the Class C Notes are the Controlling Class"
+        },
+        {
+          "priority": "(D)(L)",
+          "amount": 0.0,
+          "recipient": "if the Class C Interest Coverage Test is not satisfied, beginning on the second payment date, to the redemption of the Notes in accordance with the Note Payment Sequence to the extent necessary to cause such test to be satisfied, only to the extent that the Class C Notes are the Controlling Class"
+        },
+        {
+          "priority": "(E)(M)",
+          "amount": 0.0,
+          "recipient": "Interest Amounts due and payable on the Class D Notes (including any interest on Deferred Interest), but only to the extent that the Class D Notes are the Controlling Class;"
+        },
+        {
+          "priority": "(F)(N)",
+          "amount": 0.0,
+          "recipient": "Deferred Interest on the Class D Notes, but to the extent that the Class D Notes are the Controlling Class;"
+        },
+        {
+          "priority": "(G)(O)",
+          "amount": 0.0,
+          "recipient": "if the Class D Par Value Test is not satisfied, to the redemption of the Notes in accordance with the Note Payment Sequence to the extent necessary to cause such test to be satisfied, only to the extent that the Class D Notes are the Controlling Class"
+        },
+        {
+          "priority": "(G)(O)",
+          "amount": 0.0,
+          "recipient": "if the Class D Interest Coverage Test is not satisfied, beginning on the second payment date, to the redemption of the Notes in accordance with the Note Payment Sequence to the extent necessary to cause such test to be satisfied, only to the extent that the Class D Notes are the Controlling Class"
+        },
+        {
+          "priority": "(H)(P)",
+          "amount": 0.0,
+          "recipient": "Interest Amounts due and payable on the Class E Notes (including any interest on Deferred Interest), but only to the extent that the Class E Notes are the Controlling Class;"
+        },
+        {
+          "priority": "(I)(Q)",
+          "amount": 0.0,
+          "recipient": "Deferred Interest on the Class E Notes, but to the extent that the Class E Notes are the Controlling Class;"
+        },
+        {
+          "priority": "(J)(R)",
+          "amount": 0.0,
+          "recipient": "if the Class E Par Value Test is not satisfied, to the redemption of the Notes in accordance with the Note Payment Sequence to the extent necessary to cause such test to be satisfied, only to the extent that the Class E Notes are the Controlling Class"
+        },
+        {
+          "priority": "(K)(S)",
+          "amount": 0.0,
+          "recipient": "Interest Amounts due and payable on the Class F Notes (including any interest on Deferred Interest), but only to the extent that the Class F Notes are the Controlling Class;"
+        },
+        {
+          "priority": "(L)(T)",
+          "amount": 0.0,
+          "recipient": "Deferred Interest on the Class F Notes, but to the extent that the Class F Notes are the Controlling Class;"
+        },
+        {
+          "priority": "(M)(U)",
+          "amount": 0.0,
+          "recipient": "if the Class F Par Value Test is not satisfied, to the redemption of the Notes in accordance with the Note Payment Sequence to the extent necessary to cause such test to be satisfied, only to the extent that the Class F Notes are the Controlling Class"
+        },
+        {
+          "priority": "(N)(V)",
+          "amount": 0.0,
+          "recipient": "Class A Senior Secured FLR Notes - Principal Repayment"
+        },
+        {
+          "priority": "(N)(V)",
+          "amount": 0.0,
+          "recipient": "Class B-1  Senior Secured  FLR Notes - Principal Repayment"
+        },
+        {
+          "priority": "(N)(V)",
+          "amount": 0.0,
+          "recipient": "Class B-2 Senior Secured FXR Notes - Principal Repayment"
+        },
+        {
+          "priority": "(N)(V)",
+          "amount": 0.0,
+          "recipient": "Class C Senior Secured Deferrable FLR Notes - Principal Repayment"
+        },
+        {
+          "priority": "(N)(V)",
+          "amount": 0.0,
+          "recipient": "Class C Senior Secured Deferrable FLR Notes - Deferred Interest Amount"
+        },
+        {
+          "priority": "(N)(V)",
+          "amount": 0.0,
+          "recipient": "Class D Senior Secured Deferrable FLR Notes - Principal Repayment"
+        },
+        {
+          "priority": "(N)(V)",
+          "amount": 0.0,
+          "recipient": "Class D Senior Secured Deferrable FLR Notes - Deferred Interest Amount"
+        },
+        {
+          "priority": "(N)(V)",
+          "amount": 0.0,
+          "recipient": "Class E Senior Secured Deferrable FLR Notes - Principal Repayment"
+        },
+        {
+          "priority": "(N)(V)",
+          "amount": 0.0,
+          "recipient": "Class E Senior Secured Deferrable FLR Notes - Deferred Interest Amount"
+        },
+        {
+          "priority": "(N)(V)",
+          "amount": 0.0,
+          "recipient": "Class F Senior Secured Deferrable FLR Notes - Principal Repayment"
+        },
+        {
+          "priority": "(N)(V)",
+          "amount": 0.0,
+          "recipient": "Class F Senior Secured Deferrable FLR Notes - Deferred Interest Amount"
+        },
+        {
+          "priority": "(O)",
+          "amount": 0.0,
+          "recipient": "if such Payment Date is a Special Redemption Date, at the election of the Collateral Manager to make payments in an amount equal to the Special Redemption Amount (if any) applicable to such Payment Date in accordance with the Note Payment Sequence;"
+        },
+        {
+          "priority": "(P)(1)",
+          "amount": 0.0,
+          "recipient": "during the Reinvestment Period, at the discretion of the Collateral Manager, either to the purchase of Substitute Collateral Obligations or to the Principal Account pending reinvestment in Substitute Collateral Obligations at a later date in each case in accordance with the Collateral Management and Administration Agreement;"
+        },
+        {
+          "priority": "(P)(2)",
+          "amount": 0.0,
+          "recipient": "after the Reinvestment Period in the case of Principal Proceeds representing Unscheduled Principal Proceeds and Sale Proceeds from the sale of Credit Impaired Obligations and Credit Improved Obligations at the discretion of the Collateral Manager, either to the purchase of Substitute Collateral Debt Obligations or to the Principal Account pending reinvestment in Substitute Collateral Debt Obligations at a later date (provided that such purchase and/or deposit would not cause a Retention Deficiency) in each case in accordance with the Collateral Management Agreement;"
+        },
+        {
+          "priority": "(Q)",
+          "amount": 0.0,
+          "recipient": "after the Reinvestment Period, to redeem the Notes in accordance with the Note Payment Sequence;"
+        },
+        {
+          "priority": "(R)(X)",
+          "amount": 0.0,
+          "recipient": "Payment of the Subordinated Collateral Management Fee due and payable on the current Payment Date"
+        },
+        {
+          "priority": "(R)(Z)",
+          "amount": 0.0,
+          "recipient": "Payment of Administrative Expenses (if any) not paid by reason of the Senior Expenses Cap"
+        },
+        {
+          "priority": "(R)(AA)",
+          "amount": 0.0,
+          "recipient": "Payment on a pro rata basis of any Defaulted Currency Hedge Termination Payments"
+        },
+        {
+          "priority": "(R)(BB)",
+          "amount": 0.0,
+          "recipient": "During the Reinvestment Period at the direction and in the discretion of the Investment Manager, to transfer to the Collateral Enhancement Account, any Collateral Enhancement Amount"
+        },
+        {
+          "priority": "(S)(1)",
+          "amount": 0.0,
+          "recipient": "Until the IRR Threshold has been reached, to payment on the Class Subordinated Notes"
+        },
+        {
+          "priority": "(S)(2)(I)",
+          "amount": 0.0,
+          "recipient": "Once the IRR Threshold has been reached, 20 per cent. of any remaining Interest Proceeds to the payment of the Incentive Investment Management Fee"
+        },
+        {
+          "priority": "(S)(2)(II)",
+          "amount": 0.0,
+          "recipient": "VAT in respect of the Incentive Investment Management Fee"
+        },
+        {
+          "priority": "(S)(2)(III)",
+          "amount": 0.0,
+          "recipient": "Any remaining Principal Proceeds to the Class Subordinated Notes"
+        }
+      ],
+      "covenants": [],
+      "pool_stats": {
+        "applied_rate_class_a": 5.008,
+        "applied_rate_class_b_1": 5.958,
+        "applied_rate_class_b_2": 6.87,
+        "applied_rate_class_c": 6.808,
+        "applied_rate_class_d": 8.508,
+        "applied_rate_class_e": 10.668,
+        "applied_rate_class_f": 12.848
+      }
+    },
+    {
       "reporting_date": "2025-02-18",
       "period_label": "February 2025",
       "available_revenue_funds": null,
