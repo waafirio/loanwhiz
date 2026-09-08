@@ -237,6 +237,28 @@ def test_the_synthetic_disclosure_says_it_is_not_evidence() -> None:
     assert "evidence" in disclosure
 
 
+def test_a_facts_entry_omitting_the_channel_is_refused() -> None:
+    """The channel is a *required* fact, not one that can default to `direct`.
+
+    This is the guard that makes the impossibility contract hold for kinds that
+    do not exist yet: a member added without a channel cannot silently inherit
+    the one a published filing reports, because there is nothing to inherit —
+    the table refuses to construct at import.
+    """
+    from loanwhiz.domain.tape_provenance import _SourceKindFacts
+
+    with pytest.raises(ValidationError):
+        _SourceKindFacts(
+            is_regulatory_filing=False,
+            rts_coded_values=False,
+            describes_real_assets=False,
+            disclosure=(
+                "A kind whose facts entry omits the ingestion channel it is "
+                "reported under, which must not be constructible."
+            ),
+        )
+
+
 def test_every_scheme_declares_a_source_kind() -> None:
     """Totality in both directions, as for the facts table.
 
