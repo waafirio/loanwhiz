@@ -73,6 +73,7 @@ ENGINE_COMPUTED_RECIPIENTS: frozenset[str] = frozenset(
     }
 )
 
+
 def _canonical_view(names: frozenset[str]) -> frozenset[RecipientType]:
     """``names`` resolved into the canonical vocabulary, minus what cannot compute.
 
