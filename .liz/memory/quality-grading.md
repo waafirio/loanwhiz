@@ -114,3 +114,16 @@ and becomes checked rather than ungraded; putting it on the engine's input side
 would make the grade partly self-referential.
 
 Refs: #512
+
+## 2026-09-08 · pitfall · #513
+
+When a grader covers only **part** of a collection, make the ungraded part a
+**different kind of record** — never an instance of the graded kind with empty
+contents. An empty instance passes (`all([])` is `True`; a zero total ties out
+against a zero pot), so "graded and passed" and "nothing to compare" become one
+output and the ungraded fraction reads as free green. Keep the graded list
+graded — every count and verdict reads it — and give skips their own list and
+reason. Prefer this to widening the *inputs*: the shape refused may be correct.
+
+Refs: #513
+Refs: #494 — same failure one level down: presence and correctness differ.

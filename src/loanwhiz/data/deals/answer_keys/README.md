@@ -113,17 +113,35 @@ independently computed — and Class B's published EUR 644,398.50, which the
 report splits across `(H)(i)` and `(H)(ii)`, reconciles as 0.00-vs-0.00 against
 an unjoined parent label.
 
-**A fourth property of the union, found by grading it.** Because three of this
-key's four periods come from trustee reports that state no Priority of Payments,
-a fold built from the one PoP-bearing document produces one period result against
-the key's four, and `reconcile_series` refuses the join rather than grading a
-partial answer — so `reconcile_against_answer_key` raises on this key before
-comparing a figure. The refusal is correct; it is recorded here because it means
-the union's cadence, not any number in it, is what stands between this key and a
-gradeable cell. `tests/test_clo_pop_grading.py` holds all of the above. Whoever
-takes it on: **do not close a gap from this side.** An answer key edited to fit
-the engine grades the engine against itself, which is the failure this whole
-directory exists to prevent.
+**A fourth property of the union, found by grading it — and since #513 the
+grader handles it.** Because three of this key's four periods come from trustee
+reports that state no Priority of Payments, a fold built from the one PoP-bearing
+document produces one period result against the key's four. #496 measured that as
+a refusal: `reconcile_series` joins its periods positionally, so it raised on the
+count before comparing a figure, and the grade could be reached only by folding
+the Note Valuation Report directly and bypassing the key.
+`reconcile_against_answer_key` now grades the periods that carry a Priority of
+Payments and reports the rest not-applicable, naming the real reason — that the
+document behind them publishes no cascade — so the union's cadence no longer
+stands between this key and a gradeable cell. Through the key it reaches the same
+EUR 1,820,150.42 shortfall #496 reached around it.
+
+**A period skipped for want of a Priority of Payments is not a period passed.**
+Skipped periods are recorded outside the reconciliation's graded `periods` list,
+so they are invisible to its verdict, to both of its period counts, and to every
+downstream tally and cell; they are counted only under `periods_skipped` and
+named in the summary. This matters more than it looks. A covenant-only period
+projects to a waterfall with no steps and a `null` pot, and an all-steps-passed
+check over an empty list against a EUR 0.00 pot returns *true* — so grading such
+a period would have handed this four-period key three-quarters of a green grade
+for comparing nothing. That is the same vacuity this file warns about elsewhere,
+one level up: at the period rather than at the figure.
+
+`tests/test_clo_pop_grading.py` holds all of the above. Whoever takes it on:
+**do not close a gap from this side.** An answer key edited to fit the engine
+grades the engine against itself, which is the failure this whole directory
+exists to prevent — and note which side #513 moved: the grader learned the key's
+shape, and not one figure of the key was touched.
 
 ### The discipline all three routes share
 

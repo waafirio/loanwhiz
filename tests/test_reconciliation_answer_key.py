@@ -20,7 +20,10 @@ from pydantic import ValidationError
 from loanwhiz.config import DEAL_REGISTRY
 from loanwhiz.primitives.base import Citation
 from loanwhiz.primitives.covenant_monitor import TriggerDefinition
+from loanwhiz.primitives.capability_matrix import _has_pop_section
 from loanwhiz.primitives.reconciler import (
+    PeriodValidation,
+    WaterfallReconciliation,
     fold_green_lion_2024_1,
     load_green_lion_2024_1_report,
     validate_green_lion_2024_1,
@@ -218,6 +221,225 @@ def test_reconcile_against_answer_key_honors_tolerance_override(tmp_path) -> Non
     # override is threaded through to reconcile_series, not ignored.
     got = reconcile_against_answer_key(series, key, tolerance=-1.0)
     assert got.passed is False
+
+
+# ---------------------------------------------------------------------------
+# Grading a partly-PoP-bearing key (#513)
+# ---------------------------------------------------------------------------
+#
+# A key unioned from several document families (#495) carries a Priority of
+# Payments for only the periods whose source document publishes one. The grader
+# must grade those and report the rest — and, above all, must not let a period it
+# could not grade count as one it graded and passed.
+
+
+def _covenant_only_period(reporting_date: str, period_label: str) -> AnswerKeyPeriod:
+    """A period shaped like one authored from a trustee report: covenants, no PoP.
+
+    Deliberately carries ``available_revenue_funds=None`` as the real ones do —
+    that ``None`` is half of why a skipped period would pass vacuously if it were
+    graded, since ``reconcile_period`` reads it as a EUR 0.00 pot.
+    """
+    return AnswerKeyPeriod(
+        reporting_date=reporting_date,
+        period_label=period_label,
+        covenants=[
+            CovenantResult(name="class_a_par_value_test", threshold=1.2, actual=1.4, passed=True)
+        ],
+    )
+
+
+def _gl_key_with_covenant_only_periods() -> DealAnswerKey:
+    """Green Lion's all-PoP key with two covenant-only periods interleaved.
+
+    Green Lion is the right host precisely because its own key grades a clean
+    3-of-3 PASS: any period count above three, or any pass count above three, is
+    then unambiguously a period that was counted without being compared.
+    """
+    key = DealAnswerKey.from_notes_cash_report(
+        load_green_lion_2024_1_report(), deal_id=GL_DEAL_ID
+    )
+    periods = list(key.periods)
+    # One before the graded run and one after, so an implementation that happens
+    # to slice rather than filter cannot pass by accident.
+    periods.insert(0, _covenant_only_period("2023-12-31", "December 2023"))
+    periods.append(_covenant_only_period("2025-06-30", "June 2025"))
+    return key.model_copy(update={"periods": periods})
+
+
+def test_a_partly_pop_bearing_key_grades_exactly_its_pop_periods() -> None:
+    """The PoP-bearing periods grade; the covenant-only ones do not enter the tally.
+
+    The comparison against the unmodified key is the assertion: adding periods a
+    document publishes no Priority of Payments for must change *nothing* about
+    the grade — same verdict, same per-period figures, same counts. What it adds
+    is a record of what was not graded.
+    """
+    series, _ = fold_green_lion_2024_1()
+    plain = DealAnswerKey.from_notes_cash_report(
+        load_green_lion_2024_1_report(), deal_id=GL_DEAL_ID
+    )
+
+    baseline = reconcile_against_answer_key(series, plain)
+    got = reconcile_against_answer_key(series, _gl_key_with_covenant_only_periods())
+
+    assert [p.model_dump() for p in got.periods] == [p.model_dump() for p in baseline.periods]
+    assert got.passed is baseline.passed is True
+    assert (got.periods_checked, got.periods_passed) == (3, 3)
+    assert got.periods_skipped == 2
+    assert [sp.period_label for sp in got.skipped_periods] == ["December 2023", "June 2025"]
+
+
+def test_a_skipped_period_never_counts_as_a_passed_one() -> None:
+    """The vacuity guard: five periods in, three graded — never five passed.
+
+    This is the failure #513 exists to prevent, and it is not hypothetical: a
+    covenant-only period projects to a ``NotesCashPeriod`` with no PoP steps and
+    a ``None`` pot, and ``WaterfallReconciliation.passed`` is ``all()`` over an
+    empty step list plus a tie-out of 0.00 against 0.00 — so had the skipped
+    periods been graded rather than recorded, both counts below would read 5 and
+    the report would still say PASS. The key would have earned two-fifths of its
+    green having compared nothing.
+
+    The second assertion is the one a future refactor is most likely to break:
+    the skipped periods must not appear in ``periods`` at all, because everything
+    downstream — ``passed``, both counts, ``_grade_pop_side``'s tally, the
+    capability cell — reads that list and nothing else.
+    """
+    series, _ = fold_green_lion_2024_1()
+    key = _gl_key_with_covenant_only_periods()
+    assert len(key.periods) == 5
+
+    got = reconcile_against_answer_key(series, key)
+
+    assert got.periods_passed == 3
+    assert got.periods_checked == 3
+    graded_dates = {p.reporting_date for p in got.periods}
+    assert "2023-12-31" not in graded_dates and "2025-06-30" not in graded_dates
+
+    # And the proof that the exclusion is load-bearing rather than incidental:
+    # graded the obvious way, such a period really does pass. This is the object
+    # the grader would have built for a covenant-only period, and it passes while
+    # having compared nothing — so keeping it out of `periods` is the whole
+    # defence, not a stylistic preference.
+    empty_revenue = WaterfallReconciliation(
+        waterfall_type="revenue",
+        steps=[],
+        engine_total=0.0,
+        report_total=0.0,
+        available_funds=0.0,
+    )
+    vacuous = PeriodValidation(
+        reporting_date="2023-12-31",
+        period_label="December 2023",
+        revenue=empty_revenue,
+        redemption=empty_revenue.model_copy(update={"waterfall_type": "redemption"}),
+    )
+    assert vacuous.passed is True
+
+
+def test_the_summary_names_the_periods_it_did_not_grade() -> None:
+    """A 3/3 PASS on a five-period key must not read as a complete grade."""
+    series, _ = fold_green_lion_2024_1()
+    got = reconcile_against_answer_key(series, _gl_key_with_covenant_only_periods())
+
+    summary = got.summary()
+    assert summary.startswith("PASS")
+    assert "3/3 periods" in summary
+    assert "December 2023): not graded" in summary
+    assert "June 2025): not graded" in summary
+    assert "publishes no Priority of Payments" in summary
+
+
+def test_a_key_carrying_no_pop_anywhere_refuses_rather_than_grading_nothing() -> None:
+    """No PoP in any period is a refusal, never an empty report.
+
+    An empty ``ReconciliationReport`` would be a different and much weaker claim
+    than a refusal — "graded, found nothing wrong" rather than "there was nothing
+    here to grade" — and ``#494``'s lesson is that a check which cannot tell those
+    apart is the one that fails silently. Cairn's key had exactly this shape
+    between #481 and #495.
+    """
+    series, _ = fold_green_lion_2024_1()
+    key = DealAnswerKey(
+        deal_id="covenants-only-2024-1",
+        deal_name="Covenants Only 2024-1 B.V.",
+        periods=[
+            _covenant_only_period("2024-03-31", "March 2024"),
+            _covenant_only_period("2024-06-30", "June 2024"),
+        ],
+    )
+
+    with pytest.raises(ValueError, match="carries no Priority-of-Payments section"):
+        reconcile_against_answer_key(series, key)
+
+
+def test_a_pop_period_count_that_misses_the_series_still_refuses() -> None:
+    """Narrowing the join did not weaken it — a real mismatch still raises.
+
+    The positional join is only meaningful if the series was folded from exactly
+    the documents the PoP-bearing periods were authored from. Dropping one of
+    Green Lion's three PoP periods leaves two against a three-period fold, and
+    grading that would silently compare each period against the wrong one.
+    """
+    series, _ = fold_green_lion_2024_1()
+    key = DealAnswerKey.from_notes_cash_report(
+        load_green_lion_2024_1_report(), deal_id=GL_DEAL_ID
+    )
+    short = key.model_copy(update={"periods": key.periods[:2]})
+
+    with pytest.raises(ValueError, match="Reconciler join mismatch") as excinfo:
+        reconcile_against_answer_key(series, short)
+    # The message counts PoP-bearing periods, not report periods: an operator
+    # told "the report has 2 periods" of a key they can see has more would be
+    # reading about a report that does not exist.
+    assert "2 Priority-of-Payments period(s)" in str(excinfo.value)
+
+
+def test_the_pop_predicate_is_per_period_and_the_key_level_one_reads_it() -> None:
+    """One definition of "carries a Priority of Payments", asked at both levels.
+
+    #495 recorded the rule this pins: assert what a record may claim per period,
+    not per key. The key-level answer is derived from the per-period one, so a key
+    that gains a second document family cannot make the two disagree — which is
+    what a hand-written copy in each of ``capability_matrix`` and
+    ``quality_harness`` allowed before #513.
+    """
+    key = _gl_key_with_covenant_only_periods()
+
+    assert [p.has_priority_of_payments for p in key.periods] == [
+        False,
+        True,
+        True,
+        True,
+        False,
+    ]
+    assert key.has_pop_section is True
+    assert [p.period_label for p in key.non_pop_periods] == ["December 2023", "June 2025"]
+    assert len(key.pop_periods) == 3
+    assert "December 2023" not in [p.period_label for p in key.pop_periods]
+    # The capability matrix asks the key-level question through this same property
+    # rather than re-deriving it, which is what stops the two surfaces drifting.
+    assert _has_pop_section(key) is key.has_pop_section
+
+    covenants_only = key.model_copy(update={"periods": key.non_pop_periods})
+    assert covenants_only.has_pop_section is False
+    assert _has_pop_section(covenants_only) is False
+
+
+def test_the_default_projection_stays_lossless() -> None:
+    """``to_notes_cash_report()`` still carries every period unless asked otherwise.
+
+    The narrowing is opt-in on purpose: this method is half of the round-trip the
+    committed keys are regenerated through, so a projection that silently dropped
+    covenant-only periods would make a unioned key un-regenerable from its own
+    report fixtures — closing the gap from the ground-truth side, which is the one
+    thing ``answer_keys/README.md`` forbids outright.
+    """
+    key = _gl_key_with_covenant_only_periods()
+
+    assert len(key.to_notes_cash_report().periods) == 5
+    assert len(key.to_notes_cash_report(pop_periods_only=True).periods) == 3
 
 
 # ---------------------------------------------------------------------------
