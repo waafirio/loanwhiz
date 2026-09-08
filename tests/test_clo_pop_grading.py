@@ -24,10 +24,11 @@ What the run says
 
 2. **Reconciled against that one document directly, the Interest cascade is
    short by EUR 1,820,150.42** — 25% of the period's available revenue. The
-   report prints 62 rows; the extracted cascade carries 29 top-level labels, and
-   eight published rows carry sub-labels (``(A)(i)``, ``(H)(i)``, ``(H)(ii)``,
-   ``(CC)(1)(a)``, and two the report re-letters bare ``(a)``) that no engine
-   label joins. ``reconciler._fold_report_revenue_steps`` folds only Green Lion's
+   report prints 62 rows; the extracted cascade carries 29 top-level labels; 20
+   report rows are joined by no step at all, and the eight of those that carry
+   money (``(A)(i)``, ``(A)(ii)``, ``(H)(i)``, ``(H)(ii)``, ``(CC)(1)(a)``, and
+   two the report re-letters bare ``(a)``) account for the shortfall to the cent.
+   ``reconciler._fold_report_revenue_steps`` folds only Green Lion's
    purely-numeric ``(b)(1..n)`` wrap artefact, which is not this report's shape.
 
 3. **Every one of the 29 steps "passes", and none of those passes is evidence.**
@@ -85,9 +86,10 @@ PUBLISHED_AVAILABLE_REVENUE = 7_255_062.35
 ENGINE_DISTRIBUTED_REVENUE = 5_434_911.93
 REVENUE_SHORTFALL = 1_820_150.42
 
-#: The eight published Interest rows no engine label joins, and what each pays.
-#: The report re-letters two management-fee rows bare ``(a)``, so the labels are
-#: not unique — hence a list of pairs rather than a mapping.
+#: The money-carrying Interest rows no engine label joins, and what each pays.
+#: (Twenty report rows join nothing; the rest of them are zero.) The report
+#: re-letters two management-fee rows bare ``(a)``, so the labels are not
+#: unique — hence a list of pairs rather than a mapping.
 UNJOINED_REVENUE_ROWS: tuple[tuple[str, float], ...] = (
     ("(A)(i)", 6_388.00),
     ("(A)(i)", 57.50),
