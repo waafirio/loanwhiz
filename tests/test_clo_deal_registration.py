@@ -540,3 +540,22 @@ def test_matrix_covers_every_registered_deal() -> None:
     assert {d.deal_id for d in matrix.deals} == set(DEAL_REGISTRY)
     assert len(matrix.cells) == len(matrix.capabilities) * len(DEAL_REGISTRY)
     assert sum(matrix.tally.values()) == len(matrix.cells)
+
+
+def test_answer_key_periods_agree_with_the_registered_tape_dates() -> None:
+    """The key's reporting dates corroborate against a figure authored elsewhere.
+
+    ``tape_urls`` carries a date per derived tape, transcribed by #468 from the
+    same three reports but through a different path and by different hands. The
+    answer key's ``reporting_date`` is converted from the report header's
+    ``DD/MM/YYYY`` by #481. Agreement is evidence the conversion reads the date
+    it thinks it does; a silent off-by-one or a day/month swap — ``16/12/2024``
+    is unambiguous, but ``12/02/2025`` would not be — would show up here rather
+    than as covenants that quietly match nothing.
+    """
+    from loanwhiz.primitives.reconciliation_answer_key import load_answer_key
+
+    key = load_answer_key(DEAL_REGISTRY[CLO_DEAL_ID])
+    assert key is not None
+    registered = [t["date"] for t in DEAL_REGISTRY[CLO_DEAL_ID]["tape_urls"]]
+    assert [p.reporting_date for p in key.periods] == registered
