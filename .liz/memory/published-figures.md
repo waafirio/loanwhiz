@@ -41,6 +41,17 @@ that only answers the second cannot tell "nothing is wrong" from "I saw
 nothing".
 
 Refs: #494
+## 2026-09-08 · pitfall · #484
+
+When generating a population to match a published distribution, decide which
+axis the platform *renders* before choosing how to assign buckets. Labelling an
+already-drawn pool can reproduce the published **balance** share or the
+published **count** share, never both: the smallest loans land in the smallest
+buckets, so a bucket worth 0.15% of balance came back holding 0.51% of loans —
+at full confidence, on a credit metric. Draw within each bucket against its own
+published count and balance instead, and reconcile both.
+
+Refs: #484
 ## 2026-09-08 · pitfall · #480
 
 A datum recorded as unobtainable is a claim about the document someone looked

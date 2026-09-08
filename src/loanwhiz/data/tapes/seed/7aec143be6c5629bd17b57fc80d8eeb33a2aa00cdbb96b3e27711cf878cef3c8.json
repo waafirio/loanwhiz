@@ -1,0 +1,49 @@
+{
+ "annex_detected": "Unknown ABS",
+ "arrears_breakdown": {
+  "arrears_180d_plus_pct": 0.182,
+  "arrears_1_2m_pct": 0.2211,
+  "current_pct": 99.4488,
+  "default_pct": 0.1482
+ },
+ "asset_class": "ABS",
+ "data_source": "synthetic",
+ "epc_breakdown": null,
+ "geographic_breakdown": {
+  "Andaluc\u00eda": 12.4858,
+  "Arag\u00f3n": 2.6163,
+  "Baleares": 5.0945,
+  "Blank": 0.0136,
+  "Canarias": 6.0778,
+  "Cantabria": 1.3384,
+  "Castilla la Mancha": 4.3844,
+  "Castilla y Le\u00f3n": 3.3104,
+  "Catalu\u00f1a": 22.5183,
+  "Ceuta": 0.0255,
+  "Extremadura": 0.0018,
+  "Galicia": 2.592,
+  "La Rioja": 0.665,
+  "Madrid": 22.1792,
+  "Melilla": 0.0338,
+  "Murcia": 2.7763,
+  "Navarra": 0.6212,
+  "Pais Vasco": 1.857,
+  "Principado de Asturias": 1.2678,
+  "Valencia": 10.141
+ },
+ "loan_count": 168712,
+ "pool_balance_eur": 15425568061.220001,
+ "pool_stats": {
+  "wtd_coupon_pct": 2.76,
+  "wtd_ltv": 44.83,
+  "wtd_remaining_term": 291.59,
+  "wtd_seasoning": 80.31
+ },
+ "property_type_breakdown": null,
+ "rate_type_breakdown": {
+  "Fixed": 49.9804,
+  "Floating": 50.0196
+ },
+ "reporting_date": "2026-04-30",
+ "transaction_name": "Sol-Lion II RMBS Fondo de Titulizaci\u00f3n"
+}

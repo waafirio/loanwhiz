@@ -3,7 +3,9 @@
     "deal_name": "Green Lion 2023-1 B.V.",
     "asset_class": "RMBS",
     "prospectus_url": "https://ing.com/binaries/content/assets/documents/files/green-lion-2023-1_-_prospectus.pdf",
-    "tape_urls": [],
+    "tape_urls": [
+      {"date": "2026-04-30", "url": "synthetic:data/tapes/synthetic/green_lion_2023_1_202604_synthetic_loan_tape.csv.gz"}
+    ],
     "investor_report_urls": [
       {"period": "January 2026", "url": "https://ing.com/binaries/content/assets/documents/fixed-income-bank/monthly-investor-report-green-lion-2023-1-january-2026.pdf"},
       {"period": "February 2026", "url": "https://ing.com/binaries/content/assets/documents/fixed-income-bank/monthly-investor-report-green-lion-2023-1-february-2026.pdf"},
@@ -20,7 +22,9 @@
     "deal_name": "Green Lion 2024-1 B.V.",
     "asset_class": "RMBS",
     "prospectus_url": "https://ing.com/binaries/content/assets/documents/files/green-lion-2024-1---prospectus.pdf",
-    "tape_urls": [],
+    "tape_urls": [
+      {"date": "2026-04-30", "url": "synthetic:data/tapes/synthetic/green_lion_2024_1_202604_synthetic_loan_tape.csv.gz"}
+    ],
     "investor_report_urls": [
       {"period": "January 2026", "url": "https://ing.com/binaries/content/assets/documents/fixed-income-bank/monthly-investor-report-green-lion-2024-1-january-2026.pdf"},
       {"period": "February 2026", "url": "https://ing.com/binaries/content/assets/documents/fixed-income-bank/monthly-investor-report-green-lion-2024-1-february-2026.pdf"},
@@ -38,7 +42,9 @@
     "asset_class": "RMBS",
     "jurisdiction": "Italy",
     "prospectus_url": "https://ing.com/binaries/content/assets/documents/files/leone-arancio-rmbs-2023-1-prospectus-dated-12-september-2023.pdf",
-    "tape_urls": [],
+    "tape_urls": [
+      {"date": "2026-03-31", "url": "synthetic:data/tapes/synthetic/leone_arancio_2023_1_202603_synthetic_loan_tape.csv.gz"}
+    ],
     "capital_structure": {
       "class_a_balance": 7080000000.0,
       "class_a_rate_pct": 3.97,
@@ -92,7 +98,9 @@
     "asset_class": "RMBS",
     "jurisdiction": "Spain",
     "prospectus_url": "https://ing.com/binaries/content/assets/documents/files/sol-lion-ii-rmbs-fondo-de-titulizacion-prospectus-dated-25-november-2020.pdf",
-    "tape_urls": [],
+    "tape_urls": [
+      {"date": "2026-04-30", "url": "synthetic:data/tapes/synthetic/sol_lion_ii_202604_synthetic_loan_tape.csv.gz"}
+    ],
     "capital_structure": {
       "class_a_balance": 12036900000.0,
       "class_a_rate_pct": 1.07,

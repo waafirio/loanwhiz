@@ -1,0 +1,3329 @@
+=== page 1 ===
+Monthly Investor Report
+06 May 2026
+Leone Arancio 2023-1
+After Portfolio Checks
+Leone Arancio 2023-1
+Monthly investor report as of  06-May-2026
+
+=== page 2 ===
+Notes
+ISIN
+Ratings
+Current 
+Principal 
+Balance
+Initial Principal 
+Balance
+Rate of Interest
+Fitch
+DBRS
+Class A1
+IT0005559478
+AA+-sf/Stable
+AAA(sf)
+389,400,000
+389,400,000
+3-M EURIBOR + 0.80%
+Class A2
+IT0005559486
+AA+-sf/Stable
+AAA(sf)
+5,354,200,000
+5,354,200,000
+3-M EURIBOR + 0.90%
+Class J
+IT0005559494
+NR-sf/Stable
+n/r(sf)
+746,400,000
+746,400,000
+No Interest
+100% retained by ING Bank N.V., Milan Branch
+6,490,000,000
+6,490,000,000
+Issue Date
+Final Maturity Date
+Next Payment Date
+12-09-2023
+06-10-2083
+06-07-2026
+Description
+2 of 33
+Leone Arancio 2023-1
+Monthly investor report as of  06-May-2026
+
+=== page 3 ===
+1. Summary
+All amounts in EURO
+Current
+At Issue
+Reporting Date
+06-05-2026
+12-09-2023
+Portfolio Cut off Date
+31-03-2026
+30-04-2023
+Initial Principal Balance
+6,490,000,000.00
+6,490,000,000.00
+Of which Provision to Main Expense Account
+50,000.00
+50,000.00
+Of which Cash available for Replenishment
+76,495,254.97
+1,874,493.55
+Of which Realised Loss
+0.00
+0.00
+Of which Active Outstanding Notional Amount
+6,413,454,745.03
+6,488,075,506.45
+Number of Loans
+69,846
+68,598
+Number of Borrowers
+69,846
+68,598
+Principal in Arrears
+6,474,693.69
+0.00
+Average Principal Balance (Loanparts)
+91,822.79
+94,581.12
+Average Principal Balance (Borrowers)
+91,822.79
+94,581.12
+Coupon: Weighted Average
+3.88%
+3.97%
+Minimum
+0.00%
+0.00%
+Maximum
+7.73%
+7.75%
+Weighted Average Original Loan to Market Value
+68.32%
+66.93%
+Weighted Average Loan to Market Value
+51.83%
+53.29%
+Seasoning (months): Weighted Average
+71.17
+71.83
+Remaining Tenor (months): Weighted Average
+248.32
+243.44
+Weighted Average Interest Rate on Fixed Interest Rate Loans
+4.01%
+3.16%
+Weighted Average LGD
+43.72%
+21.95%
+Weighted Average Spread on Floating Rate Loans
+3.46%
+4.81%
+Total Set-off Risk
+731,328,873.77
+878,205,420.61
+Stop Replenishment Criteria
+Current
+Initial
+1.The long-term rating of ING Bank does not fall below, respectively, A by Fitch 
+and BBB (high) by DBRS
+PASS
+PASS
+2.Balance of the principal deficiency Ledger is not equal to zero
+PASS
+PASS
+3.The Cumulative Gross Default Ratio exceed 2.00%
+PASS
+PASS
+4.The Quarterly Delinquency Ratio exceed 1.25%
+PASS
+PASS
+5.The balance of main transaction account is higher than the Amoritsation 
+Amount Limit (10%)
+PASS
+PASS
+Repurchase Rights
+Current
+Initial
+1. The total amount of Receivables repurchased during each calendar year 
+does not exceed 5% of the aggregate Outstanding principal Due of all the 
+Mortgage loans included in the Master Portfolio
+PASS
+PASS
+3 of 33
+Leone Arancio 2023-1
+Monthly investor report as of  06-May-2026
+
+=== page 4 ===
+2. Product Type
+Product Type
+Aggregate 
+Outstanding Not. 
+Amount
+% of Total
+Nr of Loans
+% of Total
+Aggregate 
+Outstanding Not. 
+Amount
+% of Total
+Nr of Loans
+% of Total
+Adjustable Rate
+3,267,282,200
+50.94%
+30,502
+43.67%
+1,979,644,662
+30.51%
+18,967
+27.65%
+Fixed
+1,612,191,206
+25.14%
+19,984
+28.61%
+1,326,578,978
+20.45%
+16,190
+23.60%
+Floating (BCE)
+46,369,357
+0.72%
+759
+1.09%
+107,640,790
+1.66%
+1,418
+2.07%
+Floating (EURIBOR)
+1,487,611,982
+23.20%
+18,601
+26.63%
+3,074,211,076
+47.38%
+32,023
+46.68%
+Total
+6,413,454,745
+100.00%
+69,846
+100.00%
+6,488,075,506
+100.00%
+68,598
+100.00%
+4 of 33
+Leone Arancio 2023-1
+Monthly investor report as of  06-May-2026
+
+=== page 5 ===
+3. Loan Coupon
+Coupon Loan Part (%)
+Aggregate 
+Outstanding Not. 
+Amount
+% of Total
+Nr of Loans
+% of Total
+Aggregate 
+Outstanding Not. 
+Amount
+% of Total
+Nr of Loans
+% of Total
+< 0.01%
+122,008
+0.00%
+1
+0.00%
+205,920
+0.00%
+1
+0.00%
+0.01% - 0.51%
+115,328
+0.00%
+1
+0.00%
+130,717
+0.00%
+1
+0.00%
+0.51% - 1.01%
+3,478,700
+0.05%
+28
+0.04%
+3,892,879
+0.06%
+26
+0.04%
+1.01% - 1.51%
+49,173,187
+0.77%
+563
+0.81%
+74,417,664
+1.15%
+752
+1.10%
+1.51% - 2.01%
+187,420,394
+2.92%
+2,100
+3.01%
+371,945,303
+5.73%
+3,628
+5.29%
+2.01% - 2.51%
+358,281,122
+5.59%
+4,416
+6.32%
+679,092,710
+10.47%
+7,302
+10.64%
+2.51% - 3.01%
+759,442,513
+11.84%
+9,847
+14.10%
+682,080,381
+10.51%
+7,879
+11.49%
+3.01% - 3.26%
+370,065,373
+5.77%
+4,037
+5.78%
+216,906,261
+3.34%
+2,547
+3.71%
+3.26% - 3.51%
+497,930,828
+7.76%
+6,257
+8.96%
+172,494,576
+2.66%
+1,814
+2.64%
+3.51% - 3.76%
+409,114,313
+6.38%
+4,262
+6.10%
+279,674,616
+4.31%
+2,398
+3.50%
+3.76% - 4.01%
+596,342,554
+9.30%
+5,569
+7.97%
+433,056,503
+6.67%
+5,640
+8.22%
+4.01% - 4.26%
+646,828,227
+10.09%
+6,381
+9.14%
+511,430,134
+7.88%
+4,779
+6.97%
+4.26% - 4.51%
+743,301,479
+11.59%
+6,982
+10.00%
+617,337,084
+9.51%
+6,951
+10.13%
+4.51% - 4.76%
+639,889,871
+9.98%
+6,431
+9.21%
+402,276,225
+6.20%
+3,876
+5.65%
+4.76% - 5.01%
+452,899,760
+7.06%
+4,628
+6.63%
+495,927,894
+7.64%
+4,647
+6.77%
+5.01% - 5.26%
+287,641,858
+4.48%
+3,160
+4.52%
+562,749,370
+8.67%
+5,654
+8.24%
+5.26% - 5.51%
+184,783,574
+2.88%
+2,245
+3.21%
+414,577,141
+6.39%
+4,246
+6.19%
+5.51% - 5.76%
+90,685,616
+1.41%
+1,232
+1.76%
+275,939,220
+4.25%
+2,897
+4.22%
+5.76% - 6.01%
+70,423,236
+1.10%
+926
+1.33%
+142,560,497
+2.20%
+1,617
+2.36%
+6.01% - 6.26%
+32,877,827
+0.51%
+357
+0.51%
+40,150,026
+0.62%
+494
+0.72%
+6.26% - 6.51%
+17,279,241
+0.27%
+200
+0.29%
+29,129,914
+0.45%
+286
+0.42%
+6.51% - 6.76%
+9,259,366
+0.14%
+115
+0.16%
+40,962,363
+0.63%
+500
+0.73%
+6.76% - 7.01%
+3,989,048
+0.06%
+63
+0.09%
+23,817,166
+0.37%
+381
+0.56%
+7.01% - 7.26%
+1,501,041
+0.02%
+29
+0.04%
+12,942,219
+0.20%
+207
+0.30%
+7.26% - 7.51%
+366,199
+0.01%
+11
+0.02%
+3,297,277
+0.05%
+52
+0.08%
+> 7.51%
+242,081
+0.00%
+5
+0.01%
+1,081,445
+0.02%
+23
+0.03%
+Total
+6,413,454,745
+100.00%
+69,846
+100.00%
+6,488,075,506
+100.00%
+68,598
+100.00%
+Average
+3.83%
+5 of 33
+Leone Arancio 2023-1
+Monthly investor report as of  06-May-2026
+
+=== page 6 ===
+4. Origination Year
+Origination Year
+Aggregate 
+Outstanding Not. 
+Amount
+% of Total
+Nr of Loans
+% of Total
+Aggregate 
+Outstanding Not. 
+Amount
+% of Total
+Nr of Loans
+% of Total
+2004 - 2005
+4,170,452
+0.07%
+111
+0.16%
+8,284,694
+0.13%
+263
+0.38%
+2005 - 2006
+18,685,445
+0.29%
+381
+0.55%
+42,703,844
+0.66%
+1,119
+1.63%
+2006 - 2007
+59,837,026
+0.93%
+1,386
+1.98%
+114,666,348
+1.77%
+1,973
+2.88%
+2007 - 2008
+114,856,411
+1.79%
+1,990
+2.85%
+193,309,966
+2.98%
+2,574
+3.75%
+2008 - 2009
+95,678,513
+1.49%
+1,673
+2.40%
+163,457,740
+2.52%
+2,414
+3.52%
+2009 - 2010
+68,412,123
+1.07%
+1,189
+1.70%
+135,050,422
+2.08%
+2,002
+2.92%
+2010 - 2011
+101,573,750
+1.58%
+1,545
+2.21%
+204,679,912
+3.15%
+2,574
+3.75%
+2011 - 2012
+256,442,859
+4.00%
+3,675
+5.26%
+494,427,607
+7.62%
+5,519
+8.05%
+2012 - 2013
+109,028,163
+1.70%
+1,570
+2.25%
+203,362,435
+3.13%
+2,336
+3.41%
+2013 - 2014
+81,083,538
+1.26%
+1,174
+1.68%
+161,782,239
+2.49%
+1,896
+2.76%
+2014 - 2015
+83,749,364
+1.31%
+1,281
+1.83%
+167,081,280
+2.58%
+2,089
+3.05%
+2015 - 2016
+121,860,154
+1.90%
+1,899
+2.72%
+239,429,382
+3.69%
+3,093
+4.51%
+2016 - 2017
+321,010,436
+5.01%
+4,903
+7.02%
+522,255,902
+8.05%
+6,380
+9.30%
+2017 - 2018
+309,830,010
+4.83%
+4,268
+6.11%
+488,974,400
+7.54%
+5,510
+8.03%
+2018 - 2019
+346,237,509
+5.40%
+4,300
+6.16%
+616,412,122
+9.50%
+6,274
+9.15%
+2019 - 2020
+234,575,662
+3.66%
+2,791
+4.00%
+422,895,636
+6.52%
+4,099
+5.98%
+2020 - 2021
+59,173,009
+0.92%
+662
+0.95%
+95,731,236
+1.48%
+885
+1.29%
+2021 - 2022
+439,046,733
+6.85%
+4,086
+5.85%
+568,175,979
+8.76%
+4,683
+6.83%
+2022 - 2023
+707,719,530
+11.03%
+6,456
+9.24%
+1,025,221,104
+15.80%
+8,113
+11.83%
+2023 - 2024
+1,334,485,323
+20.81%
+11,751
+16.82%
+620,173,260
+9.56%
+4,802
+7.00%
+2024 - 2025
+1,096,486,282
+17.10%
+9,277
+13.28%
+0.00%
+2025 - 2026
+449,512,453
+7.01%
+3,478
+4.98%
+0.00%
+Total
+6,413,454,745
+100.00%
+69,846
+100.00%
+6,488,075,506
+100.00%
+68,598
+100.00%
+6 of 33
+Leone Arancio 2023-1
+Monthly investor report as of  06-May-2026
+
+=== page 7 ===
+5. Maturity Year
+Maturity Year
+Aggregate 
+Outstanding Not. 
+Amount
+% of Total
+Nr of Loans
+% of Total
+Aggregate 
+Outstanding Not. 
+Amount
+% of Total
+Nr of Loans
+% of Total
+2023 - 2024
+0
+0.00%
+0
+0.00%
+1,568,506
+0.02%
+386
+0.56%
+2024 - 2025
+0
+0.00%
+0
+0.00%
+5,693,570
+0.09%
+636
+0.93%
+2025 - 2026
+0
+0.00%
+0
+0.00%
+18,696,764
+0.29%
+1,026
+1.50%
+2026 - 2027
+4,621,717
+0.07%
+1,231
+1.76%
+52,289,097
+0.81%
+2,090
+3.05%
+2027 - 2028
+12,660,489
+0.20%
+1,239
+1.77%
+53,366,236
+0.82%
+1,687
+2.46%
+2028 - 2029
+20,932,960
+0.33%
+1,151
+1.65%
+61,234,434
+0.94%
+1,529
+2.23%
+2029 - 2030
+21,923,959
+0.34%
+901
+1.29%
+56,705,186
+0.87%
+1,264
+1.84%
+2030 - 2031
+32,400,135
+0.51%
+1,039
+1.49%
+72,847,413
+1.12%
+1,444
+2.11%
+2031 - 2032
+76,460,310
+1.19%
+2,029
+2.90%
+154,330,875
+2.38%
+2,702
+3.94%
+2032 - 2033
+72,970,234
+1.14%
+1,698
+2.43%
+131,003,598
+2.02%
+2,137
+3.12%
+2033 - 2034
+78,324,989
+1.22%
+1,553
+2.22%
+124,649,420
+1.92%
+1,830
+2.67%
+2034 - 2035
+80,634,368
+1.26%
+1,427
+2.04%
+110,738,145
+1.71%
+1,544
+2.25%
+2035 - 2036
+76,756,693
+1.20%
+1,254
+1.80%
+124,336,745
+1.92%
+1,588
+2.31%
+2036 - 2037
+187,937,136
+2.93%
+2,925
+4.19%
+308,421,646
+4.75%
+3,765
+5.49%
+2037 - 2038
+200,274,161
+3.12%
+2,807
+4.02%
+304,869,425
+4.70%
+3,468
+5.06%
+2038 - 2039
+174,040,131
+2.71%
+2,419
+3.46%
+221,590,464
+3.42%
+2,556
+3.73%
+2039 - 2040
+173,598,285
+2.71%
+2,228
+3.19%
+176,134,508
+2.71%
+1,908
+2.78%
+2040 - 2041
+121,596,917
+1.90%
+1,470
+2.10%
+176,647,869
+2.72%
+1,759
+2.56%
+2041 - 2042
+219,267,312
+3.42%
+2,448
+3.50%
+357,991,306
+5.52%
+3,272
+4.77%
+2042 - 2043
+224,331,993
+3.50%
+2,536
+3.63%
+343,325,867
+5.29%
+3,280
+4.78%
+2043 - 2044
+261,478,837
+4.08%
+2,841
+4.07%
+294,814,368
+4.54%
+2,722
+3.97%
+2044 - 2045
+262,387,053
+4.09%
+2,669
+3.82%
+196,587,098
+3.03%
+1,780
+2.59%
+2045 - 2046
+135,036,473
+2.11%
+1,339
+1.92%
+153,594,758
+2.37%
+1,359
+1.98%
+2046 - 2047
+255,319,108
+3.98%
+2,458
+3.52%
+378,220,619
+5.83%
+3,175
+4.63%
+2047 - 2048
+336,915,787
+5.25%
+3,193
+4.57%
+485,345,392
+7.48%
+4,029
+5.87%
+2048 - 2049
+413,193,699
+6.44%
+3,844
+5.50%
+443,266,096
+6.83%
+3,652
+5.32%
+2049 - 2050
+413,478,714
+6.45%
+3,777
+5.41%
+315,352,322
+4.86%
+2,541
+3.70%
+2050 - 2051
+146,961,400
+2.29%
+1,207
+1.73%
+79,556,603
+1.23%
+566
+0.83%
+2051 - 2052
+255,740,094
+3.99%
+1,983
+2.84%
+329,637,555
+5.08%
+2,314
+3.37%
+2052 - 2053
+395,052,102
+6.16%
+3,015
+4.32%
+549,138,590
+8.46%
+3,789
+5.52%
+2053 - 2054
+759,139,369
+11.84%
+5,875
+8.41%
+405,989,136
+6.26%
+2,799
+4.08%
+2054 - 2055
+724,213,256
+11.29%
+5,425
+7.77%
+131,894
+0.00%
+1
+0.00%
+2055 - 2056
+275,728,055
+4.30%
+1,864
+2.67%
+0.00%
+2056 - 2057
+79,008
+0.00%
+1
+0.00%
+0.00%
+Total
+6,413,454,745
+100.00%
+69,846
+100.00%
+6,488,075,506
+100.00%
+68,598
+100.00%
+7 of 33
+Leone Arancio 2023-1
+Monthly investor report as of  06-May-2026
+
+=== page 8 ===
+6. Seasoning
+Seasoning (years)
+Aggregate 
+Outstanding Not. 
+Amount
+% of Total
+Nr of Loans
+% of Total
+Aggregate 
+Outstanding Not. 
+Amount
+% of Total
+Nr of Loans
+% of Total
+< 0.50
+0
+0.00%
+0
+0.00%
+898,005,324
+13.84%
+6,926
+10.10%
+0.50 - 1.00
+302,134,641
+4.71%
+2,335
+3.34%
+446,971,436
+6.89%
+3,589
+5.23%
+1.00 - 2.00
+919,077,997
+14.33%
+7,621
+10.91%
+753,931,175
+11.62%
+6,113
+8.91%
+2.00 - 3.00
+1,299,390,631
+20.26%
+11,416
+16.34%
+182,534,207
+2.81%
+1,579
+2.30%
+3.00 - 4.00
+884,414,253
+13.79%
+7,971
+11.41%
+200,124,862
+3.08%
+1,934
+2.82%
+4.00 - 5.00
+565,466,291
+8.82%
+5,162
+7.39%
+702,415,450
+10.83%
+6,985
+10.18%
+5.00 - 6.00
+104,012,475
+1.62%
+1,059
+1.52%
+497,540,612
+7.67%
+5,418
+7.90%
+6.00 - 7.00
+139,301,124
+2.17%
+1,674
+2.40%
+565,840,967
+8.72%
+6,802
+9.92%
+7.00 - 8.00
+379,701,849
+5.92%
+4,630
+6.63%
+279,800,131
+4.31%
+3,568
+5.20%
+8.00 - 9.00
+305,051,871
+4.76%
+4,086
+5.85%
+199,230,256
+3.07%
+2,499
+3.64%
+9.00 - 10.00
+357,769,565
+5.58%
+5,370
+7.69%
+139,524,580
+2.15%
+1,706
+2.49%
+10 - more
+1,157,134,048
+18.04%
+18,522
+26.52%
+1,622,156,508
+25.00%
+21,479
+31.31%
+Total
+6,413,454,745
+100.00%
+69,846
+100.00%
+6,488,075,506
+100.00%
+68,598
+100.00%
+Weighted Average
+5.93
+8 of 33
+Leone Arancio 2023-1
+Monthly investor report as of  06-May-2026
+
+=== page 9 ===
+7. Remaining Tenor
+Remaining Tenor 
+(years)
+Aggregate 
+Outstanding Not. 
+Amount
+% of Total
+Nr of Loans
+% of Total
+Aggregate 
+Outstanding Not. 
+Amount
+% of Total
+Nr of Loans
+% of Total
+< 1.00
+6,963,397
+0.11%
+1,565
+2.24%
+3,888,898
+0.06%
+713
+1.04%
+1.00 - 2.00
+14,698,319
+0.23%
+1,184
+1.70%
+6,290,865
+0.10%
+496
+0.72%
+2.00 - 3.00
+23,355,971
+0.36%
+1,181
+1.69%
+27,561,897
+0.42%
+1,369
+2.00%
+3.00 - 4.00
+20,290,494
+0.32%
+781
+1.12%
+57,560,905
+0.89%
+2,172
+3.17%
+4.00 - 5.00
+38,375,639
+0.60%
+1,175
+1.68%
+54,720,503
+0.84%
+1,557
+2.27%
+5.00 - 6.00
+84,339,854
+1.32%
+2,170
+3.11%
+66,342,094
+1.02%
+1,593
+2.32%
+6.00 - 7.00
+72,950,312
+1.14%
+1,608
+2.30%
+50,737,232
+0.78%
+1,091
+1.59%
+7.00 - 8.00
+81,992,603
+1.28%
+1,584
+2.27%
+88,686,115
+1.37%
+1,689
+2.46%
+8.00 - 9.00
+74,027,932
+1.15%
+1,293
+1.85%
+165,662,053
+2.55%
+2,846
+4.15%
+9.00 - 10.00
+84,132,069
+1.31%
+1,355
+1.94%
+131,810,893
+2.03%
+2,039
+2.97%
+10.00 - 11.00
+222,264,978
+3.47%
+3,392
+4.86%
+123,007,539
+1.90%
+1,787
+2.61%
+11.00 - 12.00
+181,721,085
+2.83%
+2,536
+3.63%
+101,243,788
+1.56%
+1,376
+2.01%
+12.00 - 13.00
+185,788,474
+2.90%
+2,512
+3.60%
+151,821,937
+2.34%
+1,883
+2.74%
+13.00 - 14.00
+149,366,598
+2.33%
+1,905
+2.73%
+356,743,163
+5.50%
+4,292
+6.26%
+14.00 - 15.00
+126,636,562
+1.97%
+1,501
+2.15%
+280,303,695
+4.32%
+3,203
+4.67%
+15.00 - 16.00
+246,495,835
+3.84%
+2,721
+3.90%
+208,505,268
+3.21%
+2,338
+3.41%
+16.00 - 17.00
+222,154,529
+3.46%
+2,522
+3.61%
+154,711,251
+2.38%
+1,653
+2.41%
+17.00 - 18.00
+274,486,958
+4.28%
+2,943
+4.21%
+202,979,161
+3.13%
+1,976
+2.88%
+18.00 - 19.00
+233,725,937
+3.64%
+2,325
+3.33%
+399,006,097
+6.15%
+3,641
+5.31%
+19.00 - 20.00
+122,994,949
+1.92%
+1,232
+1.76%
+357,350,763
+5.51%
+3,407
+4.97%
+20.00 - 21.00
+318,396,754
+4.96%
+3,029
+4.34%
+239,978,999
+3.70%
+2,181
+3.18%
+21.00 - 22.00
+338,102,456
+5.27%
+3,208
+4.59%
+170,934,111
+2.63%
+1,527
+2.23%
+22.00 - 23.00
+444,487,777
+6.93%
+4,130
+5.91%
+177,842,557
+2.74%
+1,562
+2.28%
+23.00 - 24.00
+334,707,104
+5.22%
+2,993
+4.29%
+471,744,699
+7.27%
+3,911
+5.70%
+24.00 - 25.00
+132,163,166
+2.06%
+1,103
+1.58%
+522,550,601
+8.05%
+4,344
+6.33%
+25.00 - 26.00
+320,716,676
+5.00%
+2,436
+3.49%
+395,745,363
+6.10%
+3,246
+4.73%
+26.00 - 27.00
+483,184,255
+7.53%
+3,723
+5.33%
+182,417,834
+2.81%
+1,423
+2.07%
+27.00 - 28.00
+770,351,136
+12.01%
+5,954
+8.52%
+129,403,392
+1.99%
+961
+1.40%
+28.00 - 29.00
+614,179,114
+9.58%
+4,504
+6.45%
+429,994,820
+6.63%
+2,909
+4.24%
+29.00 - 30.00
+190,403,808
+2.97%
+1,281
+1.83%
+777,238,895
+11.98%
+5,405
+7.88%
+30 - more
+0
+0.00%
+0
+0.00%
+1,290,116
+0.02%
+8
+0.01%
+Total
+6,413,454,745
+100.00%
+69,846
+100.00%
+6,488,075,506
+100.00%
+68,598
+100.00%
+Weighted Average
+20.69
+9 of 33
+Leone Arancio 2023-1
+Monthly investor report as of  06-May-2026
+
+=== page 10 ===
+8. Interest Type
+Aggregate 
+Outstanding Not. 
+Amount
+% of Total
+Nr of Loans
+% of Total
+Aggregate 
+Outstanding Not. 
+Amount
+% of Total
+Nr of Loans
+% of Total
+Fixed Rate
+4,769,000,317
+74.36%
+49,462
+70.82%
+3,250,665,893
+50.10%
+34,639
+50.50%
+Floating Rate BCE
+46,369,357
+0.72%
+759
+1.09%
+107,640,790
+1.66%
+1,418
+2.07%
+Floating Rate EURIBOR 
+1M
+571,243,795
+8.91%
+8,400
+12.03%
+1,127,430,577
+17.38%
+13,918
+20.29%
+Floating Rate EURIBOR 
+3M
+1,026,841,277
+16.01%
+11,225
+16.07%
+2,002,338,246
+30.86%
+18,623
+27.15%
+Total
+6,413,454,745
+100.00%
+69,846
+100.00%
+6,488,075,506
+100.00%
+68,598
+100.00%
+10 of 33
+Leone Arancio 2023-1
+Monthly investor report as of  06-May-2026
+
+=== page 11 ===
+9. Geography Region
+Aggregate 
+Outstanding Not. 
+Amount
+% of Total
+Nr of Loans
+% of Total
+Aggregate 
+Outstanding Not. 
+Amount
+% of Total
+Nr of Loans
+% of Total
+Central Italy
+1,548,332,191
+24.14%
+16,183
+23.17%
+1,713,475,557
+26.41%
+16,946
+24.70%
+Northern Italy
+2,821,482,972
+43.99%
+30,331
+43.43%
+2,982,250,770
+45.97%
+31,718
+46.24%
+Southern Italy
+2,043,639,582
+31.86%
+23,332
+33.40%
+1,792,349,180
+27.63%
+19,934
+29.06%
+Total
+6,413,454,745
+100.00%
+69,846
+100.00%
+6,488,075,506
+100.00%
+68,598
+100.00%
+11 of 33
+Leone Arancio 2023-1
+Monthly investor report as of  06-May-2026
+
+=== page 12 ===
+10. Borrower Nationality
+Borrower Nationality
+Aggregate 
+Outstanding Not. 
+Amount
+% of Total
+Nr of Loans
+% of Total
+Aggregate 
+Outstanding Not. 
+Amount
+% of Total
+Nr of Loans
+% of Total
+Italians
+6,053,694,664
+94.39%
+66,396
+95.06%
+6,274,404,196
+96.71%
+66,483
+96.92%
+Others
+359,760,081
+5.61%
+3,450
+4.94%
+213,671,311
+3.29%
+2,115
+3.08%
+Total
+6,413,454,745
+100.00%
+69,846
+100.00%
+6,488,075,506
+100.00%
+68,598
+100.00%
+12 of 33
+Leone Arancio 2023-1
+Monthly investor report as of  06-May-2026
+
+=== page 13 ===
+11A. Current Loan to Market Value
+Current Loan to Market 
+Value
+Aggregate 
+Outstanding Not. 
+Amount
+% of Total
+Nr of Loans
+% of Total
+Aggregate 
+Outstanding Not. 
+Amount
+% of Total
+Nr of Loans
+% of Total
+<= 30.00%
+836,905,052
+13.05%
+19,159
+27.43%
+807,759,736
+12.45%
+18,005
+26.25%
+30.00% - 40.00%
+699,684,891
+10.91%
+8,424
+12.06%
+683,380,170
+10.53%
+8,239
+12.01%
+40.00% - 50.00%
+981,207,513
+15.30%
+10,006
+14.33%
+923,932,808
+14.24%
+9,398
+13.70%
+50.00% - 60.00%
+1,334,579,891
+20.81%
+12,074
+17.29%
+1,325,017,952
+20.42%
+11,933
+17.40%
+60.00% - 70.00%
+1,820,182,350
+28.38%
+14,775
+21.15%
+1,514,709,833
+23.35%
+12,129
+17.68%
+70.00% - 80.00%
+740,569,344
+11.55%
+5,407
+7.74%
+1,233,275,007
+19.01%
+8,894
+12.97%
+80.00% - 90.00%
+325,704
+0.01%
+1
+0.00%
+0.00%
+Total
+6,413,454,745
+100.00%
+69,846
+100.00%
+6,488,075,506
+100.00%
+68,598
+100.00%
+Weighted Average
+51.83%
+13 of 33
+Leone Arancio 2023-1
+Monthly investor report as of  06-May-2026
+
+=== page 14 ===
+11B. Original Loan to Market Value
+Original Loan to Market 
+Value
+Aggregate 
+Outstanding Not. 
+Amount
+% of Total
+Nr of Loans
+% of Total
+Aggregate 
+Outstanding Not. 
+Amount
+% of Total
+Nr of Loans
+% of Total
+<= 30.00%
+131,523,132
+2.05%
+3,084
+4.42%
+168,281,421
+2.59%
+3,696
+5.39%
+30.00% - 40.00%
+234,375,148
+3.65%
+4,303
+6.16%
+285,955,574
+4.41%
+4,928
+7.18%
+40.00% - 50.00%
+422,820,732
+6.59%
+6,522
+9.34%
+517,422,414
+7.97%
+7,398
+10.78%
+50.00% - 60.00%
+636,439,813
+9.92%
+8,045
+11.52%
+722,707,751
+11.14%
+8,642
+12.60%
+60.00% - 70.00%
+1,094,763,705
+17.07%
+12,381
+17.73%
+1,181,161,166
+18.21%
+12,587
+18.35%
+70.00% - 80.00%
+3,892,741,020
+60.70%
+35,508
+50.84%
+3,612,547,181
+55.68%
+31,347
+45.70%
+80.00% - 90.00%
+587,447
+0.01%
+2
+0.00%
+0.00%
+90.00% - 100.00%
+203,748
+0.00%
+1
+0.00%
+0.00%
+Total
+6,413,454,745
+100.00%
+69,846
+100.00%
+6,488,075,506
+100.00%
+68,598
+100.00%
+Weighted Average
+68.32%
+14 of 33
+Leone Arancio 2023-1
+Monthly investor report as of  06-May-2026
+
+=== page 15 ===
+12. Original Notional Amount
+Aggregate Outstanding 
+Notional
+Aggregate 
+Outstanding Not. 
+Amount
+% of Total
+Nr of Loans
+% of Total
+Aggregate 
+Outstanding Not. 
+Amount
+% of Total
+Nr of Loans
+% of Total
+0 - 50,000
+62,495,035
+0.97%
+2,275
+3.26%
+70,580,907
+1.09%
+2,405
+3.51%
+50,000 - 75,000
+439,149,310
+6.85%
+9,659
+13.83%
+380,195,347
+5.86%
+8,376
+12.21%
+75,000 - 100,000
+1,017,581,506
+15.87%
+15,847
+22.69%
+929,045,736
+14.32%
+14,707
+21.44%
+100,000 - 125,000
+1,138,345,056
+17.75%
+13,530
+19.37%
+1,103,422,797
+17.01%
+13,236
+19.30%
+125,000 - 150,000
+1,184,097,956
+18.46%
+11,491
+16.45%
+1,164,822,979
+17.95%
+11,364
+16.57%
+150,000 - 175,000
+757,123,708
+11.81%
+6,108
+8.74%
+768,069,187
+11.84%
+6,176
+9.00%
+175,000 - 200,000
+622,349,991
+9.70%
+4,625
+6.62%
+682,139,365
+10.51%
+5,060
+7.38%
+200,000 - 225,000
+313,959,802
+4.90%
+2,019
+2.89%
+344,420,820
+5.31%
+2,235
+3.26%
+225,000 - 250,000
+279,821,653
+4.36%
+1,703
+2.44%
+325,682,505
+5.02%
+1,966
+2.87%
+250,000 - 275,000
+133,326,224
+2.08%
+705
+1.01%
+151,240,537
+2.33%
+796
+1.16%
+275,000 - 300,000
+140,293,756
+2.19%
+732
+1.05%
+169,296,594
+2.61%
+872
+1.27%
+300,000 - 325,000
+55,133,728
+0.86%
+251
+0.36%
+70,233,461
+1.08%
+322
+0.47%
+325,000 - 350,000
+53,385,953
+0.83%
+236
+0.34%
+69,205,564
+1.07%
+300
+0.44%
+350,000 - 375,000
+28,122,180
+0.44%
+110
+0.16%
+37,267,425
+0.57%
+141
+0.21%
+375,000 - 400,000
+40,133,715
+0.63%
+156
+0.22%
+45,788,495
+0.71%
+177
+0.26%
+400,000 - 425,000
+14,132,577
+0.22%
+53
+0.08%
+17,947,370
+0.28%
+64
+0.09%
+425,000 - 450,000
+17,808,170
+0.28%
+61
+0.09%
+20,174,075
+0.31%
+71
+0.10%
+450,000 - 475,000
+12,348,493
+0.19%
+38
+0.05%
+11,640,780
+0.18%
+37
+0.05%
+475,000 - 500,000
+24,933,052
+0.39%
+76
+0.11%
+29,838,095
+0.46%
+90
+0.13%
+500,000 - 1,000,000
+61,035,556
+0.95%
+151
+0.22%
+76,569,079
+1.18%
+182
+0.27%
+1,000,000 >
+17,877,324
+0.28%
+20
+0.03%
+20,494,390
+0.32%
+21
+0.03%
+Total
+6,413,454,745
+100.00%
+69,846
+100.00%
+6,488,075,506
+100.00%
+68,598
+100.00%
+15 of 33
+Leone Arancio 2023-1
+Monthly investor report as of  06-May-2026
+
+=== page 16 ===
+13. Outstanding Notional Amount
+Aggregate Outstanding 
+Notional
+Aggregate 
+Outstanding Not. 
+Amount
+% of Total
+Nr of Loans
+% of Total
+Aggregate 
+Outstanding Not. 
+Amount
+% of Total
+Nr of Loans
+% of Total
+<= 1,000
+119,414
+0.00%
+192
+0.27%
+0.00%
+1,000 - 8,000
+8,181,983
+0.13%
+1,861
+2.66%
+5,139,496
+0.08%
+1,079
+1.57%
+8,000 - 20,000
+36,253,560
+0.57%
+2,582
+3.70%
+38,664,034
+0.60%
+2,633
+3.84%
+20,000 - 50,000
+403,824,601
+6.30%
+10,949
+15.68%
+410,970,832
+6.33%
+11,233
+16.38%
+50,000 - 75,000
+875,604,813
+13.65%
+13,934
+19.95%
+822,572,336
+12.68%
+13,106
+19.11%
+75,000 - 100,000
+1,226,581,784
+19.13%
+14,050
+20.12%
+1,175,702,056
+18.12%
+13,450
+19.61%
+100,000 - 125,000
+1,216,759,442
+18.97%
+10,880
+15.58%
+1,221,357,903
+18.82%
+10,900
+15.89%
+125,000 - 150,000
+957,494,761
+14.93%
+7,027
+10.06%
+968,684,527
+14.93%
+7,089
+10.33%
+150,000 - 175,000
+584,589,289
+9.12%
+3,629
+5.20%
+623,679,825
+9.61%
+3,868
+5.64%
+175,000 - 200,000
+360,418,030
+5.62%
+1,932
+2.77%
+413,227,060
+6.37%
+2,216
+3.23%
+200,000 - 225,000
+229,442,263
+3.58%
+1,087
+1.56%
+239,055,603
+3.68%
+1,128
+1.64%
+225,000 - 250,000
+155,436,666
+2.42%
+659
+0.94%
+170,979,957
+2.64%
+720
+1.05%
+250,000 - 275,000
+92,896,476
+1.45%
+355
+0.51%
+96,728,625
+1.49%
+369
+0.54%
+275,000 - 300,000
+64,603,659
+1.01%
+225
+0.32%
+73,691,428
+1.14%
+257
+0.37%
+300,000 - 325,000
+37,448,647
+0.58%
+120
+0.17%
+44,546,458
+0.69%
+143
+0.21%
+325,000 - 350,000
+25,121,584
+0.39%
+75
+0.11%
+37,865,755
+0.58%
+112
+0.16%
+350,000 - 375,000
+21,336,373
+0.33%
+59
+0.08%
+22,325,280
+0.34%
+62
+0.09%
+375,000 - 400,000
+20,118,755
+0.31%
+52
+0.07%
+21,273,270
+0.33%
+55
+0.08%
+400,000 - 425,000
+13,201,927
+0.21%
+32
+0.05%
+13,205,867
+0.20%
+32
+0.05%
+425,000 - 450,000
+9,611,394
+0.15%
+22
+0.03%
+11,783,463
+0.18%
+27
+0.04%
+450,000 - 475,000
+10,619,626
+0.17%
+23
+0.03%
+9,205,470
+0.14%
+20
+0.03%
+475,000 - 500,000
+12,130,386
+0.19%
+25
+0.04%
+12,738,486
+0.20%
+26
+0.04%
+500,000 - 1,000,000
+41,004,287
+0.64%
+67
+0.10%
+44,405,387
+0.68%
+66
+0.10%
+1,000,000 >
+10,655,024
+0.17%
+9
+0.01%
+10,272,389
+0.16%
+7
+0.01%
+Total
+6,413,454,745
+100.00%
+69,846
+100.00%
+6,488,075,506
+100.00%
+68,598
+100.00%
+16 of 33
+Leone Arancio 2023-1
+Monthly investor report as of  06-May-2026
+
+=== page 17 ===
+14. Loan Purpose
+Loan Purpose
+Aggregate 
+Outstanding Not. 
+Amount
+% of Total
+Nr of Loans
+% of Total
+Aggregate 
+Outstanding Not. 
+Amount
+% of Total
+Nr of Loans
+% of Total
+First Home Purchase
+4,583,060,632
+71.46%
+46,372
+66.39%
+4,208,952,255
+64.87%
+41,974
+61.19%
+First Home Refinancing 
+with Capital
+812,279,357
+12.67%
+8,849
+12.67%
+1,037,287,996
+15.99%
+10,341
+15.07%
+First Home Refinancing 
+without Capital
+143,454,698
+2.24%
+2,367
+3.39%
+259,622,336
+4.00%
+3,514
+5.12%
+Liquidity
+354,942,106
+5.53%
+5,401
+7.73%
+364,522,073
+5.62%
+5,093
+7.42%
+Home Improvements
+85,908,122
+1.34%
+1,282
+1.84%
+54,904,871
+0.85%
+914
+1.33%
+Second Home / Holiday 
+Home Purchase
+133,902,056
+2.09%
+1,755
+2.51%
+151,485,676
+2.33%
+1,972
+2.87%
+Second Home 
+Refinancing with Capital
+6,821,554
+0.11%
+59
+0.08%
+4,422,995
+0.07%
+42
+0.06%
+Second Home 
+Refinancing without 
+Capital
+644,115
+0.01%
+7
+0.01%
+565,544
+0.01%
+7
+0.01%
+Subrogation of 
+mortgages - 1st house 
+purchase
+290,819,556
+4.53%
+3,737
+5.35%
+405,338,501
+6.25%
+4,731
+6.90%
+Subrogation of 
+mortgages - 2nd house 
+purchase
+1,622,550
+0.03%
+17
+0.02%
+973,260
+0.02%
+10
+0.01%
+Total
+6,413,454,745
+100.00%
+69,846
+100.00%
+6,488,075,506
+100.00%
+68,598
+100.00%
+17 of 33
+Leone Arancio 2023-1
+Monthly investor report as of  06-May-2026
+
+=== page 18 ===
+15. Occupancy Status
+Aggregate 
+Outstanding Not. 
+Amount
+% of Total
+Nr of Loans
+% of Total
+Aggregate 
+Outstanding Not. 
+Amount
+% of Total
+Nr of Loans
+% of Total
+Prima Casa
+6,258,483,795
+97.58%
+67,883
+97.19%
+6,330,628,032
+97.57%
+66,567
+97.04%
+Seconda Casa
+154,970,950
+2.42%
+1,963
+2.81%
+157,447,474
+2.43%
+2,031
+2.96%
+Total
+6,413,454,745
+100.00%
+69,846
+100.00%
+6,488,075,506
+100.00%
+68,598
+100.00%
+18 of 33
+Leone Arancio 2023-1
+Monthly investor report as of  06-May-2026
+
+=== page 19 ===
+16. Interest Payment Frequency
+Interest Payment 
+Frequency
+Aggregate 
+Outstanding Not. 
+Amount
+% of Total
+Nr of Loans
+% of Total
+Aggregate 
+Outstanding Not. 
+Amount
+% of Total
+Nr of Loans
+% of Total
+Monthly
+6,413,454,745
+100.00%
+69,846
+100.00%
+6,488,075,506
+100.00%
+68,598
+100.00%
+Total
+6,413,454,745
+100.00%
+69,846
+100.00%
+6,488,075,506
+100.00%
+68,598
+100.00%
+19 of 33
+Leone Arancio 2023-1
+Monthly investor report as of  06-May-2026
+
+=== page 20 ===
+17. ING Staff at Date of Origination
+ING Staff at Date of 
+Origination
+Aggregate 
+Outstanding Not. 
+Amount
+% of Total
+Nr of Loans
+% of Total
+Aggregate 
+Outstanding Not. 
+Amount
+% of Total
+Nr of Loans
+% of Total
+Non ING
+6,413,454,745
+100.00%
+69,846
+100.00%
+6,488,075,506
+100.00%
+68,598
+100.00%
+Total
+6,413,454,745
+100.00%
+69,846
+100.00%
+6,488,075,506
+100.00%
+68,598
+100.00%
+20 of 33
+Leone Arancio 2023-1
+Monthly investor report as of  06-May-2026
+
+=== page 21 ===
+18. Number of Loans Per Borrower
+Number of Loans Per 
+Borrower
+Aggregate 
+Outstanding Not. 
+Amount
+% of Total
+Nr of Loans
+% of Total
+Aggregate 
+Outstanding Not. 
+Amount
+% of Total
+Nr of Loans
+% of Total
+1
+6,412,200,363
+99.98%
+69,834
+99.98%
+6,488,075,506
+100.00%
+68,598
+100.00%
+More than 1
+1,254,382
+0.02%
+12
+0.02%
+0.00%
+Total
+6,413,454,745
+100.00%
+69,846
+100.00%
+6,488,075,506
+100.00%
+68,598
+100.00%
+21 of 33
+Leone Arancio 2023-1
+Monthly investor report as of  06-May-2026
+
+=== page 22 ===
+19. Special Scheme
+Aggregate 
+Outstanding Not. 
+Amount
+% of Total
+Nr of Loans
+% of Total
+Aggregate 
+Outstanding Not. 
+Amount
+% of Total
+Nr of Loans
+% of Total
+No Special Scheme
+6,400,766,026
+99.80%
+69,727
+99.83%
+6,488,075,506
+100.00%
+68,598
+100.00%
+Alluvione Liguria toscana
+Alluvione Veneto
+Fondo Gasparrini - 
+COVID19
+Fondo Gasparrini - 
+COVID19 forbearance
+5,061,057
+0.08%
+45
+0.06%
+0.00%
+Fondo Solidarietà
+Forbearance non 
+oneroso
+287,081
+0.00%
+2
+0.00%
+0.00%
+Forbearance oneroso
+5,623,741
+0.09%
+46
+0.07%
+0.00%
+Moratoria ABI
+Non onerosa non 
+Forbearance
+118,277
+0.00%
+1
+0.00%
+0.00%
+Sospensione per 
+Decesso
+1,493,995
+0.02%
+24
+0.03%
+0.00%
+Terremoto Emilia 
+Romagna
+104,568
+0.00%
+1
+0.00%
+0.00%
+Unknown
+Total
+6,413,454,745
+100.00%
+69,846
+100.00%
+6,488,075,506
+100.00%
+68,598
+100.00%
+22 of 33
+Leone Arancio 2023-1
+Monthly investor report as of  06-May-2026
+
+=== page 23 ===
+20. Employment Type
+Employment Type
+Aggregate 
+Outstanding Not. 
+Amount
+% of Total
+Nr of Loans
+% of Total
+Aggregate 
+Outstanding Not. 
+Amount
+% of Total
+Nr of Loans
+% of Total
+Freelancer
+183,286,641
+2.86%
+2,029
+2.90%
+327,941,388
+5.05%
+3,017
+4.40%
+Not Employed
+84,989,508
+1.33%
+1,239
+1.77%
+134,076,728
+2.07%
+1,638
+2.39%
+Other Work Agreement
+91,140,597
+1.42%
+984
+1.41%
+18,915,637
+0.29%
+220
+0.32%
+Pensioner
+130,905,057
+2.04%
+2,893
+4.14%
+239,175,986
+3.69%
+4,039
+5.89%
+Salaried
+5,506,370,152
+85.86%
+58,957
+84.41%
+5,462,985,011
+84.20%
+56,640
+82.57%
+Self Employed
+408,893,203
+6.38%
+3,649
+5.22%
+294,977,007
+4.55%
+2,933
+4.28%
+Student
+7,869,587
+0.12%
+95
+0.14%
+10,003,748
+0.15%
+111
+0.16%
+Total
+6,413,454,745
+100.00%
+69,846
+100.00%
+6,488,075,506
+100.00%
+68,598
+100.00%
+23 of 33
+Leone Arancio 2023-1
+Monthly investor report as of  06-May-2026
+
+=== page 24 ===
+21. Underwriting Source
+Underwriting Source
+Aggregate 
+Outstanding Not. 
+Amount
+% of Total
+Nr of Loans
+% of Total
+Aggregate 
+Outstanding Not. 
+Amount
+% of Total
+Nr of Loans
+% of Total
+ING Direct Italy Call 
+Centre
+301,974,742
+4.71%
+4,814
+6.89%
+558,604,382
+8.61%
+7,335
+10.69%
+ING Direct Italy Web
+709,640,100
+11.06%
+10,369
+14.85%
+1,202,783,984
+18.54%
+14,948
+21.79%
+Broker
+3,473,583,458
+54.16%
+34,807
+49.83%
+2,810,789,790
+43.32%
+27,676
+40.35%
+Branch
+1,928,256,444
+30.07%
+19,856
+28.43%
+1,915,897,350
+29.53%
+18,639
+27.17%
+Total
+6,413,454,745
+100.00%
+69,846
+100.00%
+6,488,075,506
+100.00%
+68,598
+100.00%
+24 of 33
+Leone Arancio 2023-1
+Monthly investor report as of  06-May-2026
+
+=== page 25 ===
+22. Arrears
+Nr of Loans
+Principal in 
+arrears
+Interest in arrears
+Total amount in 
+arrears
+Aggregate 
+Outstanding Not. 
+Amount
+% Nr of Loans
+% of Agg. Outs. 
+Not. Amt.
+No Arrears
+68,796
+0
+0
+0
+6,308,410,227
+98.50%
+98.36%
+30 - 59 Days
+481
+164,308
+194,887
+359,194
+47,030,461
+0.69%
+0.73%
+90 - 179 Days
+177
+330,620
+333,847
+664,466
+17,163,442
+0.25%
+0.27%
+180 - 365 Days
+116
+370,937
+402,713
+773,649
+11,582,828
+0.17%
+0.18%
+Defaulted (>12M)
+157
+5,601,987
+4,693,774
+10,295,762
+16,579,068
+0.22%
+0.26%
+Payment Holiday
+119
+6,842
+5,997
+12,839
+12,688,719
+0.17%
+0.20%
+Total
+69,846
+6,474,694
+5,631,217
+12,105,910
+6,413,454,745
+100.00%
+100.00%
+25 of 33
+Leone Arancio 2023-1
+Monthly investor report as of  06-May-2026
+
+=== page 26 ===
+23. Discounted Instalments
+Aggregate 
+Outstanding Not. 
+Amount
+% of Total
+Nr of Loans
+% of Total
+Aggregate 
+Outstanding Not. 
+Amount
+% of Total
+Nr of Loans
+% of Total
+No Discounted 
+Installments
+6,400,766,026
+99.80%
+69,727
+99.83%
+6,488,075,506
+100.00%
+68,598
+100.00%
+Discounted Installments
+12,688,719
+0.20%
+119
+0.17%
+0.00%
+Total
+6,413,454,745
+100.00%
+69,846
+100.00%
+6,488,075,506
+100.00%
+68,598
+100.00%
+26 of 33
+Leone Arancio 2023-1
+Monthly investor report as of  06-May-2026
+
+=== page 27 ===
+24. PD Bucket
+Probability of Default
+Aggregate 
+Outstanding Not. 
+Amount
+% of Total
+Nr of Loans
+% of Total
+Aggregate 
+Outstanding Not. 
+Amount
+% of Total
+Nr of Loans
+% of Total
+[0.00% - 0.10%]
+829,695,976
+12.94%
+10,003
+14.32%
+2,125,262,116
+32.76%
+28,717
+41.86%
+[0.10% - 0.25%]
+3,150,767,371
+49.13%
+32,466
+46.48%
+1,119,739,613
+17.26%
+10,907
+15.90%
+[0.25% - 1.00%]
+1,782,071,148
+27.79%
+20,684
+29.61%
+2,246,067,132
+34.62%
+21,447
+31.26%
+[1.00% - 7.50%]
+467,104,073
+7.28%
+4,821
+6.90%
+997,006,645
+15.37%
+7,527
+10.97%
+[7.50% - 20.00%]
+58,458,993
+0.91%
+599
+0.86%
+0.00%
+[20.00% - 100.00%]
+125,357,184
+1.95%
+1,273
+1.82%
+0.00%
+Total
+6,413,454,745
+100.00%
+69,846
+100.00%
+6,488,075,506
+100.00%
+68,598
+100.00%
+Weighted Average
+1.90%
+27 of 33
+Leone Arancio 2023-1
+Monthly investor report as of  06-May-2026
+
+=== page 28 ===
+25. Performance
+Aggregate 
+Outstanding Not. 
+Amount
+% of Total
+Nr of Loans
+% of Total
+Aggregate 
+Outstanding Not. 
+Amount
+% of Total
+Nr of Loans
+% of Total
+Default CRR (Italy)
+50,238,902
+0.78%
+511
+0.73%
+0.00%
+> 12 months in 
+arrears
+16,366,931
+0.26%
+156
+0.22%
+0.00%
+Sofferenza (Italy)
+212,137
+0.00%
+1
+0.00%
+0.00%
+Reperforming (Italy)
+747,363
+0.01%
+8
+0.01%
+0.00%
+Performing
+6,345,889,412
+98.95%
+69,170
+99.03%
+6,488,075,506
+100.00%
+68,598
+100.00%
+Total
+6,413,454,745
+100.00%
+69,846
+100.00%
+6,488,075,506
+100.00%
+68,598
+100.00%
+28 of 33
+Leone Arancio 2023-1
+Monthly investor report as of  06-May-2026
+
+=== page 29 ===
+26. IFRS Stage
+Aggregate 
+Outstanding Not. 
+Amount
+% of Total
+Nr of Loans
+% of Total
+Aggregate 
+Outstanding Not. 
+Amount
+% of Total
+Nr of Loans
+% of Total
+Stage 1
+6,114,411,942
+95.34%
+66,215
+94.80%
+6,488,075,506
+100.00%
+68,598
+100.00%
+Stage 2
+231,172,365
+3.60%
+2,953
+4.23%
+0.00%
+Stage 3
+67,870,438
+1.06%
+678
+0.97%
+0.00%
+Total
+6,413,454,745
+100.00%
+69,846
+100.00%
+6,488,075,506
+100.00%
+68,598
+100.00%
+29 of 33
+Leone Arancio 2023-1
+Monthly investor report as of  06-May-2026
+
+=== page 30 ===
+27. Loan Status
+Aggregate Outstanding 
+Not. Amount
+% of Total
+Nr of Loans
+% of Total
+Principal in arrears
+Interest in arrears
+Effective
+6,356,925,438
+99.12%
+69,302
+99.22%
+389,942.58
+481,522.50
+Modification Initial Probation
+30,440,539
+0.47%
+289
+0.41%
+326,417.54
+182,986.94
+Denounced Without Loss
+9,977,904
+0.16%
+100
+0.14%
+365,419.33
+439,006.66
+Infected
+9,898,385
+0.15%
+89
+0.13%
+5,384,721.52
+4,513,663.63
+Denounced
+1,739,257
+0.03%
+18
+0.03%
+738.41
+2,765.41
+Modification Changed Probation
+4,473,223
+0.07%
+48
+0.07%
+7,454.31
+11,271.58
+Total
+6,413,454,745
+100.00%
+69,846
+100.00%
+6,474,693.69
+5,631,216.72
+30 of 33
+Leone Arancio 2023-1
+Monthly investor report as of  06-May-2026
+
+=== page 31 ===
+26. Renegotiations
+Kind of Renegotiations
+Nr of Loans
+Aggregate Outstanding 
+Not. Amount
+% Nr of Loans
+% of Aggregate 
+Outstanding Not. Amt
+Overall renegotiation 
+limit
+floating to fix
+3,567
+423,324,193.57
+5.07%
+6.60%
+3,567
+423,324,193.57
+5.07%
+6.60%
+30.00%
+31 of 33
+Leone Arancio 2023-1
+Monthly investor report as of  06-May-2026
+
+=== page 32 ===
+Leone Arancio 2023-1
+ Monthly IR as of 06-May-26
+27. Transaction Parties
+ISSUER
+Corso Vercelli 40
+20145 Milano (MI)
+Italia
+Leone Arancio RMBS S.r.l.
+SOLE ARRANGER
+Bijlmerdreef 106
+1102 CT Amsterdam
+The Netherlands
+ING Bank N.V
+REPRESENTATIVE OF THE 
+NOTEHOLDERS
+One Angel Court, 13th Floor
+London, EC2R 7HJ
+United Kingdom
+TMF Trustee Limited
+CASH MANAGER, CALCULATION 
+AGENT 
+Avenue Marnix 24
+1000 Brussels
+Belgium
+ING Bank N.V.
+DUTCH ACCOUNT BANK, 
+PRINCIPAL PAYING AGENT
+ING Bank N.V.
+Bijlmerdreef 106
+1102 CT Amsterdam
+The Netherlands
+CORPORATE SERVICES PROVIDER
+TMF Management Italy S.r.l.
+Corso Vercelli 40
+20145 Milan
+Italy
+ORIGINATOR, SERVICER, LIQUIDITY 
+FACILITY PROVIDER, SWAP COUNTERPARTY
+ING Bank N.V., Milan branch 
+Viale Fulvio Testi, 250
+20125 Milano
+Italy
+LEGAL ADVISERS
+To the Sole Arranger and the Sole 
+Lead Manager as to Italian law and 
+Italian taxation law
+Studio Legale Associato in 
+associazione con Clifford Chance
+Via Broletto 16
+20121 Milan
+Italy
+as to Dutch law
+Clifford Chance LLP
+Droogbak 1A
+1013 GE Amsterdam
+The Netherlands
+as to English law
+Studio Legale Associato in 
+associazione con Clifford Chance
+Via Broletto 16
+20121 Milan
+Italy
+To the Representative of the 
+Noteholders as to Italian law
+Studio Legale Associato in 
+associazione con Clifford Chance
+Via Broletto 16
+20121 Milan
+Italy
+LISTING AGENT
+The Bank of New York Mellon 
+(Luxembourg) S.A.,
+Vertigo Building - Polaris
+2-4 rue Eugène Ruppert
+2
+453 Luxembourg
+RATING AGENCY RATING AGENCY
+DBRS Ratings GmbH
+Neue Mainzer Straße 75, 
+60311, Frankfurt am Main
+Germany
+ Fitch Ratings Ireland Limited 
+Sede Secondaria Italiana
+Via Morigi, 6 Ingresso Via Privata 
+Maria Teresa, 8
+20123 Milano
+Italy
+SERVICER
+ING Bank N.V., Milan branch 
+Rating Triggers (Fitch,DBRS): F1 / A-, BBB(low) 
+Action upon breach: Post Commingling Risk Amount
+LIQUIDITY FACILITY PROVIDER
+ING Bank N.V., Milan branch 
+Rating Triggers (Fitch,DBRS): F1 / A-, A 
+Action upon breach: Post Available Commitment
+SWAP COUNTERPARTY
+ING Bank N.V., Milan branch 
+1st Rating Triggers (Fitch,DBRS): F1 / A-, A 
+Action upon breach: Collateral posting
+2nd Rating Triggers (Fitch,DBRS): BBB- / F3, BBB
+Action upon breach: Replacement
+DUTCH ACCOUNT BANK
+ING Bank N.V.
+Rating Triggers (Fitch,DBRS): F1 / A-, A
+Action upon breach: Replacement
+Page 15 / 15

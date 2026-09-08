@@ -1,0 +1,4412 @@
+=== page 1 ===
+Green Lion 2023-1 B.V.
+Email: Securitisatie.Hypotheken@ing.nl
+www.dutchsecuritisation.nl
+Report Version 2.1
+Green Lion 
+2023-1
+ B.V.
+ESMA identifier: 3TK20IVIUJ8J3ZU0QE75N202301
+Portfolio and Performance Report
+Reporting Period: 1 April 2026 - 30 April 2026
+Reporting Date: 26 May 2026
+AMOUNTS IN EURO
+
+=== page 2 ===
+Table of Contents
+Page
+Key Dates
+3
+The Mortgage Loan Portfolio
+3
+Foreclosure Statistics
+4
+Performance Ratios
+5
+Transaction Specific Information
+6
+Stratification Tables
+7
+Glossary
+39
+Contact Information
+41
+2 of 42
+Green Lion 2023-1 B.V.
+Portfolio and Performance Report: 1 April 2026 - 30 April 2026
+
+=== page 3 ===
+Securitisation Dates
+Closing Date
+4 Oct 2023
+Portfolio Cut-off Date
+30 Apr 2026
+Revolving Period End-Date
+23 Jul 2028
+Final Maturity Date
+23 Jul 2065
+Key Dates
+Number of Mortgage Loans
+Number of Mortgage Loans at the beginning of the Reporting Period
+2,773
+Repaid in full Mortgage Loans
+-/-
+10
+Purchased Mortgage loans
+0
+Repurchased Mortgage Loans
+-/-
+0
+Foreclosed Mortgage Loans
+-/-
+0
+Other
+2
+Number of Mortgage Loans at the end of the Reporting Period
+2,765
+Amounts of Mortgage Loans
+Net Outstanding balance at the beginning of the Reporting Period
+894,767,601.02
+Repayments
+-/-
+1,656,924.93
+Prepayments
+-/-
+2,719,773.56
+Further Advances
+0.00
+Purchased Mortgage Loans
+0.00
+Repurchased Mortgage Loans
+-/-
+0.00
+Foreclosed Mortgage Loans
+-/-
+0.00
+Other
+3,301.91
+Net Outstanding balance at the end of the Reporting Period
+890,394,204.44
+Amount of Construction Deposit Obligations
+Construction Deposit Obligations at the beginning of the Reporting Period
+299,146.27
+Changes in Construction Deposit Obligations
+-50,885.96
+Construction Deposit Obligations at the end of the Reporting Period
+248,260.31
+The Mortgage Loan Portfolio
+3 of 42
+Green Lion 2023-1 B.V.
+Portfolio and Performance Report: 1 April 2026 - 30 April 2026
+
+=== page 4 ===
+Foreclosure Statistics
+Previous Period
+Current Period
+Defaulted Mortgage Loans
+The total outstanding principal amount in default, according to securitisation documentation
+0
+0
+The total outstanding principal amount in default, according to Article 178 of the CRR
+1,356,949
+1,354,648
+Mortgage Loans foreclosed in the reporting period
+Number of Mortgage Loans foreclosed during the Reporting Period
+0
+0
+Net principal balance of Mortgage Loans foreclosed during the Reporting Period
+0.00
+0.00
+Other foreclosed amounts (e.g. interest in arrears and penalties) during the Reporting Period
+0.00
+0.00
+Total amount of foreclosures of Mortgage Loans during the Reporting Period
+0.00
+0.00
+Recoveries from sales on Foreclosed Mortgage Loans during the Reporting Period
+-/-
+0.00
+0.00
+Total amount of losses on Foreclosed Mortgage Loans during the Reporting Period
+0.00
+0.00
+Post-Foreclosure recoveries on Foreclosed Mortgage Loans during the Reporting Period 
+-/-
+0.00
+0.00
+Losses minus recoveries during the Reporting Period
+0.00
+0.00
+Average loss severity during the Reporting Period
+0.00
+0.00
+Mortgage loans foreclosed since Closing Date
+Number of Mortgage Loans foreclosed since the Closing Date
+0
+0
+Percentage of number of Mortgage Loans at Closing Date (%, including replenished loans)
+0.00%
+0.00%
+Net principal balance of Mortgage Loans foreclosed since the Closing Date
+0.00
+0.00
+Percentage of net principal balance at the Closing Date (%, including replenished loans)
+0.00%
+0.00%
+Net principal balance of Mortgage Loans foreclosed since the Closing Date
+0.00
+0.00
+Other foreclosed amounts (e.g. interest in arrears and penalties) since the Closing Date
+0.00
+0.00
+Total amount of foreclosures of Mortgage Loans since the Closing Date
+0.00
+0.00
+Recoveries from sales on Foreclosed Mortgage Loans since the Closing Date
+-/-
+0.00
+0.00
+Total amount of losses on Mortgage Loans foreclosed since the Closing Date
+0.00
+0.00
+Post-Foreclosure recoveries on Mortgage Loans Foreclosed since the Closing Date
+-/-
+0.00
+0.00
+Losses minus recoveries since the Closing Date
+0.00
+0.00
+Average loss severity since the Closing Date
+0.00
+0.00
+Mortgage loans in Foreclosure
+Number of Mortgage Loans in foreclosure at the beginning of the Reporting Period
+0
+0
+Number of new Mortgage Loans foreclosed during the Reporting Period
+0
+0
+Number of Mortgage Loans for which foreclosure was completed in the Reporting Period
+-/-
+0
+0
+Number of Mortgage Loans in foreclosure at the end of the Reporting Period
+0
+0
+Net principal balance of Mortgage Loans in foreclosure at the beginning of the Reporting Period
+0.00
+0.00
+Net principal balance of new Mortgage Loans in foreclosure during the Reporting Period
+0.00
+0.00
+Net principal balance of Mortgage Loans for which foreclosure was completed  during the Reporting Period
+-/-
+0.00
+0.00
+Net principal balance of Mortgage Loans in foreclosure at the end of the Reporting Period
+0.00
+0.00
+4 of 42
+Green Lion 2023-1 B.V.
+Portfolio and Performance Report: 1 April 2026 - 30 April 2026
+
+=== page 5 ===
+Performance Ratios
+Previous Period
+Current Period
+Constant Prepayment Rate (CPR)
+Annualized Life CPR
+3.991%
+3.978%
+Annualized 1-month average CPR
+4.603%
+3.595%
+Annualized 3-month average CPR
+4.176%
+3.704%
+Annualized 6-month average CPR
+4.154%
+4.165%
+Annualized 12-month average CPR
+3.951%
+4.087%
+Principal Payment Rate (PPR)
+Annualized Life PPR
+2.133%
+2.135%
+Annualized 1-month average PPR
+2.211%
+2.207%
+Annualized 3-month average PPR
+2.203%
+2.207%
+Annualized 6-month average PPR
+2.194%
+2.199%
+Annualized 12-month average PPR
+2.177%
+2.183%
+Payment Ratio
+Periodic Payment Ratio
+99.910%
+99.650%
+Constant Default Rate
+Constant Default Rate current month
+0.000%
+0.000%
+Constant Default Rate 3-month average
+0.262%
+0.000%
+Constant Default Rate 6-month average
+0.188%
+0.131%
+Constant Default Rate 12-month average
+0.206%
+0.164%
+Constant Default Rate to date
+0.178%
+0.172%
+5 of 42
+Green Lion 2023-1 B.V.
+Portfolio and Performance Report: 1 April 2026 - 30 April 2026
+
+=== page 6 ===
+Transaction Specific Information
+6 of 42
+Green Lion 2023-1 B.V.
+Portfolio and Performance Report: 1 April 2026 - 30 April 2026
+
+=== page 7 ===
+Stratifications
+1. Key Characteristics
+Description
+As per Reporting Date
+As per Closing Date
+Principal amount
+890,394,204.44
+894,799,317.60
+Value of savings deposits
+0.00
+0.00
+Net principal balance
+890,394,204.44
+894,799,317.60
+Construction Deposits
+248,260.31
+852,881.67
+Net principal balance excl. Construction and Saving Deposits
+890,145,944.13
+893,946,435.93
+Negative balance
+0.00
+0.00
+Net principal balance excl. Construction and Saving Deposits and Negative Balance
+890,145,944.13
+893,946,435.93
+Number of loans
+2,765
+2,655
+Number of loanparts
+5,598
+5,133
+Number of negative loanparts
+0
+0
+Average principal balance (borrower)
+322,023.22
+337,024.23
+Weighted average current interest rate
+2.65%
+2.48%
+Weighted average maturity (in years)
+25.66
+27.83
+Weighted average remaining time to interest reset (in years)
+10.21
+13.09
+Weighted average seasoning (in years)
+3.82
+1.67
+Weighted average CLTOMV
+71.62%
+75.54%
+Weighted average CLTIMV
+59.01%
+73.22%
+Weighted average OLTOMV
+79.38%
+79.18%
+7 of 42
+Green Lion 2023-1 B.V.
+Portfolio and Performance Report: 1 April 2026 - 30 April 2026
+
+=== page 8 ===
+2. Delinquencies
+From ( >=) Until ( < )
+Arrears Amount
+Net Principal Balance
+% of Total
+Nr of 
+Loanparts
+% of Total
+Weighted 
+Average 
+Coupon
+Weighted 
+Average 
+Maturity
+Weighted 
+Average 
+CLTOMV
+Performing
+28,968.53
+888,363,867.20
+99.77%
+5,589
+99.84%
+2.65%
+25.66
+71.60%
+< 29 days
+3,759.96
+356,552.05
+0.04%
+1
+0.02%
+3.46%
+29.42
+97.69%
+30 days - 59 days
+4,168.64
+319,137.63
+0.04%
+1
+0.02%
+3.30%
+26.25
+88.65%
+60 days - 89 days
+90 days - 119 days
+120 days - 149 days
+150 days - 179 days
+180 days >
+21,332.05
+1,354,647.56
+0.15%
+7
+0.13%
+2.46%
+25.20
+76.16%
+Total
+58,229.18
+890,394,204.44
+100.00%
+5,598
+100.00%
+2.65%
+25.66
+71.62%
+The number of days past due is determined according to the EBA Definition of Default, using relative and absolute thresholds. As a result, mortgage loans with an arrears amount could be considered 
+performing if both thresholds are not satisfied. Conservatively, mortgage loans which are considered 
+“
+Unlikely to Pay
+” 
+or are considered in 
+“
+Default
+”, 
+but are less than 90 days overdue, are classified 
+within the >180+ days arrear bucket.
+8 of 42
+Green Lion 2023-1 B.V.
+Portfolio and Performance Report: 1 April 2026 - 30 April 2026
+
+=== page 9 ===
+3. Redemption Type
+Description
+Net Principal Balance
+% of Total
+Nr of 
+Loanparts
+% of Total
+Weighted 
+Average 
+Coupon
+Weighted 
+Average 
+Maturity
+Weighted 
+Average 
+CLTOMV
+% of Total 
+Not.Amount at 
+Closing Date
+Annuity (FRXX)
+684,807,476.33
+76.91%
+4,034
+72.06%
+2.71%
+25.69
+74.78%
+77.28%
+German Amortisation (DEXX)
+Linear (FIXE)
+22,017,765.86
+2.47%
+158
+2.82%
+2.42%
+24.63
+57.72%
+3.40%
+Interest Only (BLLT)
+183,568,962.25
+20.62%
+1,406
+25.12%
+2.47%
+25.70
+61.49%
+19.32%
+Other (OTHR)
+Total
+890,394,204.44
+100.00%
+5,598
+100.00%
+2.65%
+25.66
+71.62%
+100.00%
+9 of 42
+Green Lion 2023-1 B.V.
+Portfolio and Performance Report: 1 April 2026 - 30 April 2026
+
+=== page 10 ===
+4. Loanpart Coupon (interest rate bucket)
+From (>=) - Until (<)
+Net Principal Balance
+% of Total
+Nr of 
+Loanparts
+% of Total
+Weighted 
+Average 
+Coupon
+Weighted 
+Average 
+Maturity
+Weighted 
+Average 
+CLTOMV
+% of Total 
+Not.Amount at 
+Closing Date
+< 0.50%
+466.19
+0.00%
+1
+0.02%
+0.00%
+26.75
+0.13%
+0.50% - 1.00%
+8,040,222.00
+0.90%
+59
+1.05%
+0.94%
+25.08
+75.15%
+0.94%
+1.00% - 1.50%
+169,523,091.81
+19.04%
+1,056
+18.86%
+1.30%
+24.77
+70.64%
+18.80%
+1.50% - 2.00%
+205,290,764.49
+23.06%
+1,274
+22.76%
+1.69%
+24.73
+71.24%
+30.65%
+2.00% - 2.50%
+70,875,748.08
+7.96%
+488
+8.72%
+2.26%
+24.83
+69.05%
+9.03%
+2.50% - 3.00%
+63,788,289.34
+7.16%
+410
+7.32%
+2.73%
+25.33
+68.68%
+8.28%
+3.00% - 3.50%
+70,637,516.97
+7.93%
+450
+8.04%
+3.26%
+26.35
+69.24%
+7.06%
+3.50% - 4.00%
+146,909,467.25
+16.50%
+900
+16.08%
+3.75%
+27.02
+73.78%
+11.22%
+4.00% - 4.50%
+119,064,171.31
+13.37%
+724
+12.93%
+4.24%
+26.85
+74.07%
+9.10%
+4.50% - 5.00%
+35,736,476.00
+4.01%
+231
+4.13%
+4.63%
+26.77
+75.97%
+4.73%
+5.00% - 5.50%
+527,991.00
+0.06%
+5
+0.09%
+5.15%
+26.10
+51.80%
+0.12%
+5.50% - 6.00%
+6.00% - 6.50%
+0.06%
+6.50% - 7.00%
+7.00% >=
+Unknown
+Total
+890,394,204.44
+100.00%
+5,598
+100.00%
+2.65%
+25.66
+71.62%
+100.00%
+Weighted Average
+2.65%
+Minimum
+0.00%
+Maximum
+5.19%
+10 of 42
+Green Lion 2023-1 B.V.
+Portfolio and Performance Report: 1 April 2026 - 30 April 2026
+
+=== page 11 ===
+5. Outstanding Loan Amount
+From (>=) - Until (<)
+Net Principal Balance
+% of Total
+Nr of Loans
+% of Total
+Weighted 
+Average 
+Coupon
+Weighted 
+Average 
+Maturity
+Weighted 
+Average 
+CLTOMV
+% of Total 
+Not.Amount at 
+Closing Date
+< 25.000
+175,083.23
+0.02%
+16
+0.58%
+2.94%
+26.69
+3.94%
+0.01%
+25,000 - 50,000
+809,074.64
+0.09%
+22
+0.80%
+2.99%
+23.67
+12.43%
+0.05%
+50,000 - 75,000
+2,689,577.99
+0.30%
+44
+1.59%
+2.78%
+24.69
+15.55%
+0.20%
+75,000 - 100,000
+4,557,025.96
+0.51%
+52
+1.88%
+2.84%
+25.03
+23.82%
+0.36%
+100,000 - 150,000
+23,955,637.11
+2.69%
+189
+6.84%
+2.71%
+25.13
+38.50%
+2.35%
+150,000 - 200,000
+50,469,903.08
+5.67%
+285
+10.31%
+2.59%
+25.34
+56.19%
+5.37%
+200,000 - 250,000
+78,813,170.27
+8.85%
+348
+12.59%
+2.63%
+25.54
+64.75%
+7.99%
+250,000 - 300,000
+103,837,975.15
+11.66%
+378
+13.67%
+2.56%
+25.40
+68.35%
+11.19%
+300,000 - 350,000
+133,245,040.22
+14.96%
+411
+14.86%
+2.62%
+25.72
+74.76%
+13.63%
+350,000 - 400,000
+113,271,025.98
+12.72%
+302
+10.92%
+2.67%
+25.77
+74.95%
+12.66%
+400,000 - 450,000
+95,334,088.71
+10.71%
+225
+8.14%
+2.82%
+25.90
+77.97%
+11.34%
+450,000 - 500,000
+69,559,360.64
+7.81%
+147
+5.32%
+2.68%
+25.84
+77.87%
+7.67%
+500,000 - 550,000
+62,521,654.00
+7.02%
+120
+4.34%
+2.69%
+25.65
+76.76%
+7.13%
+550,000 - 600,000
+36,546,260.25
+4.10%
+64
+2.31%
+2.85%
+26.31
+79.80%
+6.30%
+600,000 - 650,000
+33,442,076.74
+3.76%
+54
+1.95%
+2.50%
+25.59
+74.19%
+3.99%
+650,000 - 700,000
+23,470,475.00
+2.64%
+35
+1.27%
+2.63%
+25.63
+77.97%
+2.18%
+700,000 - 750,000
+16,589,100.02
+1.86%
+23
+0.83%
+2.52%
+25.44
+75.74%
+2.01%
+750,000 - 800,000
+17,714,166.73
+1.99%
+23
+0.83%
+2.35%
+25.57
+71.85%
+1.32%
+800,000 - 850,000
+8,196,420.58
+0.92%
+10
+0.36%
+2.88%
+25.70
+77.87%
+1.83%
+850,000 - 900,000
+8,719,057.52
+0.98%
+10
+0.36%
+2.54%
+25.46
+73.13%
+0.88%
+900,000 - 950,000
+5,510,492.69
+0.62%
+6
+0.22%
+2.58%
+26.29
+80.37%
+1.04%
+950,000 - 1,000,000
+967,537.93
+0.11%
+1
+0.04%
+3.79%
+27.38
+77.40%
+0.55%
+1.000.000 >
+Total
+890,394,204.44
+100.00%
+2,765
+100.00%
+2.65%
+25.66
+71.62%
+100.00%
+Average
+322,023
+Minimum
+107
+Maximum
+967,538
+11 of 42
+Green Lion 2023-1 B.V.
+Portfolio and Performance Report: 1 April 2026 - 30 April 2026
+
+=== page 12 ===
+6. Construction Deposits (as % of net principal outstanding amount)
+From (>) - Until (<=)
+Net Principal Balance
+% of Total
+Nr of Loans
+% of Total
+Weighted 
+Average 
+Coupon
+Weighted 
+Average 
+Maturity
+Weighted 
+Average 
+CLTOMV
+% of Total 
+Not.Amount at 
+Closing Date
+0%
+879,553,233.46
+98.78%
+2,738
+99.02%
+2.64%
+25.64
+71.45%
+95.69%
+0% - 10%
+10,840,970.98
+1.22%
+27
+0.98%
+3.55%
+27.40
+85.58%
+4.29%
+10% - 20%
+0.02%
+20% - 30%
+30% - 40%
+40% - 50%
+50% - 60%
+60% - 70%
+70% - 80%
+80% - 90%
+90% >
+Total
+890,394,204.44
+100.00%
+2,765
+100.00%
+2.65%
+25.66
+71.62%
+100.00%
+Weighted Average
+0%
+Minimum
+0%
+Maximum
+10%
+12 of 42
+Green Lion 2023-1 B.V.
+Portfolio and Performance Report: 1 April 2026 - 30 April 2026
+
+=== page 13 ===
+7. Origination Year
+From (>=) - Until (<)
+Net Principal Balance
+% of Total
+Nr of 
+Loanparts
+% of Total
+Weighted 
+Average 
+Coupon
+Weighted 
+Average 
+Maturity
+Weighted 
+Average 
+CLTOMV
+% of Total 
+Not.Amount at 
+Closing Date
+2026 >=
+1,778,449.69
+0.20%
+34
+0.61%
+3.72%
+29.40
+69.42%
+2025 - 2026
+33,565,282.64
+3.77%
+245
+4.38%
+3.47%
+28.37
+81.47%
+2024 - 2025
+88,996,663.44
+10.00%
+520
+9.29%
+3.74%
+27.42
+79.98%
+2023 - 2024
+187,544,195.40
+21.06%
+1,269
+22.67%
+3.85%
+26.24
+69.85%
+20.53%
+2022 - 2023
+277,503,812.45
+31.17%
+1,680
+30.01%
+2.59%
+25.72
+70.07%
+34.56%
+2021 - 2022
+227,266,551.18
+25.52%
+1,311
+23.42%
+1.46%
+24.86
+72.83%
+32.53%
+2020 - 2021
+49,443,008.70
+5.55%
+351
+6.27%
+1.63%
+23.59
+66.70%
+7.94%
+2019 - 2020
+12,390,352.97
+1.39%
+94
+1.68%
+2.05%
+22.88
+61.30%
+2.21%
+2018 - 2019
+6,118,613.16
+0.69%
+46
+0.82%
+2.07%
+21.96
+55.43%
+1.01%
+2017 - 2018
+1,323,906.87
+0.15%
+10
+0.18%
+1.99%
+21.38
+61.58%
+0.24%
+2016 - 2017
+1,660,834.81
+0.19%
+11
+0.20%
+2.46%
+20.08
+53.42%
+0.30%
+2015 - 2016
+1,439,575.60
+0.16%
+12
+0.21%
+2.91%
+19.10
+49.73%
+0.39%
+2014 - 2015
+801,999.28
+0.09%
+10
+0.18%
+2.97%
+17.56
+44.19%
+0.17%
+2013 - 2014
+230,958.25
+0.03%
+3
+0.05%
+3.99%
+17.28
+31.87%
+0.02%
+2012 - 2013
+330,000.00
+0.04%
+2
+0.04%
+3.29%
+16.39
+49.68%
+0.10%
+2011 - 2012
+2010 - 2011
+2009 - 2010
+2008 - 2009
+2007 - 2008
+2006 - 2007
+2005 - 2006
+2004 - 2005
+< 2004
+Unknown
+Total
+890,394,204.44
+100.00%
+5,598
+100.00%
+2.65%
+25.66
+71.62%
+100.00%
+Weighted Average
+2022
+Minimum
+2012
+Maximum
+2026
+13 of 42
+Green Lion 2023-1 B.V.
+Portfolio and Performance Report: 1 April 2026 - 30 April 2026
+
+=== page 14 ===
+8. Legal Maturity
+From (>=) - Until (<)
+Net Principal Balance
+% of Total
+Nr of 
+Loanparts
+% of Total
+Weighted 
+Average 
+Coupon
+Weighted 
+Average 
+Maturity
+Weighted 
+Average 
+CLTOMV
+% of Total 
+Not.Amount at 
+Closing Date
+2021 - 2025
+2025 - 2030
+263,636.02
+0.03%
+5
+0.09%
+2.65%
+2.68
+36.53%
+0.03%
+2030 - 2035
+581,454.86
+0.07%
+18
+0.32%
+1.97%
+5.52
+28.39%
+0.09%
+2035 - 2040
+1,999,857.99
+0.22%
+26
+0.46%
+2.44%
+10.94
+53.46%
+0.16%
+2040 - 2045
+8,324,294.68
+0.93%
+95
+1.70%
+2.55%
+17.27
+55.25%
+1.34%
+2045 - 2050
+87,836,411.60
+9.86%
+719
+12.84%
+2.25%
+21.68
+63.86%
+11.58%
+2050 - 2055
+759,699,075.42
+85.32%
+4,496
+80.31%
+2.67%
+26.14
+72.39%
+86.80%
+2055 - 2060
+31,689,473.87
+3.56%
+239
+4.27%
+3.52%
+29.00
+81.25%
+2060 - 2065
+2065 - 2070
+2070 - 2075
+2075 - 2080
+2080 >=
+Credit Mortgage
+Unknown
+Total
+890,394,204.44
+100.00%
+5,598
+100.00%
+2.65%
+25.66
+71.62%
+100.00%
+Weighted Average
+2052
+Minimum
+2028
+Maximum
+2056
+14 of 42
+Green Lion 2023-1 B.V.
+Portfolio and Performance Report: 1 April 2026 - 30 April 2026
+
+=== page 15 ===
+9. Seasoning
+From (>=) - Until (<)
+Net Principal Balance
+% of Total
+Nr of 
+Loanparts
+% of Total
+Weighted 
+Average 
+Coupon
+Weighted 
+Average 
+Maturity
+Weighted 
+Average 
+CLTOMV
+% of Total 
+Not.Amount at 
+Closing Date
+< 1 year
+13,614,803.08
+1.53%
+145
+2.59%
+3.52%
+28.74
+79.59%
+35.76%
+1 year - 2 years
+84,654,254.87
+9.51%
+465
+8.31%
+3.66%
+27.81
+82.35%
+34.42%
+2 years - 3 years
+85,063,378.74
+9.55%
+640
+11.43%
+3.75%
+26.46
+71.14%
+20.43%
+3 years - 4 years
+340,218,061.25
+38.21%
+2,109
+37.67%
+3.29%
+25.98
+68.87%
+5.78%
+4 years - 5 years
+250,713,815.61
+28.16%
+1,416
+25.29%
+1.47%
+25.07
+74.36%
+1.65%
+5 years - 6 years
+79,510,934.47
+8.93%
+553
+9.88%
+1.60%
+24.06
+67.83%
+0.94%
+6 years - 7 years
+21,161,391.44
+2.38%
+145
+2.59%
+1.76%
+23.16
+63.28%
+0.12%
+7 years - 8 years
+7,143,346.78
+0.80%
+61
+1.09%
+2.22%
+22.37
+60.02%
+0.36%
+8 years - 9 years
+3,643,600.44
+0.41%
+23
+0.41%
+1.92%
+21.64
+54.70%
+0.29%
+9 years - 10 years
+1,075,304.44
+0.12%
+9
+0.16%
+1.91%
+20.41
+52.85%
+0.13%
+10 years - 11 years
+2,047,948.24
+0.23%
+15
+0.27%
+3.04%
+19.43
+52.58%
+0.12%
+11 years - 12 years
+484,441.32
+0.05%
+6
+0.11%
+2.42%
+17.72
+31.09%
+12 years - 13 years
+692,109.76
+0.08%
+8
+0.14%
+3.37%
+17.70
+47.79%
+13 years - 14 years
+370,814.00
+0.04%
+3
+0.05%
+3.43%
+16.44
+45.82%
+14 years - 15 years
+15 years - 16 years
+16 years - 17 years
+17 years - 18 years
+18 years - 19 years
+19 years - 20 years
+20 years - 21 years
+21 years - 22 years
+22 years - 23 years
+23 years - 24 years
+24 years - 25 years
+25 years - 26 years
+26 years - 27 years
+27 years - 28 years
+28 years - 29 years 
+29 years - 30 years
+30 years >
+Unknown
+Total
+890,394,204.44
+100.00%
+5,598
+100.00%
+2.65%
+25.66
+71.62%
+100.00%
+Weighted Average
+3.8
+Minimum
+0.1
+Maximum
+13.7
+15 of 42
+Green Lion 2023-1 B.V.
+Portfolio and Performance Report: 1 April 2026 - 30 April 2026
+
+=== page 16 ===
+10. Remaining Tenor
+From (>=) - Until (<)
+Net Principal Balance
+% of Total
+Nr of 
+Loanparts
+% of Total
+Weighted 
+Average 
+Coupon
+Weighted 
+Average 
+Maturity
+Weighted 
+Average 
+CLTOMV
+% of Total 
+Not.Amount at 
+Closing Date
+< 1 year
+1 years - 2 years
+2 years - 3 years
+249,411.67
+0.03%
+3
+0.05%
+2.72%
+2.65
+37.17%
+3 years - 4 years
+28,217.24
+0.00%
+3
+0.05%
+1.86%
+3.64
+50.43%
+4 years - 5 years
+191,524.13
+0.02%
+5
+0.09%
+2.31%
+4.71
+27.67%
+0.01%
+5 years - 6 years
+231,434.84
+0.03%
+7
+0.13%
+1.32%
+5.34
+20.87%
+0.02%
+6 years - 7 years
+49,503.00
+0.01%
+3
+0.05%
+3.55%
+6.76
+70.98%
+0.02%
+7 years - 8 years
+95,000.00
+0.01%
+2
+0.04%
+1.98%
+7.16
+18.94%
+0.02%
+8 years - 9 years
+0.05%
+9 years - 10 years
+551,255.11
+0.06%
+5
+0.09%
+2.56%
+9.29
+55.85%
+0.00%
+10 years - 11 years
+494,786.73
+0.06%
+9
+0.16%
+1.89%
+10.36
+44.34%
+0.01%
+11 years - 12 years
+593,276.58
+0.07%
+7
+0.13%
+2.44%
+11.58
+61.41%
+12 years - 13 years
+83,159.10
+0.01%
+3
+0.05%
+2.69%
+12.31
+62.83%
+0.09%
+13 years - 14 years
+312,855.89
+0.04%
+3
+0.05%
+2.91%
+13.48
+41.69%
+0.00%
+14 years - 15 years
+771,939.62
+0.09%
+9
+0.16%
+1.54%
+14.39
+49.54%
+0.06%
+15 years - 16 years
+217,821.15
+0.02%
+5
+0.09%
+2.00%
+15.51
+50.40%
+0.01%
+16 years - 17 years
+1,405,695.58
+0.16%
+13
+0.23%
+2.84%
+16.60
+44.85%
+0.01%
+17 years - 18 years
+2,951,658.68
+0.33%
+33
+0.59%
+3.04%
+17.47
+58.44%
+0.13%
+18 years - 19 years
+5,851,847.96
+0.66%
+62
+1.11%
+2.07%
+18.56
+59.30%
+0.06%
+19 years - 20 years
+10,766,738.00
+1.21%
+103
+1.84%
+2.40%
+19.49
+61.63%
+0.44%
+20 years - 21 years
+12,982,071.49
+1.46%
+119
+2.13%
+2.25%
+20.46
+62.11%
+0.46%
+21 years - 22 years
+18,517,968.44
+2.08%
+150
+2.68%
+2.18%
+21.54
+62.36%
+1.13%
+22 years - 23 years
+22,672,214.80
+2.55%
+182
+3.25%
+2.37%
+22.47
+65.55%
+1.37%
+23 years - 24 years
+33,871,855.13
+3.80%
+236
+4.22%
+2.00%
+23.51
+66.37%
+1.65%
+24 years - 25 years
+77,237,927.51
+8.67%
+528
+9.43%
+1.68%
+24.56
+69.23%
+2.97%
+25 years - 26 years
+233,422,612.53
+26.22%
+1,280
+22.87%
+1.51%
+25.44
+74.91%
+3.25%
+26 years - 27 years
+305,430,743.71
+34.30%
+1,777
+31.74%
+3.34%
+26.50
+69.30%
+6.57%
+27 years - 28 years
+74,545,279.25
+8.37%
+542
+9.68%
+3.86%
+27.35
+72.68%
+19.07%
+28 years - 29 years
+74,677,635.68
+8.39%
+386
+6.90%
+3.76%
+28.39
+83.84%
+31.02%
+29 years - 30 years
+11,797,003.43
+1.32%
+121
+2.16%
+3.55%
+29.31
+79.50%
+31.56%
+30 years >=
+392,767.19
+0.04%
+2
+0.04%
+1.62%
+30.00
+71.31%
+0.02%
+Credit Mortgage
+Unknown
+Total
+890,394,204.44
+100.00%
+5,598
+100.00%
+2.65%
+25.66
+71.62%
+100.00%
+Weighted Average
+26 years
+Minimum
+2 years
+Maximum
+30 years
+16 of 42
+Green Lion 2023-1 B.V.
+Portfolio and Performance Report: 1 April 2026 - 30 April 2026
+
+=== page 17 ===
+11a. Original Loan to Original Market Value
+From (>=) - Until (<)
+Net Principal Balance
+% of Total
+Nr of Loans
+% of Total
+Weighted 
+Average 
+Coupon
+Weighted 
+Average 
+Maturity
+Weighted 
+Average 
+CLTOMV
+% of Total 
+Not.Amount at 
+Closing Date
+NHG Loans (if applicable)
+139,904,495.00
+15.71%
+583
+21.08%
+3.02%
+26.53
+80.34%
+13.93%
+< 10.00%
+367,112.70
+0.04%
+16
+0.58%
+2.92%
+27.23
+6.49%
+0.03%
+10.00% - 20.00%
+3,545,038.09
+0.40%
+40
+1.45%
+2.63%
+25.56
+15.38%
+0.39%
+20.00% - 30.00%
+9,630,341.13
+1.08%
+74
+2.68%
+2.94%
+25.16
+23.39%
+0.82%
+30.00% - 40.00%
+17,306,782.64
+1.94%
+102
+3.69%
+2.85%
+25.23
+31.45%
+2.12%
+40.00% - 50.00%
+40,018,130.30
+4.49%
+191
+6.91%
+2.68%
+25.15
+41.12%
+4.52%
+50.00% - 60.00%
+59,606,916.35
+6.69%
+210
+7.59%
+2.53%
+25.34
+48.96%
+6.88%
+60.00% - 70.00%
+95,071,347.36
+10.68%
+279
+10.09%
+2.65%
+25.26
+58.26%
+11.05%
+70.00% - 80.00%
+131,050,990.11
+14.72%
+347
+12.55%
+2.56%
+25.09
+67.15%
+15.41%
+80.00% - 90.00%
+156,258,601.33
+17.55%
+364
+13.16%
+2.59%
+25.50
+77.02%
+17.90%
+90.00% - 100.00%
+147,493,577.84
+16.56%
+341
+12.33%
+2.74%
+26.00
+85.97%
+16.65%
+100.00 %
+81,008,763.05
+9.10%
+196
+7.09%
+2.18%
+25.88
+89.59%
+9.70%
+100.01 % - 110.00 %
+9,132,108.54
+1.03%
+22
+0.80%
+2.29%
+25.74
+90.88%
+0.61%
+110.00% >=
+Unknown
+Total
+890,394,204.44
+100.00%
+2,765
+100.00%
+2.65%
+25.66
+71.62%
+100.00%
+Weighted Average
+79.38%
+Minimum
+1.63%
+Maximum
+107.17%
+17 of 42
+Green Lion 2023-1 B.V.
+Portfolio and Performance Report: 1 April 2026 - 30 April 2026
+
+=== page 18 ===
+11b. Current Loan To Original Market Value
+From (>=) - Until (<)
+Net Principal Balance
+% of Total
+Nr of Loans
+% of Total
+Weighted 
+Average 
+Coupon
+Weighted 
+Average 
+Maturity
+Weighted 
+Average 
+CLTOMV
+% of Total 
+Not.Amount at 
+Closing Date
+NHG Loans (if applicable)
+139,904,495.00
+15.71%
+583
+21.08%
+3.02%
+26.53
+80.34%
+13.93%
+< 10.00%
+694,580.19
+0.08%
+27
+0.98%
+2.31%
+26.17
+6.80%
+0.05%
+10.00% - 20.00%
+6,995,449.84
+0.79%
+79
+2.86%
+2.72%
+24.64
+15.71%
+0.51%
+20.00% - 30.00%
+13,482,623.98
+1.51%
+95
+3.44%
+2.78%
+24.61
+25.55%
+1.20%
+30.00% - 40.00%
+27,276,902.17
+3.06%
+135
+4.88%
+2.80%
+25.21
+34.81%
+2.46%
+40.00% - 50.00%
+66,504,265.99
+7.47%
+252
+9.11%
+2.51%
+24.90
+45.43%
+5.80%
+50.00% - 60.00%
+88,419,683.72
+9.93%
+284
+10.27%
+2.53%
+25.27
+55.31%
+9.00%
+60.00% - 70.00%
+118,855,854.45
+13.35%
+319
+11.54%
+2.59%
+25.16
+65.10%
+11.71%
+70.00% - 80.00%
+160,357,720.69
+18.01%
+381
+13.78%
+2.50%
+25.37
+75.12%
+15.70%
+80.00% - 90.00%
+199,530,330.49
+22.41%
+464
+16.78%
+2.42%
+25.75
+85.22%
+19.55%
+90.00% - 100.00%
+68,372,297.92
+7.68%
+146
+5.28%
+3.27%
+26.92
+93.92%
+20.11%
+100.00% - 110.00%
+110.00% >=
+Unknown
+Total
+890,394,204.44
+100.00%
+2,765
+100.00%
+2.65%
+25.66
+71.62%
+100.00%
+Weighted Average
+71.62%
+Minimum
+0.02%
+Maximum
+99.02%
+18 of 42
+Green Lion 2023-1 B.V.
+Portfolio and Performance Report: 1 April 2026 - 30 April 2026
+
+=== page 19 ===
+12. Current Loan To Indexed Market Value
+From (>=) - Until (<)
+Net Principal Balance
+% of Total
+Nr of Loans
+% of Total
+Weighted 
+Average 
+Coupon
+Weighted 
+Average 
+Maturity
+Weighted 
+Average 
+CLTOMV
+% of Total 
+Not.Amount at 
+Closing Date
+NHG Loans (if applicable)
+139,904,495.00
+15.71%
+583
+21.08%
+3.02%
+26.53
+80.34%
+13.93%
+< 10.00%
+2,137,384.71
+0.24%
+49
+1.77%
+2.49%
+22.77
+11.34%
+0.07%
+10.00% - 20.00%
+12,715,286.83
+1.43%
+109
+3.94%
+2.39%
+24.45
+22.14%
+0.67%
+20.00% - 30.00%
+31,835,750.79
+3.58%
+168
+6.08%
+2.60%
+24.70
+34.31%
+1.72%
+30.00% - 40.00%
+64,753,292.71
+7.27%
+256
+9.26%
+2.38%
+24.77
+46.57%
+3.49%
+40.00% - 50.00%
+112,242,176.99
+12.61%
+352
+12.73%
+2.45%
+25.10
+57.07%
+5.74%
+50.00% - 60.00%
+153,383,358.75
+17.23%
+410
+14.83%
+2.39%
+25.16
+69.53%
+9.18%
+60.00% - 70.00%
+194,359,421.10
+21.83%
+456
+16.49%
+2.43%
+25.54
+79.03%
+13.44%
+70.00% - 80.00%
+130,003,680.50
+14.60%
+280
+10.13%
+2.98%
+26.23
+85.69%
+16.38%
+80.00% - 90.00%
+38,353,416.08
+4.31%
+79
+2.86%
+3.41%
+27.10
+91.41%
+19.06%
+90.00% - 100.00%
+10,705,940.98
+1.20%
+23
+0.83%
+3.39%
+27.97
+97.16%
+16.28%
+100.00% - 110.00%
+0.04%
+110.00% >=
+Unknown
+Total
+890,394,204.44
+100.00%
+2,765
+100.00%
+2.65%
+25.66
+71.62%
+100.00%
+Weighted Average
+59.01%
+Minimum
+0.01%
+Maximum
+97.59%
+19 of 42
+Green Lion 2023-1 B.V.
+Portfolio and Performance Report: 1 April 2026 - 30 April 2026
+
+=== page 20 ===
+13. Remaining Interest Rate Fixed Period
+From (>=) - Until (<)
+Net Principal Balance
+% of Total
+Nr of 
+Loanparts
+% of Total
+Weighted 
+Average 
+Coupon
+Weighted 
+Average 
+Maturity
+Weighted 
+Average 
+CLTOMV
+% of Total 
+Not.Amount at 
+Closing Date
+< 12 months
+4,313,191.25
+0.48%
+49
+0.88%
+2.73%
+24.58
+52.78%
+0.60%
+12 month(s) - 24 month(s)
+11,203,318.04
+1.26%
+105
+1.88%
+2.92%
+25.13
+59.48%
+0.43%
+24 month(s) - 36 month(s)
+12,448,801.71
+1.40%
+131
+2.34%
+3.16%
+24.87
+63.36%
+0.41%
+36 month(s) - 48 month(s)
+27,459,711.33
+3.08%
+237
+4.23%
+2.73%
+25.51
+69.70%
+0.33%
+48 month(s) - 60 month(s)
+30,083,096.52
+3.38%
+252
+4.50%
+1.58%
+24.19
+65.13%
+1.47%
+60 month(s) - 72 month(s)
+86,825,885.56
+9.75%
+455
+8.13%
+1.26%
+25.05
+75.72%
+0.92%
+72 month(s) - 84 month(s)
+191,161,426.26
+21.47%
+1,096
+19.58%
+3.50%
+26.14
+68.87%
+2.39%
+84 month(s) - 96 month(s)
+55,837,160.65
+6.27%
+388
+6.93%
+3.97%
+26.87
+75.44%
+7.34%
+96 month(s) - 108 month(s)
+61,007,335.67
+6.85%
+315
+5.63%
+3.77%
+27.97
+84.41%
+11.45%
+108 month(s) - 120 month(s)
+14,922,984.35
+1.68%
+127
+2.27%
+3.35%
+27.29
+75.59%
+23.05%
+120 month(s) - 132 month(s)
+10,748,965.51
+1.21%
+75
+1.34%
+1.61%
+24.62
+73.01%
+0.33%
+132 month(s) - 144 month(s)
+11,323,017.56
+1.27%
+78
+1.39%
+3.44%
+25.74
+71.99%
+0.58%
+144 month(s) - 156 month(s)
+12,523,502.80
+1.41%
+88
+1.57%
+3.20%
+24.67
+69.20%
+0.85%
+156 month(s) - 168 month(s)
+14,238,537.52
+1.60%
+102
+1.82%
+2.30%
+23.90
+67.29%
+0.98%
+168 month(s) - 180 month(s)
+56,702,477.38
+6.37%
+378
+6.75%
+1.74%
+24.03
+67.61%
+2.02%
+180 month(s) - 192 month(s)
+161,223,474.61
+18.11%
+918
+16.40%
+1.59%
+25.14
+72.98%
+1.10%
+192 month(s) - 204 month(s)
+114,979,368.08
+12.91%
+698
+12.47%
+2.95%
+25.81
+69.34%
+3.55%
+204 month(s) - 216 month(s)
+5,136,284.42
+0.58%
+48
+0.86%
+4.14%
+26.29
+69.50%
+12.10%
+216 month(s) - 228 month(s)
+6,525,768.52
+0.73%
+33
+0.59%
+4.10%
+27.84
+81.15%
+22.08%
+228 month(s) - 240 month(s)
+811,819.70
+0.09%
+13
+0.23%
+4.13%
+28.47
+75.11%
+7.90%
+240 month(s) - 252 month(s)
+252 month(s) - 264 month(s)
+264 month(s) - 276 month(s)
+276 month(s) - 288 month(s)
+288 month(s) - 300 month(s)
+300 month(s) - 312 month(s)
+312 month(s) - 324 month(s)
+324 month(s) - 336 month(s)
+336 month(s) - 348 month(s)
+348 month(s) - 360 month(s)
+360 months >
+Floating
+918,077.00
+0.10%
+12
+0.21%
+3.20%
+11.62
+44.53%
+0.12%
+Unknown
+Total
+890,394,204.44
+100.00%
+5,598
+100.00%
+2.65%
+25.66
+71.62%
+100.00%
+Weighted Average
+123
+Minimum
+1
+Maximum
+238
+20 of 42
+Green Lion 2023-1 B.V.
+Portfolio and Performance Report: 1 April 2026 - 30 April 2026
+
+=== page 21 ===
+14. Interest Payment Type
+Description
+Net Principal Balance
+% of Total
+Nr of 
+Loanparts
+% of Total
+Weighted 
+Average 
+Coupon
+Weighted 
+Average 
+Maturity
+Weighted 
+Average 
+CLTOMV
+% of Total 
+Not.Amount at 
+Closing Date
+Floating
+918,077.00
+0.10%
+12
+0.21%
+3.20%
+11.62
+44.53%
+0.12%
+Fixed
+889,476,127.44
+99.90%
+5,586
+99.79%
+2.65%
+25.68
+71.65%
+99.88%
+Unknown
+Total
+890,394,204.44
+100.00%
+5,598
+100.00%
+2.65%
+25.66
+71.62%
+100.00%
+21 of 42
+Green Lion 2023-1 B.V.
+Portfolio and Performance Report: 1 April 2026 - 30 April 2026
+
+=== page 22 ===
+15. Property Description
+Property
+Net Principal Balance
+% of Total
+Nr of Loans
+% of Total
+Weighted 
+Average 
+Coupon
+Weighted 
+Average 
+Maturity
+Weighted 
+Average 
+CLTOMV
+% of Total 
+Not.Amount at 
+Closing Date
+House
+649,006,414.09
+72.89%
+1,868
+67.56%
+2.64%
+25.61
+72.18%
+72.48%
+Apartment
+241,387,790.35
+27.11%
+897
+32.44%
+2.69%
+25.81
+70.10%
+27.52%
+House / Business (< 50%)
+House / Business (> 50%)
+Business
+Other
+Total
+890,394,204.44
+100.00%
+2,765
+100.00%
+2.65%
+25.66
+71.62%
+100.00%
+22 of 42
+Green Lion 2023-1 B.V.
+Portfolio and Performance Report: 1 April 2026 - 30 April 2026
+
+=== page 23 ===
+16. Geographical Distribution (by province)
+Province
+Net Principal Balance
+% of Total
+Nr of Loans
+% of Total
+Weighted 
+Average 
+Coupon
+Weighted 
+Average 
+Maturity
+Weighted 
+Average 
+CLTOMV
+% of Total 
+Not.Amount at 
+Closing Date
+Drenthe
+15,174,321.53
+1.70%
+58
+2.10%
+2.65%
+26.07
+63.25%
+1.35%
+Flevoland
+82,401,493.57
+9.25%
+267
+9.66%
+2.64%
+25.84
+76.94%
+9.48%
+Friesland
+19,243,836.65
+2.16%
+72
+2.60%
+2.50%
+25.34
+66.35%
+2.32%
+Gelderland
+78,849,477.22
+8.86%
+268
+9.69%
+2.65%
+25.68
+69.54%
+8.24%
+Groningen
+14,109,819.82
+1.58%
+59
+2.13%
+2.86%
+25.69
+72.70%
+1.76%
+Limburg
+17,541,328.78
+1.97%
+59
+2.13%
+2.77%
+25.51
+68.10%
+2.21%
+Noord-Brabant
+97,038,339.54
+10.90%
+314
+11.36%
+2.72%
+25.76
+72.56%
+10.32%
+Noord-Holland
+196,401,106.86
+22.06%
+534
+19.31%
+2.65%
+25.62
+71.84%
+23.02%
+Overijssel
+33,900,498.11
+3.81%
+116
+4.20%
+2.81%
+25.78
+72.23%
+3.72%
+Utrecht
+76,943,566.35
+8.64%
+223
+8.07%
+2.70%
+25.73
+70.22%
+8.20%
+Zeeland
+9,367,656.80
+1.05%
+38
+1.37%
+2.51%
+25.39
+62.99%
+1.27%
+Zuid-Holland
+249,422,759.21
+28.01%
+757
+27.38%
+2.60%
+25.58
+71.76%
+28.11%
+Unknown / Not specified
+Total
+890,394,204.44
+100.00%
+2,765
+100.00%
+2.65%
+25.66
+71.62%
+100.00%
+23 of 42
+Green Lion 2023-1 B.V.
+Portfolio and Performance Report: 1 April 2026 - 30 April 2026
+
+=== page 24 ===
+17. Geographical Distribution (by economic region)
+Economic Region
+Aggregate Outstanding 
+Amount
+% of Total
+Nr of Loans
+% of Total
+Weighted 
+Average 
+Coupon
+Weighted 
+Average 
+Maturity
+Weighted 
+Average 
+CLTOMV
+NL112- Delfzijl en omgeving
+362,974.99
+0.04%
+2
+0.07%
+1.99%
+26.18
+50.90%
+NL114- Oost-Groningen
+3,328,511.09
+0.37%
+13
+0.47%
+2.81%
+25.56
+80.40%
+NL115- Overig Groningen
+10,418,333.74
+1.17%
+44
+1.59%
+2.90%
+25.71
+71.00%
+NL126- Zuidoost-Friesland
+5,475,448.38
+0.61%
+22
+0.80%
+2.76%
+25.74
+67.28%
+NL127- Noord-Friesland
+9,202,620.87
+1.03%
+33
+1.19%
+2.24%
+24.80
+65.43%
+NL128- Zuidwest-Friesland
+4,565,767.40
+0.51%
+17
+0.61%
+2.72%
+25.92
+67.09%
+NL131- Noord-Drenthe
+4,153,078.66
+0.47%
+20
+0.72%
+2.89%
+25.80
+61.19%
+NL132- Zuidoost-Drenthe
+5,151,990.39
+0.58%
+22
+0.80%
+2.76%
+26.13
+65.20%
+NL133- Zuidwest-Drenthe
+6,149,426.22
+0.69%
+17
+0.61%
+2.48%
+26.24
+62.62%
+NL211- Noord-Overijssel
+11,368,133.16
+1.28%
+41
+1.48%
+2.90%
+25.48
+67.82%
+NL212- Zuidwest-Overijssel
+6,762,537.63
+0.76%
+21
+0.76%
+2.77%
+25.83
+74.38%
+NL213- Twente
+15,489,653.58
+1.74%
+53
+1.92%
+2.74%
+25.97
+74.84%
+NL221- Veluwe
+26,605,504.41
+2.99%
+95
+3.44%
+2.61%
+25.72
+66.73%
+NL224- Zuidwest-Gelderland
+8,257,271.24
+0.93%
+28
+1.01%
+2.73%
+25.85
+65.99%
+NL225- Achterhoek
+10,010,026.38
+1.12%
+37
+1.34%
+2.49%
+25.56
+70.15%
+NL226- Arnhem/Nijmegen
+33,976,675.19
+3.82%
+108
+3.91%
+2.71%
+25.65
+72.41%
+NL230- Flevoland
+82,401,493.57
+9.25%
+267
+9.66%
+2.64%
+25.84
+76.94%
+NL321- Kop van Noord Holland
+10,173,367.05
+1.14%
+43
+1.56%
+2.83%
+25.50
+67.44%
+NL323- IJmond
+6,899,518.65
+0.77%
+23
+0.83%
+2.62%
+26.25
+72.63%
+NL325- Zaanstreek
+9,949,706.19
+1.12%
+29
+1.05%
+2.79%
+26.01
+76.12%
+NL327- Het Gooi en Vechstreek
+12,149,552.87
+1.36%
+33
+1.19%
+2.28%
+25.47
+65.92%
+NL328- Alkmaar en omgeving
+14,617,816.41
+1.64%
+50
+1.81%
+2.63%
+25.49
+71.32%
+NL32A- Agglomeratie Haarlem
+13,977,975.46
+1.57%
+36
+1.30%
+2.67%
+25.70
+71.91%
+NL32B- Groot-Amsterdam
+128,633,170.23
+14.45%
+320
+11.57%
+2.66%
+25.59
+72.43%
+NL341- Zeeuwsch-Vlaanderen
+2,315,316.15
+0.26%
+10
+0.36%
+3.16%
+25.30
+67.42%
+NL342- Overig Zeeland
+7,052,340.65
+0.79%
+28
+1.01%
+2.30%
+25.42
+61.53%
+NL350- Utrecht
+77,236,976.74
+8.67%
+224
+8.10%
+2.69%
+25.73
+70.28%
+NL361- Agglomeratie 
+’
+s-Gravenhage
+86,147,546.98
+9.68%
+245
+8.86%
+2.60%
+25.56
+72.14%
+NL362- Delft en Westland
+12,785,669.87
+1.44%
+39
+1.41%
+2.89%
+25.82
+67.34%
+NL363- Agglomeratie Leiden en Bollenstreek
+27,135,589.94
+3.05%
+78
+2.82%
+2.56%
+25.58
+70.99%
+NL364- Zuidoost-Zuid-Holland
+11,955,904.17
+1.34%
+42
+1.52%
+2.31%
+25.21
+70.54%
+NL365- Oost-Zuid-Holland
+22,911,079.65
+2.57%
+72
+2.60%
+2.41%
+25.50
+69.09%
+NL366- Groot-Rijnmond
+88,193,558.21
+9.91%
+280
+10.13%
+2.67%
+25.63
+73.07%
+NL411- West-Noord-Brabant
+25,500,937.42
+2.86%
+78
+2.82%
+2.80%
+25.90
+74.16%
+NL414- Zuidoost-Noord-Brabant
+33,595,385.92
+3.77%
+108
+3.91%
+2.73%
+25.66
+72.26%
+NL415- Midden-Noord-Brabant
+14,772,782.09
+1.66%
+48
+1.74%
+2.62%
+25.98
+78.22%
+NL416- Noordoost-Noord-Brabant
+23,169,234.11
+2.60%
+80
+2.89%
+2.65%
+25.62
+67.61%
+NL421- Noord-Limburg
+6,631,378.80
+0.74%
+24
+0.87%
+2.94%
+25.55
+71.98%
+NL422- Midden-Limburg
+4,358,033.50
+0.49%
+14
+0.51%
+2.96%
+25.67
+64.88%
+NL423- Zuid-Limburg
+6,551,916.48
+0.74%
+21
+0.76%
+2.47%
+25.37
+66.31%
+Unknown
+Total
+890,394,204.44
+100.00%
+2,765
+100.00%
+2.65%
+25.66
+71.62%
+24 of 42
+Green Lion 2023-1 B.V.
+Portfolio and Performance Report: 1 April 2026 - 30 April 2026
+
+=== page 25 ===
+18. Occupancy
+Description
+Net Principal Balance
+% of Total
+Nr of Loans
+% of Total
+Weighted 
+Average 
+Coupon
+Weighted 
+Average 
+Maturity
+Weighted 
+Average 
+CLTOMV
+% of Total 
+Not.Amount at 
+Closing Date
+Owner Occupied
+890,394,204.44
+100.00%
+2,765
+100.00%
+2.65%
+25.66
+71.62%
+100.00%
+Buy-to-Let
+Unknown
+Total
+890,394,204.44
+100.00%
+2,765
+100.00%
+2.65%
+25.66
+71.62%
+100.00%
+25 of 42
+Green Lion 2023-1 B.V.
+Portfolio and Performance Report: 1 April 2026 - 30 April 2026
+
+=== page 26 ===
+19. Employment Status Borrower
+Description
+Net Principal Balance
+% of Total
+Nr of Loans
+% of Total
+Weighted 
+Average 
+Coupon
+Weighted 
+Average 
+Maturity
+Weighted 
+Average 
+CLTOMV
+% of Total 
+Not.Amount at 
+Closing Date
+Employed
+652,284,843.57
+73.26%
+1,978
+71.54%
+2.62%
+25.66
+73.68%
+73.65%
+Self Employed
+159,718,897.89
+17.94%
+388
+14.03%
+2.69%
+25.59
+71.50%
+17.58%
+Other
+78,390,462.98
+8.80%
+399
+14.43%
+2.88%
+25.86
+54.70%
+8.77%
+Unknown
+Total
+890,394,204.44
+100.00%
+2,765
+100.00%
+2.65%
+25.66
+71.62%
+100.00%
+26 of 42
+Green Lion 2023-1 B.V.
+Portfolio and Performance Report: 1 April 2026 - 30 April 2026
+
+=== page 27 ===
+20. Loanpart Payment Frequency
+Description
+Net Principal Balance
+% of Total
+Nr of 
+Loanparts
+% of Total
+Weighted 
+Average 
+Coupon
+Weighted 
+Average 
+Maturity
+Weighted 
+Average 
+CLTOMV
+% of Total 
+Not.Amount at 
+Closing Date
+Monthly
+890,394,204.44
+100.00%
+5,598
+100.00%
+2.65%
+25.66
+71.62%
+100.00%
+Quarterly
+Semi-Annually
+Annually
+Total
+890,394,204.44
+100.00%
+5,598
+100.00%
+2.65%
+25.66
+71.62%
+100.00%
+27 of 42
+Green Lion 2023-1 B.V.
+Portfolio and Performance Report: 1 April 2026 - 30 April 2026
+
+=== page 28 ===
+21. Energy Performance Certificate
+Net Principal Balance
+% of Total
+Nr of Loans
+% of Total
+Weighted 
+Average 
+Coupon
+Weighted 
+Average 
+Maturity
+Weighted 
+Average 
+CLTOMV
+% of Total 
+Not.Amount at 
+Closing Date
+A++++
+34,598,764.77
+3.89%
+106
+3.83%
+1.98%
+24.90
+70.38%
+3.81%
+A+++
+129,091,194.90
+14.50%
+410
+14.83%
+2.10%
+24.91
+68.89%
+14.57%
+A++
+51,548,592.18
+5.79%
+158
+5.71%
+2.57%
+25.24
+68.65%
+6.22%
+A+
+114,512,770.79
+12.86%
+349
+12.62%
+2.81%
+25.76
+70.78%
+13.04%
+A
+560,642,881.80
+62.97%
+1,742
+63.00%
+2.80%
+25.90
+72.77%
+62.36%
+B
+C
+D
+E
+F
+G
+Unknown
+Total
+890,394,204.44
+100.00%
+2,765
+100.00%
+2.65%
+25.66
+71.62%
+100.00%
+28 of 42
+Green Lion 2023-1 B.V.
+Portfolio and Performance Report: 1 April 2026 - 30 April 2026
+
+=== page 29 ===
+22. Loan To Income (Debt to Income)
+From (>=) - Until (<)
+Net Principal Balance
+% of Total
+Nr of Loans
+% of Total
+Weighted 
+Average 
+Coupon
+Weighted 
+Average 
+Maturity
+Weighted 
+Average 
+CLTOMV
+% of Total 
+Not.Amount at 
+Closing Date
+< 0.5
+442,981.61
+0.05%
+20
+0.72%
+2.82%
+25.16
+13.97%
+0.02%
+0.5 - 1.0
+2,793,058.56
+0.31%
+38
+1.37%
+2.32%
+21.82
+24.77%
+0.19%
+1.0 - 1.5
+6,746,084.90
+0.76%
+58
+2.10%
+2.54%
+23.58
+32.14%
+0.51%
+1.5 - 2.0
+18,271,993.11
+2.05%
+91
+3.29%
+2.65%
+24.83
+46.60%
+1.13%
+2.0 - 2.5
+30,893,684.37
+3.47%
+131
+4.74%
+2.62%
+24.91
+52.63%
+2.29%
+2.5 - 3.0
+54,619,905.23
+6.13%
+194
+7.02%
+2.73%
+24.96
+60.86%
+4.19%
+3.0 - 3.5
+101,580,097.72
+11.41%
+338
+12.22%
+2.62%
+25.30
+66.27%
+8.67%
+3.5 - 4.0
+180,769,477.98
+20.30%
+561
+20.29%
+2.71%
+25.69
+73.03%
+14.51%
+4.0 - 4.5
+256,588,574.43
+28.82%
+767
+27.74%
+2.68%
+25.78
+75.81%
+24.93%
+4.5 - 5.0
+181,579,939.56
+20.39%
+432
+15.62%
+2.74%
+26.18
+77.89%
+28.52%
+5.0 - 5.5
+40,805,313.24
+4.58%
+89
+3.22%
+2.06%
+25.80
+76.05%
+12.64%
+5.5 - 6.0
+8,400,343.80
+0.94%
+25
+0.90%
+2.29%
+25.65
+67.06%
+1.72%
+6.0 - 6.5
+3,199,578.55
+0.36%
+10
+0.36%
+2.26%
+25.82
+62.95%
+0.45%
+6.5 - 7.0
+1,569,158.21
+0.18%
+5
+0.18%
+2.36%
+25.69
+71.76%
+0.23%
+7.0 >=
+2,134,013.17
+0.24%
+6
+0.22%
+2.15%
+26.80
+78.59%
+Total
+890,394,204.44
+100.00%
+2,765
+100.00%
+2.65%
+25.66
+71.62%
+100.00%
+Weighted Average
+4.0
+Minimum
+0.0
+Maximum
+10.4
+29 of 42
+Green Lion 2023-1 B.V.
+Portfolio and Performance Report: 1 April 2026 - 30 April 2026
+
+=== page 30 ===
+23. Payment Due to Income
+From (>=) - Until (<)
+Net Principal Balance
+% of Total
+Nr of Loans
+% of Total
+Weighted 
+Average 
+Coupon
+Weighted 
+Average 
+Maturity
+Weighted 
+Average 
+CLTOMV
+% of Total 
+Not.Amount at 
+Closing Date
+< 5%
+13,078,481.67
+1.47%
+116
+4.20%
+1.86%
+24.43
+33.48%
+1.05%
+5% - 10%
+45,500,186.32
+5.11%
+216
+7.81%
+2.16%
+24.90
+47.84%
+4.77%
+10% - 15%
+142,112,780.17
+15.96%
+449
+16.24%
+2.13%
+25.27
+64.80%
+14.68%
+15% - 20%
+266,989,427.27
+29.99%
+807
+29.19%
+2.24%
+25.31
+71.77%
+31.83%
+20% - 25%
+269,278,464.93
+30.24%
+775
+28.03%
+2.78%
+25.77
+75.95%
+33.86%
+25% - 30%
+146,346,870.18
+16.44%
+385
+13.92%
+3.85%
+26.82
+80.24%
+12.76%
+30% - 35%
+5,162,820.56
+0.58%
+12
+0.43%
+4.22%
+26.11
+83.42%
+1.05%
+35% - 40%
+223,730.87
+0.03%
+1
+0.04%
+1.61%
+24.67
+85.24%
+40% - 45%
+1,239,896.77
+0.14%
+3
+0.11%
+3.64%
+25.86
+82.52%
+45% - 50%
+461,545.70
+0.05%
+1
+0.04%
+1.59%
+26.71
+81.69%
+50% - 55%
+55% - 60%
+60% - 65%
+65% - 70%
+70% >=
+Total
+890,394,204.44
+100.00%
+2,765
+100.00%
+2.65%
+25.66
+71.62%
+100.00%
+Weighted Average
+19%
+Minimum
+0%
+Maximum
+48%
+30 of 42
+Green Lion 2023-1 B.V.
+Portfolio and Performance Report: 1 April 2026 - 30 April 2026
+
+=== page 31 ===
+24a. Guarantee Type (Loans)
+Description
+Net Principal Balance
+% of Total
+Nr of Loans
+% of Total
+Weighted 
+Average 
+Coupon
+Weighted 
+Average 
+Maturity
+Weighted 
+Average 
+CLTOMV
+% of Total 
+Not.Amount at 
+Closing Date
+NHG Loans
+139,904,495.00
+15.71%
+583
+21.08%
+3.02%
+26.53
+80.34%
+13.93%
+Non NHG Loans
+750,489,709.44
+84.29%
+2,182
+78.92%
+2.59%
+25.50
+69.99%
+86.07%
+Total
+890,394,204.44
+100.00%
+2,765
+100.00%
+2.65%
+25.66
+71.62%
+100.00%
+31 of 42
+Green Lion 2023-1 B.V.
+Portfolio and Performance Report: 1 April 2026 - 30 April 2026
+
+=== page 32 ===
+24b. Guarantee Type (Loanparts)
+Description
+Net Principal Balance
+% of Total
+Nr of 
+Loanparts
+% of Total
+Weighted 
+Average 
+Coupon
+Weighted 
+Average 
+Maturity
+Weighted 
+Average 
+CLTOMV
+% of Total 
+Not.Amount at 
+Closing Date
+NHG Loans
+145,884,832.18
+16.38%
+969
+17.31%
+3.00%
+26.46
+80.23%
+14.18%
+Non NHG Loans
+744,509,372.26
+83.62%
+4,629
+82.69%
+2.59%
+25.51
+69.93%
+85.82%
+Total
+890,394,204.44
+100.00%
+5,598
+100.00%
+2.65%
+25.66
+71.62%
+100.00%
+32 of 42
+Green Lion 2023-1 B.V.
+Portfolio and Performance Report: 1 April 2026 - 30 April 2026
+
+=== page 33 ===
+25. Originator
+Originator
+Net Principal Balance
+% of Total
+Nr of 
+Loanparts
+% of Total
+Weighted 
+Average 
+Coupon
+Weighted 
+Average 
+Maturity
+Weighted 
+Average 
+CLTOMV
+% of Total 
+Not.Amount at 
+Closing Date
+ING
+890,394,204.44
+100.00%
+5,598
+100.00%
+2.65%
+25.66
+71.62%
+100.00%
+Total
+890,394,204.44
+100.00%
+5,598
+100.00%
+2.65%
+25.66
+71.62%
+100.00%
+33 of 42
+Green Lion 2023-1 B.V.
+Portfolio and Performance Report: 1 April 2026 - 30 April 2026
+
+=== page 34 ===
+26. Servicer
+Servicer
+Net Principal Balance
+% of Total
+Nr of 
+Loanparts
+% of Total
+Weighted 
+Average 
+Coupon
+Weighted 
+Average 
+Maturity
+Weighted 
+Average 
+CLTOMV
+% of Total 
+Not.Amount at 
+Closing Date
+ING
+890,394,204.44
+100.00%
+5,598
+100.00%
+2.65%
+25.66
+71.62%
+100.00%
+Total
+890,394,204.44
+100.00%
+5,598
+100.00%
+2.65%
+25.66
+71.62%
+100.00%
+34 of 42
+Green Lion 2023-1 B.V.
+Portfolio and Performance Report: 1 April 2026 - 30 April 2026
+
+=== page 35 ===
+27. Capital Insurance Policy Provider
+Insurance Policy Provider
+Net Principal Balance
+% of Total
+Nr of 
+Loanparts
+% of Total
+Weighted 
+Average 
+Coupon
+Weighted 
+Average 
+Maturity
+Weighted 
+Average 
+CLTOMV
+% of Total 
+Not.Amount at 
+Closing Date
+No Policy attached
+890,394,204.44
+100.00%
+5,598
+100.00%
+2.65%
+25.66
+71.62%
+100.00%
+Total
+890,394,204.44
+100.00%
+5,598
+100.00%
+2.65%
+25.66
+71.62%
+100.00%
+35 of 42
+Green Lion 2023-1 B.V.
+Portfolio and Performance Report: 1 April 2026 - 30 April 2026
+
+=== page 36 ===
+28. EPC Issuance Date
+From (>=) - Until (<)
+Net Principal Balance
+% of Total
+Nr of Loans
+% of Total
+Weighted 
+Average 
+Coupon
+Weighted 
+Average 
+Maturity
+Weighted 
+Average 
+CLTOMV
+% of Total 
+Not.Amount at 
+Closing Date
+< 2023
+717,588,319.22
+80.59%
+2,229
+80.61%
+2.50%
+25.39
+70.79%
+94.49%
+2023 - 2024
+98,493,711.75
+11.06%
+329
+11.90%
+3.08%
+26.20
+70.00%
+5.51%
+2024 - 2025
+63,730,433.68
+7.16%
+176
+6.37%
+3.58%
+27.57
+81.63%
+2025 - 2026
+8,760,291.69
+0.98%
+26
+0.94%
+3.55%
+27.88
+86.92%
+2026 - 2027
+1,821,448.10
+0.20%
+5
+0.18%
+2.23%
+24.89
+62.74%
+2027 - 2028
+2028 - 2029
+2029 - 2030
+2030 - 2031
+2031 - 2032
+2032 - 2033
+2033 - 2034
+2034 - 2035
+2035 >=
+Unknown
+Total
+890,394,204.44
+100.00%
+2,765
+100.00%
+2.65%
+25.66
+71.62%
+100.00%
+Weighted Average
+2022
+Minimum
+2020
+Maximum
+2026
+36 of 42
+Green Lion 2023-1 B.V.
+Portfolio and Performance Report: 1 April 2026 - 30 April 2026
+
+=== page 37 ===
+29. Primary Energy Demand, kWh/m
+²/
+year
+From ( >=) Until ( < )
+Net Principal Balance
+% of Total
+Nr of Loans
+% of Total
+Weighted 
+Average 
+Coupon
+Weighted 
+Average 
+Maturity
+Weighted 
+Average 
+CLTOMV
+% of Total 
+Not.Amount at 
+Closing Date
+< 0
+39,674,839.00
+4.46%
+121
+4.38%
+2.00%
+24.92
+70.88%
+4.42%
+0 - 30
+128,428,917.11
+14.42%
+398
+14.39%
+2.13%
+24.96
+70.23%
+14.75%
+30 - 50
+41,941,368.24
+4.71%
+145
+5.24%
+2.69%
+25.52
+68.60%
+5.00%
+50 - 75
+69,770,978.37
+7.84%
+214
+7.74%
+2.79%
+25.70
+70.45%
+8.21%
+75 - 105
+110,386,616.22
+12.40%
+332
+12.01%
+2.75%
+25.79
+71.88%
+11.90%
+105 - 160
+500,191,485.50
+56.18%
+1,555
+56.24%
+2.80%
+25.88
+72.40%
+55.70%
+160 - 190
+0.02%
+190 - 250
+250 - 290
+290 - 335
+335 - 380
+380 - 400
+400 >=
+Unknown
+Total
+890,394,204.44
+100.00%
+2,765
+100.00%
+2.65%
+25.66
+71.62%
+100.00%
+Weighted Average
+98
+Minimum
+-80
+Maximum
+160
+37 of 42
+Green Lion 2023-1 B.V.
+Portfolio and Performance Report: 1 April 2026 - 30 April 2026
+
+=== page 38 ===
+30. Construction Year
+From ( >=) Until ( < )
+Net Principal Balance
+% of Total
+Nr of Loans
+% of Total
+Weighted 
+Average 
+Coupon
+Weighted 
+Average 
+Maturity
+Weighted 
+Average 
+CLTOMV
+% of Total 
+Not.Amount at 
+Closing Date
+< 1900
+17,451,232.15
+1.96%
+47
+1.70%
+3.07%
+26.02
+70.80%
+1.69%
+1900 - 1910
+14,478,441.58
+1.63%
+35
+1.27%
+2.76%
+26.02
+73.04%
+1.49%
+1910 - 1920
+8,233,973.08
+0.92%
+20
+0.72%
+2.60%
+26.29
+79.22%
+0.82%
+1920 - 1930
+10,623,245.56
+1.19%
+35
+1.27%
+2.98%
+26.05
+71.46%
+1.19%
+1930 - 1940
+17,400,072.61
+1.95%
+38
+1.37%
+2.89%
+25.17
+68.21%
+1.82%
+1940 - 1950
+3,100,431.43
+0.35%
+6
+0.22%
+2.64%
+24.95
+57.10%
+0.37%
+1950 - 1960
+11,604,842.30
+1.30%
+37
+1.34%
+2.89%
+25.91
+67.60%
+1.20%
+1960 - 1970
+20,134,296.59
+2.26%
+69
+2.50%
+3.02%
+25.85
+73.64%
+2.15%
+1970 - 1980
+37,521,767.43
+4.21%
+129
+4.67%
+3.04%
+26.15
+74.92%
+3.86%
+1980 - 1990
+76,139,286.28
+8.55%
+259
+9.37%
+2.92%
+26.25
+77.45%
+7.28%
+1990 - 2000
+147,922,427.69
+16.61%
+483
+17.47%
+2.75%
+25.84
+72.75%
+16.08%
+2000 - 2005
+119,158,310.20
+13.38%
+373
+13.49%
+2.66%
+25.82
+72.56%
+13.65%
+2005 - 2010
+117,938,959.69
+13.25%
+344
+12.44%
+2.84%
+25.90
+71.08%
+13.42%
+2010 - 2015
+70,341,780.98
+7.90%
+200
+7.23%
+2.81%
+25.90
+69.75%
+8.14%
+2015 - 2020
+48,148,089.36
+5.41%
+132
+4.77%
+2.63%
+25.08
+67.85%
+6.58%
+2020 - 2021
+17,725,211.77
+1.99%
+60
+2.17%
+2.21%
+24.26
+61.45%
+2.68%
+2021 - 2022
+43,245,318.40
+4.86%
+142
+5.14%
+1.95%
+24.19
+69.26%
+6.05%
+2022 - 2023
+67,646,672.50
+7.60%
+225
+8.14%
+1.75%
+24.78
+68.17%
+9.12%
+2023 - 2024
+28,839,193.42
+3.24%
+95
+3.44%
+2.00%
+25.42
+70.75%
+2.41%
+2024 - 2025
+9,271,470.72
+1.04%
+29
+1.05%
+3.55%
+26.50
+78.85%
+2025 - 2026
+3,469,180.70
+0.39%
+7
+0.25%
+3.55%
+27.60
+85.00%
+2026 >=
+Unknown
+Total
+890,394,204.44
+100.00%
+2,765
+100.00%
+2.65%
+25.66
+71.62%
+100.00%
+Weighted Average
+1995
+Minimum
+1450
+Maximum
+2025
+38 of 42
+Green Lion 2023-1 B.V.
+Portfolio and Performance Report: 1 April 2026 - 30 April 2026
+
+=== page 39 ===
+Glossary
+Term
+Definition / Calculation
+Annuity Mortgage Loan
+means a mortgage loan or part thereof in respect of which the Borrower pays a fixed monthly instalment, made up of an initially high and 
+thereafter decreasing interest portion and an initially low and thereafter increasing principal portion, and calculated in such manner that 
+such mortgage loan will be fully redeemed at its maturity;
+Borrower
+means the debtor or debtors, including any jointly and severally liable co-debtor or co-debtors, of a Mortgage Loan;
+Closing Date
+means 4 October 2023;
+Construction Deposit
+means in respect of a Mortgage Loan, that part of the Mortgage Loan which the relevant Borrower requested to be disbursed into a 
+blocked account held in his name with the Seller, the proceeds of which may be applied towards construction of, or improvements to, the 
+relevant Mortgaged Asset;
+Construction Year
+Year of construction for the property
+Cut-Off Date
+means in relation to a Transfer Date, a Mortgage Calculation Date or a Notes Calculation Date, the final day of the calendar month 
+preceding the calendar month in which such Transfer Date, Mortgage Calculation Date or Notes Calculation Date falls and, in relation to 
+the Transfer Date falling on the Closing Date, the Initial Cut-Off Date;
+DSA
+means the Dutch Securitisation Association;
+Energy Performance Certificate
+means an energy performance certificate issued in respect of a Mortgaged Asset in accordance with the System of Energy Performance 
+of Buildings (containing, among other things, also the primary energy demand (PED) record, as applicable);
+EP-Online
+means the official Dutch government database on the energy performance of buildings which is maintained by the RVO, having, as at the 
+date of this Prospectus, the following address: https://www.eponline.nl/ (or any replacement public database maintained by the RVO (or 
+any other governmental authority) from time to time);
+EPC Issuance Date / EPC Expiration Date
+Date on which energy performance certificate issued/expires in respect of a Mortgaged Asset in accordance with the System of Energy 
+Performance of Buildings (containing, among other things, also the primary energy demand (PED) record, as applicable);
+EUR, euro or €
+means the lawful currency of the member states of the European Union that adopt the single currency in accordance with the Treaty 
+establishing the European Community (signed in Rome on 25 March 1957), as amended from time to time;
+Further Advance
+means a loan or a further advance to be made to a Borrower under a Mortgage Loan, which is secured by the same Mortgage;
+Indexed Current Loan to Value Ratio
+means the ratio (expressed as a percentage) obtained by dividing (a) Outstanding Principal Balance of a Mortgage Loan by (b) the 
+Indexed Market Value;
+Indexed Market Value
+means the market value calculated by indexing the Market Value of the Mortgaged Asset with a property price index (weighted average 
+of houses and apartment prices), as provided by the Centraal Bureau voor de Statistiek (CBS) for the province where the property is 
+located;
+ING
+means ING Bank N.V., a public company (naamloze vennootschap) having its corporate seat (statutaire zetel) in Amsterdam and its 
+registered offices at Bijlmerdreef 106, 1102 CT Amsterdam, The Netherlands and being registered at the Chamber of Commerce under 
+number 33031431;
+Initial Cut-Off Date
+means 31 August 2023;
+Interest Period
+means the period from (and including) the Closing Date to (but excluding) the Notes Payment Date falling in [January 2024] and each 
+successive period from (and including) a Notes Payment Date to (but excluding) the next succeeding Notes Payment Date;
+Interest Rate
+means the rate of interest applicable from time to time to a Class of Notes as determined in accordance with Condition 7 (Interest);
+Interest-only Mortgage Loan
+means a mortgage loan or part thereof in respect of which the Borrower is not required to repay principal until maturity;
+Interest-only Mortgage Receivable
+means the Mortgage Receivable resulting from an Interest-only Mortgage Loan;
+Investor Report
+means either of (i) the Notes and Cash Report and (ii) the Portfolio and Performance Report; 
+Land Registry
+means the Dutch land registry (het Kadaster); 
+Linear Mortgage Loan
+means a mortgage loan or part thereof in respect of which the Borrower each month pays a fixed amount of principal towards redemption 
+of such mortgage loan (or relevant part thereof) until maturity;
+Linear Mortgage Receivable
+means the Mortgage Receivable resulting from a Linear Mortgage Loan;
+Loan Parts
+means one or more of the loan parts (leningdelen) of which a mortgage loan consists;
+Loan to Income Ratio
+means the Outstanding Principal Balance of the relevant Mortgage Receivable divided by the sum of the income of the relevant 
+Borrower;
+Market Value
+means (i) the market value (marktwaarde) of the relevant Mortgaged Asset based on (a) if available, the most recent valuation by an 
+external valuer, or (b) if no valuation is available, the assessment by the Dutch tax authorities on the basis of the WOZ at the time of 
+application by the Borrower or (ii) in respect of a Mortgaged Asset to be constructed or in construction at the time of application by the 
+Borrower, the construction costs of such Mortgaged Asset plus the purchase price of the relevant building lot;
+Mortgage
+means a mortgage right (hypotheekrecht) securing the relevant Mortgage Receivables;
+Mortgage Interest Rates
+means the rate(s) of interest from time to time chargeable to Borrowers under the Mortgage Loans;
+Mortgage Loans
+means the mortgage loans granted by the Seller (which includes an originator which has merged (gefuseerd) into the Seller) to the 
+relevant borrowers which may consist of one or more Loan Parts as set forth in the list of loans attached to the Mortgage Receivables 
+Purchase Agreement and, after any purchase and assignment of any New Mortgage Receivables has taken place in accordance with the 
+Mortgage Receivables Purchase Agreement, the relevant other mortgage loans and Further Advances, to the extent any and all rights 
+under and in connection therewith are not retransferred or otherwise disposed of by the Issuer;
+Mortgage Receivable
+means any and all rights of the Seller (and after assignment of such rights to the Issuer, of the Issuer) against the Borrower under or in 
+connection with a Mortgage Loan, including any and all claims of the Seller (or the Issuer after assignment) on the Borrower as a result 
+of the Mortgage Loan being terminated, dissolved or declared null and void;
+Mortgaged Asset
+means (i) a real property (onroerende zaak), (ii) an apartment right (appartementsrecht) or (iii) a long lease (erfpachtsrecht) situated in 
+The Netherlands on which a Mortgage is vested;
+New Mortgage Receivable
+means a Mortgage Receivable purchased by and assigned to the Issuer during the Revolving Period (which shall include, for the 
+avoidance of doubt, any Further Advance Receivables) to the extent not re-assigned or otherwise disposed of by the Issuer; 
+39 of 42
+Green Lion 2023-1 B.V.
+Portfolio and Performance Report: 1 April 2026 - 30 April 2026
+
+=== page 40 ===
+Term
+Definition / Calculation
+NHG Guarantee
+means a guarantee (borgtocht) under the NHG Conditions granted by Stichting WEW;
+NHG Mortgage Loan
+means a Mortgage Loan that has the benefit of an NHG Guarantee;
+NHG Mortgage Loan Receivable
+means the Mortgage Receivable resulting from an NHG Mortgage Loan;
+Outstanding Principal Balance
+means, in relation to a Mortgage Receivable at any date, an amount equal to:
+(a) with respect to any Mortgage Receivable, the aggregate principal balance of such Mortgage Receivable; and
+(b) with respect to a Mortgage Receivable in respect of which a Realised Loss has occurred, zero; 
+Portfolio
+means, on any date, all Mortgage Receivables owned by the Issuer on such date; 
+Primary Energy Demand
+Prime fossil energy usage in kWh/m2/year
+Related Security
+means, with respect to any Mortgage Receivable, all related accessory rights (afhankelijke rechten), ancillary rights (nevenrechten), 
+connected rights (kwalitatieve rechten), including rights of mortgage (hypotheekrechten), rights of pledge (pandrechten), suretyships 
+(borgtochten), guarantees, rights to receive interest and penalties, and independently transferable claims (zelfstandig overdraagbare 
+vorderingsrechten) and, to the extent transferable, Beneficiary Rights and interest reset rights;
+Secured Obligations
+means all present and future obligations owed by the Issuer to the Security Trustee pursuant to the Parallel Debt and, if and to the extent 
+that at the time of the creation of the relevant right of pledge, or at any time thereafter, a Principal Liability owed to the Security Trustee 
+cannot be validly secured through the Parallel Debt, such Principal Liability itself;
+Signing Date
+means 28 September 2023;
+Stichting WEW
+means Stichting Waarborgfonds Eigen Woningen;
+Transfer Date
+means: 
+(a) in respect of the Mortgage Receivables comprising the Initial Portfolio, the Closing Date; and
+(b) in respect of any New Mortgage Receivables, the relevant Notes Payment Date on which such New Mortgage Receivable was 
+purchased by the Issuer;
+WOZ
+means the Valuation of Immovable Property Act (Wet waardering onroerende zaken) as amended from time to time;
+40 of 42
+Green Lion 2023-1 B.V.
+Portfolio and Performance Report: 1 April 2026 - 30 April 2026
+
+=== page 41 ===
+Contact Information
+ACCOUNT BANK (ABNK)
+ING Bank N.V.
+Bijlmerdreef 106
+1102 CT Amsterdam
+The Netherlands (NL)
+3TK20IVIUJ8J3ZU0QE75
+Collection Account Bank (CACB)
+ING Bank N.V.
+Treasury Center, Foppingadreef 7
+1102 BD Amsterdam
+The Netherlands (NL)
+3TK20IVIUJ8J3ZU0QE75
+ISSUER or ADMINISTRATOR (ADMI)
+ING Bank N.V.
+Treasury Center, Foppingadreef 7
+1102 BD Amsterdam
+The Netherlands (NL)
+3TK20IVIUJ8J3ZU0QE75
+JOINT LEAD MANAGERS (MNGR)
+Credit Agricole CIB
+12 place des Etats-Unis
+92120 Montrouge
+France (FR)
+1VUV7VQFKUOQSJ21A208
+LEGAL ADVISERS TO THE JOINT LEAD 
+MANAGERS (CNSL)
+Freshfields Bruckhaus Deringer LLP
+Strawinskylaan 10
+1077 XZ Amsterdam
+The Netherlands (NL)
+213800MT17LM2ZDT5B78
+LISTING AGENT (OTHR)
+ING Bank N.V.
+Treasury Center, Foppingadreef 7
+1102 BD Amsterdam
+The Netherlands (NL)
+3TK20IVIUJ8J3ZU0QE75
+RATING AGENCY (OTHR)
+Fitch Ratings (RMBS)
+30 North Colonnade, Canary Wharf
+E14 5GN London
+United Kingdom (UK)
+2138009F8YAHVC8W3Q52
+SECURITY TRUSTEE (TRUS)
+Stichting Security Trustee Green Lion 2023-1
+Basisweg 10
+1043 AP Amsterdam
+The Netherlands
+7245003EYP3UAL9N7Q70
+ARRANGER (ARRG)
+ING Bank N.V.
+Treasury Center, Foppingadreef 7
+1102 BD Amsterdam
+The Netherlands (NL)
+3TK20IVIUJ8J3ZU0QE75
+ISSUER (ISSR)
+Green Lion 2023-1 B.V.
+Basisweg 10
+1043 AP Amsterdam
+The Netherlands (NL)
+7245003EYP3UAL9N7Q70
+JOINT LEAD MANAGERS (MNGR)
+Banco Santander, S.A./ Ciudad Grupo Santander
+Avenida de Cantabria s/n Edificio Encinar
+28660 BdeMonte Madrid
+Spain (ES)
+5493006QMFDDMYWIAM13
+JOINT LEAD MANAGERS (MNGR)
+ING Bank N.V.
+Treasury Center, Foppingadreef 7
+1102 BD Amsterdam
+The Netherlands (NL)
+3TK20IVIUJ8J3ZU0QE75
+LEGAL ADVISERS TO THE SELLER 
+(CNSL)
+Hogan Lovells International LLP
+50 Holborn Viaduct
+EC1A 2FG London
+United Kingdom (GB)
+2138005XRJF6W7IIYE10
+PAYING AGENT (PAYA)
+ING Bank N.V.
+Treasury Center, Foppingadreef 7
+1102 BD Amsterdam
+The Netherlands (NL)
+3TK20IVIUJ8J3ZU0QE75
+RATING AGENCY (OTHR)
+Moody's (RMBS)
+One Canada Square, Canary Wharf
+E14 5FA London
+United Kingdom (UK)
+549300VRS9KIQPMTQR45
+SELLER (SELL)
+ING Bank N.V.
+Bijlmerdreef 106
+1102 CT Amsterdam
+The Netherlands (NL)
+3TK20IVIUJ8J3ZU0QE75
+41 of 42
+Green Lion 2023-1 B.V.
+Portfolio and Performance Report: 1 April 2026 - 30 April 2026
+
+=== page 42 ===
+SWAP COUNTERPARTY (IRSP)
+ING Bank N.V.
+Bijlmerdreef 106
+1102 CT Amsterdam
+The Netherlands (NL)
+3TK20IVIUJ8J3ZU0QE75
+42 of 42
+Green Lion 2023-1 B.V.
+Portfolio and Performance Report: 1 April 2026 - 30 April 2026

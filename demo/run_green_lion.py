@@ -204,6 +204,14 @@ def section_esma_analytics() -> dict[str, dict]:
     and labels every column from the actual tape date, so a live run is never
     mislabelled and never downloads the full history.
     """
+    # Deferred like every other loanwhiz import in this file, so running the
+    # demo with --help stays instant. ``loanwhiz.domain``'s package init
+    # participates in an import cycle with ``loanwhiz.primitives``, so a
+    # primitives module has to be imported first.
+    import loanwhiz.primitives  # noqa: F401  (import-order side effect)
+
+    from loanwhiz.domain.tape_provenance import underlying_url
+
     tapes = reporting_tapes()
     labels = [_period_label(e["date"]) for e in tapes]
     section(f"2. ESMA TAPE ANALYTICS ({' / '.join(labels)})")
@@ -219,7 +227,11 @@ def section_esma_analytics() -> dict[str, dict]:
         url = entry["url"]
         print(f"\n  Loading tape {date} ({_period_label(date)}) ...", end="", flush=True)
         t0 = time.time()
-        df = pd.read_csv(url)
+        # ``url`` is the registered *identifier*, which carries the provenance
+        # scheme declaring what the tape is (Green Lion's tapes are
+        # ``synthetic:``). ``underlying_url`` resolves it to the published file
+        # to fetch; pandas cannot open the identifier itself.
+        df = pd.read_csv(underlying_url(url))
         elapsed = time.time() - t0
         print(f" {len(df):,} loans  ({elapsed:.1f}s)")
         metrics[date] = _compute_tape_metrics(df, date)

@@ -251,12 +251,12 @@ The LoanWhiz Extraction Pipeline is classified as a **decision-support tool**. I
 
 Governance does not stop at the model — it extends to **where the data came from**. Every normalised ESMA tape records which ingestion path produced it, and that provenance is carried through to the agent's evidence pack so an auditor can see, per answer, where the underlying loan tape was sourced.
 
-### Direct read — the canonical ingestion path
+### Tape ingestion and its recorded provenance
 
-LoanWhiz's canonical (and only) ESMA tape ingestion path is the **direct read**: a loan tape is loaded straight from its source URL. See [`docs/tape-ingestion.md`](tape-ingestion.md) for the full model.
+LoanWhiz reads a loan tape straight from its source URL; where no published file exists it derives one, and where a pool is generated it says so. See [`docs/tape-ingestion.md`](tape-ingestion.md) for the full model.
 
-- A tape URL (HuggingFace CSV/parquet, local `file://`) is read directly by `esma_tape_normaliser._load_tape`, which dispatches on the file extension (`.parquet`/`.pq` → `pandas.read_parquet`, otherwise `pandas.read_csv`).
-- The result is tagged `data_source="direct"` and carried through the evidence pack.
+- A tape URL (HuggingFace CSV/parquet, local `file://`) is read directly by `esma_tape_normaliser._load_tape`, which strips any provenance scheme from the identifier and then dispatches on the file extension (`.parquet`/`.pq` → `pandas.read_parquet`, otherwise `pandas.read_csv`). Nothing else may read a registered tape URL: `tests/test_tape_seam_bypass.py` reds on any `pandas` read handed a path that did not pass the resolver.
+- The result is tagged with an ingestion channel — `"direct"`, `"derived"` or `"synthetic"` — and carried through the evidence pack. The channel is resolved from the tape's own identifier, never from which loader branch ran, so a derived or generated tape cannot report the provenance of a published filing.
 
 > **Note on deeploans.** [deeploans](https://github.com/Algoritmica-ai/deeploans) is Algoritmica's open-source, Apache-2.0 ESMA loan-level ETL — the hackathon organiser's own tool, credited as a project input. It is **not** on LoanWhiz's live ingestion path: the upstream backend is serve-only (BigQuery-backed, batch-ETL'd) and serves SME data, so it cannot ingest LoanWhiz's RMBS tapes on demand. LoanWhiz therefore reads tapes directly; deeploans is a decoupled upstream credit, not a runtime dependency.
 
@@ -264,9 +264,10 @@ LoanWhiz's canonical (and only) ESMA tape ingestion path is the **direct read**:
 
 | Field | Where | Value |
 |---|---|---|
-| `EsmaTapeOutput.data_source` | `esma_tape_normaliser.py` | always `"direct"` — the tape was read directly from its source URL |
-| `TapeAnalyticsPeriod.data_source` | `GET /deal/{id}/tape-analytics` | the same provenance, per reporting period |
-| Tape citation excerpt | `Citation.excerpt` (`"… (ingested via direct)"`) | the human-readable provenance carried into the agent's deduplicated citation trail |
+| `EsmaTapeOutput.data_source` | `esma_tape_normaliser.py` | `"direct"` (read from its source URL), `"derived"` (reconstructed from a source document) or `"synthetic"` (a published file whose rows LoanWhiz generated) |
+| `TapeAnalyticsPeriod.data_source` | `GET /deal/{id}/tape-analytics` | the same provenance, per reporting period; required, with no default |
+| Tape citation excerpt | `Citation.excerpt` (`"… (ingested via <channel>)"`) | the human-readable provenance carried into the agent's deduplicated citation trail, followed by the source kind's own disclosure sentence for any tape that declares one |
+| `TapeSourceKind.describes_real_assets` | `domain/tape_provenance.py` | `False` for a synthetic pool — the predicate to check before reading a pool figure as evidence about the world |
 
 The Governance view and the chat panel's evidence slide-over surface this per answer, so the FINOS audit trail (§1) and citation trail (§3) now include honest data provenance — not just *what* the agent computed, but *where the data it computed on came from*.
 

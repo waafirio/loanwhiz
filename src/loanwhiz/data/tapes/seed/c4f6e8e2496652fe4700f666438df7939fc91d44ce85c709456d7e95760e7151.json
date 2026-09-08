@@ -1,0 +1,32 @@
+{
+ "annex_detected": "Unknown ABS",
+ "arrears_breakdown": {
+  "arrears_180d_plus_pct": 0.4195,
+  "arrears_1_2m_pct": 0.6887,
+  "current_pct": 98.6671,
+  "default_pct": 0.2248
+ },
+ "asset_class": "ABS",
+ "data_source": "synthetic",
+ "epc_breakdown": null,
+ "geographic_breakdown": {
+  "Central Italy": 28.3982,
+  "Northern Italy": 38.4446,
+  "Southern Italy": 33.1572
+ },
+ "loan_count": 69846,
+ "pool_balance_eur": 6413454745.03,
+ "pool_stats": {
+  "wtd_coupon_pct": 3.88,
+  "wtd_ltv": 51.83,
+  "wtd_remaining_term": 248.32,
+  "wtd_seasoning": 71.17
+ },
+ "property_type_breakdown": null,
+ "rate_type_breakdown": {
+  "Fixed": 65.7518,
+  "Floating": 34.2482
+ },
+ "reporting_date": "2026-03-31",
+ "transaction_name": "Leone Arancio RMBS 2023-1 S.r.l."
+}

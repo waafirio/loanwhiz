@@ -111,11 +111,24 @@ export function PackSkeleton() {
   );
 }
 
-/** Map a data-source label to a human-readable provenance string. */
+/**
+ * Map a data-source label to a human-readable provenance string.
+ *
+ * A total `Record`, not a conditional: the previous binary form said "direct
+ * URL (HuggingFace / file)" for every non-deeploans channel, so a derived tape
+ * — and, once it existed, a synthetic one — was labelled as a direct read of a
+ * published file. Widening the union is now a compile error here until this
+ * table answers for the new member, which is the point.
+ */
+const DATA_SOURCE_LABELS: Record<DataSource, string> = {
+  deeploans: "deeploans ETL backend",
+  direct: "direct URL (HuggingFace / file)",
+  derived: "derived from a source document (not a published tape)",
+  synthetic: "SYNTHETIC — generated, describes no real obligor",
+};
+
 function dataSourceLabel(source: DataSource): string {
-  return source === "deeploans"
-    ? "deeploans ETL backend"
-    : "direct URL (HuggingFace / file)";
+  return DATA_SOURCE_LABELS[source];
 }
 
 /**
@@ -132,7 +145,14 @@ function packDataSources(pack: GovernanceEvidencePack): DataSource[] {
       if (src) seen.add(src);
     }
   }
-  return (["deeploans", "direct"] as DataSource[]).filter((s) => seen.has(s));
+  // Every member of the union, in a fixed display order. The list used to be
+  // ["deeploans", "direct"], which silently dropped a derived tape from the
+  // pack-level provenance summary — the one place a reader looks to see what
+  // fed the answer. Omitting a channel here is indistinguishable from that
+  // channel not having been used.
+  return (
+    ["deeploans", "direct", "derived", "synthetic"] as DataSource[]
+  ).filter((s) => seen.has(s));
 }
 
 /**

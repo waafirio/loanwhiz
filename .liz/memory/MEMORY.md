@@ -20,6 +20,11 @@ triage by opening the entry, not by reading the line.
   - [2026-09-06 · pattern · #469](#2026-09-06--pattern--469) — keywords: reconcile to stated aggregates, self-describing report, per-bucket distribution, refuse on divergence, document contradicts itself, source defect
   - [2026-09-02 · pitfall · #441](#2026-09-02--pitfall--441) — keywords: completeness_score
   - [2026-09-08 · pitfall · #494](#2026-09-08--pitfall--494) — keywords: vacuous reconciliation, zero rows, empty section, presence check, stated total 0.00, nothing is wrong vs I saw nothing
+  - [2026-09-08 · pitfall · #484](#2026-09-08--pitfall--484) — keywords: balance share, count share, generated population, per-bucket draw, stratification, arrears bucket, rendered axis
+  - [2026-09-02 · pitfall · #441](#2026-09-02--pitfall--441) — keywords: completeness_score
+- [Registering a deal (deals.json)](deal-registration.md) — keywords: deals.json, notes_cash_report_urls, routing promise, registry key, asset_class, answer key invariant
+  - [2026-09-05 · pitfall · #455](#2026-09-05--pitfall--455) — keywords: notes_cash_report_urls, _reconstruct_series
+  - [2026-09-08 · pitfall · #483](#2026-09-08--pitfall--483) — keywords: sha256(tape_url).json, _tape_analytics_period
   - [2026-09-08 · pitfall · #480](#2026-09-08--pitfall--480) — keywords: unobtainable, recorded limitation, wrong document, offering circular, trustee report, coverage-test threshold, glossary truncation, document set
   - [2026-09-08 · pattern · #479](#2026-09-08--pattern--479) — keywords: derive vs hand-write, reconcile against declared, projection_base, current_pool_balance, pool_balance_eur, latest tape, byte-identical output
 - [Registering a deal (deals.json)](deal-registration.md) — keywords: deals.json, notes_cash_report_urls, routing promise, registry key, asset_class, answer key invariant
@@ -43,6 +48,10 @@ triage by opening the entry, not by reading the line.
 - [Extracting tables from PDFs](pdf-table-extraction.md) — keywords: visitor_text, text matrix, tm[4], rotated table, extraction_mode layout, row boundary, continuation line, column order, pypdf
   - [2026-09-06 · pitfall · #469](#2026-09-06--pitfall--469) — keywords: extract_text(), extraction_mode="layout", visitor_text=, tm[4]
   - [2026-09-08 · pitfall · #494](#2026-09-08--pitfall--494) — keywords: page furniture, banner prefix, data row first, footer eats a row, numeric tail, prefix filter ordering
+- [Extracting tables from PDFs](pdf-table-extraction.md) — keywords: visitor_text, text matrix, tm[4], rotated table, extraction_mode layout, row boundary, continuation line, column order, pypdf
+- [Live seams the offline suite never executes](live-seam-coverage.md)
+  - [2026-09-08 · pitfall · #483](#2026-09-08--pitfall--483) — keywords: false green, needs the network, registry value shape, reader not caller, AST guard, test_tape_seam_bypass, underlying_url, pypdf
+  - [2026-09-08 · decision · #483](#2026-09-08--decision--483) — keywords: seam bypass, delegate to the seam, strip the scheme, derived+trustee-report, synthetic:, esma_tape_normaliser._load_tape, source document
   - [2026-09-08 · pitfall · #478](#2026-09-08--pitfall--478) — keywords: untyped dict shape, divergent mappers, capital_structure, hand-copy drift, total-preservation guard, one builder
   - [2026-09-08 · pitfall · #481](#2026-09-08--pitfall--481) — keywords: classification table, coverage_metric_for, _COVERAGE_METRIC_RE, reinvestment_overcollateralisation, guard escapee, threshold None convention
 - [Extracting tables from PDFs](pdf-table-extraction.md)

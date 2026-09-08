@@ -30,10 +30,18 @@ GREEN_LION = {
     # this deal's pre-history — different deals' data is not interchangeable, so
     # it is deliberately NOT chained in here (doing so produced a 112bn→1bn cliff
     # the reconstruction read as a ~140% loss).
+    # These three tapes are SYNTHETIC, and say so in their identifier rather
+    # than only in their filename. The `synthetic:` scheme is what the evidence
+    # pack, the capability matrix and the citation excerpt read; a filename is
+    # not. Before this, the word "synthetic" appeared in the URL and in
+    # docs/data-card.md and nowhere a claim was made, so these tapes reported
+    # the same `data_source` as a filed regulatory one. The prefix strips off
+    # before the file is read (`tape_provenance.underlying_url`), so the bytes
+    # loaded — and every pool figure derived from them — are unchanged.
     "tape_urls": [
-        {"date": "2026-02-28", "url": f"{HF_BASE}/green_lion_202602_1_synthetic_loan_tape.csv"},
-        {"date": "2026-03-31", "url": f"{HF_BASE}/green_lion_202603_1_synthetic_loan_tape.csv"},
-        {"date": "2026-04-30", "url": f"{HF_BASE}/green_lion_2026_1_synthetic_loan_tape.csv"},
+        {"date": "2026-02-28", "url": f"synthetic:{HF_BASE}/green_lion_202602_1_synthetic_loan_tape.csv"},
+        {"date": "2026-03-31", "url": f"synthetic:{HF_BASE}/green_lion_202603_1_synthetic_loan_tape.csv"},
+        {"date": "2026-04-30", "url": f"synthetic:{HF_BASE}/green_lion_2026_1_synthetic_loan_tape.csv"},
     ],
     "investor_report_urls": [
         {"period": "February 2026", "url": f"{HF_BASE}/monthly-investor-report-green-lion-2026-1-february-2026.pdf"},

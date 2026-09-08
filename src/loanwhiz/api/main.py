@@ -86,6 +86,7 @@ from loanwhiz.primitives.covenant_monitor import (
     to_canonical_threshold,
 )
 from loanwhiz.domain.state import DealState as DomainDealState
+from loanwhiz.domain.tape_provenance import source_kind_for
 from loanwhiz.primitives.deal_state import DealState as PrimitivesDealState
 from loanwhiz.primitives.reconciler import (
     ReconciliationReport,
@@ -1994,6 +1995,48 @@ def _days_between(prev_date: str, cur_date: str) -> int:
     return delta if delta > 0 else 30
 
 
+def _tape_describes_real_assets(url: str) -> bool:
+    """Whether the tape at *url* describes assets that exist (#484).
+
+    Reads :attr:`TapeSourceKind.describes_real_assets` off the identifier. An
+    **undeclared** identifier answers ``True``: it names a published file, and
+    this repo holds no evidence that such a file is fabricated — asserting
+    otherwise would be the mirror of the laundering ``tape_provenance`` exists
+    to prevent. Only a tape that *declares* itself synthetic answers ``False``.
+    """
+    kind = source_kind_for(url)
+    return True if kind is None else kind.describes_real_assets
+
+
+def _synthetic_tapes_yield_to_reports(deal: dict) -> bool:
+    """Whether this deal's tapes must not displace its report-derived series.
+
+    **Real published data outranks a generated pool.** #484 gives four
+    tape-less deals a synthetic Annex 2 pool so their pool charts render; two
+    of them — Green Lion 2023-1 and 2024-1 — also publish quarterly Notes &
+    Cash reports, and those reports are what their committed answer keys grade
+    against. ``_reconstruct_series`` selected the tape path on the mere
+    *presence* of ``tape_urls``, so registering a synthetic tape would have
+    silently moved both deals off the report path — taking the repo's only
+    ``validated`` cell (Green Lion 2024-1's Notes & Cash reconciliation) with
+    it, and failing loudly with a 422 besides, since neither carries the
+    ``reserve_account_target`` the tape path resolves.
+
+    So a deal yields to its reports only when **both** hold: every registered
+    tape declares itself synthetic, and a real report path exists to yield to.
+    A deal whose only pool data is synthetic (Green Lion 2026-1, whose three
+    tapes are synthetic and which publishes no Notes & Cash report) keeps the
+    tape path — yielding there would leave it not-modelable, which is a
+    regression, not honesty.
+    """
+    tapes = deal.get("tape_urls") or []
+    if not tapes:
+        return False
+    if any(_tape_describes_real_assets(tape.get("url", "")) for tape in tapes):
+        return False
+    return bool(deal.get("notes_cash_report_urls"))
+
+
 def _reconstruct_series(deal_id: str, deal: dict) -> DealStateSeries:
     """Build (and memoise) the deal's full reconstructed ``DealStateSeries``.
 
@@ -2001,7 +2044,8 @@ def _reconstruct_series(deal_id: str, deal: dict) -> DealStateSeries:
     ``/compliance`` and ``/reconciliation`` all read — and it **selects the
     ingestion adapter per deal** (#269, the cold-start engine slice, epic #257):
 
-    1. The deal has **loan tapes** (non-empty ``tape_urls``) → the **tape path**:
+    1. The deal has **loan tapes** that are not merely synthetic stand-ins for a
+       real report path (``_synthetic_tapes_yield_to_reports``) → the **tape path**:
        seed period-0 from the prospectus capital structure and fold
        ``collections_aggregator`` → ``reconstruct_period_series`` (the existing
        behaviour, unchanged — see ``_reconstruct_series_from_tapes``).
@@ -2020,7 +2064,7 @@ def _reconstruct_series(deal_id: str, deal: dict) -> DealStateSeries:
     this function wires the cold-start so the live endpoints serve the one
     report-driven ledger.
     """
-    if deal.get("tape_urls"):
+    if deal.get("tape_urls") and not _synthetic_tapes_yield_to_reports(deal):
         return _reconstruct_series_from_tapes(deal_id, deal)
     if deal.get("notes_cash_report_urls"):
         return _reconstruct_series_from_reports(deal_id, deal)
@@ -3109,14 +3153,23 @@ class TapeAnalyticsPeriod(BaseModel):
     property_type_breakdown: dict[str, float] | None
     geographic_breakdown: dict[str, float] | None
     annex_detected: str
-    # Ingestion channel: "direct" when the tape was read from a published file
-    # (HuggingFace CSV/parquet, local file), "derived" when no published file
-    # exists and the rows were reconstructed at ingest from a source document
-    # the deal registers (loanwhiz.primitives.derived_tape). Surfaced so the
-    # demo's governance view can show honest provenance per period. The channel
-    # is not the same claim as what the tape IS — a derived tape is not a
+    # Ingestion channel (loanwhiz.domain.tape_provenance.TapeChannel): "direct"
+    # when the tape was read from a published file (HuggingFace CSV/parquet,
+    # local file), "derived" when no published file exists and the rows were
+    # reconstructed at ingest from a source document the deal registers,
+    # "synthetic" when the file is published and readable but its rows were
+    # generated and describe no real obligor. Surfaced so the demo's governance
+    # view can show honest provenance per period. The channel is not the same
+    # claim as what the tape IS — neither a derived nor a synthetic tape is a
     # regulatory filing, and the citation excerpt carries that sentence in full.
-    data_source: str = "direct"
+    #
+    # REQUIRED, with no default. It carried `= "direct"` until #483, which is
+    # the same defect one layer up from the one that issue fixed: a period whose
+    # source omitted the field reported the provenance of a filed regulatory
+    # tape, by omission. Every value here comes from `EsmaTapeOutput.model_dump()`
+    # and always carries the key, so the only thing a default could cover is a
+    # hand-edited seed — exactly the case that must fail loudly.
+    data_source: str
 
 
 def _tape_analytics_period(tape: dict) -> TapeAnalyticsPeriod | None:
