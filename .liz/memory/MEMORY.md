@@ -31,3 +31,6 @@ triage by opening the entry, not by reading the line.
   - [2026-09-05 · pitfall · #453](#2026-09-05--pitfall--453) — keywords: LLM classifier options, deny list, enum growth, near-miss, incentive fee, use_llm=False, unmapped escape
   - [2026-09-06 · pitfall · #471](#2026-09-06--pitfall--471) — keywords: absent column, all-False mask, arrears breakdown, silent clean pool, degrade, no key not zero
 - [Extracting tables from PDFs](pdf-table-extraction.md) — keywords: visitor_text, text matrix, tm[4], rotated table, extraction_mode layout, row boundary, continuation line, column order, pypdf
+- [Live seams the offline suite never executes](live-seam-coverage.md)
+  - [2026-09-08 · pitfall · #483](#2026-09-08--pitfall--483) — keywords: false green, needs the network, registry value shape, reader not caller, AST guard, test_tape_seam_bypass, underlying_url, pypdf
+  - [2026-09-08 · decision · #483](#2026-09-08--decision--483) — keywords: seam bypass, delegate to the seam, strip the scheme, derived+trustee-report, synthetic:, esma_tape_normaliser._load_tape, source document

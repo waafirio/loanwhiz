@@ -42,8 +42,8 @@ entry point. Given a tape URL it:
    query string is stripped too, so signed URLs like `…/tape.parquet?token=…`
    still route correctly). Scheme first, format second: reading the extension
    off the raw identifier would send `synthetic:…/x.parquet` to the CSV reader.
-   - `.parquet` / `.pq` → `pandas.read_parquet(file_url)`
-   - anything else → `pandas.read_csv(file_url, low_memory=False)`
+   - `.parquet` / `.pq` → `pandas.read_parquet(underlying_url(file_url))`
+   - anything else → `pandas.read_csv(underlying_url(file_url), low_memory=False)`
 2. **Optionally slices by reporting period.** Combined multi-month tapes (e.g.
    `Overall_2024_2025_all_months.parquet`) carry many `reporting_date` values in
    one file. When `period` is set and a `reporting_date` column is present, the
@@ -73,13 +73,40 @@ tapes = green_lion.list_tapes()
 df = green_lion.load_tape("2026-04-30")
 ```
 
-`green_lion.load_tape` is `pandas.read_csv(<HuggingFace URL>)` under the hood —
-the same read `_load_tape` performs. Green Lion 2026-1's three tapes are
+`green_lion.load_tape` is `pandas.read_csv(underlying_url(<identifier>))` under
+the hood — the same read `_load_tape` performs, on the same resolved URL.
+Green Lion 2026-1's three tapes are
 **synthetic**, and their registered identifiers say so, so feeding one through
 `EsmaTapeNormaliser` produces an `EsmaTapeOutput` with
 `data_source="synthetic"`. Until #483 they reported `"direct"`: the word
 "synthetic" was in the filename and in the data card, neither of which any
 claim-making surface reads.
+
+### A reader must not hold the identifier rules
+
+A registered tape URL is an **identifier**, not a path, so nothing may read one
+without first resolving it. Two forms are allowed, and no third:
+
+- **Go through the seam** — `esma_tape_normaliser._load_tape`. Required for any
+  reader that can be handed *any* registered tape, because a derived identifier
+  names a source document to be reconstructed, not a file to parse. The
+  collections aggregator (behind `GET /deal/{id}/collections` and the agent
+  tool) reads this way: the CLO deal registers derived tapes.
+- **Resolve, then read** — `underlying_url(url)` before `pandas`. Allowed only
+  where every identifier the reader can receive names a published file, as for
+  `loanwhiz.data.green_lion` and `demo/run_green_lion.py`, which serve Green
+  Lion's tapes alone.
+
+Calling `pandas` on the raw identifier is the third form, and it raises. It also
+used to be invisible: the readers that did it are reachable only with the
+network, so the offline suite never executed them and stayed green while every
+live load failed — the same shape as the undeclared `pypdf` import.
+`tests/test_tape_seam_bypass.py` closes that, generally rather than reader by
+reader: it walks the AST of `src/`, `demo/`, `scripts/` and `mcp/` for `pandas`
+reads whose path never passed `underlying_url`, so a bypassing reader added
+tomorrow reds even if nothing offline calls it. Its second layer drives every
+registered identifier through every known reader with `pandas` and the deriver
+replaced by tripwires, giving those live paths their first offline coverage.
 
 ## The second path: derivation from a source document
 
