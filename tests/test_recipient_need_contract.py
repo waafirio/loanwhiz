@@ -348,6 +348,37 @@ class TestDeeperStackNeeds:
         funds = _funds(tranches=[_tranche("class_d", balance=0.0, rate_pct=8.5)])
         assert compute_need("class_d_interest", funds) == (0.0, True)
 
+    def test_unresolved_coupon_is_not_evaluable_not_a_zero_need(self) -> None:
+        """A coupon the capital structure could not resolve (#493).
+
+        Every class of a real CLO is floating ("3 month EURIBOR + 1.80%") and
+        the capital structure rightly refuses to coerce a margin into a rate, so
+        the tranche arrives with a balance and no coupon. Accruing 0% there
+        would report that its noteholders are owed nothing this period and
+        service the whole note stack for free — a wrong number that reads as
+        health, never as a bug.
+        """
+        funds = _funds(tranches=[_tranche("class_d", balance=20_000_000.0)])
+        assert compute_need("class_d_interest", funds) == (0.0, False)
+
+    def test_a_genuine_zero_coupon_stays_evaluable(self) -> None:
+        """0% is a real answer and must not collapse into "unresolved"."""
+        funds = _funds(
+            tranches=[_tranche("class_d", balance=20_000_000.0, rate_pct=0.0)]
+        )
+        assert compute_need("class_d_interest", funds) == (0.0, True)
+
+    def test_an_unresolved_coupon_does_not_suppress_its_siblings(self) -> None:
+        """Refusal is per-tranche: a rateless Class E must not refuse Class D."""
+        funds = _funds(
+            tranches=[
+                _tranche("class_d", balance=20_000_000.0, rate_pct=8.5),
+                _tranche("class_e", balance=20_000_000.0),
+            ]
+        )
+        assert compute_need("class_d_interest", funds)[1] is True
+        assert compute_need("class_e_interest", funds) == (0.0, False)
+
 
 # ---------------------------------------------------------------------------
 # 5. The CLO management fees.

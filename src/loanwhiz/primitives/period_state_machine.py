@@ -389,13 +389,15 @@ def _funds_from_state(
     # Build the per-tranche funds context by name from the opening state's
     # tranche list (no hardcoded A/B/C). Coupon rates come from the caller's
     # capital structure (``{<name>_rate_pct: float}``) — rates are not tracked on
-    # ``DealState`` — defaulting to 0 (no interest need) for a tranche with no
-    # rate supplied.
+    # ``DealState``. A tranche whose coupon the capital structure could not
+    # resolve carries NO key here, and that absence is passed through as ``None``
+    # rather than defaulted to 0: the interest need then reports it
+    # ``not_evaluable`` instead of accruing nothing and servicing it for free.
     tranches = [
         TrancheFunds(
             name=t.name,
             balance=t.balance,
-            rate_pct=rates.get(f"{t.name}_rate_pct", 0.0),
+            rate_pct=rates.get(f"{t.name}_rate_pct"),
             pdl_balance=t.pdl_balance,
         )
         for t in state.tranches
@@ -851,8 +853,9 @@ def reconstruct_period_series(
     capital_structure:
         Prospectus capital structure — at least ``class_{a,b,c}_balance`` (the
         seed tranche balances) and, for the interest needs, ``class_{a,b,c}_rate_pct``.
-        Coupon-rate keys are passed through to the per-period funds view; missing
-        rate keys default to 0 (no interest need for that tranche).
+        Coupon-rate keys are passed through to the per-period funds view; a
+        missing rate key leaves that tranche's coupon unresolved, and its
+        interest need is reported ``not_evaluable`` rather than accrued as 0.
     reserve_target:
         The reserve account target (the reserve opens funded at this amount).
     original_pool_balance:

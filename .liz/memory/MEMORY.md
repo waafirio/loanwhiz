@@ -27,4 +27,5 @@ triage by opening the entry, not by reading the line.
   - [2026-09-05 · pattern · #453](#2026-09-05--pattern--453) — keywords: NEED_CALCULATORS, register_need, RecipientType, closed enum, registry coverage, import-time assert, silent default, generated calculators
   - [2026-09-05 · pitfall · #453](#2026-09-05--pitfall--453) — keywords: LLM classifier options, deny list, enum growth, near-miss, incentive fee, use_llm=False, unmapped escape
   - [2026-09-06 · pitfall · #471](#2026-09-06--pitfall--471) — keywords: absent column, all-False mask, arrears breakdown, silent clean pool, degrade, no key not zero
+  - [2026-09-08 · pattern · #493](#2026-09-08--pattern--493) — keywords: not_evaluable, layered refusal, paired assertion, unresolved coupon, rate_pct, silent zero, false green
 - [Extracting tables from PDFs](pdf-table-extraction.md) — keywords: visitor_text, text matrix, tm[4], rotated table, extraction_mode layout, row boundary, continuation line, column order, pypdf

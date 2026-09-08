@@ -593,6 +593,33 @@ class TestWaterfallFundsGenerality:
         # The accessors read the same folded values.
         assert funds.class_a_pdl_balance == 1.0
 
+    def test_legacy_balance_kwarg_without_a_rate_leaves_the_coupon_unresolved(self):
+        """A folded class with no rate kwarg is UNRESOLVED, not 0% (#493).
+
+        ``class_b_balance`` with no ``class_b_rate_pct`` used to fold to
+        ``rate_pct=0.0``, so Class B accrued exactly nothing and its interest
+        step reported an authoritative zero. It must now refuse instead.
+        """
+        funds = WaterfallFunds(
+            class_a_balance=100.0,
+            class_a_rate_pct=3.0,
+            class_b_balance=50.0,
+            days_in_period=90,
+        )
+        assert funds.tranche("class_b").rate_pct is None
+        assert funds.class_b_rate_pct is None
+        assert compute_need("class_b_interest", funds) == (0.0, False)
+        # The class that DID supply a rate is unaffected.
+        assert compute_need("class_a_interest", funds)[1] is True
+
+    def test_an_explicit_zero_rate_kwarg_still_folds_to_a_real_zero(self):
+        """0% supplied is a real coupon; only an ABSENT one is unresolved."""
+        funds = WaterfallFunds(
+            class_b_balance=50.0, class_b_rate_pct=0.0, days_in_period=90
+        )
+        assert funds.tranche("class_b").rate_pct == 0.0
+        assert compute_need("class_b_interest", funds) == (0.0, True)
+
     def test_allocate_principal_by_name_non_abc(self):
         """``allocate_principal`` allocates across custom tranche names sequentially."""
         funds = WaterfallFunds(

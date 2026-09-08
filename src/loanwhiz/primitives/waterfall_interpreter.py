@@ -193,14 +193,19 @@ class TrancheFunds(BaseModel):
     balance:
         Outstanding tranche balance (drives interest + principal needs).
     rate_pct:
-        Annual coupon rate in percent.
+        Annual coupon rate in percent, or ``None`` when the coupon could not be
+        resolved. The two are different answers and must not collapse: ``0.0``
+        is a real 0% coupon (owed nothing, evaluable), ``None`` is an unknown
+        one, and the interest need reports it ``not_evaluable`` rather than
+        accruing zero. A floating coupon the capital structure declined to
+        coerce into a number (``"3 month EURIBOR + 1.80%"``) arrives as ``None``.
     pdl_balance:
         Outstanding PDL debit balance (the replenishment need).
     """
 
     name: str = Field(..., description="Tranche name.")
     balance: float = Field(default=0.0, ge=0.0)
-    rate_pct: float = Field(default=0.0, ge=0.0)
+    rate_pct: float | None = Field(default=None, ge=0.0)
     pdl_balance: float = Field(default=0.0, ge=0.0)
 
 
@@ -226,7 +231,8 @@ class WaterfallFunds(BaseModel):
     class_a_balance / class_b_balance / class_c_balance:
         Outstanding tranche balances (drive interest + principal needs).
     class_a_rate_pct / class_b_rate_pct / class_c_rate_pct:
-        Per-tranche annual coupon rates in percent.
+        Per-tranche annual coupon rates in percent; ``None`` when the class is
+        absent or its coupon is unresolved.
     class_a_pdl_balance / class_b_pdl_balance / class_c_pdl_balance:
         Outstanding PDL debit balances (the replenishment needs).
     reserve_balance / reserve_target:
@@ -297,7 +303,7 @@ class WaterfallFunds(BaseModel):
         if data.get("tranches"):
             return data
         balances: dict[str, float] = {}
-        rates: dict[str, float] = {}
+        rates: dict[str, float | None] = {}
         pdls: dict[str, float] = {}
         for key in list(data.keys()):
             if not key.startswith("class_"):
@@ -315,7 +321,7 @@ class WaterfallFunds(BaseModel):
             n for n in all_names if n not in _CANONICAL_TRANCHE_NAMES
         ]
         seen: set[str] = set()
-        tranches: list[dict[str, float | str]] = []
+        tranches: list[dict[str, float | str | None]] = []
         for name in names:
             if name in seen or name not in all_names:
                 continue
@@ -324,7 +330,10 @@ class WaterfallFunds(BaseModel):
                 {
                     "name": name,
                     "balance": balances.get(name, 0.0),
-                    "rate_pct": rates.get(name, 0.0),
+                    # No default: a class folded in from a bare
+                    # ``class_x_balance`` kwarg has an UNRESOLVED coupon, not a
+                    # 0% one, and defaulting here would service it for free.
+                    "rate_pct": rates.get(name),
                     "pdl_balance": pdls.get(name, 0.0),
                 }
             )
@@ -358,21 +367,21 @@ class WaterfallFunds(BaseModel):
 
     @computed_field  # type: ignore[prop-decorator]
     @property
-    def class_a_rate_pct(self) -> float:
+    def class_a_rate_pct(self) -> float | None:
         t = self.tranche("class_a")
-        return t.rate_pct if t is not None else 0.0
+        return t.rate_pct if t is not None else None
 
     @computed_field  # type: ignore[prop-decorator]
     @property
-    def class_b_rate_pct(self) -> float:
+    def class_b_rate_pct(self) -> float | None:
         t = self.tranche("class_b")
-        return t.rate_pct if t is not None else 0.0
+        return t.rate_pct if t is not None else None
 
     @computed_field  # type: ignore[prop-decorator]
     @property
-    def class_c_rate_pct(self) -> float:
+    def class_c_rate_pct(self) -> float | None:
         t = self.tranche("class_c")
-        return t.rate_pct if t is not None else 0.0
+        return t.rate_pct if t is not None else None
 
     @computed_field  # type: ignore[prop-decorator]
     @property
@@ -500,18 +509,24 @@ def _accrued_interest(balance: float, rate_pct: float, days: int) -> float:
 
 
 def _make_tranche_interest_need(tranche: str) -> NeedCalculator:
-    """Act/360 accrual on ``tranche``; ``None`` when the deal has no such tranche.
+    """Act/360 accrual on ``tranche``; ``None`` when the need is unanswerable.
 
-    An absent tranche is *unknown*, not zero: a step paying Class D interest in
-    a deal whose funds carry no Class D has an unanswerable need, and answering
-    ``0.0`` would put an authoritative-looking figure into the distribution. A
-    tranche that is *present* with a zero balance is a different thing — fully
-    amortised, genuinely owed nothing — and still evaluates to 0.
+    Three cases, and the whole point is that they stay three. An absent tranche
+    is *unknown*, not zero: a step paying Class D interest in a deal whose funds
+    carry no Class D has an unanswerable need, and answering ``0.0`` would put
+    an authoritative-looking figure into the distribution. A tranche *present*
+    with an unresolved coupon (``rate_pct is None``) is unanswerable for the
+    same reason — every floating class of a real CLO reaches here, because the
+    capital structure rightly refuses to coerce a margin like
+    ``"3 month EURIBOR + 1.80%"`` into a rate, and accruing 0% would service the
+    whole note stack for free. Only a tranche that is present *with* a rate
+    evaluates — and then a zero balance or a genuine 0% coupon is a real answer
+    (fully amortised, or owed nothing) and still evaluates to 0.
     """
 
     def _need(funds: WaterfallFunds) -> float | None:
         t = funds.tranche(tranche)
-        if t is None:
+        if t is None or t.rate_pct is None:
             return None
         return _accrued_interest(t.balance, t.rate_pct, funds.days_in_period)
 
@@ -839,7 +854,11 @@ class StepResult(BaseModel):
         ``True`` when the step's condition predicate was ``False`` and the step
         was suppressed (distributed 0 regardless of need).
     not_evaluable:
-        ``True`` when no need-calculator is registered for the recipient.
+        ``True`` when the need was unanswerable — either no need-calculator is
+        registered for the recipient, or one ran and refused for want of an
+        input (an unresolved tranche coupon, an unconfigured fee rate, a tranche
+        the deal does not have). ``need`` is 0 in both cases, and this flag is
+        what separates that from a genuine "owed nothing".
     """
 
     priority: str
