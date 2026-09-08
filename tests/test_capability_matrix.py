@@ -1002,10 +1002,17 @@ def _registry_with_synthetic_tape_on_the_validated_deal() -> dict:
 
 
 def _matrix_with_synthetic_pool() -> CapabilityMatrix:
+    # Wired like `_live_matrix()` above. These six tests arrived from epic #482
+    # against the pre-#492 signature (`validators=_VALIDATION_BUILDERS`), which
+    # #492 replaced with the answer-key registry on epic #491. Both sides edited
+    # different regions of this file, so git merged it cleanly and the
+    # composition still raised `NameError` — a merge-semantic break no branch
+    # could see alone.
     return build_capability_matrix(
         _registry_with_synthetic_tape_on_the_validated_deal(),
         seed_loader=_load_cached_deal_model,
-        validators=_VALIDATION_BUILDERS,
+        answer_key_loader=load_answer_key,
+        series_provider=_default_series_provider(),
     )
 
 
