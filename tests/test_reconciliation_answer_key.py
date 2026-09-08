@@ -33,6 +33,7 @@ from loanwhiz.primitives.reconciliation_answer_key import (
     DealAnswerKey,
     answer_key_path,
     load_answer_key,
+    merge_answer_keys,
     published_metric_values,
     published_thresholds,
     quantify_triggers,
@@ -424,3 +425,239 @@ def test_published_metric_values_stays_silent_when_two_triggers_disagree() -> No
         "no_actual": "silent_ratio",
     }
     assert published_metric_values(period, metric_by_name) == {"shared_ratio": 108.68}
+
+
+# ---------------------------------------------------------------------------
+# The third constructor — a CLO's Note Valuation Report (#495)
+# ---------------------------------------------------------------------------
+
+
+def _nvr_source():
+    """The committed CLO key's Note-Valuation authoring path."""
+    from clo_answer_key_source import (  # noqa: PLC0415
+        CLO_DEAL_ID,
+        CLO_DEAL_NAME,
+        clo_key_from_note_valuation,
+        clo_note_valuation_report,
+    )
+
+    return CLO_DEAL_ID, CLO_DEAL_NAME, clo_key_from_note_valuation, clo_note_valuation_report
+
+
+def test_note_valuation_constructor_carries_the_report_it_read() -> None:
+    """Every figure in the PoP key traces to the parsed report, step for step.
+
+    The constructor's own faithfulness check, distinct from the committed key's
+    byte-for-byte regeneration: this compares the key against the *parse*, so a
+    constructor that dropped, reordered or rounded a step reds here with the step
+    named, rather than as an opaque byte diff.
+    """
+    _, _, key_from_nvr, report_of = _nvr_source()
+    key, report = key_from_nvr(), report_of()
+
+    assert len(key.periods) == len(report.periods)
+    for period, source in zip(key.periods, report.periods, strict=True):
+        assert period.reporting_date == source.reporting_date
+        assert period.period_label == source.period_label
+        assert period.available_revenue_funds == source.available_revenue_funds
+        assert period.available_principal_funds == source.available_principal_funds
+        for side, published in (
+            (period.revenue_pop, source.revenue_pop),
+            (period.redemption_pop, source.redemption_pop),
+        ):
+            assert published, "the fixture parsed no steps — this guard is vacuous"
+            assert [(s.priority, s.amount, s.recipient) for s in side] == [
+                (s.priority, s.amount, s.recipient) for s in published
+            ]
+
+
+def test_note_valuation_constructor_records_rates_and_excludes_the_class_without_one() -> None:
+    """A published rate is recorded; a class the report states none for is absent.
+
+    #481's rule on the other constructor, applied here: the Subordinated Notes
+    have no coupon, so ``interest_rate_applied`` is ``None`` — which means the
+    report prints no rate, never "zero per cent". Writing ``0.0`` would publish a
+    figure the document does not state, and it would grade as a real rate.
+    """
+    _, _, key_from_nvr, report_of = _nvr_source()
+    key, report = key_from_nvr(), report_of()
+
+    for period, source in zip(key.periods, report.periods, strict=True):
+        published = {
+            b.note_class: b.interest_rate_applied
+            for b in source.note_balances
+            if b.interest_rate_applied is not None
+        }
+        omitted = {
+            b.note_class for b in source.note_balances if b.interest_rate_applied is None
+        }
+        assert omitted, "the fixture states a rate for every class — guard is vacuous"
+        assert period.pool_stats == {
+            f"applied_rate_{cls}": rate for cls, rate in published.items()
+        }
+        for cls in omitted:
+            assert f"applied_rate_{cls}" not in period.pool_stats
+
+
+def test_note_valuation_constructor_publishes_no_covenants() -> None:
+    """A Note Valuation Report states no coverage test, so the key claims none.
+
+    The mirror of ``test_trustee_constructor_publishes_no_pop_or_pool_stats``:
+    each document contributes only what it states, which is what keeps the merged
+    key from implying either document said more than it did.
+    """
+    _, _, key_from_nvr, _ = _nvr_source()
+    for period in key_from_nvr().periods:
+        assert period.covenants == []
+
+
+def test_note_valuation_constructor_refuses_a_period_that_never_tied_to_its_funds() -> None:
+    """Available funds are the parser's tie-out; without them the steps are unverified.
+
+    ``note_valuation_parser`` ties each waterfall's step sum to the report's own
+    stated available funds and refuses on a divergence. A period reaching here
+    with no stated funds never passed that oracle, so its steps are a regex result
+    rather than ground truth — and this constructor refuses rather than routing
+    around a refusal the parser already made.
+    """
+    _, deal_name, _, report_of = _nvr_source()
+    report = report_of()
+    report.periods[0] = report.periods[0].model_copy(
+        update={"available_revenue_funds": None}
+    )
+    with pytest.raises(ValueError, match="never tied|no available funds"):
+        DealAnswerKey.from_note_valuation_report(
+            report, deal_id="cairn-clo-xvii", deal_name=deal_name
+        )
+
+
+def test_note_valuation_constructor_refuses_a_period_with_no_steps() -> None:
+    """A period with neither waterfall parsed carries no Priority of Payments.
+
+    Committing it would put a period in the key that claims a PoP section it does
+    not have — the overclaim ``capability_matrix._has_pop_section`` reads, and the
+    exact shape a silently-renamed report section would produce (#480's lesson).
+    """
+    _, deal_name, _, report_of = _nvr_source()
+    report = report_of()
+    report.periods[0] = report.periods[0].model_copy(
+        update={"revenue_pop": [], "redemption_pop": []}
+    )
+    with pytest.raises(ValueError, match="no Priority-of-Payments steps"):
+        DealAnswerKey.from_note_valuation_report(
+            report, deal_id="cairn-clo-xvii", deal_name=deal_name
+        )
+
+
+def test_note_valuation_constructor_refuses_another_deals_report() -> None:
+    """The deal name checked is the one the parser read off the report's own page.
+
+    Not the argument echoed back: a guard comparing the caller's ``deal_name`` to
+    itself would pass for any document. This is what stops one deal's published
+    waterfall being committed under another's slug.
+    """
+    _, deal_name, _, report_of = _nvr_source()
+    report = report_of()
+    assert report.periods[0].deal_name == deal_name, "the parse read no deal name"
+    with pytest.raises(ValueError, match="refusing to author"):
+        DealAnswerKey.from_note_valuation_report(
+            report, deal_id="green-lion-2024-1", deal_name=GL_DEAL_NAME
+        )
+
+
+# ---------------------------------------------------------------------------
+# merge_answer_keys — one deal, two published documents, one committed key
+# ---------------------------------------------------------------------------
+
+
+def _key_with(*dates: str, **overrides) -> DealAnswerKey:
+    """A minimal key for a fixed deal, carrying one period per date."""
+    fields = {
+        "deal_id": "cairn-clo-xvii",
+        "deal_name": "Cairn CLO XVII DAC",
+        "periods": [
+            AnswerKeyPeriod(reporting_date=d, period_label=d) for d in dates
+        ],
+        **overrides,
+    }
+    return DealAnswerKey(**fields)
+
+
+def test_merge_unions_periods_in_reporting_date_order() -> None:
+    """The union is ordered by date, not by argument order.
+
+    The committed file must be a function of the documents rather than of the
+    order a caller happened to pass them, or the byte-for-byte regeneration
+    regression would red on a harmless reordering and pass on a real change to
+    which documents were read.
+    """
+    merged = merge_answer_keys(
+        _key_with("2025-03-18", "2024-12-16"), _key_with("2025-01-08")
+    )
+    assert [p.reporting_date for p in merged.periods] == [
+        "2024-12-16",
+        "2025-01-08",
+        "2025-03-18",
+    ]
+    assert merged.deal_id == "cairn-clo-xvii"
+    assert merged.deal_name == "Cairn CLO XVII DAC"
+
+
+def test_merge_keeps_each_periods_own_content() -> None:
+    """A merged period is the one its document produced, not a blend of both."""
+    covenants = _key_with("2024-12-16")
+    covenants.periods[0].covenants = [CovenantResult(name="par_value", passed=True)]
+    pop = _key_with("2025-01-08")
+    pop.periods[0].revenue_pop = [AnswerKeyPopStep(priority="(A)", amount=1.0)]
+
+    merged = merge_answer_keys(covenants, pop)
+    by_date = {p.reporting_date: p for p in merged.periods}
+    assert [c.name for c in by_date["2024-12-16"].covenants] == ["par_value"]
+    assert by_date["2024-12-16"].revenue_pop == []
+    assert by_date["2025-01-08"].covenants == []
+    assert [s.priority for s in by_date["2025-01-08"].revenue_pop] == ["(A)"]
+
+
+@pytest.mark.parametrize(
+    "overrides",
+    [
+        {"deal_id": "green-lion-2024-1"},
+        {"deal_name": "Green Lion 2024-1 B.V."},
+        {"tolerance_eur": 1.0},
+        {"format_version": ANSWER_KEY_FORMAT_VERSION + 1},
+    ],
+)
+def test_merge_refuses_keys_that_disagree_about_what_they_describe(overrides) -> None:
+    """Two keys that disagree about identity or tolerance are not one deal's key.
+
+    Filing one deal's ground truth under another's identity is the damage on the
+    first two; on ``tolerance_eur`` it is quieter and worse — silently adopting
+    one of two disagreeing values as the gate every step is then graded to.
+    """
+    with pytest.raises(ValueError, match="disagreeing on"):
+        merge_answer_keys(_key_with("2024-12-16"), _key_with("2025-01-08", **overrides))
+
+
+def test_merge_refuses_two_documents_claiming_one_period() -> None:
+    """Two keys carrying one reporting date is a reconciliation, not a union.
+
+    Nothing here can decide which document's figure for a shared period is right,
+    and picking one would publish a figure as ground truth on no authority. Cairn's
+    two document sets are disjoint by date today, so this refusal never fires — it
+    exists so a later filing that overlaps fails loudly instead of quietly
+    preferring whichever key was passed first.
+    """
+    with pytest.raises(ValueError, match="both carry reporting date"):
+        merge_answer_keys(_key_with("2025-01-08"), _key_with("2025-01-08"))
+
+
+def test_merge_of_a_single_key_returns_that_key_sorted() -> None:
+    """The degenerate case is the identity, so a one-document deal needs no branch."""
+    merged = merge_answer_keys(_key_with("2025-01-08", "2024-12-16"))
+    assert [p.reporting_date for p in merged.periods] == ["2024-12-16", "2025-01-08"]
+
+
+def test_merge_refuses_no_keys_at_all() -> None:
+    """An empty merge would return nothing to commit, not an empty key."""
+    with pytest.raises(ValueError, match="at least one key"):
+        merge_answer_keys()
