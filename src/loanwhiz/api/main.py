@@ -63,6 +63,7 @@ from loanwhiz.primitives.base import Citation
 from loanwhiz.primitives.capital_structure import (
     CapitalStructure,
     UnresolvableCapitalStructure,
+    senior_tranche_name,
 )
 from loanwhiz.primitives.capability_matrix import (
     CapabilityMatrix,
@@ -1510,19 +1511,6 @@ def _extracted_capital_structure(deal: dict) -> dict | None:
         return None
 
 
-def _senior_tranche_name(capital_structure: dict) -> str | None:
-    """The most senior tranche's engine name, or ``None`` for a shapeless config.
-
-    Both config sources are ordered senior → junior — the builder sorts by
-    seniority, and a ``deals.json`` mapping is read in declaration order — so the
-    first ``<name>_balance`` key names the senior class.
-    """
-    for key in capital_structure:
-        if key.endswith("_balance"):
-            return key[: -len("_balance")]
-    return None
-
-
 def _with_senior_coupon(
     deal_id: str, capital_structure: dict, *, is_green_lion: bool
 ) -> dict:
@@ -1545,7 +1533,7 @@ def _with_senior_coupon(
     zero default: a 0% coupon is a real modelling claim (an interest-free note)
     and would understate the revenue waterfall's need rather than refuse.
     """
-    senior = _senior_tranche_name(capital_structure)
+    senior = senior_tranche_name(capital_structure)
     if senior is None:
         raise _misconfigured_deal(deal_id, "capital_structure")
     rate_key = f"{senior}_rate_pct"

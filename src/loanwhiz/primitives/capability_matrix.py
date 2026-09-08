@@ -51,7 +51,10 @@ from typing import Any, Literal
 from pydantic import BaseModel, Field
 
 from loanwhiz.extraction.assembler import DealModel
-from loanwhiz.primitives.capital_structure import CapitalStructure
+from loanwhiz.primitives.capital_structure import (
+    CapitalStructure,
+    senior_tranche_name,
+)
 from loanwhiz.primitives.derived_tape import source_kind_for
 from loanwhiz.primitives.reconciler import ReconciliationReport
 
@@ -292,14 +295,13 @@ def _extracted_structure(model: DealModel | None) -> dict[str, float] | None:
 def _missing_senior_coupon_key(structure: Mapping[str, Any]) -> str | None:
     """The senior ``<name>_rate_pct`` key this structure lacks, or ``None``.
 
-    Mirrors ``loanwhiz.api.main._with_senior_coupon``: both config sources are
-    ordered senior → junior, so the first ``<name>_balance`` key names the senior
-    class. A structure naming no class at all is reported against
-    ``capital_structure`` itself, matching the resolver.
+    Mirrors ``loanwhiz.api.main._with_senior_coupon``, and shares its answer to
+    "which class is senior" rather than re-deriving it — a second hand-rolled
+    copy is what this whole change exists to stop. A structure naming no class
+    at all is reported against ``capital_structure`` itself, matching the
+    resolver.
     """
-    senior = next(
-        (k[: -len("_balance")] for k in structure if k.endswith("_balance")), None
-    )
+    senior = senior_tranche_name(structure)
     if senior is None:
         return "capital_structure"
     return None if structure.get(f"{senior}_rate_pct") is not None else f"{senior}_rate_pct"

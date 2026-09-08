@@ -305,7 +305,8 @@ class TestTheNextDeepStackDealNeedsNoCodeChange:
         # The one reference-rate class contributes a balance and no coupon; the
         # eleven fixed-rate classes each contribute both.
         assert structure.tranche("class_j").rate_pct is None
-        assert len(structure.rate_keys()) == 10
+        mapping = structure.to_engine_mapping()
+        assert len([k for k in mapping if k.endswith("_rate_pct")]) == 10
 
     def test_a_twelve_class_stack_folds_through_the_engine(self) -> None:
         """Seeded, folded and chained with nothing in the engine edited."""
@@ -364,7 +365,62 @@ class TestTheNextDeepStackDealNeedsNoCodeChange:
 
 
 # ===========================================================================
-# 5. The invariants see every class
+# 5. The collections leg refuses a stack it cannot represent
+# ===========================================================================
+
+
+class TestTheCollectionsLegRefusesRatherThanKeyErrors:
+    """The tape reconstruction's collections input is still three-class.
+
+    Generalising the *config* without generalising that leg leaves a gap: a
+    deeper stack reaching it would raise ``KeyError('class_b_balance')`` — a 500
+    naming nothing, from inside a network-backed path. It must refuse the same
+    loud, deal-named way every other unmet structural precondition does.
+    """
+
+    def test_a_deeper_stack_refuses_and_names_the_deal_and_the_classes(self) -> None:
+        structure = CapitalStructure.from_tranche_structure(
+            _cairn_tranche_structure()
+        ).to_engine_mapping()
+        structure["class_a_rate_pct"] = 4.544  # as #480 will supply it
+
+        with pytest.raises(HTTPException) as excinfo:
+            api_main._collections_tranche_args(_CLO_DEAL_ID, structure)
+
+        detail = excinfo.value.detail
+        assert excinfo.value.status_code == 422
+        assert _CLO_DEAL_ID in detail
+        assert "class_b_1_balance" in detail  # the classes it actually has
+        assert "subset of the deal's classes" in detail
+
+    def test_a_three_class_stack_passes_through_unchanged(self) -> None:
+        """Green Lion's shape must still reach the aggregator untouched."""
+        args = api_main._collections_tranche_args(
+            _GREEN_LION_DEAL_ID, dict(api_main._GREEN_LION_CAPITAL_STRUCTURE)
+        )
+        assert args == {
+            "class_a_balance": api_main._GREEN_LION_CLASS_A_BALANCE,
+            "class_a_rate_pct": api_main._GREEN_LION_CLASS_A_RATE_PCT,
+            "class_b_balance": api_main._GREEN_LION_CLASS_B_BALANCE,
+            "class_c_balance": api_main._GREEN_LION_CLASS_C_BALANCE,
+        }
+
+    def test_a_three_class_stack_missing_its_coupon_still_refuses(self) -> None:
+        """The leg needs a rate; absent, it names the rate rather than KeyError."""
+        with pytest.raises(HTTPException) as excinfo:
+            api_main._collections_tranche_args(
+                "sponsor-2025-1",
+                {
+                    "class_a_balance": 1.0,
+                    "class_b_balance": 1.0,
+                    "class_c_balance": 1.0,
+                },
+            )
+        assert "class_a_rate_pct" in excinfo.value.detail
+
+
+# ===========================================================================
+# 6. The invariants see every class
 # ===========================================================================
 
 

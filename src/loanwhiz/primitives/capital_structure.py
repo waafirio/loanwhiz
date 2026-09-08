@@ -70,6 +70,7 @@ __all__ = [
     "UnresolvableCapitalStructure",
     "engine_tranche_name",
     "numeric_rate_pct",
+    "senior_tranche_name",
 ]
 
 
@@ -327,8 +328,23 @@ class CapitalStructure(BaseModel):
                 return tranche
         return None
 
-    def rate_keys(self) -> tuple[str, ...]:
-        """``<name>_rate_pct`` keys for the tranches with a resolved coupon."""
-        return tuple(
-            f"{t.name}_rate_pct" for t in self.tranches if t.rate_pct is not None
-        )
+
+def senior_tranche_name(capital_structure: Mapping[str, Any]) -> str | None:
+    """The most senior class's engine name in a config mapping, or ``None``.
+
+    The single answer to "which class is senior here", used by both the API
+    resolver and the capability matrix's mirror of it. Written once on purpose:
+    two hand-rolled copies held together by a comment is the exact failure this
+    module was introduced to remove, and it would have been reintroduced at half
+    the size.
+
+    Both config sources are ordered senior → junior — the builder sorts by
+    seniority, and a declared ``deals.json`` mapping is read in declaration order
+    — so the senior class is the first one the mapping names. ``None`` means the
+    mapping names no class at all, which the callers report against
+    ``capital_structure`` itself.
+    """
+    try:
+        return CapitalStructure.from_engine_mapping(capital_structure).senior.name
+    except UnresolvableCapitalStructure:
+        return None

@@ -92,7 +92,7 @@ _CHAIN_FIELDS: tuple[str, ...] = (
 # The non-negative numeric fields the non-negativity invariant checks on every
 # state.
 #: The non-tranche fields the non-negativity invariant checks on every state.
-#: Tranche balances and PDLs are derived per state (see ``_tranche_fields``).
+#: Tranche balances and PDLs are derived per state (see ``_tranche_values``).
 _NON_NEGATIVE_FIELDS: tuple[str, ...] = (
     "reserve_balance",
     "reserve_target",
