@@ -1,0 +1,2830 @@
+--- page 1 ---
+Cairn CLO XVII DAC
+Note Valuation Report
+As of 08 January, 2025
+Global Corporate Trust
+www.usbank.com/clo
+--- page 2 ---
+Executive Summary . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .
+3
+Proceeds Account Summary . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .
+4
+Distribution Summary . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .
+5
+Interest Priority of Payments . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .
+6
+Principal Priority of Payments . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .
+10
+Portfolio Profile Tests . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .
+14
+Bivariate Risk Tests . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .
+16
+Standard & Poor's CDO Monitor . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .
+18
+Par Value Tests Detail . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .
+19
+Interest Coverage Tests Detail . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .
+21
+S&P CCC Obligations . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .
+23
+Fitch CCC Obligations . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .
+24
+Excess CCC Amount . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .
+25
+Assets Purchased . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .
+26
+Assets Sold . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .
+27
+Current Asset Characteristics - Part I . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .
+28
+Current Asset Characteristics - Part II . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .
+39
+Current Asset Characteristics - Part III . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .
+47
+Principal Paydowns . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .
+53
+Defaulted Collateral Obligation Detail . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .
+54
+Deferring Collateral Obligation Detail . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .
+55
+Discounted Obligations . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .
+56
+Swapped Non-Discount Obligations . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .
+57
+Collateral Enhancement Obligation & Exchanged Equity Security Detail . . . . . . . . .
+58
+Participation Detail . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .
+59
+Restructure Purchases . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .
+60
+Restructure Sales . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .
+61
+Rating Detail And Recovery Rates . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .
+62
+Rating Change Detail . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .
+68
+Deal Counterparty Ratings . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .
+69
+Hedge Details I . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .
+70
+Hedge Details II . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .
+71
+Obligor Concentration (Top 10) . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .
+72
+Country Concentration . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .
+73
+S&P Industry Concentration . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .
+74
+Fitch Industry Concentration . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .
+76
+S&P Rating Stratification . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .
+77
+Fitch Rating Stratification . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .
+78
+Deal Counterparty Information . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .
+79
+ISIN and Common Code for Notes . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .
+80
+Risk Retention . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .
+81
+Disclaimer . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .
+82
+www.usbank.com/clo
+U.S. Bank Global Corporate Trust                                                                                                   Table of Contents
+Page 2 of 83
+Cairn CLO XVII DAC
+Table of Contents
+As of : 08/01/2025
+Next Payment: 21/01/2025
+Report Name Report NamePage Page
+--- page 3 ---
+Cairn CLO XVII DAC
+Executive Summary
+As of: 08/01/2025
+Next Payment: 21/01/2025
+Notes Principal Current Periodic S&P Fitch
+Deal Summary
+Summary
+Detail Balance Coupon Interest Rating Rating
+Class A Notes 248,000,000.00 5.00800 3,277,457.78 AAA AAA
+Investment Manager:       Cairn Loan Investments II LLP
+Calculation Date: 08/01/2025
+Class B-1 Notes 24,600,000.00 5.95800 386,773.50 AA AA
+Inv. Mgr. Email:          treasury@poluscapital.com
+Next Payment Date: 21/01/2025
+Class B-2 Notes 15,000,000.00 6.87000 257,625.00 AA AA
+Closing Date: 20/09/2023
+Class C Notes 23,100,000.00 6.80800 415,004.33 A A
+End of Reinvest:          18/04/2028
+Principal Amount: 408,644,549.47
+Class D Notes 26,500,000.00 8.50800 594,969.17 BBB- BBB-
+Stated Maturity:          20/10/2036
+Proceeds: -7,129,658.73
+Trustee: U.S. Bank Trustees Limited
+Totals: 401,514,890.74
+Class E Notes 17,200,000.00 10.66800 484,208.67 BB- BB-
+Account Manager:          Neil Lewis
+Class F Notes 14,600,000.00 12.84800 495,004.89 B- B-
+Acct. Mgr. Email:         neil.lewis@usbank.com
+Principal Collection Account -7,129,658.73
+Class Subordinated Notes 35,100,000.00 N/A N/A . .
+Market Sector: Bank Loan - HY
+Interest Collection Account 7,257,092.07
+404,100,000.00 5,911,043.34
+Rating Agencies:          S&P / Fitch
+Unused Proceeds Account 0.00
+Collateral Current 08/01/2025
+Collateral Current 08/01/2025
+Test Description Threshold Current Result
+Test Description Threshold Current Result
+Coverage Tests
+Collateral Quality Tests
+Class A/B Par Value Test 130.08% 139.08% Passed
+S&P CDO Monitor Test 66.83% 60.14% Passed
+Class C Par Value Test 121.74% 128.74% Passed
+Fitch Maximum WA Rating Factor Test 26.00 24.43 Passed
+Class D Par Value Test 112.62% 118.62% Passed
+Fitch Minimum WA Recovery Rate Test 60.50 62.10 Passed
+Class E Par Value Test 107.87% 112.86% Passed
+Maximum Obligor Concentration Test 20.00% 13.04% Passed
+Class F Par Value Test 103.90% 108.40% N/A
+Minimum Weighted Average Spread Test 4.01% 4.05% Passed
+Reinvestment Overcollateralisation Test 104.40% 108.40% Passed
+Weighted Average Life Test 7.20 4.30 Passed
+Class A/B Interest Coverage Test 120.00% 176.57% Passed
+Class C Interest Coverage Test 110.00% 159.67% Passed
+Class D Interest Coverage Test 105.00% 140.41% Passed
+U.S. Bank Global Corporate Trust Executive Summary Page 3 of 83
+www.usbank.com/clo
+--- page 4 ---
+Cairn CLO XVII DAC
+Proceeds Account Summary
+As of:  08/01/2025
+Next Payment: 21/01/2025
+Account Account Account Account
+Collection Principal Interest Principal Interest
+Account Name Balance (TRD) Balance (TRD) Balance (STLD) Balance (STLD)
+EUR COLLATERAL ENHANCEMENT ACCOUNT 0.00 0.00 0.00 0.00
+EUR CPTY DOWNGRADE 1 ACCOUNT 0.00 0.00 0.00 0.00
+EUR CPTY DOWNGRADE 2 ACCOUNT 0.00 0.00 0.00 0.00
+EUR EXPENSE RESERVE ACCOUNT 0.00 0.00 0.00 0.00
+EUR FIRST PERIOD RESERVE ACCOUNT 0.00 0.00 0.00 0.00
+EUR INTEREST ACCOUNT 0.00       7,257,092.07 0.00       7,257,092.07
+EUR PAYMENT ACCOUNT 0.00 0.00 0.00 0.00
+EUR PRINCIPAL ACCOUNT -7,129,658.73 0.00       5,429,315.65 0.00
+EUR UNFUNDED REVOLVER RESERVE ACCOUNT 131,539.81 0.00         131,539.81 0.00
+EUR UNUSED PROCEEDS ACCOUNT 0.00 0.00 0.00 0.00
+Total -6,998,118.92       7,257,092.07       5,560,855.46       7,257,092.07
+U.S. Bank Global Corporate Trust Proceeds Account Summary Page 4 of 83
+www.usbank.com/clo
+--- page 5 ---
+Cairn CLO XVII DAC
+Distribution Summary
+As of:  08/01/2025
+Next Payment: 21/01/2025
+Closing Balance Accrued Total Interest
+Original Face Opening Principal of Original Interest Amount Rate
+Issue Name Value Balance Payment Balance Due Payable Current
+Class A Senior Secured FLR Notes 248,000,000.00 248,000,000.00 0.00 248,000,000.00 3,277,457.78 3,277,457.78 5.00800
+Class B-1  Senior Secured  FLR 24,600,000.00 24,600,000.00 0.00 24,600,000.00 386,773.50 386,773.50 5.95800
+Notes
+Class B-2 Senior Secured FXR 15,000,000.00 15,000,000.00 0.00 15,000,000.00 257,625.00 257,625.00 6.87000
+Notes
+Class C Senior Secured Deferrable 23,100,000.00 23,100,000.00 0.00 23,100,000.00 415,004.33 415,004.33 6.80800
+FLR Notes
+Class D Senior Secured Deferrable 26,500,000.00 26,500,000.00 0.00 26,500,000.00 594,969.17 594,969.17 8.50800
+FLR Notes
+Class E Senior Secured Deferrable 17,200,000.00 17,200,000.00 0.00 17,200,000.00 484,208.67 484,208.67 10.66800
+FLR Notes
+Class F Senior Secured Deferrable 14,600,000.00 14,600,000.00 0.00 14,600,000.00 495,004.89 495,004.89 12.84800
+FLR Notes
+Class Subordinated Notes 35,100,000.00 35,100,000.00 0.00 35,100,000.00 0.00 650,863.33 0.00000
+404,100,000.00 404,100,000.00 0.00 404,100,000.00 5,911,043.34 6,561,906.67
+U.S. Bank Global Corporate Trust Distribution Summary Page 5 of 83
+www.usbank.com/clo
+--- page 6 ---
+Cairn CLO XVII DAC
+Interest Priority of Payments
+As of:  08/01/2025
+Next Payment: 21/01/2025
+Available
+Document Report Payment for
+Reference Reference Amount Disbursements
+Interest Priority Of Interest Proceeds (Waterfall) 7,255,062.35
+Payments (EUR)
+(A)(i) Payment of taxes owing by the Issuer
+Taxes CSP 6,388.00 7,248,674.35
+Taxes USB 57.50 7,248,616.85
+(A)(ii) Payment of the Issuer Profit Amount to be retained by the Issuer 250.00 7,248,366.85
+(B) Payment of accrued and unpaid Trustee Fees and Expenses, up to an amount equal to the Senior Expenses Cap 1,250.00 7,247,116.85
+(C) Payment of Administrative Expenses (incl. negative interest charges), up to an amount equal to the Senior Expenses Cap less any
+amounts paid in (B)
+U.S. Bank Europe DAC 8,750.00 7,238,366.85
+U.S. Bank Global Corporate Trust Limited 15,818.69 7,222,548.16
+Fitch Ratings Ltd 47,000.00 7,175,548.16
+Walkers 20,578.18 7,154,969.98
+US Bank - Other Fees 0.00 7,154,969.98
+FinDox Inc - ESMA Reporting Services 5,512.50 7,149,457.48
+Cairn Loan Investments II LLP 29,273.55 7,120,183.93
+KPMG - Professional Services 39,593.70 7,080,590.23
+Finsight Group 490.47 7,080,099.76
+(D) Payment of an amount, at the Collateral Manager?s discretion, to the Expense Reserve Account 0.00 7,080,099.76
+(E) Payment of the Senior Collateral Management Fee due and payable on the current Payment Date
+(a) Senior Management Fee 155,457.93 6,924,641.83
+(a) VAT - Senior Management Fee 0.00 6,924,641.83
+(b) Transfer to Default Cash Account - Interest Proceeds 0.00 6,924,641.83
+(c) Transfer to Default Cash Account - Interest Proceeds 0.00 6,924,641.83
+(F) Payment on a pro rata basis of any Scheduled Periodic Hedge Issuer Payments, and any Currency or Interest Rate Hedge Issuer
+Termination Payments
+(i) Scheduled Periodic Hedge Issuer Payments 0.00 6,924,641.83
+(ii) Defaulted Currency Hedge Termination Payment 0.00 6,924,641.83
+(iii) Interest Rate Hedge Issuer Termination Payment 0.00 6,924,641.83
+(G) Interest Amounts due and payable on the Class A Notes 3,277,457.78 3,647,184.05
+(H)(i) Interest Amounts due and payable on the Class B-1 Notes 386,773.50 3,260,410.55
+U.S. Bank Global Corporate Trust Interest Priority of Payments Page 6 of 83
+www.usbank.com/clo
+--- page 7 ---
+www.usbank.com/clo
+U.S. Bank Global Corporate Trust                                                                                         Interest Priority of Payments
+Page 7 of 83
+Cairn CLO XVII DAC
+Interest Priority of Payments
+As of:  08/01/2025
+Next Payment: 21/01/2025
+Available
+Document Report Payment for
+Reference Reference Amount Disbursements
+(H)(ii) Interest Amounts due and payable on the Class B-2 Notes 257,625.00 3,002,785.55
+(I) if the Class A/B Par Value Test is not satisfied, to the redemption of the Notes in accordance with the Note Payment Sequence to the 0.00 3,002,785.55
+extent necessary to cause such test to be satisfied
+(I) if the Class A/B Interest Coverage Test is not satisfied, beginning on the second payment date, to the redemption of the Notes in 0.00 3,002,785.55
+accordance with the Note Payment Sequence to the extent necessary to cause such test to be satisfied
+(J) Interest Amounts due and payable on the Class C Notes (including any interest on Deferred Interest) 415,004.33 2,587,781.22
+(K) Deferred Interest on the Class C Notes 0.00 2,587,781.22
+(L) if the Class C Par Value Test is not satisfied, to the redemption of the Notes in accordance with the Note Payment Sequence to the 0.00 2,587,781.22
+extent necessary to cause such test to be satisfied
+(L) if the Class C Interest Coverage Test is not satisfied, beginning on the second payment date, to the redemption of the Notes in 0.00 2,587,781.22
+accordance with the Note Payment Sequence to the extent necessary to cause such test to be satisfied
+(M) Interest Amounts due and payable on the Class D Notes (including any interest on Deferred Interest) 594,969.17 1,992,812.05
+(N) Deferred Interest on the Class D Notes 0.00 1,992,812.05
+(O) if the Class D Par Value Test is not satisfied, to the redemption of the Notes in accordance with the Note Payment Sequence to the 0.00 1,992,812.05
+extent necessary to cause such test to be satisfied
+(O) if the Class D Interest Coverage Test is not satisfied, beginning on the second payment date, to the redemption of the Notes in 0.00 1,992,812.05
+accordance with the Note Payment Sequence to the extent necessary to cause such test to be satisfied
+(P) Interest Amounts due and payable on the Class E Notes (including any interest on Deferred Interest) 484,208.67 1,508,603.38
+(Q) Deferred Interest on the Class E Notes 0.00 1,508,603.38
+(R) if the Class E Par Value Test is not satisfied, to the redemption of the Notes in accordance with the Note Payment Sequence to the 0.00 1,508,603.38
+extent necessary to cause such test to be satisfied
+(S) Interest Amounts due and payable on the Class F Notes (including any interest on Deferred Interest) 495,004.89 1,013,598.49
+(T) Deferred Interest on the Class F Notes 0.00 1,013,598.49
+--- page 8 ---
+www.usbank.com/clo
+U.S. Bank Global Corporate Trust                                                                                         Interest Priority of Payments
+Page 8 of 83
+Cairn CLO XVII DAC
+Interest Priority of Payments
+As of:  08/01/2025
+Next Payment: 21/01/2025
+Available
+Document Report Payment for
+Reference Reference Amount Disbursements
+(U) if the Class F Par Value Test is not satisfied, to the redemption of the Notes in accordance with the Note Payment Sequence to the 0.00 1,013,598.49
+extent necessary to cause such test to be satisfied
+(V) in the event of an Effective Date Rating Event, to redeem the Rated Notes in full in accordance with the Note Payment Sequence 0.00 1,013,598.49
+(W) during the Reinvestment Period, if the Reinvestment Overcollateralisation Test is not satisfied, transfer to the Principal Account for the 0.00 1,013,598.49
+acquisition of additional Collateral Debt Obligations in an amount of the lower of (i) 50.0 per cent. of all remaining Interest Proceeds, and
+(ii) the extent necessary to cause such test to be satisfied
+(X) Payment of the Subordinated Collateral Management Fee due and payable on the current Payment Date
+(a) Subordinated Management Fee 362,735.16 650,863.33
+(a) VAT - Sub Management Fee 0.00 650,863.33
+(b) Transfer to Default Cash Account - Interest Proceeds 0.00 650,863.33
+(c) Transfer to Default Cash Account - Principal Proceeds 0.00 650,863.33
+(Y) Payment of Trustee Fees and Expenses (if any) not paid by reason of the Senior Expenses Cap 0.00 650,863.33
+(Z) Payment of Administrative Expenses (if any) not paid by reason of the Senior Expenses Cap
+U.S. Bank Europe DAC 0.00 650,863.33
+U.S. Bank Global Corporate Trust Limited 0.00 650,863.33
+Fitch Ratings Ltd 0.00 650,863.33
+Walkers 0.00 650,863.33
+US Bank - Other Fees 0.00 650,863.33
+FinDox Inc - ESMA Reporting Services 0.00 650,863.33
+Cairn Loan Investments II LLP 0.00 650,863.33
+KPMG - Professional Services 0.00 650,863.33
+Finsight Group 0.00 650,863.33
+(AA) Payment on a pro rata basis of any Defaulted Currency Hedge Termination Payments 0.00 650,863.33
+(BB) During the Reinvestment Period at the direction and in the discretion of the Investment Manager, to transfer to the Collateral 0.00 650,863.33
+Enhancement Account, any Collateral Enhancement Amount
+(CC)(1)(a) Until the IRR Threshold has been reached, to the payment of Interest on the Class Subordinated Notes 650,863.33 0.00
+(CC)(2)(I) Once the IRR Threshold has been reached, 20 per cent. of any remaining Interest Proceeds to the payment of the Incentive Investment 0.00 0.00
+Management Fee
+(CC)(2)(II) VAT in respect of the Incentive Investment Management Fee 0.00 0.00
+--- page 9 ---
+www.usbank.com/clo
+U.S. Bank Global Corporate Trust                                                                                         Interest Priority of Payments
+Page 9 of 83
+Cairn CLO XVII DAC
+Interest Priority of Payments
+As of:  08/01/2025
+Next Payment: 21/01/2025
+Available
+Document Report Payment for
+Reference Reference Amount Disbursements
+(CC)(2)(III)(a) Any remaining Interest Proceeds to the Class Subordinated Notes 0.00 0.00
+--- page 10 ---
+www.usbank.com/clo
+U.S. Bank Global Corporate Trust                                                                                        Principal Priority of Payments
+Page 10 of 83
+Cairn CLO XVII DAC
+Principal Priority of Payments
+As of:  08/01/2025
+Next Payment: 21/01/2025
+Available
+Document Report Payment for
+Reference Reference Amount Disbursements
+Principal Priority Of Principal Proceeds (Waterfall) 0.00
+Payments (EUR)
+(A)(A)(i) Payment of taxes owing by the Issuer
+Taxes CSP 0.00 0.00
+Taxes USB 0.00 0.00
+(A)(A)(ii) Payment of the Issuer Profit Amount to be retained by the Issuer 0.00 0.00
+(A)(C) Payment of Administrative Expenses (incl. negative interest charges), up to an amount equal to the Senior Expenses Cap less any
+amounts paid in (A)(B)
+U.S. Bank Europe DAC 0.00 0.00
+U.S. Bank Global Corporate Trust Limited 0.00 0.00
+Fitch Ratings Ltd 0.00 0.00
+Walkers 0.00 0.00
+US Bank - Other Fees 0.00 0.00
+FinDox Inc - ESMA Reporting Services 0.00 0.00
+Cairn Loan Investments II LLP 0.00 0.00
+KPMG - Professional Services 0.00 0.00
+Finsight Group 0.00 0.00
+(A)(D) Payment of an amount, at the Collateral Manager?s discretion, to the Expense Reserve Account 0.00 0.00
+(A)(E) Payment of the Senior Collateral Management Fee due and payable on the current Payment Date
+(a) Senior Management Fee 0.00 0.00
+(a) VAT - Senior Management Fee 0.00 0.00
+(b) Transfer to Default Cash Account - Interest Proceeds 0.00 0.00
+(c) Transfer to Default Cash Account - Interest Proceeds 0.00 0.00
+(A)(F) Payment on a pro rata basis of any Scheduled Periodic Hedge Issuer Payments, and any Currency or Interest Rate Hedge Issuer
+Termination Payments
+(i) Scheduled Periodic Hedge Issuer Payments 0.00 0.00
+(ii) Defaulted Currency Hedge Termination Payment 0.00 0.00
+(iii) Interest Rate Hedge Issuer Termination Payment 0.00 0.00
+(A)(G) Interest Amounts due and payable on the Class A Notes 0.00 0.00
+(A)(H)(i) Interest Amounts due and payable on the Class B-1 Notes 0.00 0.00
+(A)(H)(ii) Interest Amounts due and payable on the Class B-2 Notes 0.00 0.00
+--- page 11 ---
+www.usbank.com/clo
+U.S. Bank Global Corporate Trust                                                                                        Principal Priority of Payments
+Page 11 of 83
+Cairn CLO XVII DAC
+Principal Priority of Payments
+As of:  08/01/2025
+Next Payment: 21/01/2025
+Available
+Document Report Payment for
+Reference Reference Amount Disbursements
+(A)(I) if the Class A/B Par Value Test is not satisfied, to the redemption of the Notes in accordance with the Note Payment Sequence to the 0.00 0.00
+extent necessary to cause such test to be satisfied
+(A)(I) if the Class A/B Interest Coverage Test is not satisfied, beginning on the second payment date, to the redemption of the Notes in 0.00 0.00
+accordance with the Note Payment Sequence to the extent necessary to cause such test to be satisfied
+(B)(J) Interest Amounts due and payable on the Class C Notes (including any interest on Deferred Interest), but to the extent that the Class C 0.00 0.00
+Notes are the Controlling Class;
+(C)(K) Deferred Interest on the Class C Notes 0.00 0.00
+(D)(L) if the Class C Par Value Test is not satisfied, to the redemption of the Notes in accordance with the Note Payment Sequence to the 0.00 0.00
+extent necessary to cause such test to be satisfied, only to the extent that the Class C Notes are the Controlling Class
+(D)(L) if the Class C Interest Coverage Test is not satisfied, beginning on the second payment date, to the redemption of the Notes in 0.00 0.00
+accordance with the Note Payment Sequence to the extent necessary to cause such test to be satisfied, only to the extent that the Class
+C Notes are the Controlling Class
+(E)(M) Interest Amounts due and payable on the Class D Notes (including any interest on Deferred Interest), but only to the extent that the 0.00 0.00
+Class D Notes are the Controlling Class;
+(F)(N) Deferred Interest on the Class D Notes, but to the extent that the Class D Notes are the Controlling Class; 0.00 0.00
+(G)(O) if the Class D Par Value Test is not satisfied, to the redemption of the Notes in accordance with the Note Payment Sequence to the 0.00 0.00
+extent necessary to cause such test to be satisfied, only to the extent that the Class D Notes are the Controlling Class
+(G)(O) if the Class D Interest Coverage Test is not satisfied, beginning on the second payment date, to the redemption of the Notes in 0.00 0.00
+accordance with the Note Payment Sequence to the extent necessary to cause such test to be satisfied, only to the extent that the Class
+D Notes are the Controlling Class
+(H)(P) Interest Amounts due and payable on the Class E Notes (including any interest on Deferred Interest), but only to the extent that the 0.00 0.00
+Class E Notes are the Controlling Class;
+(I)(Q) Deferred Interest on the Class E Notes, but to the extent that the Class E Notes are the Controlling Class; 0.00 0.00
+(J)(R) if the Class E Par Value Test is not satisfied, to the redemption of the Notes in accordance with the Note Payment Sequence to the 0.00 0.00
+extent necessary to cause such test to be satisfied, only to the extent that the Class E Notes are the Controlling Class
+--- page 12 ---
+www.usbank.com/clo
+U.S. Bank Global Corporate Trust                                                                                        Principal Priority of Payments
+Page 12 of 83
+Cairn CLO XVII DAC
+Principal Priority of Payments
+As of:  08/01/2025
+Next Payment: 21/01/2025
+Available
+Document Report Payment for
+Reference Reference Amount Disbursements
+(K)(S) Interest Amounts due and payable on the Class F Notes (including any interest on Deferred Interest), but only to the extent that the 0.00 0.00
+Class F Notes are the Controlling Class;
+(L)(T) Deferred Interest on the Class F Notes, but to the extent that the Class F Notes are the Controlling Class; 0.00 0.00
+(M)(U) if the Class F Par Value Test is not satisfied, to the redemption of the Notes in accordance with the Note Payment Sequence to the 0.00 0.00
+extent necessary to cause such test to be satisfied, only to the extent that the Class F Notes are the Controlling Class
+(N)(V) in the event of an Effective Date Rating Event, to redeem the Rated Notes in full in accordance with the Note Payment Sequence
+Class A Senior Secured FLR Notes - Principal Repayment 0.00 0.00
+Class B-1  Senior Secured  FLR Notes - Principal Repayment 0.00 0.00
+Class B-2 Senior Secured FXR Notes - Principal Repayment 0.00 0.00
+Class C Senior Secured Deferrable FLR Notes - Principal Repayment 0.00 0.00
+Class C Senior Secured Deferrable FLR Notes - Deferred Interest Amount 0.00 0.00
+Class D Senior Secured Deferrable FLR Notes - Principal Repayment 0.00 0.00
+Class D Senior Secured Deferrable FLR Notes - Deferred Interest Amount 0.00 0.00
+Class E Senior Secured Deferrable FLR Notes - Principal Repayment 0.00 0.00
+Class E Senior Secured Deferrable FLR Notes - Deferred Interest Amount 0.00 0.00
+Class F Senior Secured Deferrable FLR Notes - Principal Repayment 0.00 0.00
+Class F Senior Secured Deferrable FLR Notes - Deferred Interest Amount 0.00 0.00
+(O) if such Payment Date is a Special Redemption Date, at the election of the Collateral Manager to make payments in an amount equal to 0.00 0.00
+the Special Redemption Amount (if any) applicable to such Payment Date in accordance with the Note Payment Sequence;
+(P)(1) during the Reinvestment Period, at the discretion of the Collateral Manager, either to the purchase of Substitute Collateral Obligations or 0.00 0.00
+to the Principal Account pending reinvestment in Substitute Collateral Obligations at a later date in each case in accordance with the
+Collateral Management and Administration Agreement;
+(P)(2) after the Reinvestment Period in the case of Principal Proceeds representing Unscheduled Principal Proceeds and Sale Proceeds from 0.00 0.00
+the sale of Credit Impaired Obligations and Credit Improved Obligations at the discretion of the Collateral Manager, either to the
+purchase of Substitute Collateral Debt Obligations or to the Principal Account pending reinvestment in Substitute Collateral Debt
+Obligations at a later date (provided that such purchase and/or deposit would not cause a Retention Deficiency) in each case in
+accordance with the Collateral Management Agreement;
+(Q) after the Reinvestment Period, to redeem the Notes in accordance with the Note Payment Sequence; 0.00 0.00
+(R)(X) Payment of the Subordinated Collateral Management Fee due and payable on the current Payment Date 0.00 0.00
+(R)(Z) Payment of Administrative Expenses (if any) not paid by reason of the Senior Expenses Cap 0.00 0.00
+--- page 13 ---
+www.usbank.com/clo
+U.S. Bank Global Corporate Trust                                                                                        Principal Priority of Payments
+Page 13 of 83
+Cairn CLO XVII DAC
+Principal Priority of Payments
+As of:  08/01/2025
+Next Payment: 21/01/2025
+Available
+Document Report Payment for
+Reference Reference Amount Disbursements
+(R)(AA) Payment on a pro rata basis of any Defaulted Currency Hedge Termination Payments 0.00 0.00
+(R)(BB) During the Reinvestment Period at the direction and in the discretion of the Investment Manager, to transfer to the Collateral 0.00 0.00
+Enhancement Account, any Collateral Enhancement Amount
+(S)(1) Until the IRR Threshold has been reached, to payment on the Class Subordinated Notes 0.00 0.00
+(S)(2)(I) Once the IRR Threshold has been reached, 20 per cent. of any remaining Interest Proceeds to the payment of the Incentive Investment 0.00 0.00
+Management Fee
+(S)(2)(II) VAT in respect of the Incentive Investment Management Fee 0.00 0.00
+(S)(2)(III) Any remaining Principal Proceeds to the Class Subordinated Notes 0.00 0.00
+--- page 14 ---
+www.usbank.com/clo
+U.S. Bank Global Corporate Trust                                                                                               Portfolio Profile Tests
+Page 14 of 83
+Cairn CLO XVII DAC
+Portfolio Profile Tests
+As of:  08/01/2025
+Next Payment: 21/01/2025
+Current
+Test Result Current Current Max Test
+Name Value Numerator Denominator Min Trigger Result
+(a) Senior Secured Loans and Senior Secured Bonds                99.75% 398,984,890.74 399,984,890.74 Minimum                90.00% Pass
+(Including Cash)
+(b) Senior Secured Loans (Including Cash)                86.28% 345,111,319.31 399,984,890.74 Minimum                70.00% Pass
+(c) Unsecured Senior Loans, Second Lien Loans,                 0.25% 1,000,000.00 399,984,890.74 Maximum                10.00% Pass
+Mezzanine Obligations, and High Yield Bonds
+(d)(i) Single Obligor Concentration of Senior Secured                 1.75% 7,002,987.07 399,984,890.74 Maximum                 3.00% Pass
+Obligations (Largest Obligor)
+(d)(ii) Single Obligor Concentration of Senior Secured                 1.27% 5,093,899.00 399,984,890.74 Maximum                 2.50% Pass
+Obligations (Fourth Largest Obligor)
+(e) Single Obligor Concentration of non Senior                 0.25% 1,000,000.00 399,984,890.74 Maximum                 1.50% Pass
+Secured Obligations (Largest Obligor)
+(f)(i) Single Obligor Concentration (Largest Obligor)                 1.75% 7,002,987.07 399,984,890.74 Maximum                 3.00% Pass
+(f)(ii) Single Obligor Concentration (Fourth Largest                 1.27% 5,093,899.00 399,984,890.74 Maximum                 2.50% Pass
+Obligor)
+(g) Participations                 0.00% 0.00 399,984,890.74 Maximum                 5.00% Pass
+(h) Current Pay Obligations                 0.00% 0.00 399,984,890.74 Maximum                 5.00% Pass
+(i) Revolving Obligations or Delayed Drawdown                 0.03% 131,539.81 399,984,890.74 Maximum                10.00% Pass
+Collateral Debt Obligations
+(j) S&P CCCC Obligations                 2.51% 10,020,301.06 399,984,890.74 Maximum                 7.50% Pass
+(k) Fitch CCC Obligations                 4.38% 17,510,301.06 399,984,890.74 Maximum                 7.50% Pass
+(l) Bridge Loans                 0.00% 0.00 399,984,890.74 Maximum                 2.50% Pass
+(m)(i) Corporate Rescue Loans or Defaulted Uptier                 0.00% 0.00 399,984,890.74 Maximum                 5.00% Pass
+Priming Debt
+(m)(ii) Single Obligor Concentration of Corporate                 0.00% 0.00 399,984,890.74 Maximum                 2.00% Pass
+Resuce Loans (Largest Obligor)
+(n) PIK Securities                 0.00% 0.00 399,984,890.74 Maximum                 5.00% Pass
+(o) Cov-Lite Loans                 0.58% 2,316,978.38 399,984,890.74 Maximum                30.00% Pass
+(p) Unhedged Fixed Rate Collateral Debt Obligations                 7.56% 30,250,000.00 399,984,890.74 Maximum                10.00% Pass
+and Zero Coupon Securities
+(q) Non-Euro Obligations                 0.00% 0.00 399,984,890.74 Maximum                20.00% Pass
+(r)(i) S&P Industry Concentration (Aggregate of three                29.80% 119,206,451.32 399,984,890.74 Maximum                40.00% Pass
+largest Industries)
+(r)(ii) S&P Industry Concentration (Largest Industry)                10.25% 41,000,000.00 399,984,890.74 Maximum                17.50% Pass
+(r)(iii) S&P Industry Concentration (Second Largest                10.20% 40,800,005.44 399,984,890.74 Maximum                15.00% Pass
+Industry)
+(r)(iv) S&P Industry Concentration (Third Largest                 9.35% 37,406,445.88 399,984,890.74 Maximum                12.00% Pass
+Industry)
+(s)(i) Fitch Industry Concentration (Aggregate of three                29.31% 117,221,022.61 399,984,890.74 Maximum                40.00% Pass
+largest Industries)
+(s)(ii) Fitch Industry Concentration (Largest Industry)                10.20% 40,800,005.44 399,984,890.74 Maximum                17.50% Pass
+--- page 15 ---
+www.usbank.com/clo
+U.S. Bank Global Corporate Trust                                                                                               Portfolio Profile Tests
+Page 15 of 83
+Cairn CLO XVII DAC
+Portfolio Profile Tests
+As of:  08/01/2025
+Next Payment: 21/01/2025
+Current
+Test Result Current Current Max Test
+Name Value Numerator Denominator Min Trigger Result
+(s)(iii) Fitch Industry Concentration (Second Largest                10.11% 40,421,017.17 399,984,890.74 Maximum                15.00% Pass
+Industry)
+(s)(iv) Fitch Industry Concentration (Fourth Largest                 8.68% 34,699,488.55 399,984,890.74 Maximum                12.00% Pass
+Industry)
+(s)(v) Fitch Industry Concentration (Sixth Largest                 7.75% 30,986,626.56 399,984,890.74 Maximum                10.00% Pass
+Industry)
+(t) Obligors Domiciled in countries or jurisdictions                10.16% 40,645,356.43 399,984,890.74 Maximum                20.00% Pass
+rated below "AA-" by S&P
+(u) Obligors Domiciled in countries or jurisdictions                 2.13% 8,500,000.00 399,984,890.74 Maximum                15.00% Pass
+rated below "A-" by S&P
+(v) Obligors Domiciled in countries or jurisdictions                 0.00% 0.00 399,984,890.74 Maximum                10.00% Pass
+rated below "BBB-" by S&P
+(w) Obligors Domiciled in countries or jurisdictions                 0.00% 0.00 399,984,890.74 Maximum                 5.00% Pass
+rated below "BB-" by S&P
+(x) Obligors Domiciled in countries or jurisdictions                 2.13% 8,500,000.00 399,984,890.74 Maximum                10.00% Pass
+with a Country Ceiling rating below "AAA" by Fitch
+(z) Obligors with Current Indebtedness at least EUR                 0.00% 0.00 399,984,890.74 Maximum                 5.00% Pass
+200M and less than EUR 250M
+(aa) Discount Obligations                 0.12% 470,000.00 399,984,890.74 Maximum                25.00% Pass
+(bb) Credit Estimate Obligations                 0.00% 0.00 399,984,890.74 Maximum                10.00% Pass
+--- page 16 ---
+www.usbank.com/clo
+U.S. Bank Global Corporate Trust                                                                                                 Bivariate Risk Tests
+Page 16 of 83
+Cairn CLO XVII DAC
+Bivariate Risk Tests
+As of:  08/01/2025
+Next Payment: 21/01/2025
+Current Prior
+Test Result Result Max Test
+Name Value Value Trigger Min Result
+(y)(i) Individual Exposure to a Selling Institution rated                 0.00%                 0.00% Maximum                 5.00% Pass
+"AAA" or below by S&P
+(y)(ii) Individual Exposure to a Selling Institution rated                 0.00%                 0.00% Maximum                 5.00% Pass
+"AAA" or below by Fitch
+(y)(iii) Individual Exposure to a Selling Institution rated                 0.00%                 0.00% Maximum                 5.00% Pass
+"AA+" or below by S&P
+(y)(iv) Individual Exposure to a Selling Institution rated                 0.00%                 0.00% Maximum                 5.00% Pass
+"AA+" or below by Fitch
+(y)(v) Individual Exposure to a Selling Institution rated                 0.00%                 0.00% Maximum                 5.00% Pass
+"AA" or below by S&P
+(y)(vi) Individual Exposure to a Selling Institution rated                 0.00%                 0.00% Maximum                 5.00% Pass
+"AA" or below by Fitch
+(y)(vii) Individual Exposure to a Selling Institution rated                 0.00%                 0.00% Maximum                 5.00% Pass
+"AA-" or below by S&P
+(y)(viii) Individual Exposure to a Selling Institution rated                 0.00%                 0.00% Maximum                 5.00% Pass
+"AA-" or below by Fitch
+(y)(ix) Individual Exposure to a Selling Institution rated                 0.00%                 0.00% Maximum                 5.00% Pass
+"A+" or below by S&P
+(y)(x) Individual Exposure to a Selling Institution rated                 0.00%                 0.00% Maximum                 5.00% Pass
+"A+" or below by Fitch
+(y)(xi) Individual Exposure to a Selling Institution rated "A"                 0.00%                 0.00% Maximum                 5.00% Pass
+or below by S&P
+(y)(xii) Individual Exposure to a Selling Institution rated "A"                 0.00%                 0.00% Maximum                 5.00% Pass
+or below by Fitch
+(y)(xiii) Individual Exposure to a Selling Institution rated                 0.00%                 0.00% Maximum                 0.00% Pass
+"A-" or below by S&P
+(y)(xiv) Individual Exposure to a Selling Institution rated                 0.00%                 0.00% Maximum                 0.00% Pass
+"A-" or below by Fitch
+(y)(xv) Aggregate Exposure to Selling Institutions rated                 0.00%                 0.00% Maximum                 5.00% Pass
+"AAA" or below by S&P
+(y)(xvi) Aggregate Exposure to Selling Institutions rated                 0.00%                 0.00% Maximum                 5.00% Pass
+"AAA" or below by Fitch
+(y)(xvii) Aggregate Exposure to Selling Institutions rated                 0.00%                 0.00% Maximum                 5.00% Pass
+"AA+" or below by S&P
+(y)(xviii) Aggregate Exposure to Selling Institutions rated                 0.00%                 0.00% Maximum                 5.00% Pass
+"AA+" or below by Fitch
+(y)(xix) Aggregate Exposure to Selling Institutions rated                 0.00%                 0.00% Maximum                 5.00% Pass
+"AA" or below by S&P
+--- page 17 ---
+www.usbank.com/clo
+U.S. Bank Global Corporate Trust                                                                                                 Bivariate Risk Tests
+Page 17 of 83
+Cairn CLO XVII DAC
+Bivariate Risk Tests
+As of:  08/01/2025
+Next Payment: 21/01/2025
+Current Prior
+Test Result Result Max Test
+Name Value Value Trigger Min Result
+(y)(xx) Aggregate Exposure to Selling Institutions rated                 0.00%                 0.00% Maximum                 5.00% Pass
+"AA" or below by Fitch
+(y)(xxi) Aggregate Exposure to Selling Institutions rated                 0.00%                 0.00% Maximum                 5.00% Pass
+"AA-" or below by S&P
+(y)(xxii) Aggregate Exposure to Selling Institutions rated                 0.00%                 0.00% Maximum                 5.00% Pass
+"AA-" or below by Fitch
+(y)(xxiii) Aggregate Exposure to Selling Institutions rated                 0.00%                 0.00% Maximum                 5.00% Pass
+"A+" or below by S&P
+(y)(xxiv) Aggregate Exposure to Selling Institutions rated                 0.00%                 0.00% Maximum                 5.00% Pass
+"A+" or below by Fitch
+(y)(xxv) Aggregate Exposure to Selling Institutions rated                 0.00%                 0.00% Maximum                 5.00% Pass
+"A" or below by S&P
+(y)(xxvi) Aggregate Exposure to Selling Institutions rated                 0.00%                 0.00% Maximum                 5.00% Pass
+"A" or below by Fitch
+(y)(xxvii) Aggregate Exposure to Selling Institutions rated                 0.00%                 0.00% Maximum                 0.00% Pass
+"A-" or below by S&P
+(y)(xxviii) Aggregate Exposure to Selling Institutions rated                 0.00%                 0.00% Maximum                 0.00% Pass
+"A-" or below by Fitch
+--- page 18 ---
+www.usbank.com/clo
+U.S. Bank Global Corporate Trust                                                                                      Standard & Poor's CDO Monitor
+Page 18 of 83
+Cairn CLO XVII DAC
+Standard & Poor's CDO Monitor
+As of : 08/01/2025
+Next Payment: 21/01/2025
+Portfolio Portfolio
+Benchmarks Value
+S&P Weighted Average Rating Factor (SPWARF)   2725.53451378
+Default Rate Deviation (DRD)      0.06670552
+Obligor Diversity Measure (ODM)    139.95061096
+Industry Diversity Measure (IDM)     16.95023681
+Regional Diversity Measure (RDM)      1.21357177
+Weighted Average Life (WAL)      4.31251151
+S&P Weighted Average Recovery Rate (SPWARR)      0.37600000
+S&P Weighted Average Spread (SPWAS)      0.04010000
+S&P Default Rate Deviation (SPDRD)    662.62621873
+Target Par Amount 400,000,000.00
+Par Balance 406,644,549.47
+Current Par Balance 399,514,890.74
+Scenario Default Rate (SDR) (%) 60.138425
+Breakeven Default Rate (BDR) (%) 66.827180
+Default Differential (%) 6.688755
+CDO Monitor Test Result Passed
+--- page 19 ---
+www.usbank.com/clo
+U.S. Bank Global Corporate Trust                                                                                               Par Value Tests Detail
+Page 19 of 83
+Cairn CLO XVII DAC
+Par Value Tests Detail
+As of : 08/01/2025
+Next Payment: 21/01/2025
+OVERCOLLATERALIZATION TEST RATIO REQUIRED LEVEL CALCULATION RESULT
+Class A/B Par Value Test 139.08% 130.08% A/B Passed
+Class C Par Value Test 128.74% 121.74% A/C Passed
+Class D Par Value Test 118.62% 112.62% A/D Passed
+Class E Par Value Test 112.86% 107.87% A/E Passed
+Class F Par Value Test 108.40% 103.90% A/F N/A
+Reinvestment Overcollateralisation Test 108.40% 104.40% A/G Passed
+NUMERATOR
+The sum of:
+Aggregate Principal Balance excluding Defaulted Deferring and Discount Obligations 408,644,549.47
+Principal Proceeds -7,129,658.73
+Principal Financed Accrued Interest 0.00
+Defaulted Obligations -2,000,000.00
+Defaulted and Deferring Collateral Obligation Value 470,000.00
+Discount Obligations -2,000,000.00
+Original Purchase Price of Discount Obligations 2,000,000.00
+Excess Caa/CCC Adjustment Amount 0.00
+Total for A:
+399,984,890.74
+DENOMINATOR
+Class A Senior Secured FLR Notes 248,000,000.00
+Class B-1  Senior Secured  FLR Notes 24,600,000.00
+Class B-2 Senior Secured FXR Notes 15,000,000.00
+Total for B:
+287,600,000.00
+Class C Senior Secured Deferrable FLR Notes 23,100,000.00
+Total for C:
+310,700,000.00
+Class D Senior Secured Deferrable FLR Notes 26,500,000.00
+Total for D:
+337,200,000.00
+Class E Senior Secured Deferrable FLR Notes 17,200,000.00
+Total for E:
+354,400,000.00
+--- page 20 ---
+www.usbank.com/clo
+U.S. Bank Global Corporate Trust                                                                                               Par Value Tests Detail
+Page 20 of 83
+DENOMINATOR
+Class F Senior Secured Deferrable FLR Notes 14,600,000.00
+Total for F:
+369,000,000.00
+Total for G:
+369,000,000.00
+--- page 21 ---
+Cairn CLO XVII DAC
+Interest Coverage Tests Detail
+As of : 08/01/2025
+Next Payment: 21/01/2025
+INTEREST COVERAGE TEST RATIO REQUIRED LEVEL CALCULATION RESULT
+Class A/B Interest Coverage Test 176.57% 120.00% A/B Passed
+Class C Interest Coverage Test 159.67% 110.00% A/C Passed
+Class D Interest Coverage Test 140.41% 105.00% A/D Passed
+NUMERATOR
+The sum of:
+Interest Proceeds Cash 7,257,092.07
+Principal Proceeds Transfer Amount 0.00
+Interest Smoothing Amount -2,029.72
+Interest Proceeds to be Received 0.00
+First Period Expenses Reserve 0.00
+Expenses Reserve Account 0.00
+Purchased Accrued Interest 0.00
+Taxes -6,445.50
+Issuer Profit -250.00
+Trustee Fee -1,250.00
+Administrative Expenses -167,017.09
+Expense Reserve Transfer 0.00
+Senior Management Fee -155,457.93
+Hedge Payments 0.00
+Total for A:
+6,924,641.83
+DENOMINATOR
+Class A Senior Secured FLR Notes 3,277,457.78
+Class B-1  Senior Secured  FLR Notes 386,773.50
+Class B-2 Senior Secured FXR Notes 257,625.00
+Total for B:
+3,921,856.28
+Class C Senior Secured Deferrable FLR Notes 415,004.33
+Total for C:
+4,336,860.61
+Class D Senior Secured Deferrable FLR Notes 594,969.17
+U.S. Bank Global Corporate Trust Interest Coverage Tests Detail Page 21 of 83
+www.usbank.com/clo
+--- page 22 ---
+www.usbank.com/clo
+U.S. Bank Global Corporate Trust                                                                                        Interest Coverage Tests Detail
+Page 22 of 83
+DENOMINATOR
+Total for D:
+4,931,829.78
+--- page 23 ---
+www.usbank.com/clo
+U.S. Bank Global Corporate Trust                                                                                               S&P CCC Obligations
+Page 23 of 83
+Cairn CLO XVII DAC
+S&P CCC Obligations
+As of:  08/01/2025
+Next Payment: 21/01/2025
+Issue/Facility Principal S&P Market
+Identifier Issuer Name Name Balance Seniority Rating Value
+LX189634 BVI Medical Inc BVI Medical 2,000,000.00 Senior Secured Loan CCC 94.5740
+(Beaver-Visitec/Physiol)
+Incremental T
+LX209709 Cuppa Bidco B.V. Cuppa Bidco B.V. T/L 2,000,000.00 Senior Secured Loan CCC+ 89.6000
+LX181787 GHD GesundHeits GmbH Deutschland GHD 7/19  EUR TL 1,000,000.00 Senior Secured Loan CCC+ 63.2500
+LX210660 Numericable U.S. LLC. SFR (Numericable/YPSO/Altice) 2,520,301.06 Senior Secured Loan CCC- 80.8230
+B14
+LX199218 Sirona Bidco Sirona/Seqens TLB 2,500,000.00 Senior Secured Loan CCC+ 84.6940
+10,020,301.06
+--- page 24 ---
+*
+*
+2,000,000.00 Senior Secured Loan *
+*
+*
+*
+1,000,000.00 Senior Secured Loan *
+*
+Cairn CLO XVII DAC
+Fitch CCC Obligations
+As of:  08/01/2025
+Next Payment: 21/01/2025
+Issue/Facility Principal Fitch Market Value
+Identifier Issuer Name Name Balance Seniority Rating Indenture
+LX217474 Altice Financing S.A. ALTICE FINANCING 990,000.00 Senior Secured Loan CCC+ 82.6880
+10/31/2027
+LX196255 Armorica Lux S.a.r.l. Idverde TL (6/21) 1,500,000.00 Senior Secured Loan CCC+ 95.1090
+*
+LX194780 Chrome Bidco SASU Chrome Bidco T/L B (Cerba 3,000,000.00 Senior Secured Loan CCC+ 88.8250
+Healthcare/Constantin In
+LX209709 Cuppa Bidco B.V. Cuppa Bidco B.V. T/L 2,000,000.00 Senior Secured Loan CCC+ 89.6000
+*
+LX210660 Numericable U.S. LLC. SFR 2,520,301.06 Senior Secured Loan CCC 80.8230
+(Numericable/YPSO/Altice)
+B14
+LX199218 Sirona Bidco Sirona/Seqens TLB 2,500,000.00 Senior Secured Loan CCC+ 84.6940
+XS2351344622 Transcom TopCo AB TRNSCM Float 12/15/2026 2,000,000.00 Senior Secured Bond CCC+ 71.3520
+17,510,301.06
+U.S. Bank Global Corporate Trust Fitch CCC Obligations Page 24 of 83
+www.usbank.com/clo
+--- page 25 ---
+Cairn CLO XVII DAC
+Excess CCC Amount
+As of:  08/01/2025
+Next Payment: 21/01/2025
+Issue/Facility Market S&P Fitch Principal Balance Adjusted
+Identifier Issuer Name Name Value Rating Rating Balance Used Balance Haircut
+LX181787 GHD GesundHeits GmbH Deutschland GHD 7/19  EUR TL 63.25 CCC+ * 1,000,000.00 0.00 0.00 0.00
+XS2351344622 Transcom TopCo AB TRNSCM Float 12/15/2026 71.35 B CCC+ 2,000,000.00 0.00 0.00 0.00
+LX210660 Numericable U.S. LLC. SFR (Numericable/YPSO/Altice) B14 80.82 CCC- CCC 2,520,301.06 0.00 0.00 0.00
+LX217474 Altice Financing S.A. ALTICE FINANCING 10/31/2027 82.69 B- CCC+ 990,000.00 0.00 0.00 0.00
+LX199218 Sirona Bidco Sirona/Seqens TLB 84.69 CCC+ CCC+ 2,500,000.00 0.00 0.00 0.00
+LX194780 Chrome Bidco SASU Chrome Bidco T/L B (Cerba 88.83 B- CCC+ 3,000,000.00 0.00 0.00 0.00
+Healthcare/Constantin In
+LX209709 Cuppa Bidco B.V. Cuppa Bidco B.V. T/L 89.60 CCC+ CCC+ 2,000,000.00 0.00 0.00 0.00
+LX189634 BVI Medical Inc BVI Medical (Beaver-Visitec/Physiol) 94.57 CCC * 2,000,000.00 0.00 0.00 0.00
+Incremental T
+LX196255 Armorica Lux S.a.r.l. Idverde TL (6/21) 95.11 B- CCC+ 1,500,000.00 0.00 0.00 0.00
+17,510,301.06 0.00 0.00 0.00
+Collateral Principal Amount 400,763,240.74
+7.5% Threshold 30,057,243.06
+Total S&P CCC Obligations 17,510,301.06
+Total Fitch CCC Obligations 0.00
+Caa/CCC Excess Amount 0.00
+Caa/CCC Adjustment Amount 0.00
+U.S. Bank Global Corporate Trust Excess CCC Amount Page 25 of 83
+www.usbank.com/clo
+--- page 26 ---
+www.usbank.com/clo
+U.S. Bank Global Corporate Trust                                                                                                  Assets Purchased
+Page 26 of 83
+Cairn CLO XVII DAC
+Assets Purchased
+From  17/12/2024 to 08/01/2025
+Next Payment: 21/01/2025
+Issue/Facility Purchase
+Identifier Issuer Name Name Trade Date Par Amount Price Cost
+XS2243548273 Cheplapharm Arzneimittel GmbH CHEPDE 4 3/8 01/15/28 06/01/2025 500,000.00 92.75 463,750.00
+LX228988 Rohm Holding GMBH Roehm Holding T/L PIK (3/24) 08/01/2025 1,000,000.00 96.00 960,000.00
+1,500,000.00 1,423,750.00
+--- page 27 ---
+www.usbank.com/clo
+U.S. Bank Global Corporate Trust                                                                                                        Assets Sold
+Page 27 of 83
+Cairn CLO XVII DAC
+Assets Sold
+From  17/12/2024 to 08/01/2025
+Next Payment: 21/01/2025
+No asset records currently meet the summarization criteria.
+--- page 28 ---
+www.usbank.com/clo
+U.S. Bank Global Corporate Trust                                                                                  Current Asset Characteristics - Part I
+Page 28 of 83
+Cairn CLO XVII DAC
+Current Asset Characteristics - Part I
+As of:  08/01/2025
+Next Payment: 21/01/2025
+Issue/Facility Principal Asset Coupon Current Current Index Maturity Market
+Identifier Issuer Name Name Balance Type Type Spread Floor Coupon Type Date Value
+LX226715 AI Sirona (Luxembourg) Acquisition AI Sirona T/L B3 3,000,000.00 Loan Floating 3.50 0.00 6.36 EurIBOR 29/09/2028 100.29
+(Zentiva) (3/24)
+LX192467 Acuris Finance US, Inc. Acuris Finance US 2,739,578.40 Loan Floating 4.00 0.00 6.71 EurIBOR 16/02/2028 99.78
+T/L (1/21)
+LX236054 Aernnova Aerospace S.A.U. Aernnova Aerospace 1,000,000.00 Loan Floating 4.00 0.00 6.76 EurIBOR 27/02/2030 98.75
+6/24
+LX171119 Alloheim Senioren-Residenzen SE Alloheim T/L B 1,250,000.00 Loan Floating 5.00 0.00 8.16 EurIBOR 22/05/2028 99.52
+LX193594 Almaviva Developpement Almaviva 2,000,000.00 Loan Floating 3.25 0.00 5.93 EurIBOR 10/04/2028 99.00
+Developpement T/L
+LX213528 Alpha AB Bidco B.V. Ammeraal 2,652,938.91 Loan Floating 5.00 0.00 7.85 EurIBOR 30/12/2028 100.20
+Beltech/Ammega 7/23
+LX202736 Altadia Altadia T/L (Timber 2,000,000.00 Loan Floating 4.65 0.00 7.81 EurIBOR 30/03/2029 97.70
+Servicios/Esmalglass)
+LX217474 Altice Financing S.A. ALTICE FINANCING 990,000.00 Loan Floating 5.00 0.00 8.18 EurIBOR 31/10/2027 82.69
+10/31/2027
+LX254125 Amber Finco PLC (Applus) Amber Finco/Applus 3,000,000.00 Loan Floating 3.50 0.00 6.33 EurIBOR 11/06/2029 100.27
+11/24
+LX235576 Apleona Group GMBH Triangle/ Apleona 4,500,000.00 Loan Floating 3.75 0.00 6.81 EurIBOR 28/04/2028 100.41
+6/24 Cov-Lite TLB
+LX199035 Aragon BidCo GmbH Aragon BidCo T/L B 2,000,000.00 Loan Floating 3.75 0.00 6.81 EurIBOR 20/11/2028 97.88
+(Amedes Holding)
+LX196255 Armorica Lux S.a.r.l. Idverde TL (6/21) 1,500,000.00 Loan Floating 4.93 0.00 8.07 EurIBOR 28/07/2028 95.11
+LX246973 Artisan Newco B.V. Artisan Newco/Group 1,979,809.98 Loan Floating 3.75 0.00 6.48 EurIBOR 12/02/2029 100.37
+of Butchers 9/24
+XS2954189234 Asmodee Group AB ASMODEE GROUP 1,000,000.00 Bond Floating 3.75 0.00 6.62 EurIBOR 15/12/2029 101.83
+AB FLOATING
+12/15/2029
+LX213673 Assystem Technologies Services Assystem 4,000,000.00 Loan Floating 5.00 0.00 8.16 EurIBOR 28/09/2027 94.42
+Technologies/Expleo
+7/23
+LX228174 Athena Bidco GmbH (P&I) P&I Personal & 1,000,000.00 Loan Floating 4.00 0.00 6.72 EurIBOR 15/04/2029 100.48
+Informatik/Athena
+BidCo 3/24 TL
+LX247701 Auris Luxembourg III Sarl Sivantos/WS 2,000,000.00 Loan Floating 4.00 0.00 6.69 EurIBOR 28/02/2029 100.18
+Audiology TL9/24
+(EUR) B5
+--- page 29 ---
+www.usbank.com/clo
+U.S. Bank Global Corporate Trust                                                                                  Current Asset Characteristics - Part I
+Page 29 of 83
+Cairn CLO XVII DAC
+Current Asset Characteristics - Part I
+As of:  08/01/2025
+Next Payment: 21/01/2025
+Issue/Facility Principal Asset Coupon Current Current Index Maturity Market
+Identifier Issuer Name Name Balance Type Type Spread Floor Coupon Type Date Value
+LX189634 BVI Medical Inc BVI Medical 2,000,000.00 Loan Floating 3.50 0.00 6.50 EurIBOR 02/03/2026 94.57
+(Beaver-Visitec/Physi
+ol) Incremental T
+LX185438 Banijay Group SAS Banijay 1/24 (EUR) 3,000,000.00 Loan Floating 3.75 0.00 6.46 EurIBOR 01/03/2028 100.37
+TLB
+LX218516 Belfor Holdings Inc. Belfor 10/23 EUR T/L 2,000,000.00 Loan Floating 4.25 0.00 7.11 EurIBOR 01/11/2030 100.75
+B2
+LX247575 Belron UK Finance PLC Belron UK Finance 4,500,000.00 Loan Floating 3.00 0.00 6.06 EurIBOR 16/10/2031 100.30
+T/L B
+LX233465 Boels Topholding B.V. Boels 5/24 TL 2,155,172.41 Loan Floating 3.00 0.00 6.04 EurIBOR 23/05/2031 100.56
+LX228682 Boluda Towage S.L. Boluda Towage T/L B 2,500,000.00 Loan Floating 3.50 0.00 6.41 EurIBOR 31/01/2030 100.49
+(3/24)
+LX236701 Boost Newco Borrower, LLC Worldpay/Boost 1,246,875.00 Loan Floating 2.75 0.00 5.43 EurIBOR 31/01/2031 100.23
+Newco 6/24 (EUR)
+LX238947 Bowtie German Bidco GMBH Bowtie German Bidco 2,500,000.00 Loan Floating 4.00 0.00 6.68 EurIBOR 01/08/2031 100.00
+(NextPharma) T/L B
+(08/24)
+LX196487 Broom Holdings BidCo Limited Broom Holdings T/L 1,000,000.00 Loan Floating 3.65 0.00 6.25 EurIBOR 24/08/2028 100.24
+(Beauparc/MIRA)
+XS2295691633 Brunello Bidco SPA TITANL Float 2/15/28 2,000,000.00 Bond Floating 3.75 0.00 6.93 EurIBOR 15/02/2028 100.50
+XS2294186965 CAB BIOGRP 3 3/8 2/1/28 2,000,000.00 Bond Fixed 0.00 3.38 01/02/2028 94.33
+LX192244 CAB CAB (Biogroup-LCD) 2,000,000.00 Loan Floating 3.50 0.00 6.53 EurIBOR 09/02/2028 97.51
+T/L B (2/21)
+LX235674 CD&R Firefly Bidco Limited Motor Fuel Group 4,500,000.00 Loan Floating 4.00 0.00 7.06 EurIBOR 21/06/2028 100.57
+6/24 (EUR) TLB4
+LX202330 CEP V Investment 23 S.a.r.l CEP V Investment 23 2,800,000.00 Loan Floating 3.13 0.00 6.29 EurIBOR 28/02/2029 99.75
+T/L (Autoform)
+LX202118 CTEC III GmbH. CTEC III T/L B (EUR) 1,000,000.00 Loan Floating 3.50 0.00 6.41 EurIBOR 16/03/2029 99.91
+(CeramTec) (02/22)
+XS2929905292 Castello Bc Bidco Spa CASTELLO BC 1,000,000.00 Bond Floating 4.50 0.00 7.51 EurIBOR 14/11/2031 100.67
+BIDCO SPA 10/29/31
+XS2445840809 Castor SPA Castor SPA Floating 1,000,000.00 Bond Floating 5.25 0.00 8.14 EurIBOR 15/02/2029 97.44
+2/15/29
+XS2345190263 Cedacri Mergeco S.p.A. CEDCRI FLOAT 2,000,000.00 Bond Floating 4.63 0.00 7.65 EurIBOR 15/05/2028 100.48
+05/15/2028
+XS2622212707 Cedacri Mergeco S.p.A. Cedacri S.P.A/Vareur 1,500,000.00 Bond Floating 5.50 0.00 8.52 EurIBOR 15/05/2028 100.78
+Nt Amort PN W
+--- page 30 ---
+www.usbank.com/clo
+U.S. Bank Global Corporate Trust                                                                                  Current Asset Characteristics - Part I
+Page 30 of 83
+Cairn CLO XVII DAC
+Current Asset Characteristics - Part I
+As of:  08/01/2025
+Next Payment: 21/01/2025
+Issue/Facility Principal Asset Coupon Current Current Index Maturity Market
+Identifier Issuer Name Name Balance Type Type Spread Floor Coupon Type Date Value
+LX217081 Cegid Group SA Claudius Finance 2,000,000.00 Loan Floating 3.75 0.00 6.84 EurIBOR 10/07/2028 100.28
+(Cegid) 9/23
+Incremental
+LX227374 Celeste BidCo B.V Euromedic/Affidea 2,500,000.00 Loan Floating 4.50 0.00 7.60 EurIBOR 22/07/2029 100.50
+2/24 TL
+LX234218 Ceva Sante Animale Ceva Sante Animale 4,000,000.00 Loan Floating 3.50 0.00 6.18 EurIBOR 08/11/2030 100.32
+05/24 (EUR) TLB
+XS2243548273 Cheplapharm Arzneimittel GmbH CHEPDE 4 3/8 500,000.00 Bond Fixed 0.00 4.38 15/01/2028 92.70
+01/15/28
+XS2618840974 Cheplapharm Arzneimittel GmbH CHEPDE Float  2,000,000.00 Bond Floating 4.75 0.00 7.77 EurIBOR 15/05/2030 96.67
+05/15/2030
+LX202725 Cheplapharm Arzneimittel GmbH Cheplapharm TL B 2,593,899.00 Loan Floating 4.00 0.00 7.18 EurIBOR 22/02/2029 95.22
+LX194780 Chrome Bidco SASU Chrome Bidco T/L B 3,000,000.00 Loan Floating 3.70 0.00 6.56 EurIBOR 30/06/2028 88.83
+(Cerba
+Healthcare/Constanti
+n In
+XS2325699994 Cidron Aida Finco SARL Cidron Aida Finco 2,500,000.00 Bond Fixed 0.00 5.00 01/04/2028 98.01
+SARL 5% 4/1/2028
+LX249777 Cidron Aida Finco SARL Concordia (Advanz 2,000,000.00 Loan Floating 4.25 0.00 7.33 EurIBOR 17/10/2031 99.88
+Pharma) 10/24 TLB
+LX236134 Clarios Global LP Power Solutions 6/24 2,316,978.38 Loan Floating 3.00 0.00 5.86 EurIBOR 16/07/2031 99.68
+(EUR) TLB
+LX193257 Clay Holdco B.V CRH Europe 1,131,539.34 Loan Floating 4.00 0.00 6.86 EurIBOR 30/10/2026 97.45
+Distribution 10/19
+LX195644 Colisee Group SASU Colisee/Cobalt TL 3,000,000.00 Loan Floating 3.75 0.00 6.80 EurIBOR 26/11/2027 91.08
+(10/20)
+LX219297 Cooper Consumer Health Cooper Consumer 2,000,000.00 Loan Floating 4.75 0.00 7.43 EurIBOR 06/11/2028 100.13
+(Care Bidco) T/L B
+(11/23)
+LX254153 Cube Healthcare Europe Bidco SASU Cube Healthcare 750,000.00 Loan Floating 4.00 0.00 6.85 EurIBOR 30/10/2029 100.31
+Europe Bidco
+(Domidep) T/L B
+LX209709 Cuppa Bidco B.V. Cuppa Bidco B.V. T/L 2,000,000.00 Loan Floating 4.75 0.00 7.33 EurIBOR 29/06/2029 89.60
+LX195569 Dedalus Finance GmbH Dedalus Finance 2,000,000.00 Loan Floating 3.75 0.00 7.37 EurIBOR 17/07/2027 98.79
+GMBH
+LX246414 Delachaux S.A. Delachaux T/L B 1,844,155.86 Loan Floating 3.50 0.00 6.56 EurIBOR 16/04/2029 100.56
+(9/24)
+--- page 31 ---
+www.usbank.com/clo
+U.S. Bank Global Corporate Trust                                                                                  Current Asset Characteristics - Part I
+Page 31 of 83
+Cairn CLO XVII DAC
+Current Asset Characteristics - Part I
+As of:  08/01/2025
+Next Payment: 21/01/2025
+Issue/Facility Principal Asset Coupon Current Current Index Maturity Market
+Identifier Issuer Name Name Balance Type Type Spread Floor Coupon Type Date Value
+LX202419 Dorna Sports S.L. Dorna Sports TERM 3,000,000.00 Loan Floating 3.25 0.00 5.83 EurIBOR 30/03/2029 100.19
+LOAN FACILITY B
+LX220996 EP BCo S.A. Euroports 11/23 TL 1,200,000.00 Loan Floating 5.00 0.00 8.63 EurIBOR 15/06/2029 100.22
+LX247592 Edge Finco PLC Edge Finco/Evri 9/24 1,000,000.00 Loan Floating 4.25 0.00 7.26 EurIBOR 04/08/2031 100.03
+TLB
+XS2423013742 Edreams Odigeo SA EDRSM 5 1/2 1,750,000.00 Bond Fixed 0.00 5.50 15/07/2027 101.24
+07/15/27
+LX192651 Elsan SAS Elsan T/L B5 3,000,000.00 Loan Floating 3.35 0.00 6.01 EurIBOR 16/06/2028 99.92
+LX181040 Emerald 2 Ltd. ERM T/L B2 1,500,000.00 Loan Floating 3.75 0.00 6.43 EurIBOR 12/07/2028 100.35
+(Emerald 2)
+XS2271247178 Encore Capital Group Inc Encore Capital Group 1,000,000.00 Bond Floating 4.25 0.00 7.43 EurIBOR 15/01/2028 101.21
+Floating Rate Notes
+LX254235 Etraveli Group Holding AB Etraveli 6/24 COv-Lite 2,500,000.00 Loan Floating 4.00 0.00 6.82 EurIBOR 02/11/2028 100.33
+LX235873 Financiere N Financiere 2,000,000.00 Loan Floating 4.25 0.00 6.97 EurIBOR 22/01/2029 100.30
+(	Nemera) T/L B
+(06/24)
+LX217099 Finco Utilitas BV Finco Utilitas (Infra 3,000,000.00 Loan Floating 3.75 0.00 6.91 EurIBOR 26/09/2030 100.53
+Group) T/L B
+LX218476 First Brands Group, LLC First Brands Group 1,485,000.00 Loan Floating 5.00 1.00 8.06 EurIBOR 30/03/2027 96.08
+T/L (11/23)
+LX244533 Froneri International Ltd R&R Ice 1,000,000.00 Loan Floating 2.50 0.00 5.56 EurIBOR 30/09/2031 99.91
+Cream/Froneri 9/24
+(EUR) TL
+LX217177 Fugue Finance BV. Fugue Finance (Nord 2,000,000.00 Loan Floating 4.25 0.00 7.16 EurIBOR 31/01/2028 100.35
+Anglia/Bach Fin) T/L
+B (09/23)
+LX181787 GHD GesundHeits GmbH Deutschland GHD 7/19  EUR TL 1,000,000.00 Loan Floating 4.00 0.00 6.86 EurIBOR 14/08/2026 63.25
+LX254473 Galaxy Bidco Ltd Galaxy 2,000,000.00 Loan Floating 4.00 0.00 6.71 EuriBOR 19/12/2029 100.08
+Bidco/Domestic and
+General 11/24
+XS2250154494 Garfunkelux Holdco 3 SA GFKLDE Float  1,000,000.00 Bond Floating 6.25 0.00 9.31 EurIBOR 01/05/2026 65.65
+5/1/2026
+LX185085 Global University Systems B.V. Global University 3,000,000.00 Loan Floating 3.00 0.00 5.77 EurIBOR 29/01/2027 99.33
+Systems T/L B
+(Markermeer) (1/20
+LX191106 Groupe Inovie Groupe Inovie T/L B 2,000,000.00 Loan Floating 4.00 0.00 6.68 EurIBOR 03/03/2028 96.58
+(EUR)
+XS2951378434 Grunenthal GmbH GRUPHA 1,000,000.00 Bond Fixed 0.00 4.63 15/11/2031 100.81
+--- page 32 ---
+www.usbank.com/clo
+U.S. Bank Global Corporate Trust                                                                                  Current Asset Characteristics - Part I
+Page 32 of 83
+Cairn CLO XVII DAC
+Current Asset Characteristics - Part I
+As of:  08/01/2025
+Next Payment: 21/01/2025
+Issue/Facility Principal Asset Coupon Current Current Index Maturity Market
+Identifier Issuer Name Name Balance Type Type Spread Floor Coupon Type Date Value
+LX228404 HNVR Holdco Limited HNVR Holdco T/L D2 2,000,000.00 Loan Floating 4.00 0.00 7.05 EurIBOR 13/09/2027 100.39
+LX236640 HOMEVI Home VI Term B 1L 5,000,000.00 Loan Floating 5.00 0.00 8.06 EurIBOR 31/10/2029 100.11
+LX196751 Hunter US Bidco Inc. Hunter Holdco T/L 1,969,465.64 Loan Floating 4.00 0.00 6.68 EurIBOR 18/08/2028 99.09
+(Huntsworth/UDG
+Healthcare) (7/2
+LX225618 IDEMIA Group SAS Oberthur/Idemia 2/24 2,500,000.00 Loan Floating 4.00 0.00 6.68 EurIBOR 30/09/2028 100.43
+TL B5
+LX193483 IGT Holding IV AB IGT Holding T/L (IFS) 2,000,000.00 Loan Floating 3.40 0.00 6.08 EurIBOR 31/03/2028 99.84
+(3/21)
+XS2915461458 INEOS Quattro Finance 2 Plc STYRO 6 3/4 1,000,000.00 Bond Fixed 0.00 6.75 15/04/2030 103.79
+04/15/30
+XS2808407188 ION Corporate Solutions Finance S.A.r.l. ION CORPORATE 1,000,000.00 Bond Fixed 0.00 7.88 01/05/2029 102.27
+SOLUTIONS
+FINANCE SA
+LX193158 ION Corporate Solutions Finance S.A.r.l. ION Corporates 1,978,002.41 Loan Floating 3.75 0.00 6.43 EurIBOR 13/03/2028 99.80
+(helios)
+LX193675 ION Trading Finance Limited ION Trading T/L 4,871,054.63 Loan Floating 4.25 0.00 6.93 EurIBOR 31/03/2028 99.25
+(EUR) 2021
+XS2305744059 IQVIA Inc. IQV 2 1/4 03/15/29 1,000,000.00 Bond Fixed 0.00 2.25 15/03/2029 94.86
+Corp
+XS2580885908 IQera Group SAS iQera Group   1,000,000.00 Bond Floating 6.50 0.00 9.52 EurIBOR 15/02/2027 59.19
+8.9854%   2/15/27
+LX219682 IVC Acquisition Ltd IVC/Independent 3,000,000.00 Loan Floating 4.75 0.00 7.60 EurIBOR 12/12/2028 100.27
+Vetcare 11/23 TL
+XS2397781944 Iliad SA ILDFP 5 5/8 10/15/28 2,000,000.00 Bond Fixed 0.00 5.63 15/10/2028 101.92
+LX211382 Ineos Enterprises Holdings II Limited INEOS Term Loan 2,000,000.00 Loan Floating 4.00 0.00 6.91 EurIBOR 07/07/2030 100.15
+(EUR) - INEENT EUR
+TL B 1L 06/2030
+LX234266 Ineos Finance PLC Ineos 6/24 (EUR) TLB 4,000,000.00 Loan Floating 3.50 0.00 6.36 EurIBOR 23/06/2031 100.09
+LX247590 Ineos Quattro Ineos 1,002,987.07 Loan Floating 4.25 0.00 7.11 EurIBOR 01/10/2031 100.19
+Quattro/Styrolution
+10/24 T/L B
+LX211165 Ineos Quattro Ineos T/L B Euro 5,000,000.00 Loan Floating 4.00 0.00 6.86 EurIBOR 14/03/2030 100.17
+2030 Tranche
+(Styrolution/Quattro
+LX196389 Infinitas Learning Finco B.V. Infinitas Learning T/L 1,999,999.99 Loan Floating 4.00 0.00 6.68 EurIBOR 29/09/2028 99.52
+(7/21) (WKE)
+--- page 33 ---
+www.usbank.com/clo
+U.S. Bank Global Corporate Trust                                                                                  Current Asset Characteristics - Part I
+Page 33 of 83
+Cairn CLO XVII DAC
+Current Asset Characteristics - Part I
+As of:  08/01/2025
+Next Payment: 21/01/2025
+Issue/Facility Principal Asset Coupon Current Current Index Maturity Market
+Identifier Issuer Name Name Balance Type Type Spread Floor Coupon Type Date Value
+LX236445 Innio Group Holding GmbH Innio Group 1,983,704.18 Loan Floating 3.75 0.00 6.96 EurIBOR 02/11/2028 100.34
+(Distributed Power)
+6/24 TLB
+LX213881 Inspired Finco Holdings Ltd Inspired 4,500,000.00 Loan Floating 4.25 0.00 7.11 EurIBOR 29/12/2028 100.45
+Finco/Inspired
+Education 7/23 TLB4
+LX210657 International Park Holdings B.V. PortAventura 3,000,000.00 Loan Floating 4.75 0.00 7.52 EurIBOR 14/12/2026 100.09
+(International Park)
+T/L B2
+LX248178 Irel AcquiCo GmBH Ifco Systems 9/24 TL 1,000,000.00 Loan Floating 3.50 0.00 6.70 EurIBOR 29/11/2029 100.39
+B
+XS2582796541 Italmatch Chemicals S.p.A.  for CD- FIREBC Float 2/6/28 2,000,000.00 Bond Floating 5.50 0.00 8.18 EurIBOR 06/02/2028 101.18
+FIREBCSP
+XS2756269960 Kapla Holding KAPLA HOLDING 1,500,000.00 Bond Floating 3.50 0.00 6.39 EurIBOR 31/07/2030 100.23
+SAS BND/CORP
+XS2010034077 Kapla Holding KILOTO 3 3/8 1,000,000.00 Bond Fixed 0.00 3.38 15/12/2026 99.95
+12/15/26 C
+LX256025 Knowlton Development Corporation Inc. Knowlton 2,000,000.00 Loan Floating 4.00 0.00 6.86 EurIBOR 15/08/2028 100.37
+Development / KDC
+12/24
+LX192831 LSF10 EDILIANS INVESTMENTS LSF10 Edilians T/L B 2,000,000.00 Loan Floating 3.03 0.00 6.25 EurIBOR 03/03/2028 99.36
+S.A.R.L. (Imerys
+Roofing/Edilians) (2/
+LX193640 LSF10 XL Bidco SCA LSF10 Xella XL T/L 2,000,000.00 Loan Floating 4.18 0.00 6.89 EurIBOR 12/04/2028 94.69
+B4 (3/21)
+LX177087 Lernen Bidco Limited Lernen TL B1 3,000,000.00 Loan Floating 4.00 0.00 6.78 EurIBOR 25/04/2029 100.44
+(Cognita)
+XS2483511957 Loarre Investments S.a r.l. Loarre Investments 928,571.43 Bond Floating 5.00 0.00 8.02 EurIBOR 15/05/2029 101.90
+S.a.r.l
+LX229603 Lorca Finco PLC Masmovil/MasOrange 3,000,000.00 Loan Floating 3.50 0.00 6.15 EurIBOR 25/03/2031 100.38
+4/24 (EUR) TL
+LX249559 Marcel Bidco GmbH Suse 4/24 (EUR) TLB 1,500,000.00 Loan Floating 3.75 0.00 6.62 EurIBOR 11/11/2030 100.29
+XS1720690889 Matterhorn Telecom SA MATTER 4 11/15/27 1,000,000.00 Bond Fixed 0.00 4.00 15/11/2027 99.81
+Corp
+LX233937 McAfee Corp. McAfee TL B3 3,289,244.16 Loan Floating 3.50 0.00 6.56 EurIBOR 01/03/2029 99.96
+LX198689 Median B.V. Median Kliniken T/L 1,500,000.00 Loan Floating 4.93 0.00 7.61 EurIBOR 14/10/2027 99.69
+B-1 (EUR)
+--- page 34 ---
+www.usbank.com/clo
+U.S. Bank Global Corporate Trust                                                                                  Current Asset Characteristics - Part I
+Page 34 of 83
+Cairn CLO XVII DAC
+Current Asset Characteristics - Part I
+As of:  08/01/2025
+Next Payment: 21/01/2025
+Issue/Facility Principal Asset Coupon Current Current Index Maturity Market
+Identifier Issuer Name Name Balance Type Type Spread Floor Coupon Type Date Value
+LX234327 Mediawan Financing SAS Mediawan Financing 2,500,000.00 Loan Floating 3.75 0.00 6.80 EurIBOR 08/07/2031 100.16
+5/24 Cov-Lite TLB
+LX192775 Mediq B.V. Mediq T/L B 2,000,000.00 Loan Floating 3.50 0.00 6.72 EurIBOR 09/03/2028 98.55
+LX235701 Medline Borrower, LP Medline Borrower T/L 2,000,000.00 Loan Floating 2.50 0.00 5.36 EurIBOR 23/10/2028 100.15
+B (07/24)
+LX236761 Mehilainen Yhtioet Oy Mehilainen 6/24 131,539.81 Loan Floating 4.00 0.00 4.00 05/08/2031 100.38
+Delayed TL Unfunded
+LX236760 Mehilainen Yhtioet Oy Mehilainen 6/24 TL 1,133,333.33 Loan Floating 4.00 0.00 6.86 EurIBOR 05/08/2031 100.44
+LX237835 Mehilainen Yhtioet Oy Mehilainen 7/24 B5B 735,126.86 Loan Floating 4.00 0.00 6.86 EurIBOR 23/07/2031 100.38
+New Money
+LX233034 Monbake Grupo Empresarial SA Monbake Grupo 1,000,000.00 Loan Floating 4.00 0.00 7.68 EurIBOR 15/07/2031 100.39
+Empresarial T/L B
+(05/24)
+XS2615006983 Montichem Holdco 3 S.A CABBCO Float 2,225,000.00 Bond Floating 5.25 0.00 8.14 EurIBOR 01/05/2028 100.52
+05/01/2028
+LX213903 Mosel Bidco SE (Software AG) Mosel Bidco T/L 2,000,000.00 Loan Floating 4.25 0.00 6.97 EurIBOR 16/09/2030 100.35
+(Software AG)
+LX213009 Motion Finco S.a.r.l. Merlin 1/24 TL 2,000,000.00 Loan Floating 3.75 0.00 6.43 EurIBOR 12/11/2029 99.02
+LX222394 NEP Europe Finco B.V. NEP 12/23 EUR TLB 1,315,999.99 Loan Floating 3.50 0.00 6.36 EurIBOR 19/08/2026 89.94
+LX208600 Neptune BidCo US Inc. Neptune BidCo US 1,477,500.00 Loan Floating 5.00 0.00 8.22 EurIBOR 11/04/2029 92.00
+T/L B EUR
+LX236587 Nidda Healthcare Holding Stada/Nidda 7/24 4,000,000.00 Loan Floating 4.00 0.00 7.01 EurIBOR 21/02/2030 100.43
+TLB2
+LX236064 Nielsen Consumer, Inc. NielsenIQ 6/24 (EUR) 2,468,812.50 Loan Floating 4.75 0.00 7.61 EurIBOR 06/03/2028 100.39
+TL
+XS2355515516 Nobel Bidco B.V. PHIDOM 3 1/8 2,000,000.00 Bond Fixed 0.00 3.13 15/06/2028 94.79
+6/15/28
+LX246433 Nobian Finance B.V. Nobian 9/24 TLB 2,349,999.98 Loan Floating 3.75 0.00 7.02 EurIBOR 01/07/2029 100.13
+LX234053 Nouryon Finance B.V. Akzo Nobel Specialty 3,250,786.60 Loan Floating 3.50 0.00 6.72 EurIBOR 03/04/2028 100.14
+Chemicals (Starfruit)
+5/24 TL
+LX210660 Numericable U.S. LLC. SFR 2,520,301.06 Loan Floating 5.50 0.00 8.68 EurIBOR 15/08/2028 80.82
+(Numericable/YPSO/
+Altice) B14
+LX248915 Oat Bidco Limited Oat Bidco T/L B 1,000,000.00 Loan Floating 4.25 0.00 6.98 EurIBOR 24/10/2031 100.00
+(10/24)
+--- page 35 ---
+www.usbank.com/clo
+U.S. Bank Global Corporate Trust                                                                                  Current Asset Characteristics - Part I
+Page 35 of 83
+Cairn CLO XVII DAC
+Current Asset Characteristics - Part I
+As of:  08/01/2025
+Next Payment: 21/01/2025
+Issue/Facility Principal Asset Coupon Current Current Index Maturity Market
+Identifier Issuer Name Name Balance Type Type Spread Floor Coupon Type Date Value
+LX200389 Odido Holding B.V. Odido Holding B.V. 2,000,000.00 Loan Floating 3.90 0.00 6.58 EurIBOR 30/03/2029 100.52
+T/L (EUR)
+LX196125 Odyssee Investment Bidco SASU Odyssee Investment 4,000,000.00 Loan Floating 3.25 0.00 5.97 EurIBOR 13/10/2028 99.74
+Bidco T/L B
+LX213580 Optimus BidCo SAS Averys TL B 3,500,000.00 Loan Floating 5.00 0.00 7.68 EurIBOR 31/12/2028 97.46
+XS2332250708 Organon & Co. ORGNON 2 7/8 2,500,000.00 Bond Fixed 0.00 2.88 30/04/2028 96.94
+4/30/28
+LX256012 Organon & Co. Organon 12/24 EUR 1,706,106.42 Loan Floating 2.75 5.51 EurIBOR 31/12/2031 100.26
+LX202499 PEARLS (Netherlands) Bidco B.V Pearls (Netherlands) 2,274,250.00 Loan Floating 4.00 0.00 7.06 EurIBOR 26/02/2029 100.39
+BidCo EUR T/L B
+(Caldic) (01/
+XS2834245297 PLT VII Finance S.A r.l. BITELV FLoat 1,000,000.00 Bond Floating 3.50 0.00 6.39 EurIBOR 15/06/2031 100.28
+06/15/31
+LX250485 Parts Europe S.A Parts Holding Europe 2,000,000.00 Loan Floating 3.25 0.00 6.34 EurIBOR 03/02/2031 100.42
+10/24 TL B
+LX228248 Pax Midco Spain, S.L.U. PAX Holdco Spain 3,250,000.00 Loan Floating 5.00 0.00 7.64 EurIBOR 31/12/2029 100.21
+T/L B (Areas
+Worldwide )
+LX252693 Peer Holding III B.V. Peer Holding III B.V. 3,000,000.00 Loan Floating 3.25 0.00 5.93 EuriBOR 14/11/2031 100.49
+(Action) 6/24
+LX239315 Pegasus Bidco BV Refresco/Pegasus 1,000,000.00 Loan Floating 3.50 0.00 6.52 EurIBOR 12/07/2029 100.57
+7/24 Cov-Lite TLB
+LX234519 Pharmanovia Bidco Limited Pharmanovia 6/24 4,500,000.00 Loan Floating 4.25 0.00 7.16 EurIBOR 28/02/2030 98.64
+Cov-Lite TL B
+LX230404 Piolin Bidco, S.A.U. Parques Reunidos 1,716,785.00 Loan Floating 4.50 0.00 7.05 EurIBOR 16/09/2029 100.06
+4/24 TLB4
+LX246013 Platform Bidco Limited Valeo Foods/Platform 1,000,000.00 Loan Floating 4.75 0.00 8.19 EurIBOR 28/09/2028 100.25
+Bidco 9/24
+Incremental Cov-Li
+LX231093 Precise Bidco B.V. Precise Bidco BV T/L 3,500,000.00 Loan Floating 3.50 0.00 6.34 EurIBOR 15/11/2030 100.17
+B5
+LX250873 Quimper AB Quimper (Ahlsell) T/L 3,000,000.00 Loan Floating 3.75 0.00 6.43 EurIBOR 29/03/2030 100.29
+B (11/24)
+LX248257 Radar Bidco SARL Swissport 10/24 1,000,000.00 Loan Floating 3.75 0.00 6.48 EurIBOR 04/04/2031 100.00
+Cov-Lite TLB
+LX214261 Rain Carbon Rain Carbon T/L 514,571.29 Loan Floating 5.00 0.00 7.85 EurIBOR 31/10/2028 99.38
+2023 Replacement
+--- page 36 ---
+www.usbank.com/clo
+U.S. Bank Global Corporate Trust                                                                                  Current Asset Characteristics - Part I
+Page 36 of 83
+Cairn CLO XVII DAC
+Current Asset Characteristics - Part I
+As of:  08/01/2025
+Next Payment: 21/01/2025
+Issue/Facility Principal Asset Coupon Current Current Index Maturity Market
+Identifier Issuer Name Name Balance Type Type Spread Floor Coupon Type Date Value
+LX202335 Rainbow UK Holdco Limited Rainbow (Wella) T/L 2,000,000.00 Loan Floating 3.25 0.00 6.63 EurIBOR 26/02/2029 100.07
+B2 EUR
+LX238721 Ramsay Generale De Sante General de Sante 2,000,000.00 Loan Floating 4.00 0.00 7.20 EurIBOR 13/08/2031 100.48
+7/24 TLB4
+LX255951 Ren10 Holding AB Renta Group 12/24 4,000,000.00 Loan Floating 3.75 0.00 6.63 EurIBOR 31/07/2030 100.37
+TLB
+LX194401 Rodenstock GmbH Rodenstock EUR T/L 2,000,000.00 Loan Floating 5.00 0.00 8.06 EurIBOR 29/06/2028 98.17
+B (4/21) (Iris HoldCo)
+LX194191 Rohm Holding GMBH Madrid T/L (AI Plex / 2,000,000.00 Loan Floating 4.50 0.00 8.09 EurIBOR 31/07/2026 97.55
+Rohm)
+LX228988 Rohm Holding GMBH Roehm Holding T/L 3,303,422.23 Loan Floating 5.00 0.00 8.59 EurIBOR 31/01/2029 95.63
+PIK (3/24)
+LX189315 Root Bidco S.A.R.L Rovensa 1,000,000.00 Loan Floating 3.75 0.00 6.91 EurIBOR 29/09/2027 98.19
+LX225334 Sam Bidco Sebia 1/24 (EUR) B6 2,000,000.00 Loan Floating 3.50 0.00 6.18 EurIBOR 13/12/2027 100.37
+Cov-Lite TLB
+LX225678 Saphilux S.a.r.L. SGG/IQ-EQ 1/24 3,000,000.00 Loan Floating 4.00 0.00 6.69 EurIBOR 18/07/2028 100.63
+(EUR)
+LX237048 Schoen Klinik SE Schoen Klinik T/L 6/24 1,000,000.00 Loan Floating 4.00 0.00 6.68 EurIBOR 15/01/2031 100.71
+LX234261 Sector Alarm Holding AS Sector Alarm 7/24 2,076,493.83 Loan Floating 4.25 0.00 7.16 EurIBOR 14/06/2029 100.45
+TLB2
+LX220198 Seine Holdco SAS Seine Holdco SAS 2,000,000.00 Loan Floating 3.50 0.00 6.72 EurIBOR 10/01/2031 100.04
+Term Loan B
+LX249935 Shilton Bidco Ltd Safety-Kleen 10/24 2,000,000.00 Loan Floating 4.00 0.00 6.68 EurIBOR 13/01/2030 100.20
+LX199218 Sirona Bidco Sirona/Seqens TLB 2,500,000.00 Loan Floating 4.50 0.00 7.36 EurIBOR 18/12/2028 84.69
+LX196483 Sitel Group Sitel Group T/L 3,000,000.00 Loan Floating 3.75 0.00 6.62 EurIBOR 28/08/2028 61.33
+(08/21)
+LX202553 Solis IV B.V. Solis T/L B-2 (EUR) 3,000,000.00 Loan Floating 4.00 0.00 7.01 EurIBOR 26/02/2029 100.10
+(Hunter Douglas)
+LX193267 Spa Holdings 3 Oy Spa Holdings 3 T/L B 2,000,000.00 Loan Floating 3.50 0.00 6.18 EurIBOR 04/02/2028 100.03
+(Ahlstrom Munksjo)
+LX250399 Stage Entertainment B.V. Stage Entertainment 1,000,000.00 Loan Floating 4.00 0.00 7.04 EurIBOR 02/06/2029 100.10
+10/24
+LX248133 Stars UK Bidco Ltd Theramex 9/24 TLB 2,000,000.02 Loan Floating 3.45 0.00 6.03 EurIBOR 10/08/2029 100.51
+LX228294 Summer (BC) Bidco B LLC Kantar 2/24 (BNC) 539,170.49 Loan Floating 4.50 0.00 7.42 EurIBOR 31/01/2029 100.48
+T/L EUR
+LX225664 Summer (BC) Bidco B LLC Kantar 2/24 (HNC) TL 2,210,829.51 Loan Floating 4.50 0.00 7.42 EurIBOR 31/01/2029 100.48
+--- page 37 ---
+www.usbank.com/clo
+U.S. Bank Global Corporate Trust                                                                                  Current Asset Characteristics - Part I
+Page 37 of 83
+Cairn CLO XVII DAC
+Current Asset Characteristics - Part I
+As of:  08/01/2025
+Next Payment: 21/01/2025
+Issue/Facility Principal Asset Coupon Current Current Index Maturity Market
+Identifier Issuer Name Name Balance Type Type Spread Floor Coupon Type Date Value
+LX194166 Sunrise Bidco S.a r.l. Sunrise Bidco T/L 2,000,000.00 Loan Floating 3.25 0.00 6.87 EurIBOR 27/07/2028 96.57
+(EUR) (Ameos)
+LX196017 TK Elevator Midco GMBH TK Elevator EUR T/L 2,000,000.00 Loan Floating 3.63 0.00 7.22 EurIBOR 30/07/2027 100.28
+B1 (ThyssenKrupp
+Elevator) (7/
+LX225279 TMF Group Holding B.V. TMF Group 1,000,000.00 Loan Floating 3.75 0.00 6.49 EurIBOR 03/05/2028 100.35
+(Sapphire) 1/24
+(EUR) TLB1
+LX235593 TSG SOLUTIONS HOLDING TSG Solutions T/L B 1,750,000.00 Loan Floating 3.68 0.00 6.73 EurIBOR 30/03/2029 100.19
+(06/24)
+LX232776 TTD Holding IV Gmbh ADCO Group/Toi Toi 2,931,000.00 Loan Floating 4.00 0.00 7.40 EurIBOR 02/10/2029 100.20
+& Dixi T/L B (05/24)
+LX254474 Take Care Bidco Sante Cie/Elivie 2,000,000.00 Loan Floating 3.75 0.00 6.56 EuriBOR 03/12/2031 100.23
+12/24 TLB
+LX195674 Tarkett SA Tarkett T/L B 1,896,335.36 Loan Floating 3.45 0.00 6.31 EurIBOR 21/04/2028 99.97
+LX226834 Techem Verwaltungsgesellschaft 675 Techem 1,000,000.00 Loan Floating 3.75 0.00 6.78 EurIBOR 15/07/2029 100.52
+MBH Verwaltungsgesellsch
+aft T/L B (02/24)
+XS2932084507 Techem Verwaltungsgesellschaft 675 Techemv 5.375 1,000,000.00 Bond Fixed 0.00 5.38 15/07/2029 102.69
+MBH 2029-07-15
+LX214554 The Chemours Company Chemours Co/The 3,000,000.00 Loan Floating 3.25 0.00 6.12 EurIBOR 18/08/2028 100.15
+T/L B3 (12/24)
+LX225307 Thevelia (US) LLC Thevelia Tricor Group 2,000,000.00 Loan Floating 3.75 0.00 6.43 EurIBOR 18/06/2029 100.19
+1/24
+XS2351344622 Transcom TopCo AB TRNSCM Float 2,000,000.00 Bond Floating 5.25 0.00 8.14 EurIBOR 15/12/2026 71.35
+12/15/2026
+LX194310 UPC Broadband Holding B.V. UPC Broadband EUR 858,888.18 Loan Floating 2.93 0.00 5.83 EurIBOR 31/01/2029 100.17
+T/L B (4/21) (UPC
+Financing/Sunr
+XS2919880679 United Group B.V United Group   1,000,000.00 Bond Fixed 0.00 6.50 31/10/2031 101.71
+Floating   10/31/31
+XS2758099779 United Group B.V United Group B.V. 3,000,000.00 Bond Floating 4.25 0.00 7.27 EurIBOR 15/02/2031 100.51
+REGS 15/02/31
+XS2010027881 United Group BV - ADRIAV17 United Group BV 1,000,000.00 Bond Fixed 0.00 4.63 15/08/2028 99.32
+4.625% 8/2028
+LX198606 Urbaser, S.A. Urbaser T/L B 2,000,000.00 Loan Floating 4.18 0.00 6.97 EurIBOR 23/10/2028 100.42
+--- page 38 ---
+www.usbank.com/clo
+U.S. Bank Global Corporate Trust                                                                                  Current Asset Characteristics - Part I
+Page 38 of 83
+Cairn CLO XVII DAC
+Current Asset Characteristics - Part I
+As of:  08/01/2025
+Next Payment: 21/01/2025
+Issue/Facility Principal Asset Coupon Current Current Index Maturity Market
+Identifier Issuer Name Name Balance Type Type Spread Floor Coupon Type Date Value
+LX195575 VMED Virgin Media 6/21 2,000,000.00 Loan Floating 3.58 0.00 6.48 EurIBOR 15/07/2029 98.83
+(T/L B)
+XS2231188876 VMED O2 UK Holdco 4 Ltd VMDTEF 3 1/4 4,000,000.00 Bond Fixed 0.00 3.25 31/01/2031 93.29
+01/31/31
+LX236379 Venga Finance S.A.R.L Marlink / Venga 3,197,000.00 Loan Floating 4.25 0.00 7.16 EurIBOR 28/06/2029 100.37
+(6/24) EUR
+LX230934 Verisure Holding AB Verisure Holding T/L 3,410,132.73 Loan Floating 3.25 0.00 6.35 EurIBOR 30/05/2030 100.55
+B (04/24)
+LX183233 Virgin Media SFA Finance Limited Virgin Media SFA 2,000,000.00 Loan Floating 2.50 0.00 5.40 EurIBOR 31/01/2029 98.19
+Finance T/L O
+LX245523 Windsor Holdings III LLC Univar/Windsor 9/24 3,000,000.00 Loan Floating 3.50 0.00 6.30 EurIBOR 01/08/2030 100.30
+(EUR) TLB
+LX199727 XSYS Global XSYS Global EUR 2,000,000.00 Loan Floating 4.18 0.00 7.09 EurIBOR 28/02/2029 96.84
+T/L (LSF11
+Folio/Lone Star)
+LX195828 ZF Invest Prosol 7/21 Cov Lite 2,000,000.00 Loan Floating 3.48 0.00 6.66 EurIBOR 12/07/2028 99.79
+Term Loan B
+LX185594 Zayo Group Holdings, Inc. Zayo Group Holdings 992,187.49 Loan Floating 3.25 0.00 6.11 EurIBOR 09/03/2027 93.38
+T/L (2/20)
+LX237014 Zegona Holdco Limited Vodafone Spain 7/24 2,000,000.00 Loan Floating 4.25 0.00 7.89 EurIBOR 15/07/2029 100.83
+(EUR) Cov-Lite T/L
+XS2431015655 Ziggo 3 1/2 01/15/32 VZ Secured 4,000,000.00 Bond Fixed 0.00 3.50 15/01/2032 92.22
+Financing BV
+LX183461 Ziggo Secured Finance B.V. Vodafone Ziggo 1,000,000.00 Loan Floating 3.00 0.00 5.90 EurIBOR 31/01/2029 99.10
+408,644,549.47
+--- page 39 ---
+www.usbank.com/clo
+U.S. Bank Global Corporate Trust                                                                                  Current Asset Characteristics - Part II
+Page 39 of 83
+Cairn CLO XVII DAC
+Current Asset Characteristics - Part II
+As of:  08/01/2025
+Next Payment: 21/01/2025
+S&P Fitch
+Issuer/Facility Principal Industry Industry
+Identifier Name Balance Classification Classification Currency Country
+LX226715 AI Sirona T/L B3 (Zentiva) (3/24) 3,000,000.00 Pharmaceuticals Pharmaceuticals Euro Luxembourg
+LX192467 Acuris Finance US T/L (1/21) 2,739,578.40 Software Business services data and analytics Euro United
+Kingdom
+LX236054 Aernnova Aerospace 6/24 1,000,000.00 Aerospace & Defense Aerospace and defence Euro Spain
+LX171119 Alloheim T/L B 1,250,000.00 Healthcare Providers & Services Healthcare providers Euro Germany
+LX193594 Almaviva Developpement T/L 2,000,000.00 Healthcare Providers & Services Healthcare providers Euro France
+LX213528 Ammeraal Beltech/Ammega 7/23 2,652,938.91 Machinery Industrial and manufacturing Euro Netherlands
+LX202736 Altadia T/L (Timber 2,000,000.00 Building Products Buildings and materials Euro Spain
+Servicios/Esmalglass)
+LX217474 ALTICE FINANCING 10/31/2027 990,000.00 Media Telecommunications Euro Luxembourg
+LX254125 Amber Finco/Applus 11/24 3,000,000.00 Diversified Consumer Services Business services general Euro Spain
+LX235576 Triangle/ Apleona 6/24 Cov-Lite TLB 4,500,000.00 Professional Services Real estate Euro Germany
+LX199035 Aragon BidCo T/L B (Amedes Holding) 2,000,000.00 Healthcare Providers & Services Healthcare providers Euro Germany
+LX196255 Idverde TL (6/21) 1,500,000.00 Professional Services Business services general Euro France
+LX246973 Artisan Newco/Group of Butchers 9/24 1,979,809.98 Food & Staples Retailing Retail food and drug Euro Netherlands
+XS2954189234 ASMODEE GROUP AB FLOATING 1,000,000.00 Paper & Forest Products Gaming and leisure and Euro France
+12/15/2029 entertainment
+LX213673 Assystem Technologies/Expleo 7/23 4,000,000.00 Professional Services Business services general Euro France
+LX228174 P&I Personal & Informatik/Athena 1,000,000.00 Software Business services general Euro Germany
+BidCo 3/24 TL
+LX247701 Sivantos/WS Audiology TL9/24 (EUR) 2,000,000.00 Healthcare Equipment & Supplies Healthcare devices Euro Germany
+B5
+LX189634 BVI Medical (Beaver-Visitec/Physiol) 2,000,000.00 Healthcare Equipment & Supplies Healthcare devices Euro United States
+Incremental T
+LX185438 Banijay 1/24 (EUR) TLB 3,000,000.00 Media Broadcasting and media Euro France
+LX218516 Belfor 10/23 EUR T/L B2 2,000,000.00 Commercial Services & Supplies Environmental services Euro United States
+LX247575 Belron UK Finance T/L B 4,500,000.00 Automobiles Automobiles Euro United
+Kingdom
+LX233465 Boels 5/24 TL 2,155,172.41 Commercial Services & Supplies Industrial and manufacturing Euro Netherlands
+LX228682 Boluda Towage T/L B (3/24) 2,500,000.00 Marine Transportation and distribution Euro Spain
+LX236701 Worldpay/Boost Newco 6/24 (EUR) 1,246,875.00 Media Business services general Euro United
+Kingdom
+LX238947 Bowtie German Bidco (NextPharma) 2,500,000.00 Pharmaceuticals Pharmaceuticals Euro Germany
+T/L B (08/24)
+LX196487 Broom Holdings T/L (Beauparc/MIRA) 1,000,000.00 Commercial Services & Supplies Environmental services Euro Ireland
+XS2295691633 TITANL Float 2/15/28 2,000,000.00 Internet Software and Services Technology software Euro Italy
+XS2294186965 BIOGRP 3 3/8 2/1/28 2,000,000.00 Pharmaceuticals Pharmaceuticals Euro France
+LX192244 CAB (Biogroup-LCD) T/L B (2/21) 2,000,000.00 Pharmaceuticals Pharmaceuticals Euro France
+--- page 40 ---
+www.usbank.com/clo
+U.S. Bank Global Corporate Trust                                                                                  Current Asset Characteristics - Part II
+Page 40 of 83
+Cairn CLO XVII DAC
+Current Asset Characteristics - Part II
+As of:  08/01/2025
+Next Payment: 21/01/2025
+S&P Fitch
+Issuer/Facility Principal Industry Industry
+Identifier Name Balance Classification Classification Currency Country
+LX235674 Motor Fuel Group 6/24 (EUR) TLB4 4,500,000.00 Oil, Gas & Consumable Fuels Retail Euro United
+Kingdom
+LX202330 CEP V Investment 23 T/L (Autoform) 2,800,000.00 Software Industrial and manufacturing Euro Switzerland
+LX202118 CTEC III T/L B (EUR) (CeramTec) 1,000,000.00 Healthcare Equipment & Supplies Industrial and manufacturing Euro Germany
+(02/22)
+XS2929905292 CASTELLO BC BIDCO SPA 10/29/31 1,000,000.00 Industrial Conglomerates Industrial and manufacturing Euro United States
+XS2445840809 Castor SPA Floating 2/15/29 1,000,000.00 Commercial Services & Supplies Business services general Euro Italy
+XS2345190263 CEDCRI FLOAT 05/15/2028 2,000,000.00 Software Technology software Euro Italy
+XS2622212707 Cedacri S.P.A/Vareur Nt Amort PN W 1,500,000.00 Software Technology software Euro Italy
+LX217081 Claudius Finance (Cegid) 9/23 2,000,000.00 Software Technology software Euro France
+Incremental
+LX227374 Euromedic/Affidea 2/24 TL 2,500,000.00 Healthcare Providers & Services Healthcare providers Euro Netherlands
+LX234218 Ceva Sante Animale 05/24 (EUR) TLB 4,000,000.00 Pharmaceuticals Pharmaceuticals Euro France
+XS2243548273 CHEPDE 4 3/8 01/15/28 500,000.00 Pharmaceuticals Pharmaceuticals Euro Germany
+XS2618840974 CHEPDE Float  05/15/2030 2,000,000.00 Pharmaceuticals Pharmaceuticals Euro Germany
+LX202725 Cheplapharm TL B 2,593,899.00 Pharmaceuticals Pharmaceuticals Euro Germany
+LX194780 Chrome Bidco T/L B (Cerba 3,000,000.00 Healthcare Providers & Services Healthcare providers Euro France
+Healthcare/Constantin In
+XS2325699994 Cidron Aida Finco SARL 5% 4/1/2028 2,500,000.00 Pharmaceuticals Pharmaceuticals Euro United
+Kingdom
+LX249777 Concordia (Advanz Pharma) 10/24 TLB 2,000,000.00 Pharmaceuticals Pharmaceuticals Euro United
+Kingdom
+LX236134 Power Solutions 6/24 (EUR) TLB 2,316,978.38 Auto Components Automobiles Euro United States
+LX193257 CRH Europe Distribution 10/19 1,131,539.34 Construction Materials Buildings and materials Euro Netherlands
+LX195644 Colisee/Cobalt TL (10/20) 3,000,000.00 Healthcare Providers & Services Healthcare providers Euro France
+LX219297 Cooper Consumer (Care Bidco) T/L B 2,000,000.00 Pharmaceuticals Pharmaceuticals Euro France
+(11/23)
+LX254153 Cube Healthcare Europe Bidco 750,000.00 Healthcare Providers & Services Healthcare providers Euro France
+(Domidep) T/L B
+LX209709 Cuppa Bidco B.V. T/L 2,000,000.00 Food Products Food, beverage and tobacco Euro Netherlands
+LX195569 Dedalus Finance GMBH 2,000,000.00 Software Technology software Euro Germany
+LX246414 Delachaux T/L B (9/24) 1,844,155.86 Machinery Industrial and manufacturing Euro France
+LX202419 Dorna Sports TERM LOAN FACILITY B 3,000,000.00 Media Broadcasting and media Euro Spain
+LX220996 Euroports 11/23 TL 1,200,000.00 Transportation Infrastructure Transportation and distribution Euro Belgium
+LX247592 Edge Finco/Evri 9/24 TLB 1,000,000.00 Transportation Infrastructure Transportation and distribution Euro United States
+XS2423013742 EDRSM 5 1/2 07/15/27 1,750,000.00 Hotels, Restaurants & Leisure Gaming and leisure and Euro Spain
+entertainment
+LX192651 Elsan T/L B5 3,000,000.00 Healthcare Providers & Services Healthcare providers Euro France
+--- page 41 ---
+www.usbank.com/clo
+U.S. Bank Global Corporate Trust                                                                                  Current Asset Characteristics - Part II
+Page 41 of 83
+Cairn CLO XVII DAC
+Current Asset Characteristics - Part II
+As of:  08/01/2025
+Next Payment: 21/01/2025
+S&P Fitch
+Issuer/Facility Principal Industry Industry
+Identifier Name Balance Classification Classification Currency Country
+LX181040 ERM T/L B2 (Emerald 2) 1,500,000.00 Professional Services Environmental services Euro United
+Kingdom
+XS2271247178 Encore Capital Group Floating Rate 1,000,000.00 Consumer Finance Banking and finance Euro United
+Notes Kingdom
+LX254235 Etraveli 6/24 COv-Lite 2,500,000.00 Hotels, Restaurants & Leisure Gaming and leisure and Euro Sweden
+entertainment
+LX235873 Financiere (	Nemera) T/L B (06/24) 2,000,000.00 Healthcare Equipment & Supplies Healthcare devices Euro France
+LX217099 Finco Utilitas (Infra Group) T/L B 3,000,000.00 Commercial Services & Supplies Business services general Euro Belgium
+LX218476 First Brands Group T/L (11/23) 1,485,000.00 Auto Components Automobiles Euro United States
+LX244533 R&R Ice Cream/Froneri 9/24 (EUR) TL 1,000,000.00 Food Products Food, beverage and tobacco Euro United
+Kingdom
+LX217177 Fugue Finance (Nord Anglia/Bach Fin) 2,000,000.00 Diversified Consumer Services Consumer products Euro United
+T/L B (09/23) Kingdom
+LX181787 GHD 7/19  EUR TL 1,000,000.00 Healthcare Equipment & Supplies Healthcare devices Euro Germany
+LX254473 Galaxy Bidco/Domestic and General 2,000,000.00 Consumer Finance Consumer products Euro United
+11/24 Kingdom
+XS2250154494 GFKLDE Float  5/1/2026 1,000,000.00 Consumer Finance Banking and finance Euro United
+Kingdom
+LX185085 Global University Systems T/L B 3,000,000.00 Diversified Consumer Services Consumer products Euro Netherlands
+(Markermeer) (1/20
+LX191106 Groupe Inovie T/L B (EUR) 2,000,000.00 Healthcare Providers & Services Healthcare providers Euro France
+XS2951378434 GRUPHA 1,000,000.00 Pharmaceuticals Pharmaceuticals Euro Germany
+LX228404 HNVR Holdco T/L D2 2,000,000.00 Hotels, Restaurants & Leisure Gaming and leisure and Euro Spain
+entertainment
+LX236640 Home VI Term B 1L 5,000,000.00 Healthcare Providers & Services Healthcare providers Euro France
+LX196751 Hunter Holdco T/L (Huntsworth/UDG 1,969,465.64 Professional Services Business services general Euro United
+Healthcare) (7/2 Kingdom
+LX225618 Oberthur/Idemia 2/24 TL B5 2,500,000.00 Technology Hardware, Storage & Technology Hardware Euro France
+Peripherals
+LX193483 IGT Holding T/L (IFS) (3/21) 2,000,000.00 Software Technology software Euro Sweden
+XS2915461458 STYRO 6 3/4 04/15/30 1,000,000.00 Chemicals Chemicals Euro United
+Kingdom
+XS2808407188 ION CORPORATE SOLUTIONS 1,000,000.00 Software Technology software Euro United States
+FINANCE SA
+LX193158 ION Corporates (helios) 1,978,002.41 Software Technology software Euro United States
+LX193675 ION Trading T/L (EUR) 2021 4,871,054.63 Diversified Financial Services Technology software Euro United
+Kingdom
+XS2305744059 IQV 2 1/4 03/15/29 Corp 1,000,000.00 Healthcare Providers & Services Business services general Euro United States
+--- page 42 ---
+www.usbank.com/clo
+U.S. Bank Global Corporate Trust                                                                                  Current Asset Characteristics - Part II
+Page 42 of 83
+Cairn CLO XVII DAC
+Current Asset Characteristics - Part II
+As of:  08/01/2025
+Next Payment: 21/01/2025
+S&P Fitch
+Issuer/Facility Principal Industry Industry
+Identifier Name Balance Classification Classification Currency Country
+XS2580885908 iQera Group   8.9854%   2/15/27 1,000,000.00 Banks Banking and finance Euro France
+LX219682 IVC/Independent Vetcare 11/23 TL 3,000,000.00 Healthcare Providers & Services Healthcare providers Euro United
+Kingdom
+XS2397781944 ILDFP 5 5/8 10/15/28 2,000,000.00 Diversified Telecommunication Telecommunications Euro France
+Services
+LX211382 INEOS Term Loan (EUR) - INEENT 2,000,000.00 Chemicals Chemicals Euro United
+EUR TL B 1L 06/2030 Kingdom
+LX234266 Ineos 6/24 (EUR) TLB 4,000,000.00 Chemicals Chemicals Euro United
+Kingdom
+LX247590 Ineos Quattro/Styrolution 10/24 T/L B 1,002,987.07 Chemicals Chemicals Euro United
+Kingdom
+LX211165 Ineos T/L B Euro 2030 Tranche 5,000,000.00 Chemicals Chemicals Euro United
+(Styrolution/Quattro Kingdom
+LX196389 Infinitas Learning T/L (7/21) (WKE) 1,999,999.99 Media Broadcasting and media Euro Netherlands
+LX236445 Innio Group (Distributed Power) 6/24 1,983,704.18 Machinery Industrial and manufacturing Euro Austria
+TLB
+LX213881 Inspired Finco/Inspired Education 7/23 4,500,000.00 Diversified Consumer Services Consumer products Euro United
+TLB4 Kingdom
+LX210657 PortAventura (International Park) T/L 3,000,000.00 Hotels, Restaurants & Leisure Gaming and leisure and Euro Spain
+B2 entertainment
+LX248178 Ifco Systems 9/24 TL B 1,000,000.00 Containers & Packaging Industrial and manufacturing Euro Germany
+XS2582796541 FIREBC Float 2/6/28 2,000,000.00 Chemicals Chemicals Euro Italy
+XS2756269960 KAPLA HOLDING SAS BND/CORP 1,500,000.00 Commercial Services & Supplies Industrial and manufacturing Euro France
+XS2010034077 KILOTO 3 3/8 12/15/26 C 1,000,000.00 Commercial Services & Supplies Industrial and manufacturing Euro France
+LX256025 Knowlton Development / KDC 12/24 2,000,000.00 Household Products Consumer products Euro Canada
+LX192831 LSF10 Edilians T/L B (Imerys 2,000,000.00 Construction Materials Buildings and materials Euro France
+Roofing/Edilians) (2/
+LX193640 LSF10 Xella XL T/L B4 (3/21) 2,000,000.00 Construction Materials Buildings and materials Euro Germany
+LX177087 Lernen TL B1 (Cognita) 3,000,000.00 Diversified Consumer Services Consumer products Euro United
+Kingdom
+XS2483511957 Loarre Investments S.a.r.l 928,571.43 Media Broadcasting and media Euro Spain
+LX229603 Masmovil/MasOrange 4/24 (EUR) TL 3,000,000.00 Wireless Telecommunication Services Telecommunications Euro Spain
+LX249559 Suse 4/24 (EUR) TLB 1,500,000.00 Software Technology software Euro Germany
+XS1720690889 MATTER 4 11/15/27 Corp 1,000,000.00 Wireless Telecommunication Services Telecommunications Euro Switzerland
+LX233937 McAfee TL B3 3,289,244.16 Software Technology software Euro United States
+LX198689 Median Kliniken T/L B-1 (EUR) 1,500,000.00 Healthcare Providers & Services Healthcare providers Euro Germany
+LX234327 Mediawan Financing 5/24 Cov-Lite TLB 2,500,000.00 Media Technology software Euro France
+LX192775 Mediq T/L B 2,000,000.00 Healthcare Providers & Services Healthcare devices Euro Netherlands
+--- page 43 ---
+www.usbank.com/clo
+U.S. Bank Global Corporate Trust                                                                                  Current Asset Characteristics - Part II
+Page 43 of 83
+Cairn CLO XVII DAC
+Current Asset Characteristics - Part II
+As of:  08/01/2025
+Next Payment: 21/01/2025
+S&P Fitch
+Issuer/Facility Principal Industry Industry
+Identifier Name Balance Classification Classification Currency Country
+LX235701 Medline Borrower T/L B (07/24) 2,000,000.00 Healthcare Equipment & Supplies Healthcare devices Euro United States
+LX236761 Mehilainen 6/24 Delayed TL Unfunded 131,539.81 Healthcare Providers & Services Healthcare providers Euro Finland
+LX236760 Mehilainen 6/24 TL 1,133,333.33 Healthcare Providers & Services Healthcare providers Euro Finland
+LX237835 Mehilainen 7/24 B5B New Money 735,126.86 Healthcare Providers & Services Healthcare providers Euro Finland
+LX233034 Monbake Grupo Empresarial T/L B 1,000,000.00 Food Products Food, beverage and tobacco Euro Spain
+(05/24)
+XS2615006983 CABBCO Float 05/01/2028 2,225,000.00 Chemicals Chemicals Euro Germany
+LX213903 Mosel Bidco T/L (Software AG) 2,000,000.00 Software Technology software Euro Germany
+LX213009 Merlin 1/24 TL 2,000,000.00 Hotels, Restaurants & Leisure Gaming and leisure and Euro United
+entertainment Kingdom
+LX222394 NEP 12/23 EUR TLB 1,315,999.99 Media Broadcasting and media Euro United States
+LX208600 Neptune BidCo US T/L B EUR 1,477,500.00 Media Broadcasting and media Euro United States
+LX236587 Stada/Nidda 7/24 TLB2 4,000,000.00 Pharmaceuticals Pharmaceuticals Euro Germany
+LX236064 NielsenIQ 6/24 (EUR) TL 2,468,812.50 Media Broadcasting and media Euro United States
+XS2355515516 PHIDOM 3 1/8 6/15/28 2,000,000.00 Household Durables Consumer products Euro Netherlands
+LX246433 Nobian 9/24 TLB 2,349,999.98 Chemicals Chemicals Euro Netherlands
+LX234053 Akzo Nobel Specialty Chemicals 3,250,786.60 Chemicals Chemicals Euro Netherlands
+(Starfruit) 5/24 TL
+LX210660 SFR (Numericable/YPSO/Altice) B14 2,520,301.06 Media Telecommunications Euro France
+LX248915 Oat Bidco T/L B (10/24) 1,000,000.00 Construction & Engineering Building and materials Euro United
+Kingdom
+LX200389 Odido Holding B.V. T/L (EUR) 2,000,000.00 Diversified Telecommunication Telecommunications Euro Netherlands
+Services
+LX196125 Odyssee Investment Bidco T/L B 4,000,000.00 Diversified Telecommunication Telecommunications Euro France
+Services
+LX213580 Averys TL B 3,500,000.00 Industrial Conglomerates Industrial and manufacturing Euro France
+XS2332250708 ORGNON 2 7/8 4/30/28 2,500,000.00 Pharmaceuticals Pharmaceuticals Euro United States
+LX256012 Organon 12/24 EUR 1,706,106.42 Pharmaceuticals Pharmaceuticals Euro United States
+LX202499 Pearls (Netherlands) BidCo EUR T/L B 2,274,250.00 Chemicals Chemicals Euro Netherlands
+(Caldic) (01/
+XS2834245297 BITELV FLoat 06/15/31 1,000,000.00 Media Broadcasting and media Euro Lithuania
+LX250485 Parts Holding Europe 10/24 TL B 2,000,000.00 Auto Components Automobiles Euro France
+LX228248 PAX Holdco Spain T/L B (Areas 3,250,000.00 Food Products Retail food and drug Euro Spain
+Worldwide )
+LX252693 Peer Holding III B.V. (Action) 6/24 3,000,000.00 Specialty Retail Consumer products Euro Netherlands
+LX239315 Refresco/Pegasus 7/24 Cov-Lite TLB 1,000,000.00 Beverages Retail food and drug Euro Netherlands
+--- page 44 ---
+www.usbank.com/clo
+U.S. Bank Global Corporate Trust                                                                                  Current Asset Characteristics - Part II
+Page 44 of 83
+Cairn CLO XVII DAC
+Current Asset Characteristics - Part II
+As of:  08/01/2025
+Next Payment: 21/01/2025
+S&P Fitch
+Issuer/Facility Principal Industry Industry
+Identifier Name Balance Classification Classification Currency Country
+LX234519 Pharmanovia 6/24 Cov-Lite TL B 4,500,000.00 Pharmaceuticals Pharmaceuticals Euro United
+Kingdom
+LX230404 Parques Reunidos 4/24 TLB4 1,716,785.00 Hotels, Restaurants & Leisure Gaming and leisure and Euro Spain
+entertainment
+LX246013 Valeo Foods/Platform Bidco 9/24 1,000,000.00 Food Products Food, beverage and tobacco Euro Ireland
+Incremental Cov-Li
+LX231093 Precise Bidco BV T/L B5 3,500,000.00 Software Technology software Euro Netherlands
+LX250873 Quimper (Ahlsell) T/L B (11/24) 3,000,000.00 Building Products Buildings and materials Euro Sweden
+LX248257 Swissport 10/24 Cov-Lite TLB 1,000,000.00 Diversified Consumer Services Transportation and distribution Euro Switzerland
+LX214261 Rain Carbon T/L 2023 Replacement 514,571.29 Metals & Mining Chemicals Euro Germany
+LX202335 Rainbow (Wella) T/L B2 EUR 2,000,000.00 Personal Products Consumer products Euro Switzerland
+LX238721 General de Sante 7/24 TLB4 2,000,000.00 Healthcare Providers & Services Healthcare providers Euro France
+LX255951 Renta Group 12/24 TLB 4,000,000.00 Commercial Services & Supplies Industrial and manufacturing Euro Finland
+LX194401 Rodenstock EUR T/L B (4/21) (Iris 2,000,000.00 Personal Products Consumer products Euro Germany
+HoldCo)
+LX194191 Madrid T/L (AI Plex / Rohm) 2,000,000.00 Chemicals Chemicals Euro Germany
+LX228988 Roehm Holding T/L PIK (3/24) 3,303,422.23 Chemicals Chemicals Euro Germany
+LX189315 Rovensa 1,000,000.00 Chemicals Chemicals Euro Spain
+LX225334 Sebia 1/24 (EUR) B6 Cov-Lite TLB 2,000,000.00 Healthcare Equipment & Supplies Healthcare devices Euro France
+LX225678 SGG/IQ-EQ 1/24 (EUR) 3,000,000.00 Professional Services Business services general Euro Luxembourg
+LX237048 Schoen Klinik T/L 6/24 1,000,000.00 Healthcare Providers & Services Healthcare providers Euro Germany
+LX234261 Sector Alarm 7/24 TLB2 2,076,493.83 Household Durables Consumer products Euro Norway
+LX220198 Seine Holdco SAS Term Loan B 2,000,000.00 Software Technology software Euro France
+LX249935 Safety-Kleen 10/24 2,000,000.00 Diversified Consumer Services Environmental services Euro United
+Kingdom
+LX199218 Sirona/Seqens TLB 2,500,000.00 Commercial Services & Supplies Chemicals Euro France
+LX196483 Sitel Group T/L (08/21) 3,000,000.00 Commercial Services & Supplies Business services general Euro Luxembourg
+LX202553 Solis T/L B-2 (EUR) (Hunter Douglas) 3,000,000.00 Building Products Buildings and materials Euro Netherlands
+LX193267 Spa Holdings 3 T/L B (Ahlstrom 2,000,000.00 Paper & Forest Products Packaging and containers Euro Finland
+Munksjo)
+LX250399 Stage Entertainment 10/24 1,000,000.00 Media Broadcasting and media Euro United States
+LX248133 Theramex 9/24 TLB 2,000,000.02 Pharmaceuticals Pharmaceuticals Euro United
+Kingdom
+LX228294 Kantar 2/24 (BNC) T/L EUR 539,170.49 Media Broadcasting and media Euro United
+Kingdom
+LX225664 Kantar 2/24 (HNC) TL 2,210,829.51 Media Broadcasting and media Euro United
+Kingdom
+LX194166 Sunrise Bidco T/L (EUR) (Ameos) 2,000,000.00 Healthcare Providers & Services Healthcare providers Euro Germany
+--- page 45 ---
+www.usbank.com/clo
+U.S. Bank Global Corporate Trust                                                                                  Current Asset Characteristics - Part II
+Page 45 of 83
+Cairn CLO XVII DAC
+Current Asset Characteristics - Part II
+As of:  08/01/2025
+Next Payment: 21/01/2025
+S&P Fitch
+Issuer/Facility Principal Industry Industry
+Identifier Name Balance Classification Classification Currency Country
+LX196017 TK Elevator EUR T/L B1 2,000,000.00 Construction & Engineering Buildings and materials Euro Germany
+(ThyssenKrupp Elevator) (7/
+LX225279 TMF Group (Sapphire) 1/24 (EUR) 1,000,000.00 Professional Services Business services general Euro Netherlands
+TLB1
+LX235593 TSG Solutions T/L B (06/24) 1,750,000.00 Commercial Services & Supplies Business services general Euro France
+LX232776 ADCO Group/Toi Toi & Dixi T/L B 2,931,000.00 Commercial Services & Supplies Environmental services Euro Germany
+(05/24)
+LX254474 Sante Cie/Elivie 12/24 TLB 2,000,000.00 Healthcare Providers & Services Healthcare devices Euro France
+LX195674 Tarkett T/L B 1,896,335.36 Construction & Engineering Buildings and materials Euro France
+LX226834 Techem Verwaltungsgesellschaft T/L B 1,000,000.00 Oil, Gas & Consumable Fuels Energy oil and gas Euro Germany
+(02/24)
+XS2932084507 Techemv 5.375 2029-07-15 1,000,000.00 Oil, Gas & Consumable Fuels Energy oil and gas Euro Germany
+LX214554 Chemours Co/The T/L B3 (12/24) 3,000,000.00 Chemicals Chemicals Euro United States
+LX225307 Thevelia Tricor Group 1/24 2,000,000.00 Professional Services Business services general Euro Luxembourg
+XS2351344622 TRNSCM Float 12/15/2026 2,000,000.00 Professional Services Business services general Euro Sweden
+LX194310 UPC Broadband EUR T/L B (4/21) 858,888.18 Media Broadcasting and media Euro Switzerland
+(UPC Financing/Sunr
+XS2919880679 United Group   Floating   10/31/31 1,000,000.00 Diversified Telecommunication Telecommunications Euro Netherlands
+Services
+XS2758099779 United Group B.V. REGS 15/02/31 3,000,000.00 Diversified Telecommunication Telecommunications Euro Netherlands
+Services
+XS2010027881 United Group BV 4.625% 8/2028 1,000,000.00 Diversified Telecommunication Telecommunications Euro Netherlands
+Services
+LX198606 Urbaser T/L B 2,000,000.00 Commercial Services & Supplies Environmental services Euro Spain
+LX195575 Virgin Media 6/21 (T/L B) 2,000,000.00 Diversified Telecommunication Telecommunications Euro Ireland
+Services
+XS2231188876 VMDTEF 3 1/4 01/31/31 4,000,000.00 Diversified Telecommunication Telecommunications Euro United
+Services Kingdom
+LX236379 Marlink / Venga (6/24) EUR 3,197,000.00 Wireless Telecommunication Services Telecommunications Euro Belgium
+LX230934 Verisure Holding T/L B (04/24) 3,410,132.73 Household Durables Consumer products Euro Sweden
+LX183233 Virgin Media SFA Finance T/L O 2,000,000.00 Diversified Telecommunication Telecommunications Euro United
+Services Kingdom
+LX245523 Univar/Windsor 9/24 (EUR) TLB 3,000,000.00 Chemicals Chemicals Euro United States
+LX199727 XSYS Global EUR T/L (LSF11 2,000,000.00 Containers & Packaging Packaging and containers Euro Germany
+Folio/Lone Star)
+LX195828 Prosol 7/21 Cov Lite Term Loan B 2,000,000.00 Food & Staples Retailing Retail food and drug Euro France
+--- page 46 ---
+www.usbank.com/clo
+U.S. Bank Global Corporate Trust                                                                                  Current Asset Characteristics - Part II
+Page 46 of 83
+Cairn CLO XVII DAC
+Current Asset Characteristics - Part II
+As of:  08/01/2025
+Next Payment: 21/01/2025
+S&P Fitch
+Issuer/Facility Principal Industry Industry
+Identifier Name Balance Classification Classification Currency Country
+LX185594 Zayo Group Holdings T/L (2/20) 992,187.49 Diversified Telecommunication Telecommunications Euro United States
+Services
+LX237014 Vodafone Spain 7/24 (EUR) Cov-Lite 2,000,000.00 Diversified Telecommunication Telecommunications Euro United
+T/L Services Kingdom
+XS2431015655 VZ Secured Financing BV 4,000,000.00 Diversified Telecommunication Cable Euro Netherlands
+Services
+LX183461 Vodafone Ziggo 1,000,000.00 Diversified Telecommunication Cable Euro Netherlands
+Services
+408,644,549.47
+--- page 47 ---
+www.usbank.com/clo
+U.S. Bank Global Corporate Trust                                                                                 Current Asset Characteristics - Part III
+Page 47 of 83
+Cairn CLO XVII DAC
+Current Asset Characteristics - Part III
+As of:  08/01/2025
+Next Payment: 21/01/2025
+Delayed
+Issue/Facility Cov-Lite DIP PIK Deferring Current Pay Revolving Drawdown Bridge
+Identifier Name Loan Loan Security Security Obligation Obligation Obligation Loan
+LX226715 AI Sirona T/L B3 (Zentiva) (3/24) - - - - - - - -
+LX192467 Acuris Finance US T/L (1/21) - - - - - - - -
+LX236054 Aernnova Aerospace 6/24 - - - - - - - -
+LX171119 Alloheim T/L B - - - - - - - -
+LX193594 Almaviva Developpement T/L - - - - - - - -
+LX213528 Ammeraal Beltech/Ammega 7/23 - - - - - - - -
+LX202736 Altadia T/L (Timber Servicios/Esmalglass) - - - - - - - -
+LX217474 ALTICE FINANCING 10/31/2027 - - - - - - - -
+LX254125 Amber Finco/Applus 11/24 - - - - - - - -
+LX235576 Triangle/ Apleona 6/24 Cov-Lite TLB - - - - - - - -
+LX199035 Aragon BidCo T/L B (Amedes Holding) - - - - - - - -
+LX196255 Idverde TL (6/21) - - - - - - - -
+LX246973 Artisan Newco/Group of Butchers 9/24 - - - - - - - -
+XS2954189234 ASMODEE GROUP AB FLOATING - - - - - - - -
+12/15/2029
+LX213673 Assystem Technologies/Expleo 7/23 - - - - - - - -
+LX228174 P&I Personal & Informatik/Athena BidCo - - - - - - - -
+3/24 TL
+LX247701 Sivantos/WS Audiology TL9/24 (EUR) B5 - - - - - - - -
+LX189634 BVI Medical (Beaver-Visitec/Physiol) - - - - - - - -
+Incremental T
+LX185438 Banijay 1/24 (EUR) TLB - - - - - - - -
+LX218516 Belfor 10/23 EUR T/L B2 - - - - - - - -
+LX247575 Belron UK Finance T/L B - - - - - - - -
+LX233465 Boels 5/24 TL - - - - - - - -
+LX228682 Boluda Towage T/L B (3/24) - - - - - - - -
+LX236701 Worldpay/Boost Newco 6/24 (EUR) - - - - - - - -
+LX238947 Bowtie German Bidco (NextPharma) T/L B - - - - - - - -
+(08/24)
+LX196487 Broom Holdings T/L (Beauparc/MIRA) - - - - - - - -
+XS2295691633 TITANL Float 2/15/28 - - - - - - - -
+XS2294186965 BIOGRP 3 3/8 2/1/28 - - - - - - - -
+LX192244 CAB (Biogroup-LCD) T/L B (2/21) - - - - - - - -
+LX235674 Motor Fuel Group 6/24 (EUR) TLB4 - - - - - - - -
+LX202330 CEP V Investment 23 T/L (Autoform) - - - - - - - -
+LX202118 CTEC III T/L B (EUR) (CeramTec) (02/22) - - - - - - - -
+XS2929905292 CASTELLO BC BIDCO SPA 10/29/31 - - - - - - - -
+XS2445840809 Castor SPA Floating 2/15/29 - - - - - - - -
+XS2345190263 CEDCRI FLOAT 05/15/2028 - - - - - - - -
+XS2622212707 Cedacri S.P.A/Vareur Nt Amort PN W - - - - - - - -
+--- page 48 ---
+www.usbank.com/clo
+U.S. Bank Global Corporate Trust                                                                                 Current Asset Characteristics - Part III
+Page 48 of 83
+Cairn CLO XVII DAC
+Current Asset Characteristics - Part III
+As of:  08/01/2025
+Next Payment: 21/01/2025
+Delayed
+Issue/Facility Cov-Lite DIP PIK Deferring Current Pay Revolving Drawdown Bridge
+Identifier Name Loan Loan Security Security Obligation Obligation Obligation Loan
+LX217081 Claudius Finance (Cegid) 9/23 Incremental - - - - - - - -
+LX227374 Euromedic/Affidea 2/24 TL - - - - - - - -
+LX234218 Ceva Sante Animale 05/24 (EUR) TLB - - - - - - - -
+XS2243548273 CHEPDE 4 3/8 01/15/28 - - - - - - - -
+XS2618840974 CHEPDE Float  05/15/2030 - - - - - - - -
+LX202725 Cheplapharm TL B - - - - - - - -
+LX194780 Chrome Bidco T/L B (Cerba - - - - - - - -
+Healthcare/Constantin In
+XS2325699994 Cidron Aida Finco SARL 5% 4/1/2028 - - - - - - - -
+LX249777 Concordia (Advanz Pharma) 10/24 TLB - - - - - - - -
+LX236134 Power Solutions 6/24 (EUR) TLB Yes - - - - - - -
+LX193257 CRH Europe Distribution 10/19 - - - - - - - -
+LX195644 Colisee/Cobalt TL (10/20) - - - - - - - -
+LX219297 Cooper Consumer (Care Bidco) T/L B - - - - - - - -
+(11/23)
+LX254153 Cube Healthcare Europe Bidco (Domidep) - - - - - - - -
+T/L B
+LX209709 Cuppa Bidco B.V. T/L - - - - - - - -
+LX195569 Dedalus Finance GMBH - - - - - - - -
+LX246414 Delachaux T/L B (9/24) - - - - - - - -
+LX202419 Dorna Sports TERM LOAN FACILITY B - - - - - - - -
+LX220996 Euroports 11/23 TL - - - - - - - -
+LX247592 Edge Finco/Evri 9/24 TLB - - - - - - - -
+XS2423013742 EDRSM 5 1/2 07/15/27 - - - - - - - -
+LX192651 Elsan T/L B5 - - - - - - - -
+LX181040 ERM T/L B2 (Emerald 2) - - - - - - - -
+XS2271247178 Encore Capital Group Floating Rate Notes - - - - - - - -
+LX254235 Etraveli 6/24 COv-Lite - - - - - - - -
+LX235873 Financiere (	Nemera) T/L B (06/24) - - - - - - - -
+LX217099 Finco Utilitas (Infra Group) T/L B - - - - - - - -
+LX218476 First Brands Group T/L (11/23) - - - - - - - -
+LX244533 R&R Ice Cream/Froneri 9/24 (EUR) TL - - - - - - - -
+LX217177 Fugue Finance (Nord Anglia/Bach Fin) T/L - - - - - - - -
+B (09/23)
+LX181787 GHD 7/19  EUR TL - - - - - - - -
+LX254473 Galaxy Bidco/Domestic and General 11/24 - - - - - - - -
+XS2250154494 GFKLDE Float  5/1/2026 - - - - - - - -
+LX185085 Global University Systems T/L B - - - - - - - -
+(Markermeer) (1/20
+LX191106 Groupe Inovie T/L B (EUR) - - - - - - - -
+--- page 49 ---
+www.usbank.com/clo
+U.S. Bank Global Corporate Trust                                                                                 Current Asset Characteristics - Part III
+Page 49 of 83
+Cairn CLO XVII DAC
+Current Asset Characteristics - Part III
+As of:  08/01/2025
+Next Payment: 21/01/2025
+Delayed
+Issue/Facility Cov-Lite DIP PIK Deferring Current Pay Revolving Drawdown Bridge
+Identifier Name Loan Loan Security Security Obligation Obligation Obligation Loan
+XS2951378434 GRUPHA - - - - - - - -
+LX228404 HNVR Holdco T/L D2 - - - - - - - -
+LX236640 Home VI Term B 1L - - - - - - - -
+LX196751 Hunter Holdco T/L (Huntsworth/UDG - - - - - - - -
+Healthcare) (7/2
+LX225618 Oberthur/Idemia 2/24 TL B5 - - - - - - - -
+LX193483 IGT Holding T/L (IFS) (3/21) - - - - - - - -
+XS2915461458 STYRO 6 3/4 04/15/30 - - - - - - - -
+XS2808407188 ION CORPORATE SOLUTIONS FINANCE - - - - - - - -
+SA
+LX193158 ION Corporates (helios) - - - - - - - -
+LX193675 ION Trading T/L (EUR) 2021 - - - - - - - -
+XS2305744059 IQV 2 1/4 03/15/29 Corp - - - - - - - -
+XS2580885908 iQera Group   8.9854%   2/15/27 - - - - - - - -
+LX219682 IVC/Independent Vetcare 11/23 TL - - - - - - - -
+XS2397781944 ILDFP 5 5/8 10/15/28 - - - - - - - -
+LX211382 INEOS Term Loan (EUR) - INEENT EUR - - - - - - - -
+TL B 1L 06/2030
+LX234266 Ineos 6/24 (EUR) TLB - - - - - - - -
+LX247590 Ineos Quattro/Styrolution 10/24 T/L B - - - - - - - -
+LX211165 Ineos T/L B Euro 2030 Tranche - - - - - - - -
+(Styrolution/Quattro
+LX196389 Infinitas Learning T/L (7/21) (WKE) - - - - - - - -
+LX236445 Innio Group (Distributed Power) 6/24 TLB - - - - - - - -
+LX213881 Inspired Finco/Inspired Education 7/23 - - - - - - - -
+TLB4
+LX210657 PortAventura (International Park) T/L B2 - - - - - - - -
+LX248178 Ifco Systems 9/24 TL B - - - - - - - -
+XS2582796541 FIREBC Float 2/6/28 - - - - - - - -
+XS2756269960 KAPLA HOLDING SAS BND/CORP - - - - - - - -
+XS2010034077 KILOTO 3 3/8 12/15/26 C - - - - - - - -
+LX256025 Knowlton Development / KDC 12/24 - - - - - - - -
+LX192831 LSF10 Edilians T/L B (Imerys - - - - - - - -
+Roofing/Edilians) (2/
+LX193640 LSF10 Xella XL T/L B4 (3/21) - - - - - - - -
+LX177087 Lernen TL B1 (Cognita) - - - - - - - -
+XS2483511957 Loarre Investments S.a.r.l - - - - - - - -
+LX229603 Masmovil/MasOrange 4/24 (EUR) TL - - - - - - - -
+LX249559 Suse 4/24 (EUR) TLB - - - - - - - -
+XS1720690889 MATTER 4 11/15/27 Corp - - - - - - - -
+--- page 50 ---
+www.usbank.com/clo
+U.S. Bank Global Corporate Trust                                                                                 Current Asset Characteristics - Part III
+Page 50 of 83
+Cairn CLO XVII DAC
+Current Asset Characteristics - Part III
+As of:  08/01/2025
+Next Payment: 21/01/2025
+Delayed
+Issue/Facility Cov-Lite DIP PIK Deferring Current Pay Revolving Drawdown Bridge
+Identifier Name Loan Loan Security Security Obligation Obligation Obligation Loan
+LX233937 McAfee TL B3 - - - - - - - -
+LX198689 Median Kliniken T/L B-1 (EUR) - - - - - - - -
+LX234327 Mediawan Financing 5/24 Cov-Lite TLB - - - - - - - -
+LX192775 Mediq T/L B - - - - - - - -
+LX235701 Medline Borrower T/L B (07/24) - - - - - - - -
+LX236761 Mehilainen 6/24 Delayed TL Unfunded - - - - - - Yes -
+LX236760 Mehilainen 6/24 TL - - - - - - - -
+LX237835 Mehilainen 7/24 B5B New Money - - - - - - - -
+LX233034 Monbake Grupo Empresarial T/L B (05/24) - - - - - - - -
+XS2615006983 CABBCO Float 05/01/2028 - - - - - - - -
+LX213903 Mosel Bidco T/L (Software AG) - - - - - - - -
+LX213009 Merlin 1/24 TL - - - - - - - -
+LX222394 NEP 12/23 EUR TLB - - - - - - - -
+LX208600 Neptune BidCo US T/L B EUR - - - - - - - -
+LX236587 Stada/Nidda 7/24 TLB2 - - - - - - - -
+LX236064 NielsenIQ 6/24 (EUR) TL - - - - - - - -
+XS2355515516 PHIDOM 3 1/8 6/15/28 - - - - - - - -
+LX246433 Nobian 9/24 TLB - - - - - - - -
+LX234053 Akzo Nobel Specialty Chemicals (Starfruit) - - - - - - - -
+5/24 TL
+LX210660 SFR (Numericable/YPSO/Altice) B14 - - - - - - - -
+LX248915 Oat Bidco T/L B (10/24) - - - - - - - -
+LX200389 Odido Holding B.V. T/L (EUR) - - - - - - - -
+LX196125 Odyssee Investment Bidco T/L B - - - - - - - -
+LX213580 Averys TL B - - - - - - - -
+XS2332250708 ORGNON 2 7/8 4/30/28 - - - - - - - -
+LX256012 Organon 12/24 EUR - - - - - - - -
+LX202499 Pearls (Netherlands) BidCo EUR T/L B - - - - - - - -
+(Caldic) (01/
+XS2834245297 BITELV FLoat 06/15/31 - - - - - - - -
+LX250485 Parts Holding Europe 10/24 TL B - - - - - - - -
+LX228248 PAX Holdco Spain T/L B (Areas Worldwide - - - - - - - -
+)
+LX252693 Peer Holding III B.V. (Action) 6/24 - - - - - - - -
+LX239315 Refresco/Pegasus 7/24 Cov-Lite TLB - - - - - - - -
+LX234519 Pharmanovia 6/24 Cov-Lite TL B - - - - - - - -
+LX230404 Parques Reunidos 4/24 TLB4 - - - - - - - -
+LX246013 Valeo Foods/Platform Bidco 9/24 - - - - - - - -
+Incremental Cov-Li
+LX231093 Precise Bidco BV T/L B5 - - - - - - - -
+--- page 51 ---
+www.usbank.com/clo
+U.S. Bank Global Corporate Trust                                                                                 Current Asset Characteristics - Part III
+Page 51 of 83
+Cairn CLO XVII DAC
+Current Asset Characteristics - Part III
+As of:  08/01/2025
+Next Payment: 21/01/2025
+Delayed
+Issue/Facility Cov-Lite DIP PIK Deferring Current Pay Revolving Drawdown Bridge
+Identifier Name Loan Loan Security Security Obligation Obligation Obligation Loan
+LX250873 Quimper (Ahlsell) T/L B (11/24) - - - - - - - -
+LX248257 Swissport 10/24 Cov-Lite TLB - - - - - - - -
+LX214261 Rain Carbon T/L 2023 Replacement - - - - - - - -
+LX202335 Rainbow (Wella) T/L B2 EUR - - - - - - - -
+LX238721 General de Sante 7/24 TLB4 - - - - - - - -
+LX255951 Renta Group 12/24 TLB - - - - - - - -
+LX194401 Rodenstock EUR T/L B (4/21) (Iris HoldCo) - - - - - - - -
+LX194191 Madrid T/L (AI Plex / Rohm) - - - - - - - -
+LX228988 Roehm Holding T/L PIK (3/24) - - - - - - - -
+LX189315 Rovensa - - - - - - - -
+LX225334 Sebia 1/24 (EUR) B6 Cov-Lite TLB - - - - - - - -
+LX225678 SGG/IQ-EQ 1/24 (EUR) - - - - - - - -
+LX237048 Schoen Klinik T/L 6/24 - - - - - - - -
+LX234261 Sector Alarm 7/24 TLB2 - - - - - - - -
+LX220198 Seine Holdco SAS Term Loan B - - - - - - - -
+LX249935 Safety-Kleen 10/24 - - - - - - - -
+LX199218 Sirona/Seqens TLB - - - - - - - -
+LX196483 Sitel Group T/L (08/21) - - - - - - - -
+LX202553 Solis T/L B-2 (EUR) (Hunter Douglas) - - - - - - - -
+LX193267 Spa Holdings 3 T/L B (Ahlstrom Munksjo) - - - - - - - -
+LX250399 Stage Entertainment 10/24 - - - - - - - -
+LX248133 Theramex 9/24 TLB - - - - - - - -
+LX228294 Kantar 2/24 (BNC) T/L EUR - - - - - - - -
+LX225664 Kantar 2/24 (HNC) TL - - - - - - - -
+LX194166 Sunrise Bidco T/L (EUR) (Ameos) - - - - - - - -
+LX196017 TK Elevator EUR T/L B1 (ThyssenKrupp - - - - - - - -
+Elevator) (7/
+LX225279 TMF Group (Sapphire) 1/24 (EUR) TLB1 - - - - - - - -
+LX235593 TSG Solutions T/L B (06/24) - - - - - - - -
+LX232776 ADCO Group/Toi Toi & Dixi T/L B (05/24) - - - - - - - -
+LX254474 Sante Cie/Elivie 12/24 TLB - - - - - - - -
+LX195674 Tarkett T/L B - - - - - - - -
+LX226834 Techem Verwaltungsgesellschaft T/L B - - - - - - - -
+(02/24)
+XS2932084507 Techemv 5.375 2029-07-15 - - - - - - - -
+LX214554 Chemours Co/The T/L B3 (12/24) - - - - - - - -
+LX225307 Thevelia Tricor Group 1/24 - - - - - - - -
+XS2351344622 TRNSCM Float 12/15/2026 - - - - - - - -
+--- page 52 ---
+www.usbank.com/clo
+U.S. Bank Global Corporate Trust                                                                                 Current Asset Characteristics - Part III
+Page 52 of 83
+Cairn CLO XVII DAC
+Current Asset Characteristics - Part III
+As of:  08/01/2025
+Next Payment: 21/01/2025
+Delayed
+Issue/Facility Cov-Lite DIP PIK Deferring Current Pay Revolving Drawdown Bridge
+Identifier Name Loan Loan Security Security Obligation Obligation Obligation Loan
+LX194310 UPC Broadband EUR T/L B (4/21) (UPC - - - - - - - -
+Financing/Sunr
+XS2919880679 United Group   Floating   10/31/31 - - - - - - - -
+XS2758099779 United Group B.V. REGS 15/02/31 - - - - - - - -
+XS2010027881 United Group BV 4.625% 8/2028 - - - - - - - -
+LX198606 Urbaser T/L B - - - - - - - -
+LX195575 Virgin Media 6/21 (T/L B) - - - - - - - -
+XS2231188876 VMDTEF 3 1/4 01/31/31 - - - - - - - -
+LX236379 Marlink / Venga (6/24) EUR - - - - - - - -
+LX230934 Verisure Holding T/L B (04/24) - - - - - - - -
+LX183233 Virgin Media SFA Finance T/L O - - - - - - - -
+LX245523 Univar/Windsor 9/24 (EUR) TLB - - - - - - - -
+LX199727 XSYS Global EUR T/L (LSF11 Folio/Lone - - - - - - - -
+Star)
+LX195828 Prosol 7/21 Cov Lite Term Loan B - - - - - - - -
+LX185594 Zayo Group Holdings T/L (2/20) - - - - - - - -
+LX237014 Vodafone Spain 7/24 (EUR) Cov-Lite T/L - - - - - - - -
+XS2431015655 VZ Secured Financing BV - - - - - - - -
+LX183461 Vodafone Ziggo - - - - - - - -
+--- page 53 ---
+www.usbank.com/clo
+U.S. Bank Global Corporate Trust                                                                                                 Principal Paydowns
+Page 53 of 83
+Cairn CLO XVII DAC
+Principal Paydowns
+From  17/12/2024 to 08/01/2025
+Next Payment: 21/01/2025
+LoanX ID/ Transaction Settlement Transaction
+Cusip Facility Type Date Amount
+LX196751 Hunter Holdco T/L (Huntsworth/UDG Facility - Paydown 31/12/2024 5,089.06
+Healthcare) (7/21)
+LX233937 McAfee TL B3 Facility - Paydown 31/12/2024 8,264.43
+LX236701 Worldpay/Boost Newco 6/24 (EUR) Facility - Paydown 31/12/2024 3,125.00
+LX222394 NEP 12/23 EUR TLB Facility - Paydown 31/12/2024 3,500.00
+LX256012 Organon 12/24 EUR Facility - Paydown 31/12/2024 4,275.96
+LX236064 NielsenIQ 6/24 (EUR) TL Facility - Paydown 31/12/2024 6,187.50
+LX185594 Zayo Group Holdings T/L 3/2020 (2/20) Facility - Paydown 31/12/2024 2,604.17
+LX218476 First Brands Group T/L (11/23) Facility - Paydown 31/12/2024 3,750.00
+36,796.12
+--- page 54 ---
+www.usbank.com/clo
+U.S. Bank Global Corporate Trust                                                                                  Defaulted Collateral Obligation Detail
+Page 54 of 83
+Cairn CLO XVII DAC
+Defaulted Collateral Obligation Detail
+As of:  08/01/2025
+Next Payment: 21/01/2025
+Calculated Credit Market S&P Fitch
+Issue/Facility Principal Principal Opinion Credit Value Rec Rec
+Identifier Issuer Name Name Balance Balance 2 Date Opinion Indenture Rate Rate
+XS2250154494 Garfunkelux Holdco 3 SA GFKLDE Float  5/1/2026 1,000,000.00 1,000,000.00 28/12/2024 Defaulted 65.65     27.00     40.00
+XS2580885908 IQera Group SAS iQera Group   8.9854%   2/15/27 1,000,000.00 1,000,000.00 02/10/2024 Defaulted 59.19     20.00 *
+2,000,000.00 2,000,000.00
+--- page 55 ---
+www.usbank.com/clo
+U.S. Bank Global Corporate Trust                                                                                  Deferring Collateral Obligation Detail
+Page 55 of 83
+Cairn CLO XVII DAC
+Deferring Collateral Obligation Detail
+As of:  08/01/2025
+Next Payment: 21/01/2025
+No asset records currently meet the summarization criteria.
+--- page 56 ---
+www.usbank.com/clo
+U.S. Bank Global Corporate Trust                                                                                              Discounted Obligations
+Page 56 of 83
+Cairn CLO XVII DAC
+Discounted Obligations
+As of:  08/01/2025
+Next Payment: 21/01/2025
+No asset records currently meet the summarization criteria.
+--- page 57 ---
+www.usbank.com/clo
+U.S. Bank Global Corporate Trust                                                                                   Swapped Non-Discount Obligations
+Page 57 of 83
+Cairn CLO XVII DAC
+Swapped Non-Discount Obligations
+As of:  08/01/2025
+Next Payment: 21/01/2025
+No asset records currently meet the summarization criteria.
+--- page 58 ---
+www.usbank.com/clo
+U.S. Bank Global Corporate Trust                                                     Collateral Enhancement Obligation & Exchanged Equity Security Detail
+Page 58 of 83
+Cairn CLO XVII DAC
+Collateral Enhancement Obligation & Exchanged Equity Security Detail
+As of:  08/01/2025
+Next Payment: 21/01/2025
+No asset records currently meet the summarization criteria.
+--- page 59 ---
+www.usbank.com/clo
+U.S. Bank Global Corporate Trust                                                                                                  Participation Detail
+Page 59 of 83
+Cairn CLO XVII DAC
+Participation Detail
+As of:  08/01/2025
+Next Payment: 21/01/2025
+No asset records currently meet the summarization criteria.
+--- page 60 ---
+www.usbank.com/clo
+U.S. Bank Global Corporate Trust                                                                                              Restructure Purchases
+Page 60 of 83
+Cairn CLO XVII DAC
+Restructure Purchases
+As of : 08/01/2025
+Next Payment: 21/01/2025
+Accrued
+Trade Interest
+Issuer Name Facility Name Par Amount Price Cost Amount Trade Date Settle Date
+Take Care Bidco Sante Cie/Elivie 12/24 TLB 1,000,000.00 100.1250 1,001,250.00 0.00 17/12/2024 17/12/2024
+Take Care Bidco Sante Cie/Elivie 12/24 TLB 1,000,000.00 100.1250 1,001,250.00 0.00 17/12/2024 17/12/2024
+Ren10 Holding AB Renta Group 12/24 TLB 4,000,000.00 98.0000 3,920,000.00 0.00 17/12/2024 17/12/2024
+Knowlton Development Corporation Inc. Knowlton Development / KDC 2,000,000.00 97.0000 1,940,000.00 0.00 19/12/2024 19/12/2024
+12/24
+Organon & Co. Organon 12/24 EUR 1,710,382.38 100.0000 1,710,382.38 0.00 20/12/2024 20/12/2024
+Etraveli Group Holding AB Etraveli 6/24 COv-Lite 2,500,000.00 98.0000 2,450,000.00 0.00 23/12/2024 23/12/2024
+Cube Healthcare Europe Bidco SASU Cube Healthcare Europe 750,000.00 98.5000 738,750.00 0.00 03/01/2025 03/01/2025
+Bidco (Domidep) T/L B
+12,960,382.38 12,761,632.38 0.00
+--- page 61 ---
+www.usbank.com/clo
+U.S. Bank Global Corporate Trust                                                                                                   Restructure Sales
+Page 61 of 83
+Cairn CLO XVII DAC
+Restructure Sales
+As of : 08/01/2025
+Next Payment: 21/01/2025
+Accrued
+Trade Interest
+Issuer Name Facility Name Par Amount Price Cost Amount Trade Date Settle Date
+Take Care Bidco Sante Cie/Elvie/ 5/21 Cov-Lite 1,000,000.00 100.1250 1,001,250.00 0.00 17/12/2024 17/12/2024
+Take Care Bidco Sante Cie/Elvie/ 5/21 Cov-Lite 1,000,000.00 100.1250 1,001,250.00 0.00 17/12/2024 17/12/2024
+Ren10 Holding AB Renta Group 2/24 TLB 4,000,000.00 98.0000 3,920,000.00 0.00 17/12/2024 17/12/2024
+Knowlton Development Corporation Inc. Knowlton Development/KDC 2,000,000.00 97.0000 1,940,000.00 0.00 19/12/2024 19/12/2024
+5/24 EUR TLB
+Organon & Co. Organon T/L B 1,710,382.38 100.0000 1,710,382.38 0.00 20/12/2024 20/12/2024
+Etraveli Group Holding AB Etraveli 5/24 TL B1 (source) 2,500,000.00 98.0000 2,450,000.00 0.00 23/12/2024 23/12/2024
+Cube Healthcare Europe Bidco SASU Domidep T/L B (5/24) 750,000.00 98.5000 738,750.00 0.00 03/01/2025 03/01/2025
+12,960,382.38 12,761,632.38 0.00
+--- page 62 ---
+www.usbank.com/clo
+U.S. Bank Global Corporate Trust                                                                                     Rating Detail And Recovery Rates
+Page 62 of 83
+Cairn CLO XVII DAC
+Rating Detail And Recovery Rates
+As of:  08/01/2025
+Next Payment: 21/01/2025
+S&P S&P Fitch Fitch
+Issue/Facility Principal S&P Rating Recovery Fitch Rating Recovery
+Identifier Name Balance Rating Status Rate Rating Status Rate
+LX226715 AI Sirona T/L B3 (Zentiva) (3/24) 3,000,000.00 B STA 40.00 B STA 65.00
+LX192467 Acuris Finance US T/L (1/21) 2,739,578.40 B STA 35.00 * * *
+LX236054 Aernnova Aerospace 6/24 1,000,000.00 B STA 35.00 B STA 53.00
+LX171119 Alloheim T/L B 1,250,000.00 * * * * * *
+LX193594 Almaviva Developpement T/L 2,000,000.00 B STA 30.00 B STA 69.00
+LX213528 Ammeraal Beltech/Ammega 7/23 2,652,938.91 B- STA 35.00 B- STA 39.00
+LX202736 Altadia T/L (Timber Servicios/Esmalglass) 2,000,000.00 B- STA 40.00 * * *
+LX217474 ALTICE FINANCING 10/31/2027 990,000.00 B- NEG 40.00 CCC+ STA 65.00
+LX254125 Amber Finco/Applus 11/24 3,000,000.00 BB- STA 45.00 B+ STA 64.00
+LX235576 Triangle/ Apleona 6/24 Cov-Lite TLB 4,500,000.00 B STA 35.00 B STA 65.00
+LX199035 Aragon BidCo T/L B (Amedes Holding) 2,000,000.00 B NEG 35.00 B- STA 65.00
+LX196255 Idverde TL (6/21) 1,500,000.00 B- STA 35.00 CCC+ STA 65.00
+LX246973 Artisan Newco/Group of Butchers 9/24 1,979,809.98 B STA 45.00 B STA 65.00
+XS2954189234 ASMODEE GROUP AB FLOATING 12/15/2029 1,000,000.00 B+ UPG 30.00 B+ STA 53.00
+LX213673 Assystem Technologies/Expleo 7/23 4,000,000.00 B- STA 30.00 * * *
+LX228174 P&I Personal & Informatik/Athena BidCo 3/24 1,000,000.00 B STA 40.00 B- STA 65.00
+TL
+LX247701 Sivantos/WS Audiology TL9/24 (EUR) B5 2,000,000.00 B- POS 45.00 B STA 54.00
+LX189634 BVI Medical (Beaver-Visitec/Physiol) 2,000,000.00 CCC STA 35.00 * * *
+Incremental T
+LX185438 Banijay 1/24 (EUR) TLB 3,000,000.00 B+ STA 40.00 B+ STA 66.00
+LX218516 Belfor 10/23 EUR T/L B2 2,000,000.00 B- STA 30.00 B- STA 75.00
+LX247575 Belron UK Finance T/L B 4,500,000.00 BB- STA 40.00 BB STA 80.00
+LX233465 Boels 5/24 TL 2,155,172.41 BB STA 30.00 BB- STA 65.00
+LX228682 Boluda Towage T/L B (3/24) 2,500,000.00 BB- STA 30.00 BB STA 65.00
+LX236701 Worldpay/Boost Newco 6/24 (EUR) 1,246,875.00 BB STA 40.00 BB STA 95.00
+LX238947 Bowtie German Bidco (NextPharma) T/L B 2,500,000.00 B STA 40.00 B- STA 65.00
+(08/24)
+LX196487 Broom Holdings T/L (Beauparc/MIRA) 1,000,000.00 B STA 30.00 B STA 65.00
+XS2295691633 TITANL Float 2/15/28 2,000,000.00 B- POS 30.00 B STA 52.00
+XS2294186965 BIOGRP 3 3/8 2/1/28 2,000,000.00 B- STA 35.00 B STA 53.00
+LX192244 CAB (Biogroup-LCD) T/L B (2/21) 2,000,000.02 B- STA 35.00 B STA 53.00
+LX235674 Motor Fuel Group 6/24 (EUR) TLB4 4,500,000.00 B STA 35.00 B STA 65.00
+LX202330 CEP V Investment 23 T/L (Autoform) 2,800,000.00 B STA 40.00 B STA 65.00
+LX202118 CTEC III T/L B (EUR) (CeramTec) (02/22) 1,000,000.00 B STA 40.00 B STA 65.00
+XS2929905292 CASTELLO BC BIDCO SPA 10/29/31 1,000,000.00 B STA 40.00 B STA 60.00
+XS2445840809 Castor SPA Floating 2/15/29 1,000,000.00 B- STA 35.00 B STA 46.00
+XS2345190263 CEDCRI FLOAT 05/15/2028 2,000,000.00 B NEG 35.00 B STA 33.00
+--- page 63 ---
+www.usbank.com/clo
+U.S. Bank Global Corporate Trust                                                                                     Rating Detail And Recovery Rates
+Page 63 of 83
+Cairn CLO XVII DAC
+Rating Detail And Recovery Rates
+As of:  08/01/2025
+Next Payment: 21/01/2025
+S&P S&P Fitch Fitch
+Issue/Facility Principal S&P Rating Recovery Fitch Rating Recovery
+Identifier Name Balance Rating Status Rate Rating Status Rate
+XS2622212707 Cedacri S.P.A/Vareur Nt Amort PN W 1,500,000.00 B NEG 35.00 B STA 33.00
+LX217081 Claudius Finance (Cegid) 9/23 Incremental 2,000,000.00 B+ NEG 45.00 B STA 65.00
+LX227374 Euromedic/Affidea 2/24 TL 2,500,000.00 B STA 40.00 B- STA 65.00
+LX234218 Ceva Sante Animale 05/24 (EUR) TLB 4,000,000.00 B STA 35.00 B+ STA 59.00
+XS2243548273 CHEPDE 4 3/8 01/15/28 500,000.00 B STA 30.00 B STA 63.00
+XS2618840974 CHEPDE Float  05/15/2030 2,000,000.00 B STA 30.00 B STA 63.00
+LX202725 Cheplapharm TL B 2,593,899.00 B STA 30.00 B STA 63.00
+LX194780 Chrome Bidco T/L B (Cerba 3,000,000.00 B- STA 35.00 CCC+ STA 65.00
+Healthcare/Constantin In
+XS2325699994 Cidron Aida Finco SARL 5% 4/1/2028 2,500,000.00 B- STA 30.00 B STA 58.00
+LX249777 Concordia (Advanz Pharma) 10/24 TLB 2,000,000.00 B- STA 30.00 B STA 58.00
+LX236134 Power Solutions 6/24 (EUR) TLB 2,316,978.38 BB- STA 35.00 B STA 53.00
+LX193257 CRH Europe Distribution 10/19 1,131,539.34 B- NEG 30.00 B- STA 65.00
+LX195644 Colisee/Cobalt TL (10/20) 3,000,000.00 B- NEG 30.00 B- STA 65.00
+LX219297 Cooper Consumer (Care Bidco) T/L B (11/23) 2,000,000.00 B STA 40.00 B STA 59.00
+LX254153 Cube Healthcare Europe Bidco (Domidep) T/L 750,000.00 B- STA 30.00 B- STA 65.00
+B
+LX209709 Cuppa Bidco B.V. T/L 2,000,000.00 CCC+ STA 35.00 CCC+ STA 65.00
+LX195569 Dedalus Finance GMBH 2,000,000.00 B- NEG 35.00 B- STA 53.00
+LX246414 Delachaux T/L B (9/24) 1,844,155.86 B+ STA 35.00 B+ STA 65.00
+LX202419 Dorna Sports TERM LOAN FACILITY B 3,000,000.00 * * * * * *
+LX220996 Euroports 11/23 TL 1,200,000.00 BB- STA 30.00 BB- STA 80.00
+LX247592 Edge Finco/Evri 9/24 TLB 1,000,000.00 B+ STA 30.00 B STA 75.00
+XS2423013742 EDRSM 5 1/2 07/15/27 1,750,000.00 B STA 35.00 B STA 36.00
+LX192651 Elsan T/L B5 3,000,000.00 B+ STA 35.00 * * *
+LX181040 ERM T/L B2 (Emerald 2) 1,500,000.00 B STA 30.00 * * *
+XS2271247178 Encore Capital Group Floating Rate Notes 1,000,000.00 BB STA 41.00 BB+ STA 60.00
+LX254235 Etraveli 6/24 COv-Lite 2,500,000.00 * * * * * *
+LX235873 Financiere (	Nemera) T/L B (06/24) 2,000,000.00 B- STA 35.00 B- STA 65.00
+LX217099 Finco Utilitas (Infra Group) T/L B 3,000,000.00 B STA 40.00 B STA 65.00
+LX218476 First Brands Group T/L (11/23) 1,485,000.00 B+ POS 40.00 B+ STA 100.00
+LX244533 R&R Ice Cream/Froneri 9/24 (EUR) TL 1,000,000.00 BB- STA 35.00 BB- STA 65.00
+LX217177 Fugue Finance (Nord Anglia/Bach Fin) T/L B 2,000,000.00 B STA 40.00 * * *
+(09/23)
+LX181787 GHD 7/19  EUR TL 1,000,000.00 CCC+ STA 28.50 * * *
+LX254473 Galaxy Bidco/Domestic and General 11/24 2,000,000.00 B STA 30.00 * * *
+XS2250154494 GFKLDE Float  5/1/2026 1,000,000.00 CC NEG 27.00 CC STA 40.00
+--- page 64 ---
+www.usbank.com/clo
+U.S. Bank Global Corporate Trust                                                                                     Rating Detail And Recovery Rates
+Page 64 of 83
+Cairn CLO XVII DAC
+Rating Detail And Recovery Rates
+As of:  08/01/2025
+Next Payment: 21/01/2025
+S&P S&P Fitch Fitch
+Issue/Facility Principal S&P Rating Recovery Fitch Rating Recovery
+Identifier Name Balance Rating Status Rate Rating Status Rate
+LX185085 Global University Systems T/L B (Markermeer) 3,000,000.00 B STA 50.00 B STA 62.00
+(1/20
+LX191106 Groupe Inovie T/L B (EUR) 2,000,000.00 B- STA 35.00 B STA 53.00
+XS2951378434 GRUPHA 1,000,000.00 B+ STA 40.00 B+ STA *
+LX228404 HNVR Holdco T/L D2 2,000,000.00 B STA 35.00 B STA 65.00
+LX236640 Home VI Term B 1L 5,000,000.00 B- STA 28.50 * * *
+LX196751 Hunter Holdco T/L (Huntsworth/UDG 1,969,465.64 B STA 35.00 B- STA 65.00
+Healthcare) (7/2
+LX225618 Oberthur/Idemia 2/24 TL B5 2,500,000.00 B STA 40.00 B STA 53.00
+LX193483 IGT Holding T/L (IFS) (3/21) 2,000,000.00 B NEG 35.00 B- STA 65.00
+XS2915461458 STYRO 6 3/4 04/15/30 1,000,000.00 BB NEG 45.00 BB- STA 80.00
+XS2808407188 ION CORPORATE SOLUTIONS FINANCE SA 1,000,000.00 B STA 27.00 * * *
+LX193158 ION Corporates (helios) 1,978,002.41 B STA 27.00 * * *
+LX193675 ION Trading T/L (EUR) 2021 4,871,054.63 B- STA 45.00 B- STA 65.00
+XS2305744059 IQV 2 1/4 03/15/29 Corp 1,000,000.00 BB+ STA 10.00 * * *
+XS2580885908 iQera Group   8.9854%   2/15/27 1,000,000.00 SD STA 20.00 * * *
+LX219682 IVC/Independent Vetcare 11/23 TL 3,000,000.00 B STA 40.00 B STA 47.00
+XS2397781944 ILDFP 5 5/8 10/15/28 2,000,000.00 BB STA 2.00 BB STA 20.00
+LX211382 INEOS Term Loan (EUR) - INEENT EUR TL B 2,000,000.00 BB NEG 45.00 B+ STA 80.00
+1L 06/2030
+LX234266 Ineos 6/24 (EUR) TLB 4,000,000.00 BB NEG 45.00 BB STA 80.00
+LX247590 Ineos Quattro/Styrolution 10/24 T/L B 1,002,987.07 BB NEG 45.00 BB- STA 80.00
+LX211165 Ineos T/L B Euro 2030 Tranche 5,000,000.00 BB NEG 45.00 BB- STA 80.00
+(Styrolution/Quattro
+LX196389 Infinitas Learning T/L (7/21) (WKE) 1,999,999.99 * * * B- STA 65.00
+LX236445 Innio Group (Distributed Power) 6/24 TLB 1,983,704.18 B+ STA 40.00 B+ STA 56.00
+LX213881 Inspired Finco/Inspired Education 7/23 TLB4 4,500,000.00 B STA 40.00 B STA 65.00
+LX210657 PortAventura (International Park) T/L B2 3,000,000.00 B- STA 40.00 B STA 64.00
+LX248178 Ifco Systems 9/24 TL B 1,000,000.00 B+ STA 45.00 B+ STA 53.00
+XS2582796541 FIREBC Float 2/6/28 2,000,000.00 B STA 35.00 B STA 39.00
+XS2756269960 KAPLA HOLDING SAS BND/CORP 1,500,000.00 B+ STA 40.00 B+ STA 60.00
+XS2010034077 KILOTO 3 3/8 12/15/26 C 1,000,000.00 B+ STA 40.00 B+ STA 60.00
+LX256025 Knowlton Development / KDC 12/24 2,000,000.00 B- STA 50.00 B- STA 55.00
+LX192831 LSF10 Edilians T/L B (Imerys Roofing/Edilians) 2,000,000.00 B STA 40.00 B STA 65.00
+(2/
+LX193640 LSF10 Xella XL T/L B4 (3/21) 2,000,000.00 B- STA 30.00 * * *
+LX177087 Lernen TL B1 (Cognita) 3,000,000.00 B- STA 30.00 B STA 38.00
+XS2483511957 Loarre Investments S.a.r.l 928,571.43 B+ STA 41.00 BB- STA 60.00
+--- page 65 ---
+www.usbank.com/clo
+U.S. Bank Global Corporate Trust                                                                                     Rating Detail And Recovery Rates
+Page 65 of 83
+Cairn CLO XVII DAC
+Rating Detail And Recovery Rates
+As of:  08/01/2025
+Next Payment: 21/01/2025
+S&P S&P Fitch Fitch
+Issue/Facility Principal S&P Rating Recovery Fitch Rating Recovery
+Identifier Name Balance Rating Status Rate Rating Status Rate
+LX229603 Masmovil/MasOrange 4/24 (EUR) TL 3,000,000.00 BB STA 50.00 BB STA 80.00
+LX249559 Suse 4/24 (EUR) TLB 1,500,000.00 B+ NEG 45.00 B STA 65.00
+XS1720690889 MATTER 4 11/15/27 Corp 1,000,000.00 BB- STA 35.00 BB- STA 80.00
+LX233937 McAfee TL B3 3,289,244.16 B- STA 45.00 B- STA 75.00
+LX198689 Median Kliniken T/L B-1 (EUR) 1,500,000.00 B- STA 45.00 B- STA 64.00
+LX234327 Mediawan Financing 5/24 Cov-Lite TLB 2,500,000.00 B STA 40.00 B STA 65.00
+LX192775 Mediq T/L B 2,000,000.00 B- STA 30.00 B- STA 65.00
+LX235701 Medline Borrower T/L B (07/24) 2,000,000.00 BB UPG 35.00 BB- STA 95.00
+LX236761 Mehilainen 6/24 Delayed TL Unfunded 131,539.81 B STA 35.00 B STA 43.00
+LX236760 Mehilainen 6/24 TL 1,133,333.33 B STA 35.00 B STA 43.00
+LX237835 Mehilainen 7/24 B5B New Money 735,126.86 B STA 35.00 B STA 43.00
+LX233034 Monbake Grupo Empresarial T/L B (05/24) 1,000,000.00 B STA 35.00 B STA 65.00
+XS2615006983 CABBCO Float 05/01/2028 2,225,000.00 B STA 30.00 B- STA 60.00
+LX213903 Mosel Bidco T/L (Software AG) 2,000,000.00 B STA 45.00 B STA 45.00
+LX213009 Merlin 1/24 TL 2,000,000.00 B- STA 50.00 B- STA 65.00
+LX222394 NEP 12/23 EUR TLB 1,315,999.99 B- STA 50.00 B- STA 71.00
+LX208600 Neptune BidCo US T/L B EUR 1,477,500.00 B- STA 60.00 B+ STA 81.00
+LX236587 Stada/Nidda 7/24 TLB2 4,000,000.00 B STA 35.00 B STA 53.00
+LX236064 NielsenIQ 6/24 (EUR) TL 2,468,812.50 B STA 45.00 B+ STA 73.00
+XS2355515516 PHIDOM 3 1/8 6/15/28 2,000,000.00 B NEG 30.00 B STA 60.00
+LX246433 Nobian 9/24 TLB 2,349,999.98 B STA 40.00 B STA 61.00
+LX234053 Akzo Nobel Specialty Chemicals (Starfruit) 3,250,786.60 B+ STA 45.00 B+ STA 57.00
+5/24 TL
+LX210660 SFR (Numericable/YPSO/Altice) B14 2,520,301.06 CCC- NEG 40.00 CCC STA 65.00
+LX248915 Oat Bidco T/L B (10/24) 1,000,000.00 B STA 35.00 B STA 65.00
+LX200389 Odido Holding B.V. T/L (EUR) 2,000,000.00 B STA 35.00 B STA 65.00
+LX196125 Odyssee Investment Bidco T/L B 4,000,000.00 BB- STA 30.00 B+ STA 51.00
+LX213580 Averys TL B 3,500,000.00 B- STA 35.00 B- STA 65.00
+XS2332250708 ORGNON 2 7/8 4/30/28 2,500,000.00 BB NEG 35.00 * * *
+LX256012 Organon 12/24 EUR 1,706,106.42 BB NEG 35.00 * * *
+LX202499 Pearls (Netherlands) BidCo EUR T/L B (Caldic) 2,274,250.00 B STA 35.00 B STA 65.00
+(01/
+XS2834245297 BITELV FLoat 06/15/31 1,000,000.00 B POS 17.00 B STA 58.00
+LX250485 Parts Holding Europe 10/24 TL B 2,000,000.00 BB- STA 30.00 * * *
+LX228248 PAX Holdco Spain T/L B (Areas Worldwide ) 3,250,000.00 B- POS 40.00 B- STA 65.00
+LX252693 Peer Holding III B.V. (Action) 6/24 3,000,000.00 BB STA 40.00 BB STA 65.00
+LX239315 Refresco/Pegasus 7/24 Cov-Lite TLB 1,000,000.00 B+ STA 40.00 B+ STA 65.00
+LX234519 Pharmanovia 6/24 Cov-Lite TL B 4,500,000.00 B STA 35.00 B+ STA 57.00
+--- page 66 ---
+www.usbank.com/clo
+U.S. Bank Global Corporate Trust                                                                                     Rating Detail And Recovery Rates
+Page 66 of 83
+Cairn CLO XVII DAC
+Rating Detail And Recovery Rates
+As of:  08/01/2025
+Next Payment: 21/01/2025
+S&P S&P Fitch Fitch
+Issue/Facility Principal S&P Rating Recovery Fitch Rating Recovery
+Identifier Name Balance Rating Status Rate Rating Status Rate
+LX230404 Parques Reunidos 4/24 TLB4 1,716,785.00 B- STA 35.00 B- STA 65.00
+LX246013 Valeo Foods/Platform Bidco 9/24 Incremental 1,000,000.00 B- NEG 30.00 B- STA 59.00
+Cov-Li
+LX231093 Precise Bidco BV T/L B5 3,500,000.00 B STA 40.00 B STA 65.00
+LX250873 Quimper (Ahlsell) T/L B (11/24) 3,000,000.00 B+ STA 35.00 B+ STA 55.00
+LX248257 Swissport 10/24 Cov-Lite TLB 1,000,000.00 B+ STA 30.00 BB- STA 80.00
+LX214261 Rain Carbon T/L 2023 Replacement 514,571.29 B+ NEG 70.00 * * *
+LX202335 Rainbow (Wella) T/L B2 EUR 2,000,000.00 B STA 40.00 B STA 65.00
+LX238721 General de Sante 7/24 TLB4 2,000,000.00 BB- STA 40.00 B+ STA 65.00
+LX255951 Renta Group 12/24 TLB 4,000,000.00 B STA 23.50 B+ STA 40.00
+LX194401 Rodenstock EUR T/L B (4/21) (Iris HoldCo) 2,000,000.00 B- STA 23.50 B- STA 65.00
+LX194191 Madrid T/L (AI Plex / Rohm) 2,000,000.00 B- NEG 40.00 B- STA 43.00
+LX228988 Roehm Holding T/L PIK (3/24) 3,303,422.23 B- NEG 40.00 B- STA 43.00
+LX189315 Rovensa 1,000,000.00 B- STA 35.00 B- STA 43.00
+LX225334 Sebia 1/24 (EUR) B6 Cov-Lite TLB 2,000,000.00 B STA 30.00 B STA 65.00
+LX225678 SGG/IQ-EQ 1/24 (EUR) 3,000,000.00 B STA 40.00 B- STA 65.00
+LX237048 Schoen Klinik T/L 6/24 1,000,000.00 B+ STA 45.00 B+ STA 82.00
+LX234261 Sector Alarm 7/24 TLB2 2,076,493.83 B STA 40.00 B STA 65.00
+LX220198 Seine Holdco SAS Term Loan B 2,000,000.00 B+ STA 45.00 B STA 65.00
+LX249935 Safety-Kleen 10/24 2,000,000.00 B STA 50.00 * * *
+LX199218 Sirona/Seqens TLB 2,500,000.00 CCC+ STA 40.00 CCC+ STA 65.00
+LX196483 Sitel Group T/L (08/21) 3,000,000.00 B+ NEG 35.00 B- STA 65.00
+LX202553 Solis T/L B-2 (EUR) (Hunter Douglas) 3,000,000.00 B STA 35.00 * * *
+LX193267 Spa Holdings 3 T/L B (Ahlstrom Munksjo) 2,000,000.00 B STA 28.50 B+ STA 46.00
+LX250399 Stage Entertainment 10/24 1,000,000.00 * * * * * *
+LX248133 Theramex 9/24 TLB 2,000,000.02 B STA 35.00 B STA 65.00
+LX228294 Kantar 2/24 (BNC) T/L EUR 539,170.49 B- STA 40.00 B- STA 65.00
+LX225664 Kantar 2/24 (HNC) TL 2,210,829.51 B- STA 40.00 B- STA 65.00
+LX194166 Sunrise Bidco T/L (EUR) (Ameos) 2,000,000.00 * * * * * *
+LX196017 TK Elevator EUR T/L B1 (ThyssenKrupp 2,000,000.00 B STA 45.00 B STA 54.00
+Elevator) (7/
+LX225279 TMF Group (Sapphire) 1/24 (EUR) TLB1 1,000,000.00 B STA 40.00 * * *
+LX235593 TSG Solutions T/L B (06/24) 1,750,000.00 B STA 35.00 B STA 65.00
+LX232776 ADCO Group/Toi Toi & Dixi T/L B (05/24) 2,931,000.00 B STA 40.00 B STA 54.00
+LX254474 Sante Cie/Elivie 12/24 TLB 2,000,000.00 B STA 30.00 B STA 65.00
+LX195674 Tarkett T/L B 1,896,335.36 B+ STA 40.00 B+ STA 55.00
+LX226834 Techem Verwaltungsgesellschaft T/L B (02/24) 1,000,000.00 B+ NEG 40.00 B STA 54.00
+XS2932084507 Techemv 5.375 2029-07-15 1,000,000.00 B+ NEG 41.00 B STA 60.00
+--- page 67 ---
+www.usbank.com/clo
+U.S. Bank Global Corporate Trust                                                                                     Rating Detail And Recovery Rates
+Page 67 of 83
+Cairn CLO XVII DAC
+Rating Detail And Recovery Rates
+As of:  08/01/2025
+Next Payment: 21/01/2025
+S&P S&P Fitch Fitch
+Issue/Facility Principal S&P Rating Recovery Fitch Rating Recovery
+Identifier Name Balance Rating Status Rate Rating Status Rate
+LX214554 Chemours Co/The T/L B3 (12/24) 3,000,000.00 BB- NEG 70.00 BB- STA 80.00
+LX225307 Thevelia Tricor Group 1/24 2,000,000.00 B+ STA 35.00 B+ STA 55.00
+XS2351344622 TRNSCM Float 12/15/2026 2,000,000.00 B NEG 30.00 CCC+ STA 60.00
+LX194310 UPC Broadband EUR T/L B (4/21) (UPC 858,888.18 BB- STA 45.00 BB- STA 80.00
+Financing/Sunr
+XS2919880679 United Group   Floating   10/31/31 1,000,000.00 B POS 41.00 * * *
+XS2758099779 United Group B.V. REGS 15/02/31 3,000,000.00 B POS 41.00 * * *
+XS2010027881 United Group BV 4.625% 8/2028 1,000,000.00 B POS 41.00 B STA 48.00
+LX198606 Urbaser T/L B 2,000,000.00 BB- STA 45.00 BB STA 80.00
+LX195575 Virgin Media 6/21 (T/L B) 2,000,000.00 B+ STA 35.00 B+ STA 76.00
+XS2231188876 VMDTEF 3 1/4 01/31/31 4,000,000.00 B+ STA 45.00 BB- STA 80.00
+LX236379 Marlink / Venga (6/24) EUR 3,197,000.00 B STA 35.00 B STA 65.00
+LX230934 Verisure Holding T/L B (04/24) 3,410,132.73 B+ STA 45.00 B+ STA 65.00
+LX183233 Virgin Media SFA Finance T/L O 2,000,000.00 B+ STA 45.00 BB- STA 80.00
+LX245523 Univar/Windsor 9/24 (EUR) TLB 3,000,000.00 B+ STA 35.00 B+ STA 52.00
+LX199727 XSYS Global EUR T/L (LSF11 Folio/Lone Star) 2,000,000.00 B- STA 28.50 B- STA 44.00
+LX195828 Prosol 7/21 Cov Lite Term Loan B 2,000,000.00 B STA 35.00 * * *
+LX185594 Zayo Group Holdings T/L (2/20) 992,187.49 B- NEG 28.50 B- STA 75.00
+LX237014 Vodafone Spain 7/24 (EUR) Cov-Lite T/L 2,000,000.00 BB POS 45.00 BB+ STA 80.00
+XS2431015655 VZ Secured Financing BV 4,000,000.00 B+ STA 45.00 B+ STA 89.00
+LX183461 Vodafone Ziggo 1,000,000.00 B+ STA 45.00 B+ STA 89.00
+408,644,549.49
+--- page 68 ---
+www.usbank.com/clo
+U.S. Bank Global Corporate Trust                                                                                                Rating Change Detail
+Page 68 of 83
+Cairn CLO XVII DAC
+Rating Change Detail
+As of:  08/01/2025
+Next Payment: 21/01/2025
+Current Previous S&P Current Previous Fitch
+Issue/Facility Principal S&P S&P Up/ Fitch Fitch Up/
+Identifier Issuer Name Name Balance Rating Rating Down Rating Rating Down
+XS2618840 Cheplapharm Arzneimittel GmbH CHEPDE Float  05/15/2030 2,000,000.00 B B+ Down
+LX202725 Cheplapharm Arzneimittel GmbH Cheplapharm TL B 2,593,899.00 B B+ Down
+LX193257 Clay Holdco B.V CRH Europe Distribution 10/19 1,131,539.34 B- B Down
+LX217177 Fugue Finance BV. Fugue Finance (Nord Anglia/Bach Fin) T/L B 2,000,000.00 * * Up
+(09/23)
+XS2250154 Garfunkelux Holdco 3 SA GFKLDE Float  5/1/2026 1,000,000.00 CC CCC+ Down CC CCC Down
+XS2483511 Loarre Investments S.a r.l. Loarre Investments S.a.r.l 928,571.43 B+ BB- Down
+LX235701 Medline Borrower, LP Medline Borrower T/L B (07/24) 2,000,000.00 BB B+ Up BB- B+ Up
+11,654,009.77
+--- page 69 ---
+www.usbank.com/clo
+U.S. Bank Global Corporate Trust                                                                                           Deal Counterparty Ratings
+Page 69 of 83
+Cairn CLO XVII DAC
+Deal Counterparty Ratings
+As of:  08/01/2025
+Next Payment: 21/01/2025
+Counterparty Counterparty S&P S&P S&P S&P S&P S&P Fitch Fitch Fitch Fitch Fitch Fitch
+Name Role Short-term ST Min ST Result Long-term LT Min LT Result Short-term ST Min ST Result Long-term LT Min LT Result
+Cairn Loan Investments II Investment Manager A-1 A-1 - A A - NR NR N/A NR NR N/A
+LLP
+U.S. Bank Europe DAC Account Bank A-1 A-1 Pass A+ A Pass F1 F1 Pass A+ A Pass
+U.S. Bank Europe DAC Custodian A-1 A-1 Pass A+ A Pass F1 F1 Pass A+ A Pass
+U.S. Bank Europe DAC Paying Agent NR NR N/A NR NR N/A F1 NR N/A A+ NR N/A
+U.S. Bank Europe DAC Registrar NR NR N/A NR NR N/A F1 NR N/A A+ NR N/A
+U.S. Bank Europe DAC Transfer Agent NR NR N/A NR NR N/A F1 NR N/A A+ NR N/A
+U.S. Bank Global Corporate Calculation Agent NR NR N/A NR NR N/A NR NR N/A NR NR N/A
+Trust Limited
+U.S. Bank Global Corporate Collateral Administrator NR NR N/A NR NR N/A NR NR N/A NR NR N/A
+Trust Limited
+U.S. Bank Trustees Limited Trustee NR NR N/A NR NR N/A NR NR N/A NR NR N/A
+--- page 70 ---
+www.usbank.com/clo
+U.S. Bank Global Corporate Trust                                                                                                     Hedge Details I
+Page 70 of 83
+Cairn CLO XVII DAC
+Hedge Details I
+As of:  08/01/2025
+Next Payment: 21/01/2025
+No asset records currently meet the summarization criteria.
+--- page 71 ---
+www.usbank.com/clo
+U.S. Bank Global Corporate Trust                                                                                                    Hedge Details II
+Page 71 of 83
+Cairn CLO XVII DAC
+Hedge Details II
+As of:  08/01/2025
+Next Payment: 21/01/2025
+No asset records currently meet the summarization criteria.
+--- page 72 ---
+www.usbank.com/clo
+U.S. Bank Global Corporate Trust                                                                                       Obligor Concentration (Top 10)
+Page 72 of 83
+Cairn CLO XVII DAC
+Obligor Concentration (Top 10)
+As of:  08/01/2025
+Next Payment: 21/01/2025
+Principal % of Number
+Obligor Name Balance APB of Assets
+Ineos Quattro 7,002,987.07 1.71 3
+VMED O2 UK Limited 6,000,000.00 1.47 2
+Rohm Holding GMBH 5,303,422.23 1.30 2
+Cheplapharm Arzneimittel GmbH 5,093,899.00 1.25 3
+HOMEVI 5,000,000.00 1.22 1
+United Group BV - ADRIAV17 5,000,000.00 1.22 3
+VodafoneZiggo Group BV 5,000,000.00 1.22 2
+ION Trading Finance Limited 4,871,054.63 1.19 1
+Antigua Bidco Limited 4,500,000.00 1.10 1
+Apleona Group GMBH 4,500,000.00 1.10 1
+52,271,362.93 12.79 19
+Aggregate Balance - Denominator 408,644,549.47
+--- page 73 ---
+www.usbank.com/clo
+U.S. Bank Global Corporate Trust                                                                                              Country Concentration
+Page 73 of 83
+Cairn CLO XVII DAC
+Country Concentration
+As of:  08/01/2025
+Next Payment: 21/01/2025
+Principal % of Number
+Country Balance APB of Assets
+France 84,760,792.28 20.74 37
+United Kingdom 78,579,960.76 19.23 32
+Germany 57,317,892.52 14.03 31
+Netherlands 52,794,497.21 12.92 24
+United States 36,529,831.35 8.94 20
+Spain 31,145,356.43 7.62 15
+Sweden 12,910,132.73 3.16 5
+Luxembourg 11,990,000.00 2.93 5
+Italy 8,500,000.00 2.08 5
+Finland 8,000,000.00 1.96 5
+Switzerland 7,658,888.18 1.87 5
+Belgium 7,397,000.00 1.81 3
+Ireland 4,000,000.00 0.98 3
+Norway 2,076,493.83 0.51 1
+Canada 2,000,000.00 0.49 1
+Austria 1,983,704.18 0.49 1
+Lithuania 1,000,000.00 0.24 1
+408,644,549.47 100.00 194
+Aggregate Principal Balance 408,644,549.47
+--- page 74 ---
+www.usbank.com/clo
+U.S. Bank Global Corporate Trust                                                                                          S&P Industry Concentration
+Page 74 of 83
+Cairn CLO XVII DAC
+S&P Industry Concentration
+As of:  08/01/2025
+Next Payment: 21/01/2025
+Issuer
+Industry Principal % of Number
+Classification Balance APB of Assets
+Healthcare Providers & Services 41,000,000.00 10.07 21
+Pharmaceuticals 40,800,005.44 10.02 17
+Chemicals 37,406,445.88 9.19 15
+Software 31,306,824.97 7.69 15
+Diversified Telecommunication Services 28,992,187.49 7.12 13
+Commercial Services & Supplies 27,836,172.41 6.84 13
+Media 27,056,948.15 6.65 16
+Professional Services 21,469,465.64 5.27 9
+Diversified Consumer Services 18,500,000.00 4.54 7
+Hotels, Restaurants & Leisure 12,966,785.00 3.19 6
+Healthcare Equipment & Supplies 12,000,000.00 2.95 7
+Food Products 8,250,000.00 2.03 5
+Building Products 8,000,000.00 1.97 3
+Household Durables 7,486,626.56 1.84 3
+Wireless Telecommunication Services 7,197,000.00 1.77 3
+Oil, Gas & Consumable Fuels 6,500,000.00 1.60 3
+Machinery 6,480,798.95 1.59 3
+Auto Components 5,801,978.38 1.43 3
+Construction Materials 5,131,539.34 1.26 3
+Construction & Engineering 4,896,335.36 1.20 3
+Diversified Financial Services 4,871,054.63 1.20 1
+Automobiles 4,500,000.00 1.11 1
+Industrial Conglomerates 4,500,000.00 1.11 2
+Personal Products 4,000,000.00 0.98 2
+Food & Staples Retailing 3,979,809.98 0.98 2
+Consumer Finance 3,270,000.00 0.80 3
+Containers & Packaging 3,000,000.00 0.74 2
+Paper & Forest Products 3,000,000.00 0.74 2
+Specialty Retail 3,000,000.00 0.74 1
+Marine 2,500,000.00 0.61 1
+Technology Hardware, Storage & Peripherals 2,500,000.00 0.61 1
+Transportation Infrastructure 2,200,000.00 0.54 2
+Household Products 2,000,000.00 0.49 1
+Internet Software and Services 2,000,000.00 0.49 1
+Aerospace & Defense 1,000,000.00 0.25 1
+Beverages 1,000,000.00 0.25 1
+Metals & Mining 514,571.29 0.13 1
+Banks 200,000.00 0.05 1
+407,114,549.47 100.00 194
+--- page 75 ---
+www.usbank.com/clo
+U.S. Bank Global Corporate Trust                                                                                          S&P Industry Concentration
+Page 75 of 83
+Cairn CLO XVII DAC
+S&P Industry Concentration
+As of:  08/01/2025
+Next Payment: 21/01/2025
+Issuer
+Industry Principal % of Number
+Classification Balance APB of Assets
+Aggregate Balance - Denominator 407,114,549.47
+--- page 76 ---
+www.usbank.com/clo
+U.S. Bank Global Corporate Trust                                                                                         Fitch Industry Concentration
+Page 76 of 83
+Cairn CLO XVII DAC
+Fitch Industry Concentration
+As of:  08/01/2025
+Next Payment: 21/01/2025
+Issuer
+Industry Principal % of Number
+Classification Balance APB od Assets
+Pharmaceuticals 40,800,005.44 10.02 17
+Chemicals 40,421,017.17 9.93 17
+Healthcare providers 36,000,000.00 8.84 18
+Telecommunications 34,699,488.55 8.52 16
+Technology software 34,138,301.20 8.39 15
+Consumer products 30,986,626.56 7.61 12
+Business services general 30,466,340.64 7.48 15
+Industrial and manufacturing 24,435,971.36 6.00 12
+Broadcasting and media 19,799,772.09 4.86 12
+Buildings and materials 17,027,874.70 4.18 8
+Healthcare devices 15,000,000.00 3.68 8
+Gaming and leisure and entertainment 13,966,785.00 3.43 7
+Environmental services 11,431,000.00 2.81 6
+Automobiles 10,301,978.38 2.53 4
+Retail food and drug 8,229,809.98 2.02 4
+Transportation and distribution 5,700,000.00 1.40 4
+Cable 5,000,000.00 1.23 2
+Food, beverage and tobacco 5,000,000.00 1.23 4
+Real estate 4,500,000.00 1.11 1
+Retail 4,500,000.00 1.11 1
+Packaging and containers 4,000,000.00 0.98 2
+Business services data and analytics 2,739,578.40 0.67 1
+Technology Hardware 2,500,000.00 0.61 1
+Energy oil and gas 2,000,000.00 0.49 2
+Banking and finance 1,470,000.00 0.36 3
+Aerospace and defence 1,000,000.00 0.25 1
+Building and materials 1,000,000.00 0.25 1
+407,114,549.47 100.00 194
+Aggregate Balance - Denominator 407,114,549.47
+--- page 77 ---
+www.usbank.com/clo
+U.S. Bank Global Corporate Trust                                                                                            S&P Rating Stratification
+Page 77 of 83
+Cairn CLO XVII DAC
+S&P Rating Stratification
+As of:  08/01/2025
+Next Payment: 21/01/2025
+S&P Principal % of Number of
+Rating Balance APB Assets
+AAA 0.00 0.00 0
+AA+ 0.00 0.00 0
+AA 0.00 0.00 0
+AA- 0.00 0.00 0
+A+ 0.00 0.00 0
+A 0.00 0.00 0
+A- 0.00 0.00 0
+BBB+ 0.00 0.00 0
+BBB 0.00 0.00 0
+BBB- 0.00 0.00 0
+BB+ 1,000,000.00 0.25 1
+BB 33,611,140.90 8.26 15
+BB- 29,375,866.56 7.22 13
+B+ 65,313,257.45 16.04 34
+B 166,583,311.76 40.92 77
+B- 100,740,671.74 24.75 47
+CCC+ 5,500,000.00 1.35 3
+CCC 2,000,000.00 0.49 1
+CCC- 2,520,301.06 0.62 1
+CC 270,000.00 0.07 1
+C 0.00 0.00 0
+SD 200,000.00 0.05 1
+D 0.00 0.00 0
+NR 0.00 0.00 0
+SUSP 0.00 0.00 0
+WR 0.00 0.00 0
+407,114,549.47 100.00 194
+Aggregate Balance - Denominator 407,114,549.47
+--- page 78 ---
+www.usbank.com/clo
+U.S. Bank Global Corporate Trust                                                                                            Fitch Rating Stratification
+Page 78 of 83
+Cairn CLO XVII DAC
+Fitch Rating Stratification
+As of:  08/01/2025
+Next Payment: 21/01/2025
+Fitch Principal % of Number
+Rating Balance APB of Assets
+AAA 0.00 0.00 0
+AA+ 0.00 0.00 0
+AA 0.00 0.00 0
+AA- 0.00 0.00 0
+A+ 0.00 0.00 0
+A 0.00 0.00 0
+A- 0.00 0.00 0
+BBB+ 0.00 0.00 0
+BBB 0.00 0.00 0
+BBB- 0.00 0.00 0
+BB+ 4,000,000.00 0.98 3
+BB 26,452,981.42 6.50 10
+BB- 26,145,619.09 6.42 14
+B+ 72,816,427.23 17.89 32
+B 161,773,580.88 39.74 78
+B- 97,945,639.79 24.06 46
+CCC+ 12,990,000.00 3.19 7
+CCC 4,520,301.06 1.11 2
+CCC- 0.00 0.00 0
+CC 270,000.00 0.07 1
+C 0.00 0.00 0
+DDD 200,000.00 0.05 1
+DD 0.00 0.00 0
+D 0.00 0.00 0
+NR 0.00 0.00 0
+SUSP 0.00 0.00 0
+WR 0.00 0.00 0
+407,114,549.47 100.00 194
+Aggregate Balance - Denominator 407,114,549.47
+--- page 79 ---
+www.usbank.com/clo
+U.S. Bank Global Corporate Trust                                                                                        Deal Counterparty Information
+Page 79 of 83
+Cairn CLO XVII DAC
+Deal Counterparty Information
+As of:  08/01/2025
+Next Payment: 21/01/2025
+Role Entity Address LEI Number
+Account Bank U.S. Bank Europe DAC Block F1, Cherrywood Business Park,
+Cherrywood, Dublin 18, D18 W2X1, Ireland
+Calculation Agent U.S. Bank Global Corporate Trust Limited 5th Floor, 125 Old Broad Street, London
+EC2N 1AR, United Kingdom
+Collateral Administrator U.S. Bank Global Corporate Trust Limited 5th Floor, 125 Old Broad Street, London
+EC2N 1AR, United Kingdom
+Custodian U.S. Bank Europe DAC Block F1, Cherrywood Business Park,
+Cherrywood, Dublin 18, D18 W2X1, Ireland
+Information Agent U.S. Bank Global Corporate Trust Limited 5th Floor, 125 Old Broad Street, London
+EC2N 1AR, United Kingdom
+Investment Manager Cairn Loan Investments II LLP 62 Buckingham Gate, London SW1E 6AJ
+Investment Manager LEI Number 213800Z5LYZS7XOKPH76
+Issuer Cairn CLO XVII DAC 5th Floor, The Exchange, George?s Dock,
+IFSC, Dublin 1, D01 W3P9, Ireland
+Issuer LEI Number 635400WFBG4QJAOM2S84
+Principal Paying Agent U.S. Bank Europe DAC Block F1, Cherrywood Business Park,
+Cherrywood, Dublin 18, D18 W2X1, Ireland
+Registrar U.S. Bank Europe DAC Block F1, Cherrywood Business Park,
+Cherrywood, Dublin 18, D18 W2X1, Ireland
+Transfer Agent U.S. Bank Europe DAC Block F1, Cherrywood Business Park,
+Cherrywood, Dublin 18, D18 W2X1, Ireland
+Trustee U.S. Bank Trustees Limited 5th Floor, 125 Old Broad Street, London
+EC2N 1AR, United Kingdom
+--- page 80 ---
+www.usbank.com/clo
+U.S. Bank Global Corporate Trust                                                                                     ISIN and Common Code for Notes
+Page 80 of 83
+Cairn CLO XVII DAC
+ISIN and Common Code for Notes
+As of:  08/01/2025
+Next Payment: 21/01/2025
+Regulation S Rule 144A
+Issuer Name Notes Notes
+Class A Notes XS2440776842 / 244077684 XS2440776925 / 244077692
+Class B-1 Notes XS2440777063 / 244077706 XS2440777147 / 244077714
+Class B-2 Notes XS2440777493 / 244077749 XS2440777220 / 244077722
+Class C Notes XS2440777576 / 244077757 XS2440777733 / 244077773
+Class D Notes XS2440777659 / 244077765 XS2440777816 / 244077781
+Class E Notes XS2440778038 / 244077803 XS2440777907 / 244077790
+Class F Notes XS2440778111 / 244077811 XS2440778384 / 244077838
+Class Subordinated Notes XS2440778202 / 244077820 XS2440778467 / 244077846
+--- page 81 ---
+Cairn CLO XVII DAC
+Risk Retention
+As of:  08/01/2025
+Next Payment: 21/01/2025
+(a)
+confirmation that the Collateral Administrator has received written confirmation from the Retention
+Holder that: (i) it continues to hold the Retention Notes (the "Retention"); (ii) it has not sold, hedged
+or otherwise mitigated its credit risk under or associated with the Retention or the underlying portfolio of
+Collateral Debt Obligations, except to the extent permitted in accordance with the Retention Requirements;
+(b)
+the calculation of five per cent. of the Aggregate Collateral Balance and for the purposes of
+determining
+the Retention and whether a Retention Deficiency has occurred and is continuing; and
+(c)
+the amount of any Investment Gains and the amount of any Excess Exchanged Security Sale
+Proceeds paid into the Interest Account since the previous Payment Date.
+Retention Detail
+23,00
+0
+,000.00
+(I) Principal Amount Outstanding as of the Issue Date of the Subordinated Notes held by the Retention Holder
+0.00
+(II) Principal Amount Outstanding of any additional Subordinated Notes held by the Retention Holder
+23,00
+0
+,000.00
+Aggregate principal amount held by the Retention Holder:
+Retention Requirement
+401,514,890.74
+Aggregate Collateral Balance for the purposes of the compliance by the Retention Holder with the Retention Requirements
+5
+.
+7
+3%
+Aggregate principal amount held by the Retention Holder (expressed as a percentage of the Aggregate Collateral Balance)
+5.00%
+Minimum Requirement
+Retention Deficiency:
+0.00%
+Investment Gains
+Investment Gains and the amount of any Excess Exchanged Security Sale Proceeds paid into the Interest Account since the previous Payment Date
+0.00
+U.S. Bank Global Corporate Trust Risk Retention Page 81 of 83
+www.usbank.com/clo
+--- page 82 ---
+www.usbank.com/clo
+U.S. Bank Global Corporate Trust                                                                                                         Disclaimer
+Page 82 of 83
+Cairn CLO XVII DAC
+Disclaimer
+As of:  08/01/2025
+Next Payment: 21/01/2025
+This report is for the purposes of information only. Certain information included in this report is estimated,
+approximated or projected and it is provided without any representations or warranties as to its accuracy
+or completeness and none of the Collateral Administrator, the Trustee, the Issuer or the Collateral
+Manager will have any liability for estimates, approximations or projections contained herein.
+U.S. Bank Global Corporate Trust is a trading name of U.S. Bank Global Corporate Trust Limited, U.S.
+Bank Trustees Limited and U.S. Bank Europe DAC (each a U.S. Bancorp group company). U.S. Bank
+Global Corporate Trust Limited is a limited company registered in England and Wales having the
+registration number 05521133 and a registered address of 125 Old Broad Street, Fifth Floor, London,
+EC2N 1AR. U.S. Bank Global Corporate Trust Limited, Dublin Branch is registered in Ireland with the
+Companies Registration Office under Reg. No. 909340 with its registered office at Block F1, Cherrywood
+Business Park, Cherrywood, Dublin 18, Ireland D18 W2X7. U.S. Bank Trustees Limited is a limited
+company registered in England and Wales having the registration number 02379632 and a registered
+address of 125 Old Broad Street, Fifth Floor, London, EC2N 1AR. U.S. Bank Europe DAC, trading as U.S.
+Bank Global Corporate Trust, is regulated by the Central Bank of Ireland. Registered in Ireland with the
+Companies Registration Office, Reg. No. 418442. The liability of the member is limited. Registered Office:
+Block F1, Cherrywood Business Park, Cherrywood, Dublin 18, Ireland D18 W2X7. Directors: A list of
+names and personal details of every director of the company is available for inspection to the public at the
+company's registered office for a nominal fee.
+In the UK, U.S. Bank Europe DAC trades as U.S. Bank Global Corporate Trust through its UK Branch
+from its establishment at 125 Old Broad Street, Fifth Floor, London, EC2N 1AR (registered with the
+Registrar of Companies for England and Wales under Registration No. BR020005). Authorised and
+regulated by the Central Bank of Ireland. Authorised by the Prudential Regulation Authority. Subject to
+regulation by the Financial Conduct Authority and limited regulation by the Prudential Regulation Authority.
+Details about the extent of our regulation by the Prudential Regulation Authority are available from us on
+request. In Luxembourg, U.S. Bank Europe DAC trades as U.S. Bank Global Corporate Trust through its
+Luxembourg Branch under RCS number B244276 with its registered office at 4, rue Albert Borschette,
+L-1246 Luxembourg, and is regulated and authorised by the Central Bank of Ireland (CBI) as well as by
+the Commission de Surveillance du Secteur Financier (CSSF). Details about the extent of our
+authorisation and regulation by the CBI and the CSSF are available from us on request. All banking
+services are provided through U.S. Bank Europe DAC. U.S. Bank Global Corporate Trust Limited and U.S.
+Bank Trustees Limited are Trust Corporations and not banking institutions and are not authorised to carry
+on banking business in the United Kingdom, Ireland or any other jurisdiction.
+--- page 83 ---
+www.usbank.com/clo
+U.S. Bank Global Corporate Trust                                                                                                         Disclaimer
+Page 83 of 83
+Cairn CLO XVII DAC
+As of : 08/01/2025
+Next Payment: 21/01/2025
+DISCLAIMER
+The information contained in this report is for general information only and has been obtained primarily from third party providers. The information is believed to be reliable, but is not
+guaranteed as to accuracy or completeness. U.S. Bank is not responsible for and does not guarantee the products, services or performance of its affiliates or third party providers. This
+information is not intended to serve as a recommendation or solicitation for the purchase or sale of any particular product or service. It is not intended to be a forecast of future events or
+guarantee of future results and should not be used as a primary basis of investment decisions.
