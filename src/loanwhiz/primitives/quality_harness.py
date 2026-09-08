@@ -455,6 +455,7 @@ def _grade_covenants(
     not-evaluable published covenants are surfaced honestly, never faked.
     """
     from loanwhiz.primitives.covenant_monitor import CovenantInput, CovenantMonitor
+    from loanwhiz.primitives.reconciliation_answer_key import quantify_triggers
 
     deal_id = ctx.deal_id
     key = ctx.answer_key
@@ -463,13 +464,34 @@ def _grade_covenants(
     if not any(p.covenants for p in key.periods):
         return _na(check_key, deal_id, "Answer key carries no published covenant results.")
 
-    triggers = list(triggers_loader(ctx.deal_ctx)) or list(CovenantMonitor.DEFAULT_TRIGGERS)
+    triggers = quantify_triggers(
+        list(triggers_loader(ctx.deal_ctx)) or list(CovenantMonitor.DEFAULT_TRIGGERS), key
+    )
+    metric_by_name = {t.name: t.metric for t in triggers}
     # Per-period inputs: the metric resolver reads the period dict directly and
     # nested under ``pool_stats`` / ``arrears_breakdown``, so surface both.
-    periods = [
-        {"reporting_date": p.reporting_date, "pool_stats": dict(p.pool_stats), **p.pool_stats}
-        for p in key.periods
-    ]
+    #
+    # A published ``CovenantResult.actual`` is offered under its trigger's own
+    # metric name, so a report that states the computed ratio beside the result
+    # — a CLO's coverage tests do — resolves without a pool statistic standing
+    # in for a liability-side figure. ``pool_stats`` is spread LAST and wins:
+    # this only ever supplies a value nothing else carries, the same
+    # fill-an-absence direction :func:`quantify_triggers` takes for thresholds.
+    periods = []
+    for p in key.periods:
+        published = {
+            metric_by_name[c.name]: c.actual
+            for c in p.covenants
+            if c.actual is not None and c.name in metric_by_name
+        }
+        periods.append(
+            {
+                "reporting_date": p.reporting_date,
+                "pool_stats": dict(p.pool_stats),
+                **published,
+                **p.pool_stats,
+            }
+        )
     result = CovenantMonitor().execute(CovenantInput(periods=periods, triggers=triggers))
     status_by = {(s.trigger_name, s.period): s for s in result.output.trigger_statuses}
 

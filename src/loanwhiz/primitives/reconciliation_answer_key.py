@@ -38,13 +38,19 @@ Pure & offline: model definitions + JSON I/O only. No network, no LLM.
 from __future__ import annotations
 
 import json
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping, Sequence
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
 from pydantic import BaseModel, Field
 
 from loanwhiz.config import ANSWER_KEY_DATA_DIR
+from loanwhiz.primitives.collateral_schedule_parser import (
+    CoverageTestOutcome,
+    ReportLiabilitySummary,
+)
+from loanwhiz.primitives.covenant_monitor import TriggerDefinition
 from loanwhiz.primitives.notes_cash_parser import (
     NotesCashPeriod,
     NotesCashReport,
@@ -61,6 +67,30 @@ from loanwhiz.primitives.reconciler import (
 #: The current answer-key schema version. Bump on a breaking shape change so a
 #: stale committed key fails loudly at load rather than mis-grading silently.
 ANSWER_KEY_FORMAT_VERSION = 1
+
+
+#: The date format a U.S. Bank trustee report prints in its section headers.
+#: Answer-key periods are keyed by ISO date (:attr:`AnswerKeyPeriod.reporting_date`),
+#: so the one conversion happens here rather than at each call site.
+_REPORT_DATE_FORMAT = "%d/%m/%Y"
+
+
+def _iso_reporting_date(stated: str) -> str:
+    """The ISO form of a report-stated reporting date.
+
+    Refuses an unrecognised format rather than passing the raw string through:
+    the reporting date is the key the grader name-matches published covenants
+    on, so a period keyed in the wrong format matches nothing and would surface
+    as "no published covenant matched" — a grading verdict, indistinguishable
+    from a real one, produced by a date-parsing bug.
+    """
+    try:
+        return datetime.strptime(stated.strip(), _REPORT_DATE_FORMAT).date().isoformat()
+    except ValueError as exc:
+        raise ValueError(
+            f"unrecognised reporting date {stated!r} — expected "
+            f"{_REPORT_DATE_FORMAT!r} as trustee reports state it"
+        ) from exc
 
 
 # ===========================================================================
@@ -230,6 +260,92 @@ class DealAnswerKey(BaseModel):
             periods=periods,
         )
 
+    @classmethod
+    def from_trustee_liability_summaries(
+        cls,
+        summaries: Sequence[ReportLiabilitySummary],
+        *,
+        deal_id: str,
+        deal_name: str,
+        tolerance_eur: float = DEFAULT_TOLERANCE_EUR,
+    ) -> DealAnswerKey:
+        """Author a :class:`DealAnswerKey` from parsed trustee-report summaries.
+
+        The **sibling** of :meth:`from_notes_cash_report`, not a new format: a
+        deal whose investor reporting is a monthly trustee report publishes no
+        Priority of Payments, but it does state each coverage test's computed
+        ratio, its required level and its outcome. Those are exactly the
+        ``covenants`` section this schema already carries, so a CLO earns a key
+        through this constructor rather than through a second shape.
+
+        Every figure comes from :mod:`loanwhiz.primitives.collateral_schedule_parser`
+        reading the report's own text (#480). **No engine module is on this
+        path** — an answer key inferred from the engine's own output would grade
+        the engine against itself and make every graded cell vacuously green.
+        That is the one property this constructor exists to guarantee, and the
+        regeneration regression in ``tests/test_quality_harness.py`` is what
+        pins it: the committed key must reproduce byte-for-byte from the
+        committed report fixtures.
+
+        Three refusals, none of them recoverable by guessing:
+
+        - a summary that was not parsed strictly (``reconciled`` is ``False``)
+          never reached the parser's own acceptance oracle, so its figures are
+          unverified against the document's stated totals;
+        - a summary whose ``deal_name`` names a different deal — the guard that
+          stops one deal's reports being authored under another's slug;
+        - a summary with no reporting date, which leaves the period unkeyable.
+
+        A test the report states as ``N/A`` is **excluded, not coerced**.
+        :attr:`CovenantResult.passed` is a ``bool`` and cannot express "this
+        test did not apply this period"; writing ``True`` there would publish a
+        pass the trustee never stated. The exclusion is deliberate and is
+        recorded in ``data/deals/answer_keys/README.md``.
+        """
+        periods: list[AnswerKeyPeriod] = []
+        for summary in summaries:
+            if not summary.reconciled:
+                raise ValueError(
+                    f"trustee-report summary for {summary.period_label!r} was not "
+                    "reconciled against the report's own stated totals; parse it "
+                    "with strict=True before authoring an answer key from it"
+                )
+            if summary.deal_name is not None and summary.deal_name != deal_name:
+                raise ValueError(
+                    f"summary for {summary.period_label!r} states deal "
+                    f"{summary.deal_name!r}, not {deal_name!r} — refusing to author "
+                    "one deal's answer key from another deal's report"
+                )
+            if summary.reporting_date is None:
+                raise ValueError(
+                    f"summary for {summary.period_label!r} states no reporting date, "
+                    "so its period cannot be keyed"
+                )
+            covenants = [
+                CovenantResult(
+                    name=test.trigger_key,
+                    threshold=float(test.required_pct),
+                    actual=float(test.current_pct),
+                    passed=test.result is CoverageTestOutcome.PASSED,
+                    note=f"{test.name}; stated in {test.stated_in}",
+                )
+                for test in summary.coverage_tests
+                if test.result is not CoverageTestOutcome.NOT_APPLICABLE
+            ]
+            periods.append(
+                AnswerKeyPeriod(
+                    reporting_date=_iso_reporting_date(summary.reporting_date),
+                    period_label=summary.period_label,
+                    covenants=covenants,
+                )
+            )
+        return cls(
+            deal_id=deal_id,
+            deal_name=deal_name,
+            tolerance_eur=tolerance_eur,
+            periods=periods,
+        )
+
 
 # ===========================================================================
 # Loader — resolve a deal's committed answer key from the data dir
@@ -287,6 +403,70 @@ def write_answer_key(
         encoding="utf-8",
     )
     return path
+
+
+# ===========================================================================
+# Published thresholds — quantifying a trigger the prospectus left open
+# ===========================================================================
+
+
+def published_thresholds(key: DealAnswerKey) -> dict[str, float]:
+    """Covenant name → the threshold this key publishes for it, where unambiguous.
+
+    A name whose periods publish **different** thresholds, or none at all, is
+    absent from the result. Silence is the honest answer: the caller leaves such
+    a trigger unquantified, and the monitor reports it *not evaluable* with a
+    reason, which is what a reader needs to see. Picking one of two disagreeing
+    published levels would grade every period against a threshold that was not
+    in force for some of them.
+    """
+    seen: dict[str, set[float]] = {}
+    for period in key.periods:
+        for covenant in period.covenants:
+            if covenant.threshold is not None:
+                seen.setdefault(covenant.name, set()).add(covenant.threshold)
+    return {name: next(iter(values)) for name, values in seen.items() if len(values) == 1}
+
+
+def quantify_triggers(
+    triggers: Iterable[TriggerDefinition],
+    key: DealAnswerKey,
+) -> list[TriggerDefinition]:
+    """Fill each trigger's *absent* threshold from the answer key's published one.
+
+    A prospectus extraction states which coverage tests exist and what they
+    consequence, but a CLO's *required levels* live in its periodic reporting,
+    not its offering document — so an extracted coverage trigger arrives with
+    ``threshold=None`` and the monitor, correctly, refuses to evaluate it (a
+    ratio has nothing to be tested against). The deal's own trustee report
+    states the level beside the result. This is the one seam that hands it over.
+
+    **The direction of travel is the whole contract.** A *published* figure may
+    quantify an engine trigger; an engine figure must never reach an answer
+    key. So this function only ever *fills an absence*:
+
+    - a trigger that already carries a threshold is returned **unchanged**,
+      whatever the key publishes — an extracted or configured level outranks a
+      reported one, and letting a key override it would let ground truth
+      silently redefine the test it is grading;
+    - a name the key does not publish unambiguously (see
+      :func:`published_thresholds`) is likewise returned unchanged, so it stays
+      honestly *not evaluable* rather than being quantified by a guess.
+
+    Order and identity are preserved: the result is one entry per input, in
+    input order, each either the original object or a copy differing only in
+    ``threshold``.
+    """
+    available = published_thresholds(key)
+    quantified: list[TriggerDefinition] = []
+    for trigger in triggers:
+        # Fill-only-absences. This condition IS the contract above; a test in
+        # tests/test_quality_harness.py reds if it is ever relaxed to override.
+        if trigger.threshold is None and trigger.name in available:
+            quantified.append(trigger.model_copy(update={"threshold": available[trigger.name]}))
+        else:
+            quantified.append(trigger)
+    return quantified
 
 
 # ===========================================================================

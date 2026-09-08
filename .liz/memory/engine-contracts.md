@@ -52,3 +52,16 @@ health. Give the shape a type and one builder, and put the "every input row
 survived" check in the builder: a type is satisfied by a shorter list.
 
 Refs: #478
+
+## 2026-09-08 · pitfall · #481
+
+A guard keyed on a **classification table** protects only the vocabulary that
+table recognises — enumerate what falls outside it before trusting the guard.
+`covenant_monitor` refuses a coverage test carrying no quantified threshold, but
+only for names `taxonomy.coverage_metric_for` resolves.
+`reinvestment_overcollateralisation_ratio` resolves to none, so it skips that
+refusal and lands on `_is_triggered`'s `threshold is None` convention — "any
+positive value fires" — reporting a healthy 108.68% ratio as breached. Feed the
+guard every name the deal model carries and watch which miss.
+
+Refs: #481

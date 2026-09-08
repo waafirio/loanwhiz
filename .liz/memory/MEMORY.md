@@ -8,6 +8,7 @@ triage by opening the entry, not by reading the line.
   - [2026-09-05 · pitfall · #457](#2026-09-05--pitfall--457) — keywords: not-applicable reason, reason string, tape_urls, registry fact, answer key, retracted wording, capability_matrix
   - [2026-09-06 · pitfall · #471](#2026-09-06--pitfall--471) — keywords: positive branch, overclaim, precondition, ran cell, structural config, missing input, capability cell
   - [2026-09-06 · gotcha · #471](#2026-09-06--gotcha--471) — keywords: grep-for-absence, banned substring, retracted wording, prose assertion, denial, false positive
+  - [2026-09-08 · pitfall · #481](#2026-09-08--pitfall--481) — keywords: all-pass ground truth, never-fires mutant, graded cell bound, covenants_graded, published outcomes vary, answer key
 - [Extraction guards & false-positive filters](extraction-guards.md)
   - [2026-09-02 · pitfall · #439](#2026-09-02--pitfall--439) — keywords: _CLASS_LETTERS, tranche, note class, Class J, Class O, false positive, guard, proxy range
   - [2026-09-05 · pitfall · #456](#2026-09-05--pitfall--456) — keywords: widening a guard, newly visible input, N/A cell, scavenged rating, Subordinated Notes, untested downstream
@@ -31,6 +32,7 @@ triage by opening the entry, not by reading the line.
   - [2026-09-05 · pitfall · #453](#2026-09-05--pitfall--453) — keywords: LLM classifier options, deny list, enum growth, near-miss, incentive fee, use_llm=False, unmapped escape
   - [2026-09-06 · pitfall · #471](#2026-09-06--pitfall--471) — keywords: absent column, all-False mask, arrears breakdown, silent clean pool, degrade, no key not zero
   - [2026-09-08 · pitfall · #478](#2026-09-08--pitfall--478) — keywords: untyped dict shape, divergent mappers, capital_structure, hand-copy drift, total-preservation guard, one builder
+  - [2026-09-08 · pitfall · #481](#2026-09-08--pitfall--481) — keywords: classification table, coverage_metric_for, _COVERAGE_METRIC_RE, reinvestment_overcollateralisation, guard escapee, threshold None convention
 - [Extracting tables from PDFs](pdf-table-extraction.md)
   - [2026-09-06 · pitfall · #469](#2026-09-06--pitfall--469) — keywords: visitor_text, text matrix, tm[4], rotated table, extraction_mode layout, row boundary, continuation line, column order, pypdf
   - [2026-09-08 · pitfall · #480](#2026-09-08--pitfall--480) — keywords: column header, required level, guessed order, like-typed columns, stated twice, cross-check, coverage test, refuse unrecognised header

@@ -18,6 +18,8 @@ import pytest
 from pydantic import ValidationError
 
 from loanwhiz.config import DEAL_REGISTRY
+from loanwhiz.primitives.base import Citation
+from loanwhiz.primitives.covenant_monitor import TriggerDefinition
 from loanwhiz.primitives.reconciler import (
     fold_green_lion_2024_1,
     load_green_lion_2024_1_report,
@@ -31,6 +33,8 @@ from loanwhiz.primitives.reconciliation_answer_key import (
     DealAnswerKey,
     answer_key_path,
     load_answer_key,
+    published_thresholds,
+    quantify_triggers,
     reconcile_against_answer_key,
     write_answer_key,
 )
@@ -212,3 +216,184 @@ def test_reconcile_against_answer_key_honors_tolerance_override(tmp_path) -> Non
     # override is threaded through to reconcile_series, not ignored.
     got = reconcile_against_answer_key(series, key, tolerance=-1.0)
     assert got.passed is False
+
+
+# ---------------------------------------------------------------------------
+# The trustee-report constructor and the published-threshold seam (#481)
+# ---------------------------------------------------------------------------
+#
+# The sibling constructor a deal earns a key through when its investor reporting
+# is a monthly trustee report rather than a Notes & Cash report: it publishes no
+# Priority of Payments, but it does state each coverage test's ratio, required
+# level and outcome. These pin the constructor's refusals and the one direction
+# a published figure is allowed to travel — into the engine, never out of it.
+
+
+def _clo_source():
+    """The committed CLO key's authoring path (see ``tests/clo_answer_key_source.py``)."""
+    from clo_answer_key_source import (  # noqa: PLC0415
+        CLO_DEAL_ID,
+        CLO_DEAL_NAME,
+        clo_key_from_reports,
+        clo_report_summaries,
+    )
+
+    return CLO_DEAL_ID, CLO_DEAL_NAME, clo_key_from_reports, clo_report_summaries
+
+
+def _trigger(name: str, *, threshold: float | None) -> TriggerDefinition:
+    return TriggerDefinition(
+        name=name,
+        description=name,
+        metric=f"{name}_metric",
+        threshold=threshold,
+        direction="below",
+        consequence="n/a",
+        citation=Citation(document="test", locator="n/a", excerpt="n/a"),
+    )
+
+
+def test_trustee_constructor_reads_only_the_report() -> None:
+    """Every figure in the key traces to a stated figure in the report."""
+    _, _, key_from_reports, summaries_of = _clo_source()
+    key, summaries = key_from_reports(), summaries_of()
+    assert len(key.periods) == len(summaries)
+    for period, summary in zip(key.periods, summaries, strict=True):
+        assert period.period_label == summary.period_label
+        stated = {t.trigger_key: t for t in summary.coverage_tests}
+        for covenant in period.covenants:
+            source = stated[covenant.name]
+            assert covenant.threshold == pytest.approx(float(source.required_pct))
+            assert covenant.actual == pytest.approx(float(source.current_pct))
+            assert covenant.passed is (source.result.value == "Passed")
+            assert source.stated_in in (covenant.note or "")
+
+
+def test_trustee_constructor_excludes_a_published_not_applicable_result() -> None:
+    """``N/A`` is dropped, never coerced — ``passed: bool`` cannot express it.
+
+    Both directions, because the one-way version passes by finding nothing: the
+    report really does state a ``N/A`` test (Class F, every period), and it
+    really is absent from the key while its pass/fail siblings are present.
+    """
+    _, _, key_from_reports, summaries_of = _clo_source()
+    key, summaries = key_from_reports(), summaries_of()
+    for period, summary in zip(key.periods, summaries, strict=True):
+        not_applicable = {
+            t.trigger_key for t in summary.coverage_tests if t.result.value == "N/A"
+        }
+        decided = {t.trigger_key for t in summary.coverage_tests if t.result.value != "N/A"}
+        assert not_applicable, "fixture no longer states an N/A test — this guard is vacuous"
+        names = {c.name for c in period.covenants}
+        assert names == decided
+        assert not names & not_applicable
+
+
+def test_trustee_constructor_publishes_no_pop_or_pool_stats() -> None:
+    """A trustee report states no Priority of Payments, so the key claims none."""
+    _, _, key_from_reports, _ = _clo_source()
+    for period in key_from_reports().periods:
+        assert period.revenue_pop == []
+        assert period.redemption_pop == []
+        assert period.pool_stats == {}
+        assert period.available_revenue_funds is None
+        assert period.available_principal_funds is None
+
+
+def test_trustee_constructor_refuses_an_unreconciled_summary() -> None:
+    """A summary that never met the parser's acceptance oracle is not ground truth."""
+    _, deal_name, _, summaries_of = _clo_source()
+    summaries = summaries_of()
+    summaries[0] = summaries[0].model_copy(update={"reconciled": False})
+    with pytest.raises(ValueError, match="not reconciled"):
+        DealAnswerKey.from_trustee_liability_summaries(
+            summaries, deal_id="cairn-clo-xvii", deal_name=deal_name
+        )
+
+
+def test_trustee_constructor_refuses_another_deals_report() -> None:
+    """The guard against authoring one deal's key from another deal's document."""
+    _, deal_name, _, summaries_of = _clo_source()
+    summaries = summaries_of()
+    with pytest.raises(ValueError, match="refusing to author"):
+        DealAnswerKey.from_trustee_liability_summaries(
+            summaries, deal_id="green-lion-2024-1", deal_name="Green Lion 2024-1 B.V."
+        )
+    assert summaries[0].deal_name == deal_name  # the fixture really does name the CLO
+
+
+def test_trustee_constructor_refuses_an_undated_or_unparseable_period() -> None:
+    """A period key in the wrong shape matches nothing and reads as a grading verdict."""
+    _, deal_name, _, summaries_of = _clo_source()
+    for bad in (None, "2025-03-18"):
+        summaries = summaries_of()
+        summaries[0] = summaries[0].model_copy(update={"reporting_date": bad})
+        with pytest.raises(ValueError):
+            DealAnswerKey.from_trustee_liability_summaries(
+                summaries, deal_id="cairn-clo-xvii", deal_name=deal_name
+            )
+
+
+def test_published_thresholds_stays_silent_when_periods_disagree() -> None:
+    """Two published levels for one test is not a level — say nothing, grade nothing."""
+    key = DealAnswerKey(
+        deal_id="d",
+        deal_name="D",
+        periods=[
+            AnswerKeyPeriod(
+                reporting_date="2025-01-31",
+                period_label="January 2025",
+                covenants=[CovenantResult(name="steady", threshold=100.0, passed=True),
+                           CovenantResult(name="moved", threshold=100.0, passed=True)],
+            ),
+            AnswerKeyPeriod(
+                reporting_date="2025-02-28",
+                period_label="February 2025",
+                covenants=[CovenantResult(name="steady", threshold=100.0, passed=True),
+                           CovenantResult(name="moved", threshold=105.0, passed=True)],
+            ),
+        ],
+    )
+    assert published_thresholds(key) == {"steady": 100.0}
+
+
+def test_quantify_triggers_fills_an_absent_threshold_but_never_overrides_one() -> None:
+    """The whole contract, both halves, in one place.
+
+    A published level may quantify a trigger the prospectus left open; it must
+    never redefine a level the deal already declares, because ground truth that
+    can rewrite the test it grades is not grading anything.
+    """
+    key = DealAnswerKey(
+        deal_id="d",
+        deal_name="D",
+        periods=[
+            AnswerKeyPeriod(
+                reporting_date="2025-01-31",
+                period_label="January 2025",
+                covenants=[
+                    CovenantResult(name="open", threshold=130.08, passed=True),
+                    CovenantResult(name="declared", threshold=999.0, passed=True),
+                    CovenantResult(name="unpublished", passed=True),
+                ],
+            )
+        ],
+    )
+    triggers = [
+        _trigger("open", threshold=None),
+        _trigger("declared", threshold=1.5),
+        _trigger("unpublished", threshold=None),
+        _trigger("absent_from_key", threshold=None),
+    ]
+    got = quantify_triggers(triggers, key)
+    assert [t.name for t in got] == [t.name for t in triggers]
+    by_name = {t.name: t for t in got}
+    assert by_name["open"].threshold == pytest.approx(130.08)
+    assert by_name["declared"].threshold == pytest.approx(1.5)
+    assert by_name["unpublished"].threshold is None
+    assert by_name["absent_from_key"].threshold is None
+    # Nothing but the threshold moves, and the untouched entries are the very
+    # objects passed in — so no field can be quietly rewritten alongside.
+    assert by_name["declared"] is triggers[1]
+    assert by_name["open"].metric == triggers[0].metric
+    assert by_name["open"].direction == triggers[0].direction
