@@ -464,13 +464,29 @@ def test_clo_has_no_validation_builder() -> None:
     ``_VALIDATION_BUILDERS``; the map survives only for
     ``GET /deal/{id}/validation``. Both must refuse the CLO, and asserting only
     the retired one would pass while the live surface silently admitted it.
+
+    The CLO *does* carry a committed key (#481, authored from its trustee
+    reports' published coverage-test outcomes), so the live surface refuses it
+    for the reason that is actually true: the key carries **no
+    Priority-of-Payments section**. Asserting ``load_answer_key(...) is None``
+    here — as this test did before epic #477 was promoted and merged in — is a
+    premise the sibling test above (``key is not None``) already contradicts,
+    and it would go green again the moment #495 authors a PoP section, which is
+    exactly when this refusal is supposed to stop holding.
     """
     from loanwhiz.api.main import _VALIDATION_BUILDERS
 
+    from loanwhiz.primitives.capability_matrix import _has_pop_section
     from loanwhiz.primitives.reconciliation_answer_key import load_answer_key
 
     assert CLO_DEAL_ID not in _VALIDATION_BUILDERS
-    assert load_answer_key(DEAL_REGISTRY[CLO_DEAL_ID]) is None
+
+    key = load_answer_key(DEAL_REGISTRY[CLO_DEAL_ID])
+    assert key is not None, "the CLO's coverage-test key (#481) should be committed"
+    assert not _has_pop_section(key), (
+        "the CLO key must carry no Priority-of-Payments section until one is "
+        "authored from the Note Valuation Report (#495)"
+    )
 
 
 def test_clo_is_registered_but_not_modelable() -> None:
