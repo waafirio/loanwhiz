@@ -118,7 +118,7 @@
   ],
   "notes": [
     "arrears_bucket carries the tape's closed vocabulary, not the report's own words: the normaliser reads only '<29d', '180+d' and default_crr_flag, so the report's finer buckets are mapped (see ARREARS_MAP) and the report bucket's own lower bound is preserved in days_in_arrears.",
-    "Only the aggregates under 'fitted' and the distributions under 'distributions' are fitted. Per-loan dispersion within a bucket is generated, not published, and no figure computed from it is evidence about the real pool.",
+    "Only the aggregates under 'fitted' and the distributions under 'distributions' are fitted. Arrears is fitted on both the published balance and the published loan count, because the platform renders that breakdown by count; every other distribution is fitted on balance alone, so its loan-count share follows from the generated size mix rather than from a published figure. Per-loan dispersion within a bucket is generated, not published, and no figure computed from it is evidence about the real pool.",
     "Payment Holiday (0.198% of balance, 119 loans, section Arrears (p25)) sits outside the report's days-past-due ladder. The tape's arrears vocabulary cannot express forbearance, so these loans are written as Performing; the report does not state them as in arrears."
   ]
 }

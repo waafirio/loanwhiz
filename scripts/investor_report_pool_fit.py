@@ -511,15 +511,22 @@ _ARREARS_NOTE = (
     "bucket's own lower bound is preserved in days_in_arrears."
 )
 _NL_LOANPART_NOTE = (
-    "The Dutch report counts Delinquencies by loanpart and Property/EPC/province "
-    "by loan, so only the balance column of each distribution is comparable "
-    "across tables; the generated tape is loan-level and is fitted on balance."
+    "The Dutch report counts Delinquencies by loanpart (5,598 parts against "
+    "2,765 loans on Green Lion 2023-1) and Property/EPC/province by loan. The "
+    "generated tape is loan-level, so the arrears loan counts are the report's "
+    "loanpart shares apportioned onto loans — an approximation the report does "
+    "not itself state, and the reason the Dutch arrears count shares land "
+    "within a loan of the published ones rather than on them."
 )
 _SHAPE_NOTE = (
     "Only the aggregates under 'fitted' and the distributions under "
-    "'distributions' are fitted. Per-loan dispersion within a bucket is "
-    "generated, not published, and no figure computed from it is evidence "
-    "about the real pool."
+    "'distributions' are fitted. Arrears is fitted on both the published "
+    "balance and the published loan count, because the platform renders that "
+    "breakdown by count; every other distribution is fitted on balance alone, "
+    "so its loan-count share follows from the generated size mix rather than "
+    "from a published figure. Per-loan dispersion within a bucket is generated, "
+    "not published, and no figure computed from it is evidence about the real "
+    "pool."
 )
 
 
