@@ -1,10 +1,10 @@
 ---
 id: 2026-09-08-clo-run-and-validate
 title: Run and validate the CLO — N-class structural config, trustee-report facts, a CLO answer key, and labelled synthetic pools
-status: decomposed
+status: filed
 created: 2026-09-08
 updated: 2026-09-08
-epics: []
+epics: [477, 482]
 ---
 
 # Run and validate the CLO — N-class structural config, trustee-report facts, a CLO answer key, and labelled synthetic pools
@@ -173,7 +173,7 @@ the tape provenance layer and the RMBS deals, not the CLO's structural config.
 Two epics, six children. Epic A is a sequential chain (config → facts →
 validation). Epic B is independent and can run alongside it.
 
-### Epic A: Run and validate the CLO   (umbrella #<N>)
+### Epic A: Run and validate the CLO   (umbrella #477)
 
 Take the CLO from "the engine refuses to run it" to "the engine runs it and is
 graded against the deal's own published figures". The blocker is a legacy
@@ -242,7 +242,7 @@ truth is sitting in the trustee reports the derived tape already parses.
   `src/loanwhiz/primitives/reconciliation_answer_key.py`,
   `src/loanwhiz/primitives/quality_harness.py`, `docs/**`, `tests/**`.
 
-### Epic B: Make synthetic pool data honest, then give the tape-less deals one   (umbrella #<N>)
+### Epic B: Make synthetic pool data honest, then give the tape-less deals one   (umbrella #482)
 
 Four of six deals have no loan tape, so the comparison charts are meaningless for
 them. Synthetic tapes are already established, labelled practice in this repo —
@@ -281,4 +281,25 @@ practice is extended, not after.
 
 ## Filed issues
 
-_(Filled in phase 4.)_
+- Epic A "Run and validate the CLO" → umbrella **#477**
+  - **#478** Generalise capital_structure onto the N-class tranche list  _(parallel, prio 1)_
+  - **#479** Give projection_base an extracted-model path  _(sequential, After #478, prio 2)_
+  - **#480** Source per-class coupons, balances and coverage thresholds from the trustee report  _(parallel, prio 1)_
+  - **#481** Author the CLO answer key and grade it  _(sequential, After #480; also needs #478 + #479, prio 3)_
+- Epic B "Make synthetic pool data honest, then give the tape-less deals one" → umbrella **#482**
+  - **#483** Add synthetic to the tape provenance kind  _(parallel, prio 1)_
+  - **#484** Generate labelled synthetic tapes for the tape-less deals  _(sequential, After #483, prio 2)_
+
+All eight labelled `liz:enrolled`. Every child body carries the four standing
+constraints verbatim plus its own reuse / contract / governance / generality
+notes.
+
+**#481's `After #480` names one predecessor because the marker takes one**; its
+real predecessor set is #478, #479 and #480 — the engine must be able to run the
+deal before its output can be graded, and its body says so.
+
+**Epic B's umbrella carries no `After #477`.** The two epics are genuinely
+independent — B touches the tape provenance layer and the RMBS deals, A touches
+the CLO's structural config — so a hard cross-epic marker would stall B for no
+reason, reproducing the #450 → #454 promotion-gate stall this plan's ordering
+section exists to avoid.
