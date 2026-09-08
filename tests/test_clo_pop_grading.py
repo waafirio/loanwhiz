@@ -22,8 +22,10 @@ What the run says
    Payments, so a fold built from the one PoP-bearing document supplies one
    period result against the key's four.
 
-2. **Reconciled against that one document directly, the Interest cascade is
-   short by EUR 1,820,150.42** — 25% of the period's available revenue. The
+2. **Reconciled against that one document directly, the Interest cascade leaves
+   EUR 1,820,150.42 undistributed** — 25% of the period's available revenue. The
+   pot is the report's own stated figure and no step is starved (``total_shortfall``
+   is EUR 0.00): the money has no cascade step to go to at all. The
    report prints 62 rows; the extracted cascade carries 29 top-level labels; 20
    report rows are joined by no step at all, and the eight of those that carry
    money (``(A)(i)``, ``(A)(ii)``, ``(H)(i)``, ``(H)(ii)``, ``(CC)(1)(a)``, and
@@ -249,6 +251,45 @@ def test_no_step_disagrees_which_is_why_the_shortfall_is_the_finding(
     assert len(revenue.steps) == 29
     assert revenue.steps_passed == 29
     assert all(step.delta == 0.0 for step in revenue.steps)
+
+
+def test_the_money_is_undistributed_not_underfunded(
+    clo_series: DealStateSeries, recon: ReconciliationReport
+) -> None:
+    """The pot is right; the cascade has nowhere to put part of it.
+
+    Read off the fold directly rather than through the reconciliation, because
+    the two readings answer different questions and only this one distinguishes
+    the failure modes. The first step sees the report's full stated available
+    revenue, no step is gated, and ``total_shortfall`` is EUR 0.00 — so every
+    step that exists received its whole need. The gap is the engine's
+    ``remaining``: money the 29-step cascade was never asked to place, because
+    the rows carrying it join no step at all.
+
+    That distinction is what stops the obvious wrong fix. A cascade whose steps
+    were each short would be an amount problem, and sweeping the remainder into
+    a residual step would look like a repair; here the remainder belongs to named
+    recipients the cascade has no line for, so a residual sweep would pay it to
+    the wrong party and turn a visible failure into a silent one.
+    """
+    execution = clo_series.period_results[0].revenue_execution
+
+    assert execution.steps[0].amount_available == pytest.approx(
+        PUBLISHED_AVAILABLE_REVENUE, abs=0.01
+    )
+    assert execution.total_distributed == pytest.approx(ENGINE_DISTRIBUTED_REVENUE, abs=0.01)
+    assert execution.remaining == pytest.approx(REVENUE_SHORTFALL, abs=0.01)
+    # Nothing was starved and nothing was suppressed — the two other ways a
+    # cascade under-pays, each of which would want a different fix.
+    assert execution.total_shortfall == 0.0
+    assert not [step for step in execution.steps if step.gated]
+    assert not [step for step in execution.steps if step.not_evaluable]
+    # And the reconciliation's shortfall is that same remainder, not a second
+    # number that happens to be close.
+    revenue = recon.periods[0].revenue
+    assert revenue.report_total - revenue.engine_total == pytest.approx(
+        execution.remaining, abs=0.01
+    )
 
 
 def test_the_shortfall_is_exactly_the_rows_no_engine_label_joins(
