@@ -17,6 +17,7 @@ same PR, then assert a `passed` cell; a key alone silently grades nothing.
 Refs: #440
 Refs: #492 — same pairing needed when the capability matrix left the builder map.
 Refs: #495 — committing a CLO's PoP key changed no cell's grade, only its reason.
+Refs: #496 — the pairing is unavailable when the key's period count exceeds the foldable documents.
 
 ## 2026-09-05 · pitfall · #457
 
