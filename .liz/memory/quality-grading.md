@@ -15,6 +15,7 @@ ground truth, never the opening balances the fold seeds from. Add the
 same PR, then assert a `passed` cell; a key alone silently grades nothing.
 
 Refs: #440
+Refs: #492 — same pairing needed when the capability matrix left the builder map.
 
 ## 2026-09-05 · pitfall · #457
 
@@ -50,3 +51,16 @@ the claim. Ban the whole assertion, lower-cased, and let the retracted wording
 list be the specification.
 
 Refs: #471
+
+## 2026-09-08 · pitfall · #492
+
+Replacing a hand-built map with the registry it generalizes is **not**
+behaviour-preserving by default. Enumerate every row the DATA admits that the
+map did not, before accepting a framing where one named regression covers the
+swap. Green Lion 2023-1 had held a PoP-bearing key and an offline fold since
+#440, so converging `/capability-matrix` moved it `not-applicable` →
+`validated` and falsified the "1 validated" tally four committed docs restate.
+Grep every transcription of the old count and fix it in the same PR: a
+converged surface whose docs still quote the map's answer claims worse.
+
+Refs: #492

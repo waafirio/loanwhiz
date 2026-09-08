@@ -398,10 +398,19 @@ def test_clo_has_no_committed_answer_key() -> None:
 
 
 def test_clo_has_no_validation_builder() -> None:
-    """No committed engine-validation builder ⇒ the CLO cannot reach ``validated``."""
+    """Neither ground-truth surface admits the CLO, so it cannot reach ``validated``.
+
+    Since #492 the capability matrix reads the answer-key registry rather than
+    ``_VALIDATION_BUILDERS``; the map survives only for
+    ``GET /deal/{id}/validation``. Both must refuse the CLO, and asserting only
+    the retired one would pass while the live surface silently admitted it.
+    """
     from loanwhiz.api.main import _VALIDATION_BUILDERS
 
+    from loanwhiz.primitives.reconciliation_answer_key import load_answer_key
+
     assert CLO_DEAL_ID not in _VALIDATION_BUILDERS
+    assert load_answer_key(DEAL_REGISTRY[CLO_DEAL_ID]) is None
 
 
 def test_clo_is_registered_but_not_modelable() -> None:
@@ -425,13 +434,16 @@ def test_clo_is_registered_but_not_modelable() -> None:
 
 
 def _live_matrix():
-    from loanwhiz.api.main import _load_cached_deal_model, _VALIDATION_BUILDERS
+    from loanwhiz.api.main import _load_cached_deal_model
     from loanwhiz.primitives.capability_matrix import build_capability_matrix
+    from loanwhiz.primitives.quality_harness import _default_series_provider
+    from loanwhiz.primitives.reconciliation_answer_key import load_answer_key
 
     return build_capability_matrix(
         deals=DEAL_REGISTRY,
         seed_loader=_load_cached_deal_model,
-        validators=_VALIDATION_BUILDERS,
+        answer_key_loader=load_answer_key,
+        series_provider=_default_series_provider(),
     )
 
 
@@ -464,13 +476,24 @@ def test_every_clo_capability_cell_is_ran_or_reasoned_not_applicable() -> None:
 
 
 def test_registering_the_clo_added_no_validated_cell() -> None:
-    """The single ``validated`` cell stays Green Lion 2024-1's, and only its."""
+    """Registering the CLO fabricates no green cell — it stays out of the set.
+
+    The validated set is data-driven since #492, so this pins the property that
+    matters here rather than a count that moves when another deal's key lands:
+    no Cairn cell is validated, and every validated cell belongs to a deal with
+    a committed PoP-bearing answer key.
+    """
     from loanwhiz.primitives.capability_matrix import STATE_VALIDATED
+    from loanwhiz.primitives.reconciliation_answer_key import load_answer_key
 
     matrix = _live_matrix()
     validated = [c for c in matrix.cells if c.state == STATE_VALIDATED]
-    assert [c.deal_id for c in validated] == ["green-lion-2024-1"]
-    assert matrix.tally[STATE_VALIDATED] == 1
+    assert CLO_DEAL_ID not in {c.deal_id for c in validated}
+    for cell in validated:
+        key = load_answer_key(DEAL_REGISTRY[cell.deal_id])
+        assert key is not None and any(
+            p.revenue_pop or p.redemption_pop for p in key.periods
+        ), cell.deal_id
 
 
 def test_matrix_covers_every_registered_deal() -> None:

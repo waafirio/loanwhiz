@@ -66,6 +66,7 @@ from loanwhiz.primitives.capability_matrix import (
 )
 from loanwhiz.primitives.quality_harness import (
     QualityMatrix,
+    _default_series_provider,
     build_quality_matrix,
 )
 from loanwhiz.primitives.reconciliation_answer_key import load_answer_key
@@ -3001,11 +3002,19 @@ def primitives() -> list[PrimitiveCatalogueEntry]:
 #
 # Offline & deterministic: applicability is derived from committed registry +
 # seed-model metadata (via `_load_cached_deal_model`, which never triggers a cold
-# extraction), and the single `validated` cell reuses the committed-fixture
-# offline validation builder (`_VALIDATION_BUILDERS[green-lion-2024-1]`). No loan
-# tape is fetched and no live waterfall is run in the request path. The runner is
-# dependency-injected with the live DEAL_REGISTRY / loader / builders so it is
-# both deal-generic and unit-testable.
+# extraction), and a `validated` cell reconciles the deal's committed offline
+# engine series against its committed answer key (#427) — the same to-the-cent
+# path /quality-matrix grades on. No loan tape is fetched and no live waterfall is
+# run in the request path. The runner is dependency-injected with the live
+# DEAL_REGISTRY / seed loader / answer-key loader / series provider so it is both
+# deal-generic and unit-testable.
+#
+# `validated` is DATA, not code (#492). It used to fire only for a deal in the
+# hand-built `_VALIDATION_BUILDERS` map below, so adding a validated deal meant
+# writing bespoke Python; it now fires for any deal whose committed answer key
+# carries a Priority-of-Payments section and whose engine series is registered.
+# That map survives only for GET /deal/{id}/validation, which still needs a
+# builder's per-step report shape.
 
 
 @app.get("/capability-matrix", response_model=CapabilityMatrix)
@@ -3015,13 +3024,15 @@ def capability_matrix() -> CapabilityMatrix:
     Computes, for each deal-facing primitive capability and each registered deal,
     an honest typed cell (``validated`` / ``ran`` / ``not-applicable``) with
     governance evidence, derived from the deal's real inputs (registry context +
-    committed extracted seed model + offline validation builder). Runs offline and
-    deterministically — no loan-tape fetch, no live waterfall, in the request path.
+    committed extracted seed model + committed answer key + committed offline
+    engine series). Runs offline and deterministically — no loan-tape fetch, no
+    live waterfall, in the request path.
     """
     return build_capability_matrix(
         DEALS,
         seed_loader=_load_cached_deal_model,
-        validators=_VALIDATION_BUILDERS,
+        answer_key_loader=load_answer_key,
+        series_provider=_default_series_provider(),
     )
 
 
@@ -3146,9 +3157,11 @@ def relative_value_screener() -> RelativeValueScorecard:
 #
 # Note that "no builder" is not the same as "no ground truth" (#441). Green Lion
 # 2023-1 has committed Notes & Cash fixtures AND a committed answer key (#440) —
-# `GET /quality-matrix` grades it to the cent — but no `validate_green_lion_2023_1`
-# builder is registered here, so this endpoint still reports `available=false`
-# for it. That is a wiring gap, not an absence of published ground truth.
+# `GET /quality-matrix` grades it to the cent, and since #492 `/capability-matrix`
+# reports it `validated` — but no `validate_green_lion_2023_1` builder is
+# registered here, so THIS endpoint still reports `available=false` for it. That
+# remaining gap is this endpoint's per-step report shape, which the answer-key
+# path does not yet produce; it is not an absence of published ground truth.
 
 #: Per-deal offline validation builders. Each returns an
 #: :class:`ReconciliationReport` from committed fixtures (no network/LLM).

@@ -2,9 +2,9 @@
 
 Structured finance agent framework — SF-native primitives, deal model extraction, waterfall execution, and LangGraph orchestration. Built for the Barcelona AI Tinkerers Structured Finance Hackathon 2026 (demo day: 10 June).
 
-The same governed primitives run **end-to-end across 5 deals in 3 jurisdictions** — Dutch (Green Lion 2023-1 / 2024-1 / 2026-1), Italian (Leone Arancio RMBS 2023-1), and Spanish (Sol-Lion II RMBS). A sixth deal, the Irish CLO **Cairn CLO XVII DAC**, is now **extracted but not validated** (#456): the pipeline reads its 420-page Listing Particulars to a full 8-class capital stack, both the Interest and Principal Priorities of Payments, and its per-class coverage tests — but no answer key is authored, so no cell of it is `validated`. And the model-driven waterfall engine has been **validated to the cent against a real published deal** (Green Lion 2024-1's own Notes & Cash Priority of Payments). What is *validated* vs merely *ran* vs *not-applicable* is tracked honestly in a per-cell capability matrix (`GET /capability-matrix` and the **Showcase** view) — the source of truth is **1 validated / 14 ran / 15 not-applicable**, never a blanket "validated everywhere". A second deal (Green Lion 2023-1) now has a committed ground-truth answer key, so `GET /quality-matrix` **grades two deals** to the cent; extraction *coverage* on the non-English prospectuses is no longer thin, but coverage is not validation (see the data/model cards). The primitives are also packaged as a governed **MCP server** (`mcp/`) for third-party consumption.
+The same governed primitives run **end-to-end across 5 deals in 3 jurisdictions** — Dutch (Green Lion 2023-1 / 2024-1 / 2026-1), Italian (Leone Arancio RMBS 2023-1), and Spanish (Sol-Lion II RMBS). A sixth deal, the Irish CLO **Cairn CLO XVII DAC**, is now **extracted but not validated** (#456): the pipeline reads its 420-page Listing Particulars to a full 8-class capital stack, both the Interest and Principal Priorities of Payments, and its per-class coverage tests — but no answer key is authored, so no cell of it is `validated`. And the model-driven waterfall engine has been **validated to the cent against real published deals** — Green Lion 2024-1's and Green Lion 2023-1's own Notes & Cash Priorities of Payments. What is *validated* vs merely *ran* vs *not-applicable* is tracked honestly in a per-cell capability matrix (`GET /capability-matrix` and the **Showcase** view) — the source of truth is **2 validated / 15 ran / 13 not-applicable**, never a blanket "validated everywhere". Both Green Lion vintages carry a committed ground-truth answer key, so `GET /quality-matrix` **grades two deals** to the cent and (since #492) the capability matrix derives its `validated` cells from those same keys rather than from bespoke per-deal Python; extraction *coverage* on the non-English prospectuses is no longer thin, but coverage is not validation (see the data/model cards). The primitives are also packaged as a governed **MCP server** (`mcp/`) for third-party consumption.
 
-> **Honest boundaries.** For the current capability picture and the real limitations — e.g. extraction coverage is high on all five deals but only **one** is externally validated against a published report; "Projection" folds a real multi-period horizon but from *supplied* CPR/CDR assumptions, not speeds estimated from the deal's own tape; the on-demand `/extract` job store is in-process/single-instance; a brand-new deal still needs a seed or a (long) extraction run before its Overview is populated, with no inline cold-extract on first view; PDL/reserve proximity is computed but ungraded; and the repo has **no CI** — see [SYSTEM-STATUS.md](SYSTEM-STATUS.md).
+> **Honest boundaries.** For the current capability picture and the real limitations — e.g. extraction coverage is high on all five deals but only **two** — both Dutch RMBS — are externally validated against a published report; "Projection" folds a real multi-period horizon but from *supplied* CPR/CDR assumptions, not speeds estimated from the deal's own tape; the on-demand `/extract` job store is in-process/single-instance; a brand-new deal still needs a seed or a (long) extraction run before its Overview is populated, with no inline cold-extract on first view; PDL/reserve proximity is computed but ungraded; and the repo has **no CI** — see [SYSTEM-STATUS.md](SYSTEM-STATUS.md).
 
 ---
 
@@ -103,7 +103,7 @@ Then open http://localhost:3000. The sidebar groups the views into two sections 
 
 **Platform & Governance** — the reusable-framework / trust / cross-deal layer:
 
-6. **Showcase** — the primitives × 6 registered deals **capability matrix** (Dutch / Italian / Spanish RMBS, plus the extracted-but-unvalidated Irish CLO), each cell `validated` / `ran` / `not-applicable` with the honest reason behind it (tally **1 validated / 14 ran / 15 not-applicable**).
+6. **Showcase** — the primitives × 6 registered deals **capability matrix** (Dutch / Italian / Spanish RMBS, plus the extracted-but-unvalidated Irish CLO), each cell `validated` / `ran` / `not-applicable` with the honest reason behind it (tally **2 validated / 15 ran / 13 not-applicable**).
 7. **Validation** — the seasoned-deal proof: the waterfall engine reproduced against **Green Lion 2024-1's own published Notes & Cash Priority of Payments, to the cent** (revenue 11/11, redemption 4/4; Class A interest engine-computed).
 8. **Framework** — the typed primitive-registry catalogue.
 9. **Governance** — the FINOS evidence pack (audit trail, confidence, citations, `finos_compliant`) plus per-tape direct-read `data_source` provenance.
@@ -173,9 +173,9 @@ The framework is **data-driven by design**: adding a deal is *data*, not code. T
 >   presented as validation.
 > - **The capability matrix is the source of truth.** `GET /capability-matrix`
 >   and the **Showcase** view tally every primitive × deal cell as
->   `validated` / `ran` / `not-applicable` — currently **1 validated / 14 ran /
->   15 not-applicable** — each with a real reason. Never read this as
->   "validated across all deals": exactly one cell is validated.
+>   `validated` / `ran` / `not-applicable` — currently **2 validated / 15 ran /
+>   13 not-applicable** — each with a real reason. Never read this as
+>   "validated across all deals": both validated cells are Dutch RMBS.
 
 Create `src/loanwhiz/data/deals.json` as a JSON object mapping each `deal_id` to a deal-context dict (same shape as the in-code `GREEN_LION`):
 
