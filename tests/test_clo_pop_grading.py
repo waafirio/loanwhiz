@@ -52,6 +52,7 @@ statement of the same result.
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 
 import pytest
@@ -364,14 +365,15 @@ def test_the_finding_survives_the_adapter_choice(
     amount, and the grade is identical either way. It also reds if a later change
     makes a step engine-computed without revisiting the seeding.
     """
-    eight_class = ReportAdapter.from_deal_model(
-        clo_model,
-        tranche_classes=(
-            "class_a", "class_b_1", "class_b_2", "class_c",
-            "class_d", "class_e", "class_f", "subordinated",
-        ),
+    # Derived from the seed, not transcribed: a re-extraction that changed the
+    # capital structure would otherwise leave this widening silently partial.
+    every_class = tuple(
+        re.sub(r"[^a-z0-9]+", "_", tranche["name"].lower()).strip("_")
+        for tranche in clo_model.tranche_structure
     )
-    series = fold_report_series(clo_model, nvr_report, eight_class)
+    assert len(every_class) == 8, every_class
+    widened_adapter = ReportAdapter.from_deal_model(clo_model, tranche_classes=every_class)
+    series = fold_report_series(clo_model, nvr_report, widened_adapter)
     widened = reconcile_series(series, nvr_report, deal_name=CLO_DEAL_NAME, tolerance=0.01)
 
     revenue = widened.periods[0].revenue
