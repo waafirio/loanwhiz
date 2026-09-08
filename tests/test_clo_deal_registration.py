@@ -245,7 +245,11 @@ def test_every_registered_document_url_is_distinct() -> None:
         *(e["url"] for e in deal["investor_report_urls"]),
         *(e["url"] for e in deal["notes_cash_report_urls"]),
     ]
-    assert len(set(urls)) == len(urls)
+    # Both halves matter: the count catches a document silently dropped from the
+    # registry, the set catches one URL doing two jobs. Asserting only that a
+    # deduplicated list has no duplicates asserts nothing at all.
+    assert len(urls) == 5
+    assert len(set(urls)) == 5
     assert NVR_URL not in {
         deal["prospectus_url"],
         *(e["url"] for e in deal["investor_report_urls"]),
@@ -695,3 +699,40 @@ def test_answer_key_periods_agree_with_the_registered_tape_dates() -> None:
     (pop_period,) = [p for p in key.periods if p.period_label == NVR_PERIOD]
     assert pop_period.reporting_date == NVR_AS_OF
     assert pop_period.reporting_date not in registered
+
+
+def test_the_committed_pop_period_is_the_shape_the_published_bound_rests_on() -> None:
+    """The figures the answer-keys README and data-card state, as assertions.
+
+    Both documents publish a bound on what a graded redemption row could ever
+    prove: the report states EUR 0.00 of available principal funds, so all of its
+    Principal steps are zero and an engine that never pays reproduces that
+    waterfall exactly, while the Interest side distributes real money across a
+    minority of its steps. That claim is the honest half of committing this
+    ground truth — and as prose it is transcription, which a re-parse would leave
+    silently stale.
+
+    So the figures live here too, where a change reds. This does not duplicate
+    the byte-for-byte regeneration test: that one asks whether the committed key
+    matches the documents, and would stay green through a parser change (the key
+    would simply be regenerated). This asks whether the *claim published about*
+    the key is still true of it.
+    """
+    from loanwhiz.primitives.reconciliation_answer_key import load_answer_key
+
+    key = load_answer_key(DEAL_REGISTRY[CLO_DEAL_ID])
+    assert key is not None
+    (period,) = [p for p in key.periods if p.period_label == NVR_PERIOD]
+
+    # The Principal waterfall ran on nothing and paid nothing, every step of it.
+    assert period.available_principal_funds == 0.0
+    assert len(period.redemption_pop) == 62
+    assert all(step.amount == 0.0 for step in period.redemption_pop)
+
+    # The Interest waterfall is where the signal is: the steps sum to the funds
+    # the report states, which is the parser's own tie-out, re-asserted on the
+    # committed figures rather than on the parse.
+    assert period.available_revenue_funds == 7_255_062.35
+    assert len(period.revenue_pop) == 62
+    assert sum(1 for step in period.revenue_pop if step.amount) == 22
+    assert round(sum(step.amount for step in period.revenue_pop), 2) == 7_255_062.35
