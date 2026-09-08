@@ -610,6 +610,13 @@ def reconcile_note_valuation(
     - each note's Interest PoP step equals the interest the Distribution Summary
       independently says is payable to it — the check that catches a column
       which is a price rather than an amount (#470).
+
+    **What it does not check: the labels.** Every check here is arithmetic, so a
+    step filed under the wrong priority label ties out exactly as well as one
+    filed correctly — and a wrong label joins the engine's step to the wrong
+    published one. The document states no aggregate over its labels to reconcile
+    against, so they are pinned by test instead
+    (``test_each_note_interest_step_is_filed_under_the_label_the_report_prints``).
     """
     checks: list[ReconciliationCheck] = []
 

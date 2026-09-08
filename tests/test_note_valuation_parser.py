@@ -364,6 +364,50 @@ def test_the_parse_emits_the_existing_notes_cash_shape(period: NotesCashPeriod) 
     )
 
 
+#: Each note's own interest step, as the Interest waterfall labels it. The
+#: reconciliation oracle checks *amounts*; nothing in it checks that a step was
+#: filed under the right label, so the labels are pinned here instead.
+INTEREST_STEP_LABELS: dict[str, str] = {
+    "class_a": "(G)",
+    "class_b_1": "(H)(i)",
+    "class_b_2": "(H)(ii)",
+    "class_c": "(J)",
+    "class_d": "(M)",
+    "class_e": "(P)",
+    "class_f": "(S)",
+}
+
+
+@pytest.mark.parametrize(("note_class", "label"), sorted(INTEREST_STEP_LABELS.items()))
+def test_each_note_interest_step_is_filed_under_the_label_the_report_prints(
+    period: NotesCashPeriod, note_class: str, label: str
+) -> None:
+    """The oracle validates amounts, not labels — so assert the labels directly.
+
+    A compound label read one group short (``(H)`` for ``(H)(i)``) or a
+    sub-label mistaken for a step would tie out arithmetically and still join
+    the engine's step to the wrong published one.
+    """
+    designation = note_class.removeprefix("class_").upper().replace("_", "-")
+    step = next(
+        s
+        for s in period.revenue_pop
+        if f"due and payable on the Class {designation} Notes" in s.recipient
+    )
+    assert step.priority == label
+
+
+def test_the_first_and_last_step_carry_the_labels_the_report_opens_and_closes_with(
+    period: NotesCashPeriod,
+) -> None:
+    """Both ends of the Interest waterfall, including its deepest compound label."""
+    assert period.revenue_pop[0].priority == "(A)(i)"
+    assert period.revenue_pop[0].recipient == "Taxes CSP"
+    assert period.revenue_pop[-1].priority == "(CC)(2)(III)(a)"
+    assert period.redemption_pop[0].priority == "(A)(A)(i)"
+    assert period.redemption_pop[-1].priority == "(S)(2)(III)"
+
+
 def test_a_priority_label_is_not_unique_and_no_row_is_merged_away(
     period: NotesCashPeriod,
 ) -> None:
