@@ -737,8 +737,12 @@ def test_a_registered_tape_alone_does_not_light_the_reconstruction() -> None:
     cell = _cell(_real_matrix(), "cairn-clo-xvii", "collateral_reconciliation")
     assert cell.state == STATE_NOT_APPLICABLE
     assert cell.evidence.detail["tape_count"] == 3
+    # Since #478 the eight-class stack resolves, so the cell no longer claims the
+    # structure is missing — it names the senior coupon, which is what the
+    # resolver actually refuses on. Naming a key the deal in fact supplies is the
+    # #457 failure in miniature: a true-sounding reason for the wrong layer.
     assert cell.evidence.detail["missing_structural_config"] == [
-        "capital_structure",
+        "class_a_rate_pct",
         "reserve_account_target",
         "original_pool_balance",
     ]
@@ -860,16 +864,31 @@ def test_missing_structural_config_agrees_with_the_api_resolver() -> None:
 
         if deal_id == "green-lion-2026-1":
             continue
-        expected = tuple(
-            key
-            for key in ENGINE_STRUCTURAL_CONFIG_KEYS
-            if ctx.get(key) is None
-            and not (
-                key == "capital_structure"
-                and _extracted_capital_structure(ctx) is not None
+        # ``capital_structure`` resolves from the extracted stack (tier 2), and
+        # its senior coupon is a separate tier (#478) — so the key the mirror
+        # names for a deal that has its classes but not its rate is the coupon.
+        expected: list[str] = []
+        for key in ENGINE_STRUCTURAL_CONFIG_KEYS:
+            declared = ctx.get(key)
+            if key != "capital_structure":
+                if declared is None:
+                    expected.append(key)
+                continue
+            structure = (
+                declared if declared is not None else _extracted_capital_structure(ctx)
             )
-        )
-        assert missing == expected, (deal_id, missing, expected)
+            if structure is None:
+                expected.append(key)
+                continue
+            senior = next(
+                (k[: -len("_balance")] for k in structure if k.endswith("_balance")),
+                None,
+            )
+            if senior is None:
+                expected.append(key)
+            elif structure.get(f"{senior}_rate_pct") is None:
+                expected.append(f"{senior}_rate_pct")
+        assert missing == tuple(expected), (deal_id, missing, tuple(expected))
 
 
 def test_the_clo_column_reports_no_validated_cell() -> None:

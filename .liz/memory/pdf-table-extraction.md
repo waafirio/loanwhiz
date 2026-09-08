@@ -28,3 +28,15 @@ is a heuristic about *layout*; a row's numeric tail is evidence about *content*,
 and evidence outranks heuristics.
 
 Refs: #494
+## 2026-09-08 · pitfall · #480
+
+Read a table's column ORDER off its own header, never off which section it sits
+in, and refuse an unrecognised header rather than reading two like-typed columns
+in a guessed order. One trustee report states each coverage test's required
+level and computed ratio twice — Executive Summary as `Threshold · Current`,
+detail page as `RATIO · REQUIRED LEVEL` — so either order, assumed, swaps them
+in one place and reports a breaching test as passing. Where a document states
+the same pair twice, parse BOTH and require agreement: the redundancy is a free
+cross-check, not duplicated work.
+
+Refs: #480

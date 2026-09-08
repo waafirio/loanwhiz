@@ -19,29 +19,72 @@ Green Lion 2024-1 B.V.  ->  green-lion-2024-1-bv.json
 `loanwhiz.primitives.notes_cash_parser._slug`.)
 
 A deal with no committed answer key resolves to `None` via `load_answer_key(...)`
-and the caller degrades honestly (no fabricated ground truth). Two keys are
-committed, each authored from its deal's published quarterly Notes & Cash reports
-via `DealAnswerKey.from_notes_cash_report(...)`, so `/quality-matrix` grades both
-deals' revenue + redemption Priority-of-Payments to the cent:
+and the caller degrades honestly (no fabricated ground truth). Keys are committed by
+one of two routes. **Route 1** — a deal's published quarterly Notes & Cash
+reports via `DealAnswerKey.from_notes_cash_report(...)`, so `/quality-matrix`
+grades its revenue + redemption Priority-of-Payments to the cent:
 
 | key | source | issue |
 |---|---|---|
 | `green-lion-2024-1-bv.json` | Green Lion 2024-1's 3 published quarterly reports | #429 |
 | `green-lion-2023-1-bv.json` | Green Lion 2023-1's 3 published quarterly reports | #440 |
 
+**Route 2** is below.
+
+### The second route — published coverage-test results
+
+A deal whose investor reporting is a **monthly trustee report** publishes no
+Priority of Payments, so `from_notes_cash_report(...)` has nothing to read. It
+does state each coverage test's computed ratio, its required level and its
+outcome — which is the `covenants[]` section this schema already carries. Such a
+deal therefore earns a key through the **sibling constructor**
+`from_trustee_liability_summaries(...)`, not through a new format:
+
+| key | source | issue |
+|---|---|---|
+| `cairn-clo-xvii-dac.json` | Cairn CLO XVII's 3 published monthly trustee reports | #481 |
+
+Two properties of that key are deliberate and are asserted as tests, because
+each is a place an overclaim could hide:
+
+- **It carries no Priority of Payments and no pool statistics.** The Note
+  Valuation Report would supply the former, but it is unregistered and unparsed;
+  a key claiming a PoP section would claim a reconciliation nothing performs.
+- **A test the report states as `N/A` is excluded, not coerced.** `passed` is a
+  `bool` and cannot express "did not apply", so Class F — stated `N/A` in every
+  period — is absent rather than recorded as a pass the trustee never stated.
+
+**What the resulting graded cell does *not* prove.** Every outcome these reports
+decide is `Passed`, so a monitor that reported nothing as breached would match
+all of them. The row catches a wrong direction, a dropped or disagreeing
+threshold, an unresolvable metric and a unit error; it cannot catch a
+permanently non-firing monitor. `docs/data-card.md` carries the full statement.
+
+### The discipline both routes share
+
 **Only deals with genuine published ground truth get a key** (the #193 honesty
-discipline). The two Green Lion vintages above are the only deals in
-`DEAL_REGISTRY` carrying `notes_cash_report_urls`; Leone Arancio 2023-1 and
-Sol-Lion II publish investor reports but **no Notes & Cash report**, so there is
-nothing for `from_notes_cash_report(...)` to read and inventing a key for them is
+discipline). Leone Arancio 2023-1 and Sol-Lion II publish investor reports but
+neither a Notes & Cash report nor a trustee report this repo parses, so there is
+nothing for either constructor to read and inventing a key for them is
 forbidden. They stay honestly `not-applicable` across every graded check.
+`test_answer_keys_exist_exactly_where_published_ground_truth_does` asserts that
+in both directions.
+
+**An answer key must never be derived from the engine's own output.** That would
+grade the engine against itself and make every cell vacuously green — the most
+damaging failure available to this surface, because it would look like success.
+Neither constructor has an engine module anywhere on its path, and the
+regeneration regressions are what make that checkable rather than merely
+intended.
 
 Authoring a key is offline and deterministic end to end — a `pypdf` text extract
-of the published PDF (committed under `tests/fixtures/notes_cash/`), the
-`notes_cash_parser` regex parser, then `from_notes_cash_report(...)`. No LLM, no
-Vertex, no network in the committed path. Never hand-edit a key: regenerate it
-from the fixtures, which is what the faithfulness regressions in
-`tests/test_quality_harness.py` assert.
+of the published PDF (committed under `tests/fixtures/notes_cash/` or
+`tests/fixtures/collateral_schedule/`), a regex parser (`notes_cash_parser` /
+`collateral_schedule_parser`), then the matching constructor. No LLM, no Vertex,
+no network in the committed path. Never hand-edit a key: regenerate it from the
+fixtures, which is what the faithfulness regressions in
+`tests/test_quality_harness.py` assert — byte-for-byte, so editing a single
+published threshold reds.
 
 ## Format
 
