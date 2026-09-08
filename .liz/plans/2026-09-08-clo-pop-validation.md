@@ -1,10 +1,10 @@
 ---
 id: 2026-09-08-clo-pop-validation
 title: "Validate the CLO: parse the Note Valuation Report's Priorities of Payments and reconcile the engine to the cent"
-status: decomposed
+status: filed
 created: 2026-09-08
 updated: 2026-09-08
-epics: []
+epics: [491]
 ---
 
 # Validate the CLO: parse the Note Valuation Report's Priorities of Payments and reconcile the engine to the cent
@@ -165,7 +165,7 @@ on 4 for the key, and — by the ordering above, not by a hard marker — sees
 
 ## Decomposition
 
-### Epic: Validate the CLO — reconcile the engine to Cairn's published Priorities of Payments   (umbrella #<N — filled in phase 4>)
+### Epic: Validate the CLO — reconcile the engine to Cairn's published Priorities of Payments   (umbrella #491)
 
 Cairn CLO XVII is graded but not validated: #481 committed an answer key
 from the trustee reports' coverage-test outcomes, which carries no
@@ -202,16 +202,21 @@ against it — reporting whatever the reconciliation actually says.
   `redemption_pop` and the period's published index fixings from the parsed
   Note Valuation Report, commit the enriched `cairn-clo-xvii-dac.json`, and
   set `notes_cash_report_urls` on the registry entry so the routing promise
-  becomes true. Sequencing: sequential. After #<child-3>.
+  becomes true. Sequencing: sequential. After #494.
   Paths: `src/loanwhiz/primitives/reconciliation_answer_key.py`, `src/loanwhiz/data/deals/**`, `tests/**`.
 - **Grade the engine against the key and record the result honestly** — Run
   Cairn's extracted cascades through `reconcile_series` against the
   committed key and report whatever it says — pass, fail or partial —
   updating `docs/data-card.md` and the answer-keys README to match, without
   tuning either side to reach a green cell. Sequencing: sequential.
-  After #<child-4>.
+  After #495.
   Paths: `docs/**`, `src/loanwhiz/data/deals/answer_keys/README.md`, `tests/**`.
 
 ## Filed issues
 
-<Filled in phase 4 — the artifact<->issue link.>
+- Epic "Validate the CLO — reconcile the engine to Cairn's published Priorities of Payments" → umbrella **#491**
+  - #492 Converge engine validation onto the answer-key registry — parallel, `liz:priority:1`
+  - #493 Refuse an unresolved tranche coupon instead of accruing zero interest — parallel, `liz:priority:1`
+  - #494 Parse the Note Valuation Report's two Priorities of Payments — parallel, `liz:priority:2`
+  - #495 Author Cairn's PoP-bearing answer key and register the report — sequential, after #494
+  - #496 Grade the engine against Cairn's key and record the result honestly — sequential, after #495
