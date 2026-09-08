@@ -28,3 +28,28 @@ wrong rather than the parse — drop that table from the oracle, keep its counts
 and record the discrepancy as a defect instead of absorbing it.
 
 Refs: #469
+
+## 2026-09-08 · pitfall · #480
+
+A datum recorded as unobtainable is a claim about the document someone looked
+in, never about the deal — re-ask it of every document already in the registry
+before repeating it. #456 called a CLO's coverage-test thresholds uncapturable
+because the offering circular's alphabetical glossary truncated at 40k, losing
+every test defined under C–F: true of the circular, false of the deal, whose
+already-parsed trustee reports state each required level twice. Name the
+document inside the sentence recording the limitation.
+
+Refs: #480
+
+## 2026-09-08 · pattern · #479
+
+Before deriving a figure an operator has been hand-writing, reconcile the
+derivation against their value: agreement is the evidence you derived the same
+quantity, disagreement that you built a second, parallel notion of it. Green
+Lion's declared `projection_base.current_pool_balance` proved to be its newest
+tape's summed `pool_balance_eur`, rounded — which is what licensed deriving it
+for every deal. Keep serving the declared value where one exists (a four-cent
+"improvement" moves a published number for nothing) and pin the agreement as a
+test.
+
+Refs: #479

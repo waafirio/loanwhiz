@@ -246,6 +246,13 @@ def extract_definitions(
         # Exchange Test": a healthy-looking count that silently excluded every
         # coverage test, whose thresholds live under C-F. Say so, so a caller
         # reading a plausible term count knows what it does not contain (#456).
+        #
+        # What a caller should do about it, for a CLO (#480): the thresholds are
+        # not only obtainable here. A monthly trustee report states each coverage
+        # test's required level beside the computed ratio, and
+        # `collateral_schedule_parser.parse_liability_summary_text` reads them.
+        # Raising this cap is therefore not the only route, and for a deal with
+        # trustee reports it is not the cheapest one.
         logger.warning(
             "definitions section truncated at %d of %d chars — a glossary is "
             "alphabetical, so no term after %r was seen",

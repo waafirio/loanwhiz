@@ -7,11 +7,14 @@ Market, trustee U.S. Bank Global Corporate Trust, Class A ISIN ``XS2650750537``
 registered as *data*, not code, via ``src/loanwhiz/data/deals.json``, which
 ``loanwhiz.config._load_deal_registry`` merges into ``DEAL_REGISTRY`` at import.
 
-**This is registration only — no extraction (#456) and no engine wiring (#457).**
-The deal therefore has no committed seed model, no answer key and no validation
-builder, and these tests exist to pin exactly that: what is *absent* is asserted
-as hard as what is present, so a later change that quietly fabricates a green
-cell for this deal reds here.
+**This began as registration only — no extraction (#456) and no engine wiring
+(#457)** — and these tests exist to pin what is *absent* as hard as what is
+present, so a later change that quietly fabricates a green cell for this deal
+reds here. Extraction (#456) and an answer key authored from the trustee reports'
+published coverage-test results (#481) have since landed, so some assertions here
+are now positive; the standard did not move, the evidence did. What is still
+absent and still pinned: no validation builder, no PoP ground truth, and no
+structural config invented for the deal.
 
 What the sourcing established, and what these tests pin
 -------------------------------------------------------
@@ -24,11 +27,12 @@ What the sourcing established, and what these tests pin
   Priority of Payments* and a *Principal Priority of Payments*. It is nevertheless
   **deliberately NOT registered under** ``notes_cash_report_urls`` yet: that key is
   a *routing promise*, not a URL slot. ``_reconstruct_series`` dispatches on it and
-  ``test_quality_harness.test_answer_keys_exist_exactly_where_published_reports_do``
-  treats its presence as an assertion that a committed answer key exists. Setting
-  it for a deal with nothing extracted, no parser for the CLO report format and no
-  key would assert a promise this deal cannot keep. The key is earned at extraction
-  (#456), not at sourcing. The NVR's URL is recorded in ``docs/data-card.md`` so
+  ``test_quality_harness.test_answer_keys_exist_exactly_where_published_ground_truth_does``
+  treats its presence as an assertion that a **PoP-bearing** answer key exists.
+  Setting it with no parser for the CLO report format and no PoP ground truth would
+  assert a promise this deal cannot keep. #481 committed a key for this deal by the
+  other route — published coverage-test results, no Priority of Payments — which is
+  why that invariant now distinguishes the two. The NVR's URL is recorded in ``docs/data-card.md`` so
   nothing has to be re-sourced, and ``NVR_URL_NOT_YET_REGISTERED`` below keeps the
   omission deliberate and greppable rather than an oversight.
 * **No machine-readable loan tape exists**, so ``tape_urls`` is empty by design.
@@ -378,23 +382,79 @@ def test_clo_coverage_tests_land_on_real_coverage_metrics() -> None:
             assert rule.threshold > 0, rule.name
 
 
-def test_clo_has_no_committed_answer_key() -> None:
-    """No ground truth is authored for the CLO.
+def test_clo_answer_key_carries_published_test_results_and_claims_nothing_else() -> None:
+    """The CLO's ground truth is authored, and only from what a document states.
 
-    The Note Valuation Report publishes both Priorities of Payments, so an answer
-    key is *feasible* here in a way it never was for the Italian and Spanish
-    deals — but feasible is not authored, and inventing one would poison every
-    grading claim downstream.
+    This test was the negative of itself until #481: no key was authored, and it
+    pinned the absence so nothing could quietly fabricate one. What changed is
+    the evidence, not the standard. The trustee reports state each coverage
+    test's computed ratio, its required level and its outcome, so those — and
+    strictly those — are committed. See
+    ``test_quality_harness.test_committed_clo_answer_key_regenerates_from_its_report_fixtures``
+    for the guard that the committed bytes are what the documents say.
 
-    Resolved through the real ``load_answer_key`` rather than by testing one
-    hardcoded filename: a key committed under any other slug would slip past a
-    filename check, making the negative pass for the wrong reason.
+    What the key must NOT claim is asserted as hard as what it carries. The Note
+    Valuation Report publishes both Priorities of Payments and would make a PoP
+    key *feasible*, but it is still unregistered and unparsed (see the module
+    docstring), so every PoP section here must be empty. A key that quietly grew
+    one would be claiming a reconciliation nothing in this repo performs.
+
+    Resolved through the real ``load_answer_key`` rather than a hardcoded
+    filename: a key committed under any other slug would slip past a filename
+    check, making the assertion pass for the wrong reason.
     """
     from loanwhiz.primitives.reconciliation_answer_key import load_answer_key
 
-    assert load_answer_key(DEAL_REGISTRY[CLO_DEAL_ID]) is None
-    # And no committed key file names this deal under any slug.
-    assert not list(ANSWER_KEY_DATA_DIR.glob("*cairn*"))
+    key = load_answer_key(DEAL_REGISTRY[CLO_DEAL_ID])
+    assert key is not None, "the CLO answer key is not committed"
+    assert key.deal_id == CLO_DEAL_ID
+    assert key.deal_name == CLO_DEAL_NAME
+    assert [p.period_label for p in key.periods] == EXPECTED_REPORT_PERIODS
+
+    for period in key.periods:
+        assert period.covenants, f"{period.period_label} carries no published results"
+        for covenant in period.covenants:
+            # A published result without its published level is not gradeable
+            # ground truth — the level is the half the prospectus never stated.
+            assert covenant.threshold is not None
+            assert covenant.actual is not None
+        # No Priority of Payments is claimed, and no pool statistic: the trustee
+        # report states neither, and the NVR is not registered.
+        assert period.revenue_pop == []
+        assert period.redemption_pop == []
+        assert period.available_revenue_funds is None
+        assert period.available_principal_funds is None
+        assert period.pool_stats == {}
+
+    # Exactly one committed key file names this deal, under the seed model's slug.
+    assert [p.name for p in ANSWER_KEY_DATA_DIR.glob("*cairn*")] == ["cairn-clo-xvii-dac.json"]
+
+
+def test_clo_answer_key_states_only_the_required_levels_the_reports_do() -> None:
+    """Every published threshold in the key is a level a trustee report states.
+
+    The cross-check that keeps the key tied to the source: ``REQUIRED_LEVELS``
+    is transcribed in ``test_collateral_schedule_parser`` from the report text,
+    and the key's thresholds must be exactly those, per test. Both directions,
+    so neither a dropped test nor an invented one passes.
+
+    Class F is the one test the reports state as ``N/A`` in every period. It has
+    a required level like the rest, so it appears in ``REQUIRED_LEVELS`` — and
+    it is deliberately absent from the key, because ``passed`` is a ``bool`` and
+    cannot express "did not apply".
+    """
+    from loanwhiz.primitives.reconciliation_answer_key import load_answer_key
+
+    from tests.test_collateral_schedule_parser import REQUIRED_LEVELS  # noqa: PLC0415
+
+    key = load_answer_key(DEAL_REGISTRY[CLO_DEAL_ID])
+    assert key is not None
+    expected = {name: float(level) for name, level in REQUIRED_LEVELS.items()}
+    assert "class_f_par_value_test" in expected, "fixture no longer states Class F"
+    del expected["class_f_par_value_test"]
+
+    for period in key.periods:
+        assert {c.name: c.threshold for c in period.covenants} == expected
 
 
 def test_clo_has_no_validation_builder() -> None:
@@ -480,3 +540,22 @@ def test_matrix_covers_every_registered_deal() -> None:
     assert {d.deal_id for d in matrix.deals} == set(DEAL_REGISTRY)
     assert len(matrix.cells) == len(matrix.capabilities) * len(DEAL_REGISTRY)
     assert sum(matrix.tally.values()) == len(matrix.cells)
+
+
+def test_answer_key_periods_agree_with_the_registered_tape_dates() -> None:
+    """The key's reporting dates corroborate against a figure authored elsewhere.
+
+    ``tape_urls`` carries a date per derived tape, transcribed by #468 from the
+    same three reports but through a different path and by different hands. The
+    answer key's ``reporting_date`` is converted from the report header's
+    ``DD/MM/YYYY`` by #481. Agreement is evidence the conversion reads the date
+    it thinks it does; a silent off-by-one or a day/month swap — ``16/12/2024``
+    is unambiguous, but ``12/02/2025`` would not be — would show up here rather
+    than as covenants that quietly match nothing.
+    """
+    from loanwhiz.primitives.reconciliation_answer_key import load_answer_key
+
+    key = load_answer_key(DEAL_REGISTRY[CLO_DEAL_ID])
+    assert key is not None
+    registered = [t["date"] for t in DEAL_REGISTRY[CLO_DEAL_ID]["tape_urls"]]
+    assert [p.reporting_date for p in key.periods] == registered

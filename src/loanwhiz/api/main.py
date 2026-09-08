@@ -32,14 +32,14 @@ import json
 import logging
 from datetime import date
 from pathlib import Path
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from typing import Any
 
 from fastapi import FastAPI, HTTPException, Query, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from loanwhiz.agent.executor import execute_query
 from loanwhiz import config as _config
@@ -60,6 +60,11 @@ from loanwhiz.primitives.collections_aggregator import (
     CollectionsInput,
 )
 from loanwhiz.primitives.base import Citation
+from loanwhiz.primitives.capital_structure import (
+    CapitalStructure,
+    UnresolvableCapitalStructure,
+    senior_tranche_name,
+)
 from loanwhiz.primitives.capability_matrix import (
     CapabilityMatrix,
     build_capability_matrix,
@@ -1462,21 +1467,31 @@ _GREEN_LION_DEAL_ID = "green-lion-2026-1"
 
 
 def _extracted_capital_structure(deal: dict) -> dict | None:
-    """Build a complete capital-structure dict from the deal's extracted model.
+    """Build the deal's capital structure from its extracted model, or ``None``.
 
     Bridges the cached extracted :class:`DealModel` (``tranche_structure``) onto
-    the four-field ``capital_structure`` shape the engine consumes
-    (``class_a_balance``, ``class_a_rate_pct``, ``class_b_balance``,
-    ``class_c_balance``). Returns ``None`` unless ALL four fields can be filled
-    from the extraction — the engine needs a *complete*, numeric structure, so a
-    partial extraction (e.g. a non-numeric coupon string like
-    ``"3m EURIBOR + 0.42"`` from which no ``class_a_rate_pct`` can be parsed, or a
-    missing class) is "no value here", not a half-built structure. Best-effort
-    and failure-isolated: any malformed model yields ``None``, never an exception.
+    the ``{<name>_balance, <name>_rate_pct}`` mapping the engine consumes.
+    **Every** class the document states is carried through, whatever the stack's
+    depth or how its seniority ordinals are numbered — Cairn's run
+    ``0, 101, 102, 200, 300, 400, 500, 2600`` across eight classes, and the
+    previous four-key/``seniority 0/1/2`` shape could express neither.
 
-    This is the *secondary* config source (below the deal's explicit ``deals.json``
-    context key, above the Green Lion last-resort fallback) — see
-    ``_resolve_structural_config``.
+    The single builder is :meth:`CapitalStructure.from_tranche_structure`, which
+    **refuses** a stack it cannot place in full rather than returning a
+    truncated one (#478). A partial stack would be the dangerous answer here:
+    the total is a denominator for the coverage metrics, so dropping a class
+    reports subordination the deal does not have.
+
+    A tranche whose coupon is a reference rate (``"3 month EURIBOR + 1.80%"``)
+    contributes a balance but **no** rate key — a margin is not a coupon and is
+    deliberately not coerced. Resolving the senior coupon is a separate tier of
+    ``_resolve_structural_config``, so "we know the stack but not the rate" is a
+    distinct, nameable state rather than a blanket "no structure".
+
+    This is the *secondary* config source (below the deal's explicit
+    ``deals.json`` context key, above the Green Lion last-resort fallback) — see
+    ``_resolve_structural_config``. Best-effort and failure-isolated: any
+    malformed model yields ``None``, never an exception.
     """
     try:
         model = _load_cached_deal_model(deal)
@@ -1484,62 +1499,49 @@ def _extracted_capital_structure(deal: dict) -> dict | None:
         return None
     if model is None:
         return None
-
-    # Map tranche balances by seniority (0 = senior = Class A).
-    by_seniority: dict[int, dict] = {}
-    for tranche in model.tranche_structure or []:
-        if not isinstance(tranche, dict):
-            continue
-        seniority = tranche.get("seniority")
-        if isinstance(seniority, int):
-            by_seniority.setdefault(seniority, tranche)
-
-    def _balance(seniority: int) -> float | None:
-        tranche = by_seniority.get(seniority)
-        if tranche is None:
-            return None
-        size = tranche.get("size_eur")
-        return float(size) if isinstance(size, (int, float)) else None
-
-    class_a_balance = _balance(0)
-    class_b_balance = _balance(1)
-    class_c_balance = _balance(2)
-    class_a_rate_pct = _numeric_rate_pct(by_seniority.get(0))
-
-    if None in (class_a_balance, class_b_balance, class_c_balance, class_a_rate_pct):
+    try:
+        return CapitalStructure.from_tranche_structure(
+            model.tranche_structure
+        ).to_engine_mapping()
+    except UnresolvableCapitalStructure:
+        # The seed states no placeable stack — "no value here", so the resolver
+        # falls through to its next tier (and, for a non-GL deal, refuses).
+        return None
+    except Exception:  # noqa: BLE001 — a malformed model is not an endpoint 500
         return None
 
-    return {
-        "class_a_balance": class_a_balance,
-        "class_a_rate_pct": class_a_rate_pct,
-        "class_b_balance": class_b_balance,
-        "class_c_balance": class_c_balance,
-    }
 
+def _with_senior_coupon(
+    deal_id: str, capital_structure: dict, *, is_green_lion: bool
+) -> dict:
+    """Ensure the resolved structure carries a coupon for its senior class.
 
-def _numeric_rate_pct(tranche: dict | None) -> float | None:
-    """Return a tranche's coupon as a numeric percent, or ``None`` if not numeric.
+    Balances and coupons are resolved as **separate values** (#478), because
+    they are separately available: a trustee report or prospectus routinely
+    states the whole stack while quoting the notes as ``INDEX + margin``, from
+    which no coupon follows without that period's index fixing.
 
-    The extracted ``rate`` is free-form (e.g. ``3.62``, ``"3.62"``,
-    ``"3.62%"``, or a non-numeric ``"3m EURIBOR + 0.43"`` reference rate). The
-    engine needs a numeric ``class_a_rate_pct``; only a value that is itself a
-    plain number (optionally with a trailing ``%``) is usable. A EURIBOR/margin
-    reference string is deliberately NOT coerced — guessing a fixed equivalent
-    would fabricate a rate — so it returns ``None`` and the resolver falls
-    through to the next config source.
+    Splitting them is what lets the refusal name the thing that is actually
+    missing. Before this, a deal with a perfectly good eight-class stack and no
+    resolved coupon was reported as "missing required config
+    ``capital_structure``" — true of nothing, and it sent the reader to
+    ``deals.json`` to hand-write a structure the seed already had.
+
+    The tiering matches ``_resolve_structural_config``'s: an explicitly declared
+    rate wins, then the extracted one, then — for the Green Lion deal only — its
+    last-resort constant. Any other deal fails loudly and by name. There is no
+    zero default: a 0% coupon is a real modelling claim (an interest-free note)
+    and would understate the revenue waterfall's need rather than refuse.
     """
-    if tranche is None:
-        return None
-    rate = tranche.get("rate")
-    if isinstance(rate, (int, float)):
-        return float(rate)
-    if isinstance(rate, str):
-        cleaned = rate.strip().rstrip("%").strip()
-        try:
-            return float(cleaned)
-        except ValueError:
-            return None
-    return None
+    senior = senior_tranche_name(capital_structure)
+    if senior is None:
+        raise _misconfigured_deal(deal_id, "capital_structure")
+    rate_key = f"{senior}_rate_pct"
+    if capital_structure.get(rate_key) is not None:
+        return capital_structure
+    if is_green_lion:
+        return {**capital_structure, rate_key: _GREEN_LION_CLASS_A_RATE_PCT}
+    raise _misconfigured_deal(deal_id, rate_key, or_from="extract its deal model")
 
 
 def _resolve_structural_config(deal_id: str, deal: dict) -> tuple[dict, float, float]:
@@ -1568,8 +1570,16 @@ def _resolve_structural_config(deal_id: str, deal: dict) -> tuple[dict, float, f
         capital_structure = _extracted_capital_structure(deal)
     if capital_structure is None:
         if not is_green_lion:
-            raise _misconfigured_deal(deal_id, "capital_structure")
+            raise _misconfigured_deal(
+                deal_id, "capital_structure", or_from="extract its deal model"
+            )
         capital_structure = _GREEN_LION_CAPITAL_STRUCTURE
+    # The stack and its senior coupon resolve independently (#478): a deal can
+    # state every class and still quote them as ``INDEX + margin``, and the
+    # refusal must name the coupon rather than the structure it does have.
+    capital_structure = _with_senior_coupon(
+        deal_id, capital_structure, is_green_lion=is_green_lion
+    )
 
     reserve_target = deal.get("reserve_account_target")
     if reserve_target is None:
@@ -1586,20 +1596,228 @@ def _resolve_structural_config(deal_id: str, deal: dict) -> tuple[dict, float, f
     return capital_structure, reserve_target, original_pool_balance
 
 
-def _resolve_projection_base(deal_id: str, deal: dict) -> dict:
-    """Resolve a deal's forward-projection base (#268).
+# The two keys a declared ``deals.json`` ``projection_base`` mapping is read for.
+# Named as constants because the spelling is fixed by an operator-authored,
+# committed data file rather than by :class:`ProjectionBase`'s own field names —
+# ``class_a_rate_pct`` in particular is the *declared* key even for a deal whose
+# senior class is not called "Class A", and renaming the field must not silently
+# stop reading the deals.json entries that already exist.
+_DECLARED_POOL_BALANCE_KEY = "current_pool_balance"
+_DECLARED_RATE_KEY = "class_a_rate_pct"
 
-    Same contract as ``_resolve_structural_config``: the deal's explicit
-    ``projection_base`` context key, else the Green Lion last-resort fallback for
-    the Green Lion deal only — a non-GL deal missing ``projection_base`` fails
-    loudly rather than projecting on Green Lion's capital structure / pool.
+
+class ProjectionBase(BaseModel):
+    """A deal's forward-projection starting point, as one complete value (#479).
+
+    The projection needs exactly two numbers, and the endpoints
+    (``/project``, ``/stress-matrix``, and ``/compare``'s projected-not-reported
+    fallback) read exactly these two:
+
+    * ``current_pool_balance`` — the pool's balance *today*, the forward series'
+      period-0 opening. Not a prospectus figure: it is a reported, as-of-date
+      fact, which is why the extracted (prospectus) deal model cannot supply it.
+    * ``senior_rate_pct`` — the annual rate the pool accrues interest at across
+      the projected periods (``ScenarioGenerator.generate(rate_pct=...)``),
+      declared as ``class_a_rate_pct``. Every deal that declares a
+      ``projection_base`` today states the senior class's coupon here, and the
+      derived tier below reproduces that convention rather than inventing one.
+
+    Why a type rather than the dict it replaces
+    -------------------------------------------
+    The dict shape had no completeness check anywhere. A ``deals.json`` entry
+    carrying only ``current_pool_balance`` resolved *successfully* and then
+    ``KeyError``-ed at the read site — a **500**, from a misconfigured deal that
+    the whole ``_resolve_*`` family exists to answer with a labelled 422. The
+    contract "a base is complete or it does not exist" is not something a guard
+    can express as well as a type can: with two required fields there is no
+    half-built ``ProjectionBase`` to construct, so the invalid state is
+    unrepresentable rather than merely detected (#478's lesson, applied to the
+    second untyped config shape).
+
+    ``from_declared`` is the one place an operator-authored mapping becomes one
+    of these, so it is also the one place the refusal is raised.
     """
-    base = deal.get("projection_base")
-    if base is not None:
-        return base
-    if deal_id != _GREEN_LION_DEAL_ID:
-        raise _misconfigured_deal(deal_id, "projection_base")
-    return _GREEN_LION_PROJECTION_BASE
+
+    model_config = ConfigDict(frozen=True)
+
+    current_pool_balance: float = Field(
+        ..., description="Pool balance at the projection's period 0 (deal currency)."
+    )
+    senior_rate_pct: float = Field(
+        ..., description="Annual pool/senior-coupon rate in percent."
+    )
+
+    @classmethod
+    def from_declared(cls, deal_id: str, declared: Any) -> "ProjectionBase":
+        """Build from a deal's declared ``projection_base`` mapping, or refuse.
+
+        Refuses — with the labelled 422 naming the deal and the **specific**
+        missing key — rather than returning a partial base for the read site to
+        ``KeyError`` on. Extra keys are ignored: ``_GREEN_LION_PROJECTION_BASE``
+        carries tranche and reserve figures that no consumer has ever read, and
+        dropping them here changes nothing it serves.
+        """
+        if not isinstance(declared, Mapping):
+            raise _unresolvable_projection_base(
+                deal_id,
+                f"its declared 'projection_base' is {type(declared).__name__}, "
+                f"not an object",
+            )
+        values: dict[str, float] = {}
+        for field, key in (
+            ("current_pool_balance", _DECLARED_POOL_BALANCE_KEY),
+            ("senior_rate_pct", _DECLARED_RATE_KEY),
+        ):
+            raw = declared.get(key)
+            if isinstance(raw, bool) or not isinstance(raw, (int, float)):
+                raise _unresolvable_projection_base(
+                    deal_id,
+                    f"its declared 'projection_base' states no numeric "
+                    f"'{key}' (got {raw!r})",
+                )
+            values[field] = float(raw)
+        return cls(**values)
+
+
+def _latest_tape_pool_balance(deal: dict) -> float | None:
+    """The deal's current pool balance from its latest loan tape, or ``None``.
+
+    Sums the tape's per-loan current balances via the existing
+    ``_normalised_tape_output`` seam — the same resolution ladder the tape
+    analytics endpoint uses (memo → runtime cache → **committed seed** → live
+    normalisation), so a deal whose analytics ship with the repo resolves
+    offline and a deal whose do not degrades to a live fetch.
+
+    "Latest" is the chronologically newest ``tape_urls`` entry — the same choice
+    ``_latest_tape_amort_schedule`` makes, and the same one the hand-written
+    bases encode: Green Lion 2026-1's declared ``current_pool_balance``
+    (1_033_412_063.0) is its newest tape's ``pool_balance_eur``
+    (1_033_412_063.04), rounded. That agreement is what licenses this as a
+    *derivation* of the declared value rather than a second, parallel notion of
+    "the pool balance"; ``tests/test_projection_base.py`` pins it.
+
+    Returns ``None`` — never raises — for every way this can come up empty: no
+    registered tape, an unreachable or unparseable one, or an output stating no
+    usable balance. The caller turns that into a labelled refusal, so a flaky
+    tape fetch degrades to "this deal cannot project" rather than a 500.
+
+    A non-positive total is also ``None``. It is either a fully amortised pool
+    (which has nothing to project forward) or a normalisation that read no
+    balances at all — indistinguishable from here, and un-projectable either
+    way, so one branch is the honest answer for both.
+    """
+    tapes = deal.get("tape_urls")
+    if not tapes:
+        return None
+    try:
+        latest = max(tapes, key=lambda t: t.get("date", ""))
+        output = _normalised_tape_output(latest["url"])
+    except Exception as exc:  # noqa: BLE001 — a tape read is best-effort; degrade
+        # Logged rather than swallowed silently: the caller turns this into
+        # "this deal cannot project", which reads identically whether the tape
+        # is unreachable or the deal simply has none. Only this line separates
+        # the two for whoever has to diagnose it.
+        _log.warning(
+            "Could not derive a pool balance from %s's latest tape: %s",
+            deal.get("deal_name", "<unnamed deal>"),
+            exc,
+        )
+        return None
+    balance = output.get("pool_balance_eur") if isinstance(output, dict) else None
+    if isinstance(balance, bool) or not isinstance(balance, (int, float)):
+        return None
+    return float(balance) if balance > 0.0 else None
+
+
+def _derived_projection_base(
+    deal: dict, capital_structure: dict
+) -> ProjectionBase | None:
+    """Build a deal's projection base from what the system already knows, or ``None``.
+
+    This is the tier ``projection_base`` was missing (#479). ``capital_structure``
+    had ``_extracted_capital_structure`` beneath its ``deals.json`` key; this key
+    had **nothing**, so every deal without a hand-written entry failed to
+    project — not only the CLO.
+
+    It is a *derived* tier rather than an "extracted-model" one, and the
+    distinction is load-bearing: the extracted :class:`DealModel` is a
+    **prospectus** extraction (definitions, waterfalls, covenants, tranche
+    structure) and states no pool balance at any date, so there is no
+    extracted-model value to read here — which is exactly why the old refusal's
+    "and no extracted-model value is available" was misleading. Both halves come
+    instead from sources that already exist:
+
+    * the rate, from the senior coupon ``_resolve_structural_config`` has
+      **already resolved** through its own tiers (#478's ``_with_senior_coupon``),
+      so the coupon is resolved once for the deal rather than a second time on a
+      parallel path that could disagree with the first;
+    * the balance, from the deal's latest tape (``_latest_tape_pool_balance``).
+
+    Returns ``None`` if either is unavailable — never a base carrying one real
+    number and one invented one. An incomplete derivation is "no value here",
+    and the caller refuses by name.
+    """
+    senior = senior_tranche_name(capital_structure)
+    if senior is None:
+        return None
+    rate = capital_structure.get(f"{senior}_rate_pct")
+    if isinstance(rate, bool) or not isinstance(rate, (int, float)):
+        return None
+    balance = _latest_tape_pool_balance(deal)
+    if balance is None:
+        return None
+    return ProjectionBase(current_pool_balance=balance, senior_rate_pct=float(rate))
+
+
+def _resolve_projection_base(
+    deal_id: str, deal: dict, capital_structure: dict
+) -> ProjectionBase:
+    """Resolve a deal's forward-projection base (#268, tiered in #479).
+
+    In priority order:
+
+    1. the deal's **explicit ``deals.json`` context key** (operator-declared) —
+       and, for the in-code Green Lion deal, the ``_GREEN_LION_PROJECTION_BASE``
+       constant, which *is* that deal's declared config (its registry context
+       omits the key precisely because the constant supplies it). Consulting it
+       here rather than below tier 2 is deliberate: the derived tier reproduces
+       Green Lion's declared balance to four cents, and serving the derivation
+       instead would move Green Lion's output — which must stay byte-identical.
+    2. the **derived** base (``_derived_projection_base``): the senior coupon
+       already resolved from the capital structure, plus the latest tape's pool
+       balance. This is the tier this key never had.
+    3. no tier resolves ⇒ a labelled 422 naming the deal and what was missing.
+       A non-Green-Lion deal never borrows Green Lion's pool or rate.
+
+    ``capital_structure`` is a parameter rather than something re-resolved here
+    so the senior coupon is resolved exactly once per request, by the resolver
+    that owns that tiering. Callers therefore resolve the structural config
+    first — which also means a deal short of a senior coupon refuses *before*
+    this function reaches for its tape, naming the coupon (the key
+    ``/waterfall`` names for the same deal) and touching no network.
+    """
+    declared = deal.get("projection_base")
+    if declared is None and deal_id == _GREEN_LION_DEAL_ID:
+        declared = _GREEN_LION_PROJECTION_BASE
+    if declared is not None:
+        return ProjectionBase.from_declared(deal_id, declared)
+
+    derived = _derived_projection_base(deal, capital_structure)
+    if derived is not None:
+        return derived
+
+    if not deal.get("tape_urls"):
+        reason = (
+            "it declares no 'projection_base' and registers no loan tape to "
+            "derive a current pool balance from (the extracted deal model is a "
+            "prospectus extraction and states no balance at any date)"
+        )
+    else:
+        reason = (
+            "it declares no 'projection_base' and its latest loan tape yields "
+            "no usable pool balance"
+        )
+    raise _unresolvable_projection_base(deal_id, reason)
 
 
 def _latest_tape_amort_schedule(deal: dict, months: int) -> list[float] | None:
@@ -1632,22 +1850,90 @@ def _latest_tape_amort_schedule(deal: dict, months: int) -> list[float] | None:
     return pool_scheduled_principal_schedule(df, months)
 
 
-def _misconfigured_deal(deal_id: str, missing_key: str) -> HTTPException:
+def _collections_tranche_args(deal_id: str, capital_structure: dict) -> dict:
+    """The tranche arguments ``CollectionsInput`` takes, or a labelled 422.
+
+    ``CollectionsInput`` is still shaped for exactly three classes
+    (``class_a``/``class_b``/``class_c``), so the tape-driven reconstruction
+    cannot yet consume a deeper stack even though the *config* now expresses one
+    (#478 generalised the structure; the collections leg is a separate seam).
+
+    Rather than let that surface as a ``KeyError`` — a 500 that names nothing —
+    this refuses in the same loud, deal-named way every other unmet structural
+    precondition does. A deal whose stack this leg cannot represent gets a 422
+    saying so; it never gets three of its classes silently selected, which would
+    publish a waterfall computed over part of the deal.
+    """
+    required = (
+        "class_a_balance",
+        "class_a_rate_pct",
+        "class_b_balance",
+        "class_c_balance",
+    )
+    missing = [key for key in required if capital_structure.get(key) is None]
+    if missing:
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                f"Deal '{deal_id}' has a capital structure the tape-driven "
+                f"reconstruction cannot represent: its collections leg is shaped "
+                f"for class_a/class_b/class_c and this deal supplies "
+                f"{sorted(k for k in capital_structure if k.endswith('_balance'))}, "
+                f"leaving {missing} unresolved. Refusing to run the waterfall over "
+                f"a subset of the deal's classes."
+            ),
+        )
+    return {key: float(capital_structure[key]) for key in required}
+
+
+def _misconfigured_deal(
+    deal_id: str, missing_key: str, *, or_from: str | None = None
+) -> HTTPException:
     """A labelled 422 for a deal missing required config (#268).
 
     Raised when a non-Green-Lion deal cannot resolve a required structural config
-    value from its ``deals.json`` context or its extracted model. Failing loudly
-    here is deliberate: the old silent ``deal.get(..., _GREEN_LION_*)`` fallback
-    would have served numbers computed against Green Lion 2026-1's structure for a
-    different deal — a wrong answer presented as the selected deal's.
+    value from any tier open to it. Failing loudly here is deliberate: the old
+    silent ``deal.get(..., _GREEN_LION_*)`` fallback would have served numbers
+    computed against Green Lion 2026-1's structure for a different deal — a wrong
+    answer presented as the selected deal's.
+
+    ``or_from`` names the *other* source that was consulted, where one exists —
+    and is omitted where none does. The message used to assert "no extracted-model
+    value is available" for **every** key, which reads as "a path was tried and
+    came up empty". That is true of ``capital_structure`` and the senior coupon;
+    it was never true of ``reserve_account_target`` or ``original_pool_balance``,
+    which have no second tier at all, and the reader it sent to go extract a model
+    would have got nothing for their trouble (#479).
     """
+    alternative = f" (or {or_from})" if or_from else ""
     return HTTPException(
         status_code=422,
         detail=(
             f"Deal '{deal_id}' is missing required config '{missing_key}' and no "
-            f"extracted-model value is available. Refusing to fall back to Green "
-            f"Lion 2026-1's numbers — configure '{missing_key}' for this deal in "
-            f"deals.json (or extract its model)."
+            f"other source resolves it. Refusing to fall back to Green Lion "
+            f"2026-1's numbers — configure '{missing_key}' for this deal in "
+            f"deals.json{alternative}."
+        ),
+    )
+
+
+def _unresolvable_projection_base(deal_id: str, reason: str) -> HTTPException:
+    """A labelled 422 for a deal whose forward-projection base will not resolve.
+
+    Distinct from ``_misconfigured_deal`` because the honest message is
+    different: ``projection_base`` is not merely un-declared, it is
+    **underivable**, and ``reason`` says which input was missing — a tape, a
+    usable balance in one, or a malformed declaration. Pointing the reader at
+    "extract its model" here would be a dead end: the extracted model is a
+    prospectus extraction and carries no balance at any date (#479).
+    """
+    return HTTPException(
+        status_code=422,
+        detail=(
+            f"Deal '{deal_id}' cannot resolve a forward-projection base: "
+            f"{reason}. Refusing to fall back to Green Lion 2026-1's numbers — "
+            f"declare 'projection_base' for this deal in deals.json, or register "
+            f"a loan tape its current pool balance can be derived from."
         ),
     )
 
@@ -1807,10 +2093,7 @@ def _reconstruct_series_from_tapes(deal_id: str, deal: dict) -> DealStateSeries:
             reporting_period=cur_tape["date"],
             prev_tape_file_url=prev_tape["url"],
             days_in_period=days,
-            class_a_rate_pct=cap["class_a_rate_pct"],
-            class_a_balance=cap["class_a_balance"],
-            class_b_balance=cap["class_b_balance"],
-            class_c_balance=cap["class_c_balance"],
+            **_collections_tranche_args(deal_id, cap),
         )
         collections_result = aggregator.execute(collections_input)
         _audit(aggregator, collections_input, collections_result)
@@ -2187,10 +2470,13 @@ def _projected_series_from_canonical(
     generator's constant-rate proxy, unchanged.
     """
     try:
-        base = _resolve_projection_base(deal_id, deal)
+        # Structural config first: it owns the senior-coupon tiering the base
+        # consumes, and a deal short of a coupon must refuse by that name before
+        # anything reaches for its tape (#479).
         capital_structure, reserve_target, original_pool_balance = (
             _resolve_structural_config(deal_id, deal)
         )
+        base = _resolve_projection_base(deal_id, deal, capital_structure)
     except HTTPException:
         # No resolvable forward-projection config — genuinely unavailable.
         return None
@@ -2200,7 +2486,7 @@ def _projected_series_from_canonical(
             capital_structure,
             reserve_target=reserve_target,
             original_pool_balance=original_pool_balance,
-            opening_pool_balance=base["current_pool_balance"],
+            opening_pool_balance=base.current_pool_balance,
             reporting_date="projection-start",
         )
         generator = ScenarioGenerator()
@@ -2210,16 +2496,16 @@ def _projected_series_from_canonical(
         period_inputs = generator.generate(
             seed,
             assumptions=_scenario_assumptions("base"),
-            rate_pct=base["class_a_rate_pct"],
+            rate_pct=base.senior_rate_pct,
             months=_COMPARE_PROJECTION_MONTHS,
             scheduled_principal_schedule=amort_schedule,
         )
         rates = {
-            k: float(capital_structure[k])
-            for k in ("class_a_rate_pct", "class_b_rate_pct", "class_c_rate_pct")
-            if k in capital_structure
+            k: float(v)
+            for k, v in capital_structure.items()
+            if k.endswith("_rate_pct") and v is not None
         }
-        rates.setdefault("class_a_rate_pct", base["class_a_rate_pct"])
+        rates.setdefault("class_a_rate_pct", base.senior_rate_pct)
         # Execute the deal's OWN extracted cascade when a model is available;
         # fall back to the engine's builtin Green-Lion defaults otherwise (#426).
         step_kwargs = _run_period_step_kwargs(deal)
@@ -3599,10 +3885,13 @@ def deal_project(deal_id: str, req: ProjectRequest) -> dict:
     # fallback is the labelled last-resort consulted only for the Green Lion deal
     # (#268) — a misconfigured non-GL deal raises a labelled 422 instead of
     # silently borrowing Green Lion's structure.
-    base = _resolve_projection_base(deal_id, deal)
+    # Structural config first — it resolves the senior coupon the projection
+    # base consumes, so a deal short of one refuses by that name (the same key
+    # /waterfall reports) without reaching for its tape (#479).
     capital_structure, reserve_target, original_pool_balance = _resolve_structural_config(
         deal_id, deal
     )
+    base = _resolve_projection_base(deal_id, deal, capital_structure)
 
     # Seed period-0 from the projection base: the prospectus capital structure,
     # with the pool opening at the deal's CURRENT balance (the forward starting
@@ -3630,24 +3919,24 @@ def deal_project(deal_id: str, req: ProjectRequest) -> dict:
             capital_structure,
             reserve_target=reserve_target,
             original_pool_balance=original_pool_balance,
-            opening_pool_balance=base["current_pool_balance"],
+            opening_pool_balance=base.current_pool_balance,
             reporting_date=seed_date,
         )
         period_inputs = generator.generate(
             seed,
             assumptions=assumptions,
-            rate_pct=base["class_a_rate_pct"],
+            rate_pct=base.senior_rate_pct,
             months=req.months,
             scheduled_principal_schedule=amort_schedule,
         )
 
         # Fold the synthetic stream through the same kernel history uses.
         rates = {
-            k: float(capital_structure[k])
-            for k in ("class_a_rate_pct", "class_b_rate_pct", "class_c_rate_pct")
-            if k in capital_structure
+            k: float(v)
+            for k, v in capital_structure.items()
+            if k.endswith("_rate_pct") and v is not None
         }
-        rates.setdefault("class_a_rate_pct", base["class_a_rate_pct"])
+        rates.setdefault("class_a_rate_pct", base.senior_rate_pct)
         states = [seed]
         current = seed
         for period in period_inputs:
@@ -3835,10 +4124,13 @@ def _run_stress_matrix(deal_id: str, deal: dict, req: StressMatrixRequest) -> di
             ),
         )
 
-    base = _resolve_projection_base(deal_id, deal)
+    # Structural config first — it resolves the senior coupon the projection
+    # base consumes, so a deal short of one refuses by that name (the same key
+    # /waterfall reports) without reaching for its tape (#479).
     capital_structure, reserve_target, original_pool_balance = _resolve_structural_config(
         deal_id, deal
     )
+    base = _resolve_projection_base(deal_id, deal, capital_structure)
     # Constant recovery across the grid: the request's value, else the base preset.
     recovery_pct = (
         req.recovery_pct
@@ -3848,11 +4140,11 @@ def _run_stress_matrix(deal_id: str, deal: dict, req: StressMatrixRequest) -> di
 
     generator = ScenarioGenerator()
     rates = {
-        k: float(capital_structure[k])
-        for k in ("class_a_rate_pct", "class_b_rate_pct", "class_c_rate_pct")
-        if k in capital_structure
+        k: float(v)
+        for k, v in capital_structure.items()
+        if k.endswith("_rate_pct") and v is not None
     }
-    rates.setdefault("class_a_rate_pct", base["class_a_rate_pct"])
+    rates.setdefault("class_a_rate_pct", base.senior_rate_pct)
     # Execute the deal's OWN extracted cascade when a model is available; fall
     # back to the engine's builtin Green-Lion defaults otherwise (#426). Resolved
     # once and shared across every grid cell (it depends only on the deal).
@@ -3873,13 +4165,13 @@ def _run_stress_matrix(deal_id: str, deal: dict, req: StressMatrixRequest) -> di
                     capital_structure,
                     reserve_target=reserve_target,
                     original_pool_balance=original_pool_balance,
-                    opening_pool_balance=base["current_pool_balance"],
+                    opening_pool_balance=base.current_pool_balance,
                     reporting_date="projection-start",
                 )
                 period_inputs = generator.generate(
                     seed,
                     assumptions=assumptions,
-                    rate_pct=base["class_a_rate_pct"],
+                    rate_pct=base.senior_rate_pct,
                     months=req.months,
                 )
                 states = [seed]
