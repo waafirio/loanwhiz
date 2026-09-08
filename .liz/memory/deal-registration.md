@@ -29,3 +29,16 @@ meant to change moved. Grep for what hashes a registry *value*, not just what
 reads the key.
 
 Refs: #483
+
+## 2026-09-08 · pitfall · #479
+
+A missing config tier is not automatically an *extraction* tier. The committed
+deal model is a **prospectus** extraction — definitions, waterfalls, covenants,
+tranche structure — so it states closing-date terms and no as-of-date fact: no
+pool balance, no current coupon, ever. A config value that is a reported figure
+(`projection_base.current_pool_balance`) can only be *derived*, from a tape or a
+report. Read `DealModel`'s fields before promising an "extracted-model path": a
+422 claiming none is available sends the reader to run an extraction that could
+never have helped.
+
+Refs: #479

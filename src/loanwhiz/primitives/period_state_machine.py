@@ -62,7 +62,7 @@ conventions of the surrounding primitives.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Mapping
 
 from pydantic import BaseModel, Field
 
@@ -168,7 +168,27 @@ _SEQUENTIAL_PAY_TRIGGER = "cumulative_loss_trigger"
 # Per-tranche annual coupon rates (percent) the revenue interest needs read.
 # These are *rate* inputs to the waterfall, supplied by the caller via the
 # capital structure — kept off ``DealState`` (which tracks balances, not rates).
-_DEFAULT_RATE_KEYS = ("class_a_rate_pct", "class_b_rate_pct", "class_c_rate_pct")
+#
+# Read off the structure's own keys rather than a fixed ``class_a/b/c`` triple
+# (#478): the fixed list silently dropped the coupon of every class past the
+# third, so a deeper deal's mezzanine notes accrued no interest need at all —
+# a shortfall that never appears, which reads as a deal comfortably servicing
+# its notes. ``_rate_pct`` is the suffix the capital structure declares them by.
+_RATE_KEY_SUFFIX = "_rate_pct"
+
+
+def _rate_inputs(capital_structure: Mapping[str, Any]) -> dict[str, float]:
+    """Every ``<name>_rate_pct`` the capital structure states, as floats.
+
+    A class whose coupon is unresolved carries no key (the structure emits none
+    rather than a zero), so it is absent here too — and the need calculator
+    reports it as unevaluable instead of costing the waterfall nothing.
+    """
+    return {
+        key: float(value)
+        for key, value in capital_structure.items()
+        if key.endswith(_RATE_KEY_SUFFIX) and value is not None
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -880,7 +900,7 @@ def reconstruct_period_series(
         ``states`` — the prospectus-seeded period-0 opening state followed by
         every period's closing state; ``period_results`` — one per transition.
     """
-    rates = {k: float(capital_structure[k]) for k in _DEFAULT_RATE_KEYS if k in capital_structure}
+    rates = _rate_inputs(capital_structure)
 
     opening = DealState.seed_from_prospectus(
         capital_structure,

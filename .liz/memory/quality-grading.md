@@ -51,3 +51,13 @@ the claim. Ban the whole assertion, lower-cased, and let the retracted wording
 list be the specification.
 
 Refs: #471
+
+## 2026-09-08 · pitfall · #481
+
+Before publishing a graded cell, check whether the published outcomes **vary**:
+ground truth in which everything passed cannot tell a correct engine from one
+that never fires, and the grade reads identical either way. State that bound
+where the grade is published. Apply the mutant that should NOT red alongside
+those that should — what a cell cannot detect is the honest half of the finding.
+
+Refs: #481
