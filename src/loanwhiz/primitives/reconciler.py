@@ -245,6 +245,34 @@ class PeriodValidation(BaseModel):
         return self.revenue.passed and self.redemption.passed
 
 
+class SkippedPeriod(BaseModel):
+    """A period the reconciliation did not grade, and why (#513).
+
+    Deliberately **not** a :class:`PeriodValidation` with empty waterfalls.
+    ``WaterfallReconciliation.passed`` is ``all(...)`` over its steps plus a
+    tie-out against ``available_funds``, so an empty step list against a EUR 0.00
+    pot returns ``True``, and ``PeriodValidation.passed`` has no escape hatch —
+    a skipped period modelled that way would read as a **pass** in
+    :attr:`ReconciliationReport.passed`, in ``periods_passed``, in
+    ``quality_harness._grade_pop_side``'s tally and in the capability matrix's
+    ``engine_validation`` cell. A four-period key with one Priority of Payments
+    would then report three-quarters green for free, which is the vacuity
+    ``answer_keys/README.md`` exists to prevent, arriving somewhere new.
+
+    So a skip carries no pass/fail at all: it is a separate record, in a separate
+    list, naming what could not be graded and the reason. It is the same shape
+    ``quality_harness._grade_pool_stats`` already uses for a published statistic
+    no grader resolves (``ungraded_stat_keys``) and that ``covenant_monitor``
+    uses for an unplaceable tranche — report the gap, never score it.
+    """
+
+    reporting_date: str
+    period_label: str
+    reason: str = Field(
+        ..., description="Why this period was not graded, in operator-facing prose."
+    )
+
+
 class ReconciliationReport(BaseModel):
     """The full engine-vs-report reconciliation for one deal, across its periods.
 
@@ -252,25 +280,46 @@ class ReconciliationReport(BaseModel):
     published Notes & Cash priority of payments, period by period, to the cent.
     ``source_note`` carries the standing honesty disclosure of which lines were
     engine-computed vs. report-supplied.
+
+    ``periods`` is the **graded** set and every count below is over it.
+    ``skipped_periods`` carries the periods there was nothing to grade in (#513);
+    it is empty for a report whose every period was graded, which is every report
+    built by :func:`reconcile_series` directly.
     """
 
     deal_name: str
     periods: list[PeriodValidation]
     tolerance_eur: float = DEFAULT_TOLERANCE_EUR
     source_note: str = SOURCE_NOTE
+    skipped_periods: list[SkippedPeriod] = Field(
+        default_factory=list,
+        description="Periods carrying nothing to grade, each with its reason (#513).",
+    )
 
     @property
     def passed(self) -> bool:
-        """Every period's revenue + redemption reconciled to the cent."""
+        """Every **graded** period's revenue + redemption reconciled to the cent.
+
+        Skipped periods neither help nor hurt: they are not evidence the engine
+        is right (so they cannot make a report pass) and not evidence it is wrong
+        (so they cannot make one fail). ``bool(self.periods)`` keeps a report that
+        graded nothing at all from passing vacuously.
+        """
         return bool(self.periods) and all(p.passed for p in self.periods)
 
     @property
     def periods_checked(self) -> int:
+        """How many periods were actually graded — never the key's period count."""
         return len(self.periods)
 
     @property
     def periods_passed(self) -> int:
         return sum(1 for p in self.periods if p.passed)
+
+    @property
+    def periods_skipped(self) -> int:
+        """How many periods carried nothing to grade."""
+        return len(self.skipped_periods)
 
     def summary(self) -> str:
         """A one-block human summary of the proof."""
@@ -287,6 +336,14 @@ class ReconciliationReport(BaseModel):
                 f"revenue {p.revenue.steps_passed}/{len(p.revenue.steps)} steps, "
                 f"redemption {p.redemption.steps_passed}/{len(p.redemption.steps)} "
                 f"steps — {ec} engine-computed line(s) matched"
+            )
+        # The skipped periods are named here, not just counted: a reader shown
+        # "1/1 periods reconciled" for a four-period key would otherwise take the
+        # grade for complete. The ratio is honest about what it measured; this
+        # says what it did not measure.
+        for sp in self.skipped_periods:
+            lines.append(
+                f"  {sp.reporting_date} ({sp.period_label}): not graded — {sp.reason}"
             )
         lines.append(SOURCE_NOTE)
         return "\n".join(lines)

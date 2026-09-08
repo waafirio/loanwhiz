@@ -207,9 +207,16 @@ def test_green_lion_2024_1_engine_validation_survives_the_answer_key_swap() -> N
         "passed": True,
         "periods_checked": 3,
         "periods_passed": 3,
+        # Every period of this key carries a PoP, so nothing is skipped (#513).
+        # Asserted rather than omitted: an all-PoP key reporting a non-zero skip
+        # count would mean the grader had started dropping gradeable periods.
+        "periods_skipped": 0,
         "tolerance_eur": pytest.approx(0.01),
     }
     assert "reconciled to the cent" in cell.evidence.citation
+    # And the reason carries no not-graded clause, because there is nothing to
+    # disclose — the clause must appear only where periods really were skipped.
+    assert "not graded" not in cell.reason
 
 
 def test_validated_is_exactly_the_deals_carrying_committed_pop_ground_truth() -> None:

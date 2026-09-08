@@ -160,31 +160,79 @@ def recon(clo_series: DealStateSeries, nvr_report: NotesCashReport) -> Reconcili
 
 
 # ---------------------------------------------------------------------------
-# 1. The committed key cannot be graded as it stands.
+# 1. The committed key grades the period it has ground truth for (#513).
 # ---------------------------------------------------------------------------
 
 
-def test_the_committed_key_refuses_the_grade_on_its_period_count(
-    clo_series: DealStateSeries, clo_key: DealAnswerKey
+def test_the_committed_key_grades_its_one_pop_bearing_period(
+    clo_series: DealStateSeries, clo_key: DealAnswerKey, recon: ReconciliationReport
 ) -> None:
-    """Four key periods, one foldable document — the reconciler refuses to join.
+    """Four key periods, one foldable document — and the grade is now reachable.
 
-    This is the first half of the finding and it is a property of the *key's
-    shape*, not of any number in it: three of its four periods are authored from
-    monthly trustee reports, which state no Priority of Payments and therefore
-    give a fold nothing to produce a period result from. ``reconcile_series``
-    raises rather than grading a partial answer, so no engine change can reach
-    this grade while the key unions two document sets of different cadence.
+    #496 recorded a refusal here: three of the key's four periods are authored
+    from monthly trustee reports, which state no Priority of Payments and give a
+    fold nothing to produce a period result from, so ``reconcile_series`` saw one
+    period result against four report periods and raised on the join before
+    comparing a figure. #513 narrowed the join to the PoP-bearing periods, so the
+    key grades what it has ground truth for.
 
-    Left alone deliberately (#496 grades; it does not author). Recorded here so
-    that whoever re-shapes the key finds an assertion, not a memory.
+    The assertion that matters is the *equality*: grading through the committed
+    key must reach exactly the figures #496 reached by bypassing it. Anything
+    else would mean the key path and the direct path disagree about the same
+    document, and every number this module pins would be true of only one of them.
     """
     assert len(clo_series.period_results) == 1
     assert len(clo_key.periods) == 4
     assert sum(1 for p in clo_key.periods if p.revenue_pop or p.redemption_pop) == 1
 
-    with pytest.raises(ValueError, match="Reconciler join mismatch"):
-        reconcile_against_answer_key(clo_series, clo_key)
+    via_key = reconcile_against_answer_key(clo_series, clo_key)
+
+    assert via_key.periods_checked == 1
+    assert [p.model_dump() for p in via_key.periods] == [
+        p.model_dump() for p in recon.periods
+    ]
+
+
+def test_the_three_trustee_periods_are_skipped_and_never_pass(
+    clo_series: DealStateSeries, clo_key: DealAnswerKey
+) -> None:
+    """The other three periods are reported not-graded — not graded as passes.
+
+    This is the hazard #513 names, and it earns its own assertion because the
+    natural implementation walks straight into it: an ``AnswerKeyPeriod`` with no
+    PoP projects to a period with no steps and a ``None`` pot, and
+    ``WaterfallReconciliation.passed`` is ``all()`` over an empty step list plus a
+    tie-out of 0.00 against 0.00 — so a skipped period modelled as a
+    ``PeriodValidation`` would read ``passed is True``. This key would then report
+    three-quarters green having compared nothing, which is exactly the vacuity
+    ``answer_keys/README.md`` exists to prevent.
+
+    So: the skipped periods are absent from ``periods`` and from both counts, and
+    the tally is 0-of-1 rather than 3-of-4.
+    """
+    via_key = reconcile_against_answer_key(clo_series, clo_key)
+
+    graded_dates = {p.reporting_date for p in via_key.periods}
+    skipped_dates = {sp.reporting_date for sp in via_key.skipped_periods}
+    assert graded_dates == {"2025-01-08"}
+    assert skipped_dates == {"2024-12-16", "2025-02-18", "2025-03-18"}
+    assert not graded_dates & skipped_dates
+
+    # The counts are over the graded set alone — never over the key's periods.
+    assert (via_key.periods_checked, via_key.periods_passed) == (1, 0)
+    assert via_key.periods_skipped == 3
+    assert via_key.passed is False
+
+    # Each skip names the source document as the reason, not the engine or the key.
+    for skipped in via_key.skipped_periods:
+        assert "publishes no Priority of Payments" in skipped.reason
+
+    # And the human summary says so too: "0/1 periods reconciled" beside three
+    # unnamed absences would read as a complete grade of a one-period deal.
+    summary = via_key.summary()
+    assert "0/1 periods" in summary
+    for label in ("December 2024", "February 2025", "March 2025"):
+        assert f"{label}): not graded" in summary
 
 
 def test_the_keys_pop_period_is_the_report_the_grade_uses(
@@ -468,6 +516,13 @@ RETRACTED_CLAIMS: tuple[tuple[str, tuple[str, ...]], ...] = (
             "refuses on the second, which is #496's",
             "all 65 of its extracted step recipients resolve to no canonical",
             "no published-report reconciliation",
+            # Retracted by #513: the grade IS now reachable through the key.
+            "the grade is not reachable at all",
+            "so the reconciler refuses the join",
+            # Also #513: registering a series would now yield a real failing
+            # grade, not a join error. The corrected sentence still says
+            # "join-error string", so the ban has to carry the whole claim.
+            "replaced a true refusal with a join-error string",
         ),
     ),
     (
@@ -476,7 +531,15 @@ RETRACTED_CLAIMS: tuple[tuple[str, tuple[str, ...]], ...] = (
     ),
     (
         "src/loanwhiz/data/deals/answer_keys/README.md",
-        ("what a graded pop cell here will *not* prove",),
+        (
+            "what a graded pop cell here will *not* prove",
+            # Retracted by #513. The corrected paragraph still describes what
+            # #496 measured ("it raised on the count before comparing a
+            # figure"), which is true of its past, so the ban names the
+            # present-tense claim that stopped being true.
+            "raises on this key before comparing a figure",
+            "the union's cadence, not any number in it, is what stands between",
+        ),
     ),
 )
 
