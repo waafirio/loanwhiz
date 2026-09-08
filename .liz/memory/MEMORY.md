@@ -15,7 +15,9 @@ triage by opening the entry, not by reading the line.
 - [Published figures & doc drift](published-figures.md) — keywords: stale tally, completeness_score, capability matrix, re-derive, stored metric, published figure
   - [2026-09-06 · pattern · #469](#2026-09-06--pattern--469) — keywords: reconcile to stated aggregates, self-describing report, per-bucket distribution, refuse on divergence, document contradicts itself, source defect
   - [2026-09-08 · pitfall · #480](#2026-09-08--pitfall--480) — keywords: unobtainable, recorded limitation, wrong document, offering circular, trustee report, coverage-test threshold, glossary truncation, document set
+  - [2026-09-08 · pattern · #479](#2026-09-08--pattern--479) — keywords: derive vs hand-write, reconcile against declared, projection_base, current_pool_balance, pool_balance_eur, latest tape, byte-identical output
 - [Registering a deal (deals.json)](deal-registration.md) — keywords: deals.json, notes_cash_report_urls, routing promise, registry key, asset_class, answer key invariant
+  - [2026-09-08 · pitfall · #479](#2026-09-08--pitfall--479) — keywords: extracted-model path, prospectus extraction, DealModel fields, as-of-date fact, closing-date terms, config tier, projection_base
 - [Metrics computed over a capital structure](structural-metrics.md)
   - [2026-09-05 · pitfall · #452](#2026-09-05--pitfall--452) — keywords: attachment point, senior-or-equal walk, denominator, coverage ratio, OC, IC, silent health, unplaceable tranche
   - [2026-09-05 · decision · #452](#2026-09-05--decision--452) — keywords: classless default, senior class, positional metric, unmapped escape, alias row, LLM invents a position
