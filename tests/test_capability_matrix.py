@@ -652,3 +652,116 @@ def test_the_clo_waterfall_cell_names_both_halves() -> None:
     assert cell.state == STATE_RAN
     assert "executes against period funds" in cell.reason
     assert "per-deal endpoints cannot yet serve this deal" in cell.reason
+
+
+# ---------------------------------------------------------------------------
+# Synthetic pool data must never reach a `validated` cell (#483, epic #482)
+# ---------------------------------------------------------------------------
+#
+# Green Lion 2024-1 is the repo's only `validated` deal, and it is also one of
+# the tape-less deals the sibling issue (#484) will give a synthetic pool. So
+# "a validated deal owns no synthetic tape" is the wrong invariant — it would
+# be false the moment #484 lands, and pinning it would red honest work.
+#
+# The right one is narrower and survives that: `validated` is reachable only
+# through engine validation, whose evidence is the deal's own published Notes &
+# Cash Priority of Payments — it never reads `tape_urls`. The two are therefore
+# separable. Separable is not separated, so these tests put a synthetic tape on
+# the validated deal and assert the separation holds in fact.
+
+_SYNTHETIC_TAPE = {
+    "date": "2024-06-30",
+    "url": "synthetic:https://example.invalid/green_lion_2024_1_synthetic_pool.csv",
+}
+
+
+def _registry_with_synthetic_tape_on_the_validated_deal() -> dict:
+    """The real registry, with a synthetic tape added to green-lion-2024-1."""
+    assert "green-lion-2024-1" in DEAL_REGISTRY
+    registry = {k: dict(v) for k, v in DEAL_REGISTRY.items()}
+    registry["green-lion-2024-1"]["tape_urls"] = [_SYNTHETIC_TAPE]
+    return registry
+
+
+def _matrix_with_synthetic_pool() -> CapabilityMatrix:
+    return build_capability_matrix(
+        _registry_with_synthetic_tape_on_the_validated_deal(),
+        seed_loader=_load_cached_deal_model,
+        validators=_VALIDATION_BUILDERS,
+    )
+
+
+def test_the_validated_deal_is_still_validated_with_a_synthetic_pool() -> None:
+    """A synthetic tape must not disturb a validation it played no part in.
+
+    The guard has to fail in both directions to be worth anything: if adding a
+    synthetic tape silently *demoted* the one validated cell, the matrix would
+    be lying in the other direction.
+    """
+    cell = _cell(_matrix_with_synthetic_pool(), "green-lion-2024-1", "engine_validation")
+    assert cell.state == STATE_VALIDATED
+
+
+def test_the_validated_cell_cites_the_pop_report_not_the_tape() -> None:
+    """`validated` must rest on the published PoP reconciliation, not the pool.
+
+    This is the assertion that makes the separation real rather than incidental:
+    it is not enough that the state stayed `validated`, the *evidence* must be
+    free of the synthetic tape. Were engine validation ever re-keyed onto pool
+    statistics, the state alone would not notice.
+    """
+    cell = _cell(_matrix_with_synthetic_pool(), "green-lion-2024-1", "engine_validation")
+    rendered = f"{cell.reason} {cell.evidence.citation} {cell.evidence.detail}"
+    assert "Notes & Cash" in cell.evidence.citation
+    assert _SYNTHETIC_TAPE["url"] not in rendered
+    assert "synthetic" not in rendered.lower()
+
+
+def test_no_tape_consuming_cell_is_validated_for_a_synthetic_pool() -> None:
+    """Cells that read `tape_urls` must never reach `validated` off a synthetic pool."""
+    matrix = _matrix_with_synthetic_pool()
+    for capability_key in ("tape_analytics", "collateral_reconciliation"):
+        cell = _cell(matrix, "green-lion-2024-1", capability_key)
+        assert cell.state != STATE_VALIDATED, (
+            f"{capability_key} reached {STATE_VALIDATED!r} for a deal whose only "
+            "pool data is synthetic"
+        )
+
+
+def test_validated_is_reachable_only_through_engine_validation() -> None:
+    """The structural reason the two are separable, asserted over the whole matrix.
+
+    Every other capability is either tape-fed or config-fed; none of them has a
+    path to `validated` at all. Pinning that here means a future capability that
+    grows one has to come past this test.
+    """
+    for matrix in (_real_matrix(), _matrix_with_synthetic_pool()):
+        validated = {c.capability_key for c in matrix.cells if c.state == STATE_VALIDATED}
+        assert validated <= {"engine_validation"}
+
+
+def test_a_synthetic_pool_reads_as_synthetic_in_its_cell() -> None:
+    """The matrix reason must disclose synthetic provenance without a document.
+
+    The governance requirement in #483: a reader who never opens the data card
+    must still be told. The cell quotes the source kind's own disclosure, so the
+    wording cannot drift from the tape citation's.
+    """
+    cell = _cell(_matrix_with_synthetic_pool(), "green-lion-2024-1", "tape_analytics")
+    assert TapeSourceKind.SYNTHETIC_GENERATED.disclosure in cell.reason
+    assert cell.evidence.detail["tape_source_kinds"] == {
+        TapeSourceKind.SYNTHETIC_GENERATED.value: 1
+    }
+
+
+def test_the_qualifier_never_calls_a_synthetic_tape_an_unpublished_file() -> None:
+    """#457 / #471: ban the whole retracted claim, not a fragment of it.
+
+    The qualifier used to read "N of them are not published tape files". That is
+    true of a derived tape and false of a synthetic one — a synthetic tape *is*
+    a published file; what it is not is a record of anybody's loans. Asserting
+    the state alone would pass while the sentence lied, so this asserts the
+    retracted wording is absent.
+    """
+    cell = _cell(_matrix_with_synthetic_pool(), "green-lion-2024-1", "tape_analytics")
+    assert "are not published tape files" not in cell.reason.lower()
