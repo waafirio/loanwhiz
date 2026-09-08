@@ -255,7 +255,7 @@ Governance does not stop at the model — it extends to **where the data came fr
 
 LoanWhiz reads a loan tape straight from its source URL; where no published file exists it derives one, and where a pool is generated it says so. See [`docs/tape-ingestion.md`](tape-ingestion.md) for the full model.
 
-- A tape URL (HuggingFace CSV/parquet, local `file://`) is read directly by `esma_tape_normaliser._load_tape`, which dispatches on the file extension (`.parquet`/`.pq` → `pandas.read_parquet`, otherwise `pandas.read_csv`).
+- A tape URL (HuggingFace CSV/parquet, local `file://`) is read directly by `esma_tape_normaliser._load_tape`, which strips any provenance scheme from the identifier and then dispatches on the file extension (`.parquet`/`.pq` → `pandas.read_parquet`, otherwise `pandas.read_csv`). Nothing else may read a registered tape URL: `tests/test_tape_seam_bypass.py` reds on any `pandas` read handed a path that did not pass the resolver.
 - The result is tagged with an ingestion channel — `"direct"`, `"derived"` or `"synthetic"` — and carried through the evidence pack. The channel is resolved from the tape's own identifier, never from which loader branch ran, so a derived or generated tape cannot report the provenance of a published filing.
 
 > **Note on deeploans.** [deeploans](https://github.com/Algoritmica-ai/deeploans) is Algoritmica's open-source, Apache-2.0 ESMA loan-level ETL — the hackathon organiser's own tool, credited as a project input. It is **not** on LoanWhiz's live ingestion path: the upstream backend is serve-only (BigQuery-backed, batch-ETL'd) and serves SME data, so it cannot ingest LoanWhiz's RMBS tapes on demand. LoanWhiz therefore reads tapes directly; deeploans is a decoupled upstream credit, not a runtime dependency.
