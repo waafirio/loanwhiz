@@ -71,15 +71,17 @@ the per-cell source of truth: **1 validated / 15 ran / 14 not-applicable**.
 | **Green Lion 2023-1 B.V.** | Netherlands | Prospectus (real) + investor reports + **quarterly Notes & Cash (real)** | **1.0** | Full waterfall, 4 triggers | **Graded to the cent** by `GET /quality-matrix` against a committed answer key (#440) — revenue + redemption PoP across all three published periods. The `/deal/{id}/validation` endpoint still returns `available=false`: the fixtures and key are committed, but no validation *builder* is registered, so that endpoint understates what is graded. |
 | **Leone Arancio RMBS 2023-1 S.r.l.** | Italy | Prospectus (real, Italian) + investor reports | **0.925** | Full waterfall (23/23/12 steps), 3 triggers, 3 note classes — A1 480m / A2 6,600m / J 920m | Pipeline ran; tranche sizes reconcile to the curated `deals.json` registry, but **no** Notes & Cash report is published, so no external validation is possible |
 | **Sol-Lion II RMBS Fondo de Titulización** | Spain | Prospectus (real, Spanish) + investor reports | **0.925** | Full waterfall (20/15/12 steps), 3 triggers, 8 note classes — A1–A6, B, C | Pipeline ran; tranche sizes reconcile to the curated `deals.json` registry, but **no** Notes & Cash report is published, so no external validation is possible |
-| **Cairn CLO XVII DAC** *(CLO — extracted, unvalidated)* | Ireland | Listing Particulars (real, 420pp) + 3 monthly trustee reports (real) + Note Valuation Report (real, 83pp) | **1.0** | Full 8-class stack (A, B-1, B-2, C, D, E, F + Subordinated, EUR 404.1m), both Priorities of Payments as distinct cascades (29-step Interest / 23-step Principal / 26-step Post-Acceleration), 10 triggers of which 8 are per-class coverage tests, 25 definitions | **Executes, not validated.** The seed folds through the shared `run_period` kernel with the deal's own cascades (#457). No answer key is authored, so no cell is `validated` — for want of a key, not of a report. `covenant_monitoring`, `waterfall_execution` and — since #471 registered the derived tape — `tape_analytics` are `ran`; collateral reconciliation and engine validation stay `not-applicable`, each with a reason true of this deal. Collateral reconciliation stays refused because the deal registers no structural config, not because it has no tape. The coverage tests carry no thresholds — see the limitation below — so the monitor reports them not-evaluable rather than passing |
+| **Cairn CLO XVII DAC** *(CLO — extracted, unvalidated)* | Ireland | Listing Particulars (real, 420pp) + 3 monthly trustee reports (real) + Note Valuation Report (real, 83pp) | **1.0** | Full 8-class stack (A, B-1, B-2, C, D, E, F + Subordinated, EUR 404.1m), both Priorities of Payments as distinct cascades (29-step Interest / 23-step Principal / 26-step Post-Acceleration), 10 triggers of which 8 are per-class coverage tests, 25 definitions | **Executes, not validated.** The seed folds through the shared `run_period` kernel with the deal's own cascades (#457). No answer key is authored, so no cell is `validated` — for want of a key, not of a report. `covenant_monitoring`, `waterfall_execution` and — since #471 registered the derived tape — `tape_analytics` are `ran`; collateral reconciliation and engine validation stay `not-applicable`, each with a reason true of this deal. Collateral reconciliation stays refused because the deal registers no structural config, not because it has no tape. The coverage tests' required levels **are** now extracted from the trustee reports (#480) but not wired onto the deal model's triggers, which still carry `threshold: null` — so the monitor still reports them not-evaluable rather than passing. See the limitation below |
 
 ### Cairn CLO XVII DAC — what is and is not obtainable
 
 The registry's first non-RMBS deal, added by #455 to generalise the platform off
 RMBS and extracted by #456. **The Listing Particulars have been extracted; the
-trustee reports and Note Valuation Report have not, no ground truth has been
-authored, and no capability cell is `validated`.** This subsection is the
-availability record the epic asked for, negatives included.
+three monthly trustee reports have been parsed on both sides — collateral detail
+(#469) and the liability-side figures (#480) — the Note Valuation Report has
+not, no ground truth has been authored, and no capability cell is `validated`.**
+This subsection is the availability record the epic asked for, negatives
+included.
 
 Deal identity: an Irish *designated activity company*, trustee **U.S. Bank Global
 Corporate Trust**, Class A ISIN `XS2650750537` (page 395 of the Listing
@@ -181,8 +183,10 @@ per-attachment-point OC/IC metric — including the senior-most, the combined
 Class A/B Par Value Test, which the document defines over Class A + Class B
 outstanding and which therefore resolves at the Class B point.
 
-**The coverage tests carry no thresholds, and this is a real limitation rather
-than an absence in the document.** The levels are stated ("the Class A/B Par
+**The coverage tests carry no thresholds *from the Listing Particulars*, and
+this is a real limitation rather than an absence in the document.** Read that
+scope literally — #480 below found the same levels stated outright in a document
+this subsection already lists. The levels are stated ("the Class A/B Par
 Value Ratio is at least equal to 130.08 per cent") but they live in the
 definitions glossary, which runs past the extractor's 40,000-character budget.
 A glossary is alphabetical, so truncation loses a *range*, not a sample: the
@@ -193,6 +197,51 @@ than inferred from a healthy-looking term count. Downstream this degrades
 honestly — a coverage test with no quantified threshold is reported
 `not_evaluable` with that reason, never as a passing test. Capturing the levels
 is the obvious next increment and is **not** done here.
+
+**Corrected by #480: the levels are obtainable, from a document already in this
+registry.** The finding above was right about the *offering circular* and wrong
+about the *document set*. Every monthly trustee report states each coverage
+test's required level twice: once in the Executive Summary
+(`Test Description · Threshold · Current · Result`) and once on the Par Value
+Tests Detail and Interest Coverage Tests Detail pages
+(`… TEST · RATIO · REQUIRED LEVEL · CALCULATION · RESULT`) — in **opposite**
+column order, which makes the pair a cross-check rather than a transcription
+risk. All nine are now extracted by `collateral_schedule_parser`'s
+`parse_liability_summary_text`, from the same reports and the same seam the
+collateral schedule is read from, reconciled against both renderings, and
+identical across all three reporting dates as a deal term must be:
+
+| Test | Required level | March 2025 ratio |
+|---|---|---|
+| Class A/B Par Value | 130.08% | 139.43% |
+| Class C Par Value | 121.74% | 129.07% |
+| Class D Par Value | 112.62% | 118.92% |
+| Class E Par Value | 107.87% | 113.15% |
+| Class F Par Value | 103.90% | 108.68% |
+| Reinvestment Overcollateralisation | 104.40% | 108.68% |
+| Class A/B Interest Coverage | 120.00% | 184.35% |
+| Class C Interest Coverage | 110.00% | 166.55% |
+| Class D Interest Coverage | 105.00% | 146.04% |
+
+The same parse also takes each class's **resolved current coupon** — Class A's
+`4.54400` for March 2025, where the circular can only say
+`3 month EURIBOR + 1.80%` — and its periodic interest.
+
+**What this does *not* yet change: the monitor still reports every coverage test
+`not_evaluable`, and both of the reasons above still hold.** These figures are
+extracted and reconciled, not wired: nothing writes them onto the deal model's
+triggers, which still carry `threshold: null` (#478/#479 own the config shape,
+#481 the answer key). And per #457 below, the threshold gap is not even the
+refusal that fires first. A reader taking this paragraph as "the coverage tests
+now evaluate" would be making exactly the inversion #457 warns about.
+
+Two further limits, stated because they bound what the figures are: they are
+**report-derived facts, not prospectus terms** — one month's stated figure, not
+the contractual definition — so provenance records them as `source="report"` and
+the parser offers no way to say otherwise; and the Collateral Quality Tests on
+the same page (`Weighted Average Life Test`, the two Fitch tests) are *not*
+captured, because they carry no `%` terminator and their two figures cannot be
+separated unambiguously.
 
 **Refined by #457: the missing threshold is real, but it is not the refusal that
 fires first.** Running the deal revealed that on the actual eight-class stack

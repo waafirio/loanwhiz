@@ -15,3 +15,16 @@ COLUMN order, so consume columns left to right, taking each remainder off the
 front; appending it to the row's end files a name fragment under the last column.
 
 Refs: #469
+
+## 2026-09-08 · pitfall · #480
+
+Read a table's column ORDER off its own header, never off which section it sits
+in, and refuse an unrecognised header rather than reading two like-typed columns
+in a guessed order. One trustee report states each coverage test's required
+level and computed ratio twice — Executive Summary as `Threshold · Current`,
+detail page as `RATIO · REQUIRED LEVEL` — so either order, assumed, swaps them
+in one place and reports a breaching test as passing. Where a document states
+the same pair twice, parse BOTH and require agreement: the redundancy is a free
+cross-check, not duplicated work.
+
+Refs: #480
