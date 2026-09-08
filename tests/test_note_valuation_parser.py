@@ -43,7 +43,7 @@ from loanwhiz.primitives.note_valuation_parser import (
     parse_stated_totals,
     reconcile_note_valuation,
 )
-from loanwhiz.primitives.notes_cash_parser import NotesCashPeriod
+from loanwhiz.primitives.notes_cash_parser import NotesCashPeriod, NotesCashReport
 
 FIXTURE = Path(__file__).parent / "fixtures" / "note_valuation" / "cairn-clo-xvii-january-2025.txt"
 
@@ -422,3 +422,32 @@ def test_the_envelope_wrapper_returns_a_grounded_deterministic_result() -> None:
     ]
     assert all("Cairn CLO XVII DAC" in c.document for c in result.citations)
     assert result.audit_entry.primitive_name == "note_valuation_parser"
+
+
+# ---------------------------------------------------------------------------
+# The live seam — wiring only; the fetch itself is stubbed at the network edge
+# ---------------------------------------------------------------------------
+
+
+def test_the_deal_level_reader_returns_the_existing_report_shape(monkeypatch) -> None:
+    """A deal's registered reports become a ``NotesCashReport``, as for an RMBS deal.
+
+    Only ``fetch_report_text`` is stubbed — the genuine network boundary. The
+    parse, the reconciliation and the report assembly all run for real.
+    """
+    import loanwhiz.primitives.note_valuation_parser as module
+
+    monkeypatch.setattr(module, "fetch_report_text", lambda url: _text())
+
+    report = module.parse_note_valuation_report(
+        {
+            "deal_name": "Cairn CLO XVII DAC",
+            "notes_cash_report_urls": [{"period": PERIOD_LABEL, "url": "https://example/nvr.pdf"}],
+        }
+    )
+
+    assert isinstance(report, NotesCashReport)
+    assert report.reporting_dates == ["2025-01-08"]
+    period = report.period_for("2025-01-08")
+    assert period is not None
+    assert period.available_revenue_funds == pytest.approx(STATED_INTEREST_AVAILABLE)

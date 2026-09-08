@@ -115,7 +115,11 @@ _WATERFALLS: tuple[tuple[str, str], ...] = (
 #: A waterfall data row ends in exactly two money cells: the amount paid at the
 #: step and the available balance remaining after it. Anchored at end-of-line,
 #: so a description containing a figure with any other shape (``50.0 per
-#: cent.``, ``20 per cent.``) cannot be mistaken for the tail.
+#: cent.``, ``20 per cent.``) cannot be mistaken for the tail. ``MONEY`` carries
+#: no sign, so a hypothetical negative cell would not match and the row would
+#: fall through to the continuation branch — which breaks the balance chain and
+#: refuses. Failing loudly on an unseen shape is the wanted behaviour; silently
+#: widening the pattern for one is not.
 _ROW_TAIL_RE = re.compile(rf"^(?P<description>.*?)\s+(?P<amount>{MONEY})\s+(?P<balance>{MONEY})\s*$")
 
 #: A priority label as the report prints it: one or more parenthesised groups.
@@ -447,8 +451,9 @@ def _parse_waterfall(pages: list[list[str]], section: str) -> tuple[list[PoPStep
                 continues = None
                 continue
 
-            if _LABEL_RE.match(line):
-                parent = _LABEL_RE.match(line).group(0)  # type: ignore[union-attr]
+            header = _LABEL_RE.match(line)
+            if header:
+                parent = header.group(0)
                 continues = None
                 continue
 
@@ -506,7 +511,10 @@ def _parse_distribution(
                     continue
                 original_face = _money(row["original_face"])
                 closing = _money(row["closing"])
-                rate = float(row["rate"])
+                # The Executive Summary's N/A overrides this section's 0.00000;
+                # a class the Executive Summary does not list keeps the printed
+                # rate, since there is no second opinion to prefer.
+                has_coupon = coupons.get(key, 0.0) is not None
                 balances.append(
                     NoteClassBalance(
                         note_class=key,
@@ -514,7 +522,7 @@ def _parse_distribution(
                         total_principal_payments=_money(row["principal_payment"]),
                         factor_after_payment=(closing / original_face if original_face else None),
                         total_interest_payments=_money(row["payable"]),
-                        interest_rate_applied=(None if coupons.get(key, rate) is None else rate),
+                        interest_rate_applied=float(row["rate"]) if has_coupon else None,
                     )
                 )
                 continue
