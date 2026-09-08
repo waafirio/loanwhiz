@@ -82,8 +82,15 @@ POP_KEYED_DEAL_IDS = {GL_DEAL_ID, GL23_DEAL_ID, CLO_DEAL_ID}
 #: Of those, the deals the harness can actually *grade* to the cent: a PoP key
 #: alone grades nothing, because the engine side comes from a committed offline
 #: fold registered in ``_default_series_provider`` (the #440 lesson). Cairn has
-#: no such fold yet — that is #496 — so its PoP cells stay honestly
-#: not-applicable on the series precondition rather than on the key.
+#: no such fold, so its PoP cells stay honestly not-applicable on the series
+#: precondition rather than on the key.
+#:
+#: #496 ran that grade without registering one and reports why the set does not
+#: grow: the Interest cascade is short EUR 1,820,150.42 of the report's stated
+#: available revenue, no step is engine-computed, and the key's four periods
+#: cannot join a fold built from its one PoP-bearing document.
+#: ``tests/test_clo_pop_grading.py`` holds the measured result; adding Cairn here
+#: without changing that is what this line exists to stop.
 POP_GRADED_DEAL_IDS = {GL_DEAL_ID, GL23_DEAL_ID}
 
 #: Deals whose published **coverage-test results** are committed as an answer key

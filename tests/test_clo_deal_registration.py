@@ -539,7 +539,19 @@ def test_clo_cannot_reach_validated_and_the_reason_is_the_missing_series() -> No
     key carried **no Priority-of-Payments section** — explicitly "until one is
     authored from the Note Valuation Report (#495)". #495 has authored one, so it
     is re-founded once more, on the precondition that is now the one genuinely
-    missing: no offline engine series (#496).
+    missing: no offline engine series is registered for this deal.
+
+    **#496 ran the grade and deliberately registered no series, and the reason is
+    the finding rather than an omission.** Folded against the very document the
+    key's PoP period was authored from, the Interest cascade is short EUR
+    1,820,150.42 of the report's stated available revenue and not one of its
+    steps is engine-computed (``tests/test_clo_pop_grading.py``); and the key
+    itself cannot be graded at all while it unions four periods against a single
+    foldable document. Registering a series would swap this true refusal for a
+    join-error string without making anything more validated, and would take a
+    tranche-class decision no published figure checks. The reason stated here
+    therefore stays the accurate one — a fact about this repo's registry, never a
+    claim about what the deal publishes.
 
     Both the new premise and the retracted reason are asserted, because a cell
     that keeps wording that stopped being true is telling this deal a story true
@@ -565,7 +577,10 @@ def test_clo_cannot_reach_validated_and_the_reason_is_the_missing_series() -> No
     assert key is not None, "the CLO's answer key should be committed"
     assert _has_pop_section(key), "#495 authored the PoP section this test rests on"
 
-    # And the precondition that is actually missing — #496 supplies it.
+    # And the precondition that is actually missing. #496 measured what a fold
+    # would produce without registering one; `test_clo_pop_grading` holds that
+    # result, so this stays a statement about the registry rather than about
+    # whether a fold is constructible.
     assert (
         _default_series_provider()(CLO_DEAL_ID, DEAL_REGISTRY[CLO_DEAL_ID], None) is None
     )
