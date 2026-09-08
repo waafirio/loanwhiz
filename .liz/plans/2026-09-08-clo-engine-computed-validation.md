@@ -1,10 +1,10 @@
 ---
 id: 2026-09-08-clo-engine-computed-validation
 title: "Make the CLO's reconciliation an engine claim: close the four gaps #496 measured"
-status: decomposed
+status: filed
 created: 2026-09-08
 updated: 2026-09-08
-epics: []
+epics: [510]
 ---
 
 # Make the CLO's reconciliation an engine claim: close the four gaps #496 measured
@@ -107,7 +107,7 @@ the child that grades is not the child that wires.
 
 ## Decomposition
 
-### Epic: Make the CLO's reconciliation an engine claim   (umbrella #<N>)
+### Epic: Make the CLO's reconciliation an engine claim   (umbrella #510)
 
 - **Canonicalise the recipient before classifying a step's source** — Make
   `step_source_classifier` resolve a step's recipient through
@@ -140,4 +140,9 @@ the child that grades is not the child that wires.
 
 ## Filed issues
 
-<Filled after filing.>
+- Epic "Make the CLO's reconciliation an engine claim" → umbrella **#510**
+  - #511 Canonicalise the recipient before classifying a step's source — parallel, `liz:priority:1`
+  - #512 Wire the published applied rates onto the engine's tranches — parallel, `liz:priority:1`
+  - #513 Grade the key's PoP-bearing periods instead of refusing the union — parallel, `liz:priority:1`
+  - #514 Fold the report's sub-labelled rows onto their parent steps — sequential, after #512
+  - #515 Re-grade the CLO and record the verdict — sequential, after #514
