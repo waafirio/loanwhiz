@@ -13,8 +13,18 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+# Import a ``primitives`` module before ``loanwhiz.domain`` so the package-init
+# cycle between them resolves — the same ordering tests/test_tape_provenance.py
+# uses, and the one loanwhiz.domain.tape_provenance's docstring documents.
+import loanwhiz.primitives  # noqa: F401  (import-order guard, see above)
 from loanwhiz import config
 from loanwhiz.config import GREEN_LION, HF_BASE
+from loanwhiz.domain.tape_provenance import (
+    TapeScheme,
+    TapeSourceKind,
+    source_kind_for,
+    underlying_url,
+)
 
 TAPE_URLS = GREEN_LION["tape_urls"]
 
@@ -22,11 +32,25 @@ TAPE_URLS = GREEN_LION["tape_urls"]
 def test_deal_has_its_own_three_2026_tapes() -> None:
     assert len(TAPE_URLS) == 3
     # All three belong to Green Lion 2026-1 (HF_BASE / Hackathon_Data) — none are
-    # drawn from the separate 2024-2025 dataset.
+    # drawn from the separate 2024-2025 dataset. The registered identifier now
+    # carries a provenance scheme, so the file it names is what starts at
+    # HF_BASE; ``underlying_url`` is the one place that split is spelled.
     for entry in TAPE_URLS:
-        assert entry["url"].startswith(HF_BASE)
+        assert underlying_url(entry["url"]).startswith(HF_BASE)
         assert "Hackathon_Data" in entry["url"]
         assert entry["date"] >= "2026-01-01"
+
+
+def test_every_tape_declares_itself_synthetic() -> None:
+    """These tapes are generated, and the identifier is where that is stated.
+
+    The filename said "synthetic" long before this held, and nothing that makes
+    a claim about the deal reads a filename — which is how these tapes came to
+    report the ingestion channel of a filed regulatory tape (#483).
+    """
+    for entry in TAPE_URLS:
+        assert entry["url"].startswith(f"{TapeScheme.SYNTHETIC.value}:")
+        assert source_kind_for(entry["url"]) is TapeSourceKind.SYNTHETIC_GENERATED
 
 
 def test_tape_history_is_chronologically_ordered() -> None:
@@ -47,8 +71,14 @@ def test_jan_2026_is_absent() -> None:
 def test_april_2026_irregular_filename_preserved() -> None:
     # The April-2026 tape keeps its irregular ``2026_1`` filename; downstream
     # (tests/test_esma_tape_normaliser.py) looks it up by this exact date.
+    # Declaring the tape synthetic changed its identifier, not the file it
+    # names — that is the whole point, and this pins it: the bytes fetched are
+    # the same bytes, so every pool figure is unchanged.
     april = next(e for e in TAPE_URLS if e["date"] == "2026-04-30")
-    assert april["url"] == f"{HF_BASE}/green_lion_2026_1_synthetic_loan_tape.csv"
+    assert (
+        underlying_url(april["url"])
+        == f"{HF_BASE}/green_lion_2026_1_synthetic_loan_tape.csv"
+    )
 
 
 def test_investor_reports_unchanged() -> None:

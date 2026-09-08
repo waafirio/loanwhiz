@@ -74,6 +74,7 @@ from loanwhiz.primitives.base import (
 )
 from loanwhiz.primitives.deal_state import PeriodCollections
 from loanwhiz.primitives.esma_tape_normaliser import (
+    _load_tape as _read_tape_through_seam,
     non_performing_mask,
     performing_mask,
 )
@@ -278,8 +279,31 @@ class CollectionsOutput(BaseModel):
 
 
 def _load_tape(file_url: str) -> pd.DataFrame:
-    """Load a tape CSV and lower-case its column names."""
-    df = pd.read_csv(file_url, low_memory=False)
+    """Load the tape at *file_url* and lower-case its column names.
+
+    Reads through the **one ingestion seam**
+    (:func:`loanwhiz.primitives.esma_tape_normaliser._load_tape`) rather than
+    handing the identifier to pandas, because a tape identifier is not a file
+    path: it may carry a provenance scheme stating what the tape is
+    (``synthetic:``, ``derived+trustee-report:``; see
+    :mod:`loanwhiz.domain.tape_provenance`). Both registered forms reach here —
+    the collections endpoint and the agent tool run over whatever tapes a deal
+    registers, and the CLO deal registers derived ones — and pandas can open
+    neither: a ``synthetic:`` prefix is not a scheme it knows, and a derived URI
+    names a trustee-report PDF whose rows have to be *derived*, not parsed as
+    CSV.
+
+    Stripping the scheme here instead would fix only the first case and would
+    put a second copy of the identifier rules in this module. The seam already
+    holds them, and routes parquet tapes correctly besides, so this delegates
+    rather than re-deciding.
+
+    The seam also returns the ingestion channel. This primitive reports pool
+    cash flows rather than provenance, so it takes only the frame; the channel
+    is surfaced by ``EsmaTapeNormaliser`` and ``PoolStratification`` on the very
+    same tape.
+    """
+    df, _channel = _read_tape_through_seam(file_url, None)
     df.columns = [c.lower() for c in df.columns]
     return df
 

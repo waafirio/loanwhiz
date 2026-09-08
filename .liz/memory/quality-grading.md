@@ -27,6 +27,7 @@ is authored" names a deferred decision. Assert the retracted wording is *absent*
 a test checking only the state passes while the prose lies.
 
 Refs: #457
+Refs: #483 — re-learned the moment the branch grew a second member.
 
 ## 2026-09-06 · pitfall · #471
 

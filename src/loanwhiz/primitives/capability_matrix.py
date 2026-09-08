@@ -324,20 +324,28 @@ def _tape_source_kinds(tapes: list) -> dict[str, int]:
     return counts
 
 
-def _derived_qualifier(tapes: list) -> str:
-    """A sentence stating that some registered tapes are derived, or ``""``.
+def _provenance_qualifier(tapes: list) -> str:
+    """A sentence introducing the disclosures of any tape that declares one.
 
     Quotes ``TapeSourceKind.disclosure`` verbatim rather than paraphrasing it, so
     the claim cannot drift between this cell, the tape citation and the data
-    card. Silence when nothing is derived — an undeclared tape gets no sentence
-    at all rather than a reassuring one.
+    card. Silence when no tape declares a kind — an undeclared tape gets no
+    sentence at all rather than a reassuring one.
+
+    The lead-in says only that a declaration exists, which is exactly what the
+    identifier encodes. It used to read "N of them are not published tape
+    files", true of a derived tape and **false** of a synthetic one, which *is*
+    a published file — #457's lesson that one literal covering a whole branch
+    will be false for some member of it, reproduced the moment the branch grew a
+    second member. Any sentence characterising the kinds belongs in the
+    disclosures below, where each kind states its own.
     """
-    derived = [t for t in tapes if source_kind_for(t.get("url", "")) is not None]
-    if not derived:
+    declared = [t for t in tapes if source_kind_for(t.get("url", "")) is not None]
+    if not declared:
         return ""
-    kinds = sorted({source_kind_for(t["url"]) for t in derived}, key=lambda k: k.value)
+    kinds = sorted({source_kind_for(t["url"]) for t in declared}, key=lambda k: k.value)
     disclosures = " ".join(k.disclosure for k in kinds)
-    return f" {len(derived)} of them are not published tape files: {disclosures}"
+    return f" {len(declared)} of them declare their provenance: {disclosures}"
 
 
 def _classify_tape_analytics(
@@ -371,7 +379,7 @@ def _classify_tape_analytics(
     return (
         STATE_RAN,
         f"{len(tapes)} loan tape(s) registered; pool analytics normalise per "
-        f"period.{_derived_qualifier(tapes)}",
+        f"period.{_provenance_qualifier(tapes)}",
         CellEvidence(
             confidence=1.0,  # deterministic normalisation
             citation=(
@@ -570,7 +578,7 @@ def _classify_collateral_reconciliation(
     return (
         STATE_RAN,
         f"Pool state reconstructed across {len(tapes)} tape period(s) by "
-        f"net-reconciliation.{_derived_qualifier(tapes)}",
+        f"net-reconciliation.{_provenance_qualifier(tapes)}",
         CellEvidence(
             confidence=1.0,
             citation=(

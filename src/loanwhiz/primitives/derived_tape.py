@@ -53,11 +53,19 @@ the single place that decides what a column means.
 
 Adding the next derived source
 ------------------------------
-Register a member on :class:`DerivedTapeScheme`, its source kind in
-:data:`_SCHEME_KINDS`, and its deriver in :data:`_DERIVERS`. The import-time
-guard below refuses a member missing from either table, so a new scheme cannot
-become well-formed by accident — the closed-registry discipline #453 established
-for ``NEED_CALCULATORS``. Nothing in this module special-cases Cairn.
+Register a member on :class:`~loanwhiz.domain.tape_provenance.TapeScheme` with
+its source kind, then its deriver in :data:`_DERIVERS`. Two import-time guards
+refuse a half-registration — the domain module's refuses a scheme with no kind,
+and the one below refuses a scheme claiming the derived-from-investor-report
+kind with no deriver — so a new scheme cannot become well-formed by accident
+(the closed-registry discipline #453 established for ``NEED_CALCULATORS``).
+Nothing in this module special-cases Cairn.
+
+The scheme vocabulary itself is **not** owned here. It sits beside
+:class:`~loanwhiz.domain.tape_provenance.TapeSourceKind` because ``synthetic:``
+declares provenance the same way and needs no derivation at all: what a tape is
+and how it is loaded are different questions, and only the second is this
+module's. A second scheme enum here would be a second answer to the first.
 """
 
 from __future__ import annotations
@@ -67,11 +75,17 @@ import logging
 import urllib.parse
 import urllib.request
 from collections.abc import Callable
-from enum import Enum
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from loanwhiz.domain.tape_provenance import TapeSourceKind
+from loanwhiz.domain.tape_provenance import (
+    TapeScheme,
+    TapeSourceKind,
+    kind_for_scheme,
+    scheme_for,
+    source_kind_for,
+    underlying_url,
+)
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
     from loanwhiz.primitives.collateral_tape_mapping import MappedCollateralTape
@@ -87,7 +101,7 @@ if TYPE_CHECKING:  # pragma: no cover - typing only
 # already the expensive call.
 
 __all__ = [
-    "DerivedTapeScheme",
+    "TapeScheme",
     "DerivationError",
     "DEFAULT_DERIVED_TAPE_CACHE_DIR",
     "derive_tape",
@@ -96,6 +110,7 @@ __all__ = [
     "is_derived_uri",
     "source_document_for",
     "source_kind_for",
+    "underlying_url",
 ]
 
 _log = logging.getLogger(__name__)
@@ -115,19 +130,6 @@ _PERIOD_PARAM = "period"
 #: text seam is what the committed fixtures are, so an operator (or a test) can
 #: derive from a local extraction without a PDF stack or a network round-trip.
 _TEXT_SUFFIXES = (".txt",)
-
-
-class DerivedTapeScheme(str, Enum):
-    """URI schemes naming a derivation LoanWhiz can perform.
-
-    A closed vocabulary with no default member, for the same reason
-    :class:`~loanwhiz.domain.tape_provenance.TapeSourceKind` has none: the
-    scheme decides the most consequential claim the system makes about a tape,
-    and a default would let it be made by omission.
-    """
-
-    #: Reconstructed from the collateral schedule of a monthly trustee report.
-    TRUSTEE_REPORT = "derived+trustee-report"
 
 
 class DerivationError(ValueError):
@@ -158,48 +160,47 @@ def _derive_from_trustee_report(source_url: str, period_label: str) -> MappedCol
     return map_schedule(schedule, source_document=source_url)
 
 
-#: Scheme → what a tape derived through it **is**. Every member is present; the
-#: guard below refuses a member that is not, because a scheme with no declared
-#: kind would answer the derived-vs-filed question by falling off the end of a
-#: lookup.
-_SCHEME_KINDS: dict[DerivedTapeScheme, TapeSourceKind] = {
-    DerivedTapeScheme.TRUSTEE_REPORT: TapeSourceKind.DERIVED_FROM_INVESTOR_REPORT,
+#: Scheme → the derivation itself. What a scheme *is* lives with the scheme, in
+#: ``loanwhiz.domain.tape_provenance``; this module owns only how to perform
+#: one. Not every :class:`TapeScheme` needs an entry — a ``synthetic:`` tape
+#: names an ordinary published file and is read, not derived — but every scheme
+#: that claims to be derived from an investor report does, and the guard below
+#: enforces exactly that: such a scheme with no deriver would parse as a valid
+#: tape identifier that nothing can load.
+_DERIVERS: dict[TapeScheme, Callable[[str, str], MappedCollateralTape]] = {
+    TapeScheme.TRUSTEE_REPORT: _derive_from_trustee_report,
 }
 
-#: Scheme → the derivation itself. Same totality requirement.
-_DERIVERS: dict[DerivedTapeScheme, Callable[[str, str], MappedCollateralTape]] = {
-    DerivedTapeScheme.TRUSTEE_REPORT: _derive_from_trustee_report,
-}
-
-_missing_kinds = sorted(s.value for s in DerivedTapeScheme if s not in _SCHEME_KINDS)
-_missing_derivers = sorted(s.value for s in DerivedTapeScheme if s not in _DERIVERS)
-if _missing_kinds or _missing_derivers:  # pragma: no cover - import-time guard
+_missing_derivers = sorted(
+    scheme.value
+    for scheme in TapeScheme
+    if kind_for_scheme(scheme) is TapeSourceKind.DERIVED_FROM_INVESTOR_REPORT
+    and scheme not in _DERIVERS
+)
+if _missing_derivers:  # pragma: no cover - import-time guard, asserted by test
     raise RuntimeError(
-        "DerivedTapeScheme members are not fully registered — "
-        f"missing a source kind: {_missing_kinds}; missing a deriver: "
-        f"{_missing_derivers}. Every scheme must declare both: a scheme with no "
-        "kind would make the derived-vs-filed claim by omission, and one with no "
-        "deriver would parse as a valid tape identifier that nothing can load."
+        f"TapeScheme members {_missing_derivers} declare the derived-from-"
+        "investor-report kind but register no deriver, so they would parse as "
+        "valid tape identifiers that nothing can load."
     )
-del _missing_kinds, _missing_derivers
+del _missing_derivers
 
 
-def _split_uri(uri: str) -> tuple[DerivedTapeScheme, str, str]:
+def _split_uri(uri: str) -> tuple[TapeScheme, str, str]:
     """Split a derived URI into (scheme, source URL, period label).
 
     Raises:
-        DerivationError: on an unknown scheme, an empty source URL, or a missing
-            ``#period=`` fragment.
+        DerivationError: on an unknown scheme, a scheme this module cannot
+            derive, an empty source URL, or a missing ``#period=`` fragment.
     """
     scheme_text, _, remainder = uri.partition(":")
-    try:
-        scheme = DerivedTapeScheme(scheme_text)
-    except ValueError as exc:
-        known = ", ".join(sorted(s.value for s in DerivedTapeScheme))
+    scheme = scheme_for(f"{scheme_text}:")
+    if scheme is None or scheme not in _DERIVERS:
+        known = ", ".join(sorted(s.value for s in _DERIVERS))
         raise DerivationError(
             f"{scheme_text!r} is not a derivation LoanWhiz knows how to perform. "
             f"Known schemes: {known}."
-        ) from exc
+        )
 
     source_url, _, fragment = remainder.partition("#")
     if not source_url:
@@ -248,7 +249,7 @@ def _read_source_document(source_url: str) -> str:
     return extract_report_lines(payload)
 
 
-def derived_tape_uri(source_url: str, period_label: str, *, scheme: DerivedTapeScheme) -> str:
+def derived_tape_uri(source_url: str, period_label: str, *, scheme: TapeScheme) -> str:
     """Build the derived URI for *source_url* at *period_label*.
 
     The one place the URI is spelled, so a registry entry and a test never drift
@@ -259,26 +260,15 @@ def derived_tape_uri(source_url: str, period_label: str, *, scheme: DerivedTapeS
 
 
 def is_derived_uri(url: str) -> bool:
-    """Whether *url* identifies a derived tape rather than a published file."""
-    return any(url.startswith(f"{scheme.value}:") for scheme in DerivedTapeScheme)
+    """Whether *url* names a tape this module must **reconstruct**.
 
-
-def source_kind_for(url: str) -> TapeSourceKind | None:
-    """What the tape at *url* **is**, decided by its identifier alone.
-
-    Returns ``None`` for an ordinary published tape URL. ``None`` means *the
-    source kind is not declared* — deliberately **not**
-    ``FILED_ARTICLE_7_1_A``. LoanWhiz's other tapes are read from published
-    files without any evidence in this repo about whether those files are the
-    originator's Article 7(1)(a) disclosure or a redistribution of it, and
-    inventing that claim as a default is precisely the fabrication the derived
-    path exists to avoid. A surface rendering provenance must therefore handle
-    three answers, not two.
+    Narrower than "carries a provenance scheme": a ``synthetic:`` tape declares
+    its provenance the same way but names an ordinary published file, so it is
+    read by the loader, not derived here. The loader dispatches on this, so the
+    distinction has to be exact.
     """
-    for scheme in DerivedTapeScheme:
-        if url.startswith(f"{scheme.value}:"):
-            return _SCHEME_KINDS[scheme]
-    return None
+    scheme = scheme_for(url)
+    return scheme is not None and scheme in _DERIVERS
 
 
 def source_document_for(url: str) -> str | None:

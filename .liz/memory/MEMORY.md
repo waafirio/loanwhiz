@@ -15,6 +15,11 @@ triage by opening the entry, not by reading the line.
 - [Extraction: locating the right section](extraction-section-routing.md) — keywords: descendant span, heading level, section number, Docling, has_payment_list, LLM router, empty result
 - [Published figures & doc drift](published-figures.md) — keywords: stale tally, completeness_score, capability matrix, re-derive, stored metric, published figure
   - [2026-09-06 · pattern · #469](#2026-09-06--pattern--469) — keywords: reconcile to stated aggregates, self-describing report, per-bucket distribution, refuse on divergence, document contradicts itself, source defect
+  - [2026-09-08 · pitfall · #484](#2026-09-08--pitfall--484) — keywords: balance share, count share, generated population, per-bucket draw, stratification, arrears bucket, rendered axis
+  - [2026-09-02 · pitfall · #441](#2026-09-02--pitfall--441) — keywords: completeness_score
+- [Registering a deal (deals.json)](deal-registration.md) — keywords: deals.json, notes_cash_report_urls, routing promise, registry key, asset_class, answer key invariant
+  - [2026-09-05 · pitfall · #455](#2026-09-05--pitfall--455) — keywords: notes_cash_report_urls, _reconstruct_series
+  - [2026-09-08 · pitfall · #483](#2026-09-08--pitfall--483) — keywords: sha256(tape_url).json, _tape_analytics_period
   - [2026-09-08 · pitfall · #480](#2026-09-08--pitfall--480) — keywords: unobtainable, recorded limitation, wrong document, offering circular, trustee report, coverage-test threshold, glossary truncation, document set
   - [2026-09-08 · pattern · #479](#2026-09-08--pattern--479) — keywords: derive vs hand-write, reconcile against declared, projection_base, current_pool_balance, pool_balance_eur, latest tape, byte-identical output
 - [Registering a deal (deals.json)](deal-registration.md) — keywords: deals.json, notes_cash_report_urls, routing promise, registry key, asset_class, answer key invariant
@@ -27,10 +32,15 @@ triage by opening the entry, not by reading the line.
 - [Extraction determinism & LLM caching](extraction-determinism.md) — keywords: classify_segments_llm, section router, determinism cache, prompt hash, force_refresh, sections_found, completeness_score, degrade-to-default
 - [Regulatory mapping tables (ESMA annexes, field codes, locators)](regulatory-mapping-tables.md) — keywords: AnnexField, extension field, code=None, field code, locator, ESMA RTS, annex numbering, CRPL, AUTL, RREL, borrowed code
   - [2026-09-06 · decision · #470](#2026-09-06--decision--470) — keywords: field identity, value conformance, NACE, NUTS-3, market price vs value, unit mismatch, obligor identifier, RTS vocabulary, derived tape
+  - [2026-09-04 · pitfall · #451](#2026-09-04--pitfall--451) — keywords: AnnexField(code=None, ...)
 - [Engine contracts (closed enums, registries, need calculators)](engine-contracts.md)
   - [2026-09-05 · pattern · #453](#2026-09-05--pattern--453) — keywords: NEED_CALCULATORS, register_need, RecipientType, closed enum, registry coverage, import-time assert, silent default, generated calculators
   - [2026-09-05 · pitfall · #453](#2026-09-05--pitfall--453) — keywords: LLM classifier options, deny list, enum growth, near-miss, incentive fee, use_llm=False, unmapped escape
   - [2026-09-06 · pitfall · #471](#2026-09-06--pitfall--471) — keywords: absent column, all-False mask, arrears breakdown, silent clean pool, degrade, no key not zero
+- [Extracting tables from PDFs](pdf-table-extraction.md) — keywords: visitor_text, text matrix, tm[4], rotated table, extraction_mode layout, row boundary, continuation line, column order, pypdf
+- [Live seams the offline suite never executes](live-seam-coverage.md)
+  - [2026-09-08 · pitfall · #483](#2026-09-08--pitfall--483) — keywords: false green, needs the network, registry value shape, reader not caller, AST guard, test_tape_seam_bypass, underlying_url, pypdf
+  - [2026-09-08 · decision · #483](#2026-09-08--decision--483) — keywords: seam bypass, delegate to the seam, strip the scheme, derived+trustee-report, synthetic:, esma_tape_normaliser._load_tape, source document
   - [2026-09-08 · pitfall · #478](#2026-09-08--pitfall--478) — keywords: untyped dict shape, divergent mappers, capital_structure, hand-copy drift, total-preservation guard, one builder
   - [2026-09-08 · pitfall · #481](#2026-09-08--pitfall--481) — keywords: classification table, coverage_metric_for, _COVERAGE_METRIC_RE, reinvestment_overcollateralisation, guard escapee, threshold None convention
 - [Extracting tables from PDFs](pdf-table-extraction.md)

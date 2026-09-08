@@ -1,0 +1,51 @@
+{
+ "annex_detected": "Annex 2 (RMBS)",
+ "arrears_breakdown": {
+  "arrears_180d_plus_pct": 0.2111,
+  "arrears_1_2m_pct": 0.0302,
+  "current_pct": 99.7587,
+  "default_pct": 0.0
+ },
+ "asset_class": "RMBS",
+ "data_source": "synthetic",
+ "epc_breakdown": {
+  "A": 42.9433,
+  "A+": 15.5308,
+  "A++": 9.8311,
+  "A+++": 21.7129,
+  "A++++": 9.8613,
+  "B": 0.1206
+ },
+ "geographic_breakdown": {
+  "Drenthe": 3.6188,
+  "Flevoland": 9.8914,
+  "Friesland": 3.4379,
+  "Gelderland": 9.8311,
+  "Groningen": 3.6188,
+  "Limburg": 2.9554,
+  "Noord-Brabant": 11.9723,
+  "Noord-Holland": 17.1291,
+  "Overijssel": 5.6996,
+  "Utrecht": 10.0121,
+  "Zeeland": 2.4427,
+  "Zuid-Holland": 19.3908
+ },
+ "loan_count": 3316,
+ "pool_balance_eur": 1046875200.0699999,
+ "pool_stats": {
+  "wtd_coupon_pct": 2.85,
+  "wtd_ltv": 72.05,
+  "wtd_remaining_term": 311.4,
+  "wtd_seasoning": 41.76
+ },
+ "property_type_breakdown": {
+  "Apartment": 33.3534,
+  "House": 66.6466
+ },
+ "rate_type_breakdown": {
+  "Fixed": 99.6683,
+  "Floating": 0.3317
+ },
+ "reporting_date": "2026-04-30",
+ "transaction_name": "Green Lion 2024-1 B.V."
+}

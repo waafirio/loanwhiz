@@ -569,7 +569,7 @@ def test_ingest_tape_accepts_a_derived_uri_through_the_same_seam(ingest_env, mon
     """
     from loanwhiz.api import main
     from loanwhiz.primitives import derived_tape as _dt
-    from loanwhiz.primitives.derived_tape import DerivedTapeScheme, derived_tape_uri
+    from loanwhiz.primitives.derived_tape import TapeScheme, derived_tape_uri
 
     # Keep the derivation cache out of the repo tree, and out of the next run:
     # a persisted artefact would let a broken derivation pass this test.
@@ -588,7 +588,7 @@ def test_ingest_tape_accepts_a_derived_uri_through_the_same_seam(ingest_env, mon
     entry = {
         "date": "2025-03-18",
         "url": derived_tape_uri(
-            f"file://{fixture}", "March 2025", scheme=DerivedTapeScheme.TRUSTEE_REPORT
+            f"file://{fixture}", "March 2025", scheme=TapeScheme.TRUSTEE_REPORT
         ),
     }
 
@@ -607,7 +607,7 @@ def test_ingest_tape_422s_a_source_that_does_not_reconcile(ingest_env, tmp_path,
     """
     from loanwhiz.api import main
     from loanwhiz.primitives import derived_tape as _dt
-    from loanwhiz.primitives.derived_tape import DerivedTapeScheme, derived_tape_uri
+    from loanwhiz.primitives.derived_tape import TapeScheme, derived_tape_uri
 
     monkeypatch.setattr(
         _dt, "DEFAULT_DERIVED_TAPE_CACHE_DIR", tmp_path / "derivation-cache"
@@ -622,7 +622,7 @@ def test_ingest_tape_422s_a_source_that_does_not_reconcile(ingest_env, tmp_path,
         "url": derived_tape_uri(
             f"file://{not_a_report}",
             "March 2025",
-            scheme=DerivedTapeScheme.TRUSTEE_REPORT,
+            scheme=TapeScheme.TRUSTEE_REPORT,
         ),
     }
 
@@ -3634,19 +3634,33 @@ def test_no_inputs_deal_waterfall_returns_422_not_modelable():
     assert "not modelable" in resp.json()["detail"]
 
 
-def test_report_deal_without_committed_model_is_not_modelable():
-    """A report-listed deal with no committed model / offline loader is 422 (not 200 empty).
+def test_deal_with_neither_tape_nor_report_is_not_modelable():
+    """A deal the engine cannot cold-start is a labelled 422, not an empty cascade.
 
-    Leone Arancio has a ``notes_cash_report_urls`` list but no committed extracted
-    model and no offline report loader, so it cannot be cold-started in the request
-    path (we never fetch a PDF live) — surfaced honestly as not-modelable rather
-    than a silent empty cascade.
+    The deal is constructed rather than taken from the registry: Leone Arancio
+    used to be the live example, but #484 gave it a synthetic pool fitted to its
+    own investor report, so it now folds a ledger. The honest-degradation path
+    still has to be exercised, and a test that depended on some registered deal
+    happening to lack data would have stopped exercising it silently.
     """
     api_main._RECONSTRUCTION_MEMO.clear()
-    resp = client.get("/deal/leone-arancio-2023-1/waterfall")
+    with patch.dict(
+        api_main.DEALS, {"bare-deal": {"deal_name": "Bare B.V.", "tape_urls": []}}
+    ):
+        resp = client.get("/deal/bare-deal/waterfall")
+
     assert resp.status_code == 422
     assert "not modelable" in resp.json()["detail"]
 
+
+def test_leone_arancio_folds_a_ledger_from_its_synthetic_pool():
+    """The deal that used to be not-modelable now runs, with stated provenance."""
+    api_main._RECONSTRUCTION_MEMO.clear()
+    resp = client.get("/deal/leone-arancio-2023-1/waterfall")
+    assert resp.status_code == 200, resp.text
+
+    analytics = client.get("/deal/leone-arancio-2023-1/tape-analytics").json()
+    assert [period["data_source"] for period in analytics] == ["synthetic"]
 
 def test_green_lion_2024_1_cold_start_waterfall():
     """GL-2024-1 (no tape) cold-starts through /waterfall via the report path, offline.

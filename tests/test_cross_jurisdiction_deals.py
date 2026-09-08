@@ -24,7 +24,9 @@ from __future__ import annotations
 
 import pytest
 
+import loanwhiz.primitives  # noqa: F401  (tape_provenance import cycle)
 from loanwhiz.config import DEAL_REGISTRY, DEALS_DATA_FILE, _load_deal_registry
+from loanwhiz.domain.tape_provenance import TapeSourceKind, source_kind_for
 
 # deal_id -> expected jurisdiction.
 CROSS_JURISDICTION_DEALS = {
@@ -73,9 +75,16 @@ def test_cross_jurisdiction_deal_jurisdiction(deal_id: str, expected: str) -> No
 
 @pytest.mark.parametrize("deal_id", CROSS_JURISDICTION_DEALS)
 def test_cross_jurisdiction_deal_has_no_public_tape(deal_id: str) -> None:
-    # No public loan tapes for these deals — empty by design (no tapes published).
-    assert DEAL_REGISTRY[deal_id]["tape_urls"] == []
-
+    # These deals still publish no loan tape of their own (none is published). Since #484
+    # they register a *synthetic* pool fitted to their investor reports, so the
+    # assertion is no longer "nothing registered" — it is that nothing
+    # registered claims to describe real assets.
+    tapes = DEAL_REGISTRY[deal_id]["tape_urls"]
+    assert tapes, "since #484 a synthetic pool is registered"
+    for tape in tapes:
+        kind = source_kind_for(tape["url"])
+        assert kind is TapeSourceKind.SYNTHETIC_GENERATED
+        assert kind.describes_real_assets is False
 
 @pytest.mark.parametrize("deal_id", CROSS_JURISDICTION_DEALS)
 def test_cross_jurisdiction_deal_has_no_notes_cash_report(deal_id: str) -> None:

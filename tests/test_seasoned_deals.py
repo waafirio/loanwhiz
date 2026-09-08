@@ -20,7 +20,9 @@ from __future__ import annotations
 
 import pytest
 
+import loanwhiz.primitives  # noqa: F401  (tape_provenance import cycle)
 from loanwhiz.config import DEAL_REGISTRY, DEALS_DATA_FILE, _load_deal_registry
+from loanwhiz.domain.tape_provenance import TapeSourceKind, source_kind_for
 
 SEASONED_DEAL_IDS = ("green-lion-2023-1", "green-lion-2024-1")
 
@@ -74,9 +76,16 @@ def test_seasoned_deal_name_and_prospectus(deal_id: str) -> None:
 
 @pytest.mark.parametrize("deal_id", SEASONED_DEAL_IDS)
 def test_seasoned_deal_has_no_public_tape(deal_id: str) -> None:
-    # No public loan tapes for the seasoned deals — empty by design (#206).
-    assert DEAL_REGISTRY[deal_id]["tape_urls"] == []
-
+    # These deals still publish no loan tape of their own (#206). Since #484
+    # they register a *synthetic* pool fitted to their investor reports, so the
+    # assertion is no longer "nothing registered" — it is that nothing
+    # registered claims to describe real assets.
+    tapes = DEAL_REGISTRY[deal_id]["tape_urls"]
+    assert tapes, "since #484 a synthetic pool is registered"
+    for tape in tapes:
+        kind = source_kind_for(tape["url"])
+        assert kind is TapeSourceKind.SYNTHETIC_GENERATED
+        assert kind.describes_real_assets is False
 
 @pytest.mark.parametrize("deal_id", SEASONED_DEAL_IDS)
 def test_seasoned_deal_report_urls_well_formed(deal_id: str) -> None:
