@@ -1712,7 +1712,16 @@ def _latest_tape_pool_balance(deal: dict) -> float | None:
     try:
         latest = max(tapes, key=lambda t: t.get("date", ""))
         output = _normalised_tape_output(latest["url"])
-    except Exception:  # noqa: BLE001 — a tape read is best-effort; degrade
+    except Exception as exc:  # noqa: BLE001 — a tape read is best-effort; degrade
+        # Logged rather than swallowed silently: the caller turns this into
+        # "this deal cannot project", which reads identically whether the tape
+        # is unreachable or the deal simply has none. Only this line separates
+        # the two for whoever has to diagnose it.
+        _log.warning(
+            "Could not derive a pool balance from %s's latest tape: %s",
+            deal.get("deal_name", "<unnamed deal>"),
+            exc,
+        )
         return None
     balance = output.get("pool_balance_eur") if isinstance(output, dict) else None
     if isinstance(balance, bool) or not isinstance(balance, (int, float)):
