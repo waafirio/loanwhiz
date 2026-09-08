@@ -64,9 +64,30 @@ class RecipientType(str, Enum):
     balance, which a CMBS/Auto servicing fee shares. The **incentive**
     management fee is deliberately absent: it is subject to an equity IRR
     hurdle the engine holds no inputs for, so it stays ``unmapped``.
+
+    A CLO's *Priorities of Payments* broaden it once more (#503) with three
+    families the RMBS vocabulary has no word for: separately-capped senior
+    expense tiers, **deferred (PIK'd) interest** on the mezzanine classes, and
+    **coverage- / par-value-test cures**. Each is a member rather than an alias
+    onto a near neighbour because the near neighbour is already claimed by an
+    earlier step in the same cascade — see the note above the tier members.
     """
 
     senior_expenses = "senior_expenses"  # issuer costs, admin, trustee, agents, tax
+    # A CLO splits the senior-cost block the RMBS deals carry as ONE aggregate
+    # into separately capped tiers, each its own step with its own reported
+    # amount (#503). They are distinct members rather than aliases onto
+    # ``senior_expenses`` for a mechanical reason: that value's need is the
+    # ``funds_input`` scalar ``WaterfallFunds.senior_fees``, so two steps
+    # sharing it would each claim the WHOLE scalar and the cascade would pay
+    # senior costs twice. A ``step_override`` need is keyed by the step's own
+    # priority label (``PeriodInputs.step_overrides``), so any number of steps
+    # may share one of these members without ever double-claiming.
+    issuer_tax_and_profit = "issuer_tax_and_profit"  # corporate tax + issuer profit
+    administrative_expenses = "administrative_expenses"  # capped administrative tier
+    # The *uncapped* tail of an expense tier, paid lower in the cascade once the
+    # capped tier above is exhausted — a second step, so a second member.
+    senior_expenses_uncapped = "senior_expenses_uncapped"
     servicing_fee = "servicing_fee"
     senior_management_fee = "senior_management_fee"  # CLO collateral manager, senior
     swap_payment = "swap_payment"
@@ -76,9 +97,31 @@ class RecipientType(str, Enum):
     class_d_interest = "class_d_interest"  # deeper-stack interest (auto/consumer/CLO)
     class_e_interest = "class_e_interest"
     class_f_interest = "class_f_interest"
+    # Deferred (PIK'd) interest on a mezzanine class — the accrued-but-unpaid
+    # balance rolled up in earlier periods, paid at its OWN step, junior to the
+    # class's current-period coupon. Kept distinct from ``class_*_interest``
+    # precisely because a CLO cascade pays both: aliasing the deferred step onto
+    # the current-accrual member would charge one period's Act/360 accrual twice
+    # and report the second as if the engine had computed it (#503).
+    class_c_deferred_interest = "class_c_deferred_interest"
+    class_d_deferred_interest = "class_d_deferred_interest"
+    class_e_deferred_interest = "class_e_deferred_interest"
+    class_f_deferred_interest = "class_f_deferred_interest"
     class_a_pdl_cure = "class_a_pdl_cure"  # PDL replenishment, senior
     class_b_pdl_cure = "class_b_pdl_cure"
     class_c_pdl_cure = "class_c_pdl_cure"  # deeper PDL ledger
+    # Coverage- / par-value-test cures: interest proceeds diverted to redeem
+    # notes until a failing overcollateralisation or interest-coverage test is
+    # restored. The engine holds no collateral par value and no per-class test
+    # threshold, so the cure AMOUNT is report-supplied — but the recipient is
+    # named, so the step reports which test it cures rather than degrading to
+    # ``unmapped`` and losing the attachment point (#452's rule, applied to the
+    # recipient side).
+    class_ab_coverage_test_cure = "class_ab_coverage_test_cure"
+    class_c_coverage_test_cure = "class_c_coverage_test_cure"
+    class_d_coverage_test_cure = "class_d_coverage_test_cure"
+    class_e_par_value_test_cure = "class_e_par_value_test_cure"
+    class_f_par_value_test_cure = "class_f_par_value_test_cure"
     liquidity_reserve_replenishment = "liquidity_reserve_replenishment"  # liquidity/commingling/set-off reserve top-up
     reserve_replenishment = "reserve_replenishment"
     class_a_principal = "class_a_principal"
@@ -112,6 +155,7 @@ AmountBasis = Literal[
     "interest_accrual",  # balance x rate x days / basis
     "fee_accrual",  # collateral balance x fee rate x days / basis (#453)
     "pdl_balance",  # cure up to outstanding PDL
+    "deferred_interest_balance",  # pay down accrued-but-unpaid (PIK'd) interest
     "target_shortfall",  # reserve: max(0, target - balance)
     "principal_due",  # amortisation / sequential / pro-rata
     "report_supplied",  # no engine formula — amount from PeriodInputs.step_overrides
@@ -157,6 +201,9 @@ class NeedSource(str, Enum):
 #: over :class:`RecipientType`, asserted at import.
 RECIPIENT_BASIS: dict["RecipientType", AmountBasis] = {
     RecipientType.senior_expenses: "report_supplied",
+    RecipientType.issuer_tax_and_profit: "report_supplied",
+    RecipientType.administrative_expenses: "report_supplied",
+    RecipientType.senior_expenses_uncapped: "report_supplied",
     RecipientType.servicing_fee: "report_supplied",
     RecipientType.senior_management_fee: "fee_accrual",
     RecipientType.swap_payment: "report_supplied",
@@ -166,9 +213,18 @@ RECIPIENT_BASIS: dict["RecipientType", AmountBasis] = {
     RecipientType.class_d_interest: "interest_accrual",
     RecipientType.class_e_interest: "interest_accrual",
     RecipientType.class_f_interest: "interest_accrual",
+    RecipientType.class_c_deferred_interest: "deferred_interest_balance",
+    RecipientType.class_d_deferred_interest: "deferred_interest_balance",
+    RecipientType.class_e_deferred_interest: "deferred_interest_balance",
+    RecipientType.class_f_deferred_interest: "deferred_interest_balance",
     RecipientType.class_a_pdl_cure: "pdl_balance",
     RecipientType.class_b_pdl_cure: "pdl_balance",
     RecipientType.class_c_pdl_cure: "pdl_balance",
+    RecipientType.class_ab_coverage_test_cure: "report_supplied",
+    RecipientType.class_c_coverage_test_cure: "report_supplied",
+    RecipientType.class_d_coverage_test_cure: "report_supplied",
+    RecipientType.class_e_par_value_test_cure: "report_supplied",
+    RecipientType.class_f_par_value_test_cure: "report_supplied",
     RecipientType.liquidity_reserve_replenishment: "target_shortfall",
     RecipientType.reserve_replenishment: "target_shortfall",
     RecipientType.class_a_principal: "principal_due",
@@ -193,6 +249,17 @@ RECIPIENT_NEED_SOURCE: dict["RecipientType", NeedSource] = {
     RecipientType.servicing_fee: NeedSource.step_override,
     RecipientType.subordinated_amounts: NeedSource.step_override,
     RecipientType.unmapped: NeedSource.step_override,
+    # The CLO's separately-capped senior tiers and its test cures. Each is
+    # per-step by construction (step_overrides is keyed by priority label), so
+    # a cascade may carry several without any of them double-claiming.
+    RecipientType.issuer_tax_and_profit: NeedSource.step_override,
+    RecipientType.administrative_expenses: NeedSource.step_override,
+    RecipientType.senior_expenses_uncapped: NeedSource.step_override,
+    RecipientType.class_ab_coverage_test_cure: NeedSource.step_override,
+    RecipientType.class_c_coverage_test_cure: NeedSource.step_override,
+    RecipientType.class_d_coverage_test_cure: NeedSource.step_override,
+    RecipientType.class_e_par_value_test_cure: NeedSource.step_override,
+    RecipientType.class_f_par_value_test_cure: NeedSource.step_override,
     # Engine formulas over deal data.
     RecipientType.senior_management_fee: NeedSource.calculator,
     RecipientType.subordinated_management_fee: NeedSource.calculator,
@@ -202,6 +269,10 @@ RECIPIENT_NEED_SOURCE: dict["RecipientType", NeedSource] = {
     RecipientType.class_d_interest: NeedSource.calculator,
     RecipientType.class_e_interest: NeedSource.calculator,
     RecipientType.class_f_interest: NeedSource.calculator,
+    RecipientType.class_c_deferred_interest: NeedSource.calculator,
+    RecipientType.class_d_deferred_interest: NeedSource.calculator,
+    RecipientType.class_e_deferred_interest: NeedSource.calculator,
+    RecipientType.class_f_deferred_interest: NeedSource.calculator,
     RecipientType.class_a_pdl_cure: NeedSource.calculator,
     RecipientType.class_b_pdl_cure: NeedSource.calculator,
     RecipientType.class_c_pdl_cure: NeedSource.calculator,
@@ -241,6 +312,150 @@ LEGACY_RECIPIENT_SPELLINGS: dict[str, "RecipientType"] = {
     "reserve_account_replenishment": RecipientType.reserve_replenishment,
 }
 
+#: The CLO Priorities-of-Payments spellings, same contract as the table above.
+#:
+#: Declared here for the same reason and read through the same merged view: a
+#: CLO prospectus writes "Class A Notes Interest" where the enum says
+#: ``class_a_interest``, and before #503 every one of Cairn CLO XVII's extracted
+#: recipients resolved to ``None`` — so the whole cascade refused at the
+#: registry, one layer *above* the coupon refusal that should have been the
+#: honest answer.
+#:
+#: **Only one-to-one spellings belong here.** A string whose payee the engine
+#: cannot place goes in :data:`RECOGNISED_UNEVALUABLE_RECIPIENTS` instead; a
+#: string naming a recipient the enum does not model earns a member. Aliasing a
+#: near-miss onto an existing member is the failure this issue exists to avoid,
+#: because the near neighbour is usually already claimed by an earlier step of
+#: the same cascade.
+CLO_RECIPIENT_SPELLINGS: dict[str, "RecipientType"] = {
+    # "Class A Notes Interest" / "…Principal" — the plain spelling gap. Every
+    # class of the 8-class stack, both cascades.
+    **{
+        f"class_{letter}_notes_interest": RecipientType(f"class_{letter}_interest")
+        for letter in "abcdef"
+    },
+    **{
+        f"class_{letter}_notes_principal": RecipientType(f"class_{letter}_principal")
+        for letter in "abcdef"
+    },
+    # Deferred (PIK'd) interest — its OWN member, never the current accrual.
+    **{
+        f"class_{letter}_notes_deferred_interest": RecipientType(
+            f"class_{letter}_deferred_interest"
+        )
+        for letter in "cdef"
+    },
+    # Separately capped senior tiers.
+    "taxes_and_issuer_profit": RecipientType.issuer_tax_and_profit,
+    "issuer_taxes_and_profit": RecipientType.issuer_tax_and_profit,
+    "trustee_fees_and_expenses": RecipientType.senior_expenses,
+    # Every "beyond the capped tier" spelling lands on ONE member. It is a
+    # step_override, so a cascade carrying several of these tails gives each its
+    # own reported amount; routing them to ``senior_expenses`` instead would
+    # have each claim the whole ``senior_fees`` scalar.
+    "administrative_expenses_uncapped": RecipientType.senior_expenses_uncapped,
+    "trustee_fees_and_expenses_uncapped": RecipientType.senior_expenses_uncapped,
+    "unpaid_administrative_expenses": RecipientType.senior_expenses_uncapped,
+    "unpaid_trustee_fees_and_expenses": RecipientType.senior_expenses_uncapped,
+    # Collateral-manager fees. Only the spellings that name WHICH of the three
+    # fees they pay; the incentive fee stays unevaluable (equity IRR hurdle).
+    "investment_manager_senior_fee": RecipientType.senior_management_fee,
+    "senior_investment_management_fee": RecipientType.senior_management_fee,
+    "investment_manager_subordinated_fee": RecipientType.subordinated_management_fee,
+    # Hedge counterparty — the CLO's word for the swap leg.
+    "hedge_payments": RecipientType.swap_payment,
+    "hedge_counterparty_payments": RecipientType.swap_payment,
+    # The equity tier. Declared explicitly rather than left to the extraction
+    # taxonomy's "subordinated" substring rule, which the engine cannot see —
+    # every one is a compound the engine has no formula for (notes interest AND
+    # the incentive fee; fees AND advances), so ``subordinated_amounts`` and its
+    # report-supplied need is the honest landing place, not a fee calculator.
+    "subordinated_notes_and_incentive_fee": RecipientType.subordinated_amounts,
+    "subordinated_notes_interest_and_incentive_fee": RecipientType.subordinated_amounts,
+    "subordinated_notes_principal_and_interest": RecipientType.subordinated_amounts,
+    "subordinated_notes_pro_rata": RecipientType.subordinated_amounts,
+    "subordinated_investment_management_fees_and_advances": (
+        RecipientType.subordinated_amounts
+    ),
+}
+
+#: Every non-canonical spelling the engine accepts, as one merged view.
+#:
+#: ``_canonical_recipient`` and ``register_need`` read THIS, so a spelling added
+#: to either table above is accepted by the engine the moment it exists, and
+#: ``taxonomy._RECIPIENT_ALIASES`` merges the same view — the two vocabularies
+#: cannot drift apart because there is only one.
+RECIPIENT_SPELLINGS: dict[str, "RecipientType"] = {
+    **LEGACY_RECIPIENT_SPELLINGS,
+    **CLO_RECIPIENT_SPELLINGS,
+}
+
+#: Strings we RECOGNISE and have decided the engine cannot evaluate (#503).
+#:
+#: The deny half of the closed vocabulary, and the reason this issue could not
+#: be closed by aliasing alone. A CLO's redemption cascade is largely written as
+#: cross-references — "the amounts referred to in paragraphs (A) through (I) of
+#: the Interest Proceeds Priority of Payments, to the extent not paid in full
+#: thereunder" — which name a *shortfall at another step*, not a payee. Left to
+#: fall through they are worse than unrecognised: the extraction taxonomy's
+#: class-letter refinement reads
+#: ``interest_proceeds_priority_of_payments_l_shortfall_for_class_c_coverage_tests``
+#: as Class C **interest** and would accrue a full period's coupon out of
+#: principal proceeds.
+#:
+#: Naming them is what makes the two refusals distinguishable, which is the
+#: honesty constraint this issue set: a step here refuses because its need is
+#: genuinely unanswerable, never because nobody spelled its name. Same rule
+#: #452 applied to unplaceable coverage *metrics*, applied to recipients.
+RECOGNISED_UNEVALUABLE_RECIPIENTS: frozenset[str] = frozenset(
+    {
+        # Redemption-cascade cross-references into the interest cascade.
+        "interest_proceeds_priority_of_payments_a_to_i_shortfall",
+        "interest_proceeds_priority_of_payments_j_shortfall",
+        "interest_proceeds_priority_of_payments_k_shortfall",
+        "interest_proceeds_priority_of_payments_l_shortfall_for_class_c_coverage_tests",
+        "interest_proceeds_priority_of_payments_m_shortfall",
+        "interest_proceeds_priority_of_payments_n_shortfall",
+        "interest_proceeds_priority_of_payments_o_shortfall_for_class_d_coverage_tests",
+        "interest_proceeds_priority_of_payments_p_shortfall",
+        "interest_proceeds_priority_of_payments_q_shortfall",
+        "interest_proceeds_priority_of_payments_r_shortfall_for_class_e_par_value_test",
+        "interest_proceeds_priority_of_payments_s_shortfall",
+        "interest_proceeds_priority_of_payments_t_shortfall",
+        "interest_proceeds_priority_of_payments_u_shortfall_for_class_f_par_value_test",
+        "interest_proceeds_priority_of_payments_v_shortfall",
+        "interest_proceeds_priority_of_payments_x_to_bb_shortfall",
+        # The incentive fee and its VAT — an equity IRR hurdle the engine holds
+        # no running equity cashflow for (the #453 decision, restated in the
+        # CLO's own spelling so the classifier is never asked).
+        "incentive_investment_management_fee",
+        "vat_on_incentive_investment_management_fee",
+        # Reinvestment, not a distribution: principal proceeds spent buying
+        # collateral rather than paid to a creditor.
+        "purchase_of_substitute_collateral",
+        "purchase_of_substitute_collateral_post_reinvestment",
+        # Redemption steps that name no class, so no attachment point. The
+        # sequential ↔ pro-rata split across the stack is allocate_principal's
+        # to make; guessing a class here would put a real number on the wrong
+        # note.
+        "redeem_notes",
+        "special_redemption_amount",
+        # Cures whose trigger the engine cannot quantify, and accounts that are
+        # neither a reserve top-up nor a creditor.
+        "effective_date_rating_event_cure",
+        "reinvestment_overcollateralisation_test_cure",
+        "collateral_enhancement_account",
+        # The CLO's *expense* reserve, which is not the deal reserve the engine
+        # models: ``reserve_target`` / ``reserve_balance`` describe a different
+        # account, so the substring rule's `reserve_replenishment` would compute
+        # a real shortfall for the wrong one.
+        "expense_reserve_account",
+        # A defaulted counterparty's termination payment — the amount depends on
+        # a close-out valuation the engine holds nothing for.
+        "defaulted_hedge_termination_payments",
+    }
+)
+
 
 def _assert_recipient_tables_total() -> None:
     """Refuse to import if either recipient table is not total over the enum.
@@ -265,7 +480,50 @@ def _assert_recipient_tables_total() -> None:
             )
 
 
+def _assert_recipient_vocabulary_coherent() -> None:
+    """Refuse to import if the spelling and deny tables contradict each other.
+
+    Same shape as the guard above, for the vocabulary #503 added. Three ways the
+    three tables can disagree, each of which would ship a silently wrong answer
+    rather than a loud one:
+
+    - a spelling that is **also** a canonical enum value — ``RecipientType(name)``
+      wins in ``_canonical_recipient``, so the alias row is dead code that reads
+      as if it were in force;
+    - a string declared **both** a spelling and unevaluable — the two tables give
+      opposite answers and which one wins is an ordering accident;
+    - a spelling declared **unevaluable** downstream, which would make the engine
+      and the extractor disagree about the same string.
+    """
+    canonical = {r.value for r in RecipientType}
+
+    shadowed = sorted(set(RECIPIENT_SPELLINGS) & canonical)
+    if shadowed:
+        raise ImportError(
+            f"RECIPIENT_SPELLINGS shadows canonical RecipientType values "
+            f"{shadowed}. A canonical value resolves as itself, so these rows "
+            f"never take effect — delete them or rename the member."
+        )
+
+    both = sorted(set(RECIPIENT_SPELLINGS) & RECOGNISED_UNEVALUABLE_RECIPIENTS)
+    if both:
+        raise ImportError(
+            f"{both} are declared BOTH a recipient spelling and unevaluable. "
+            f"A string is either one the engine can place or one it refuses; "
+            f"declaring both makes which answer wins an ordering accident."
+        )
+
+    denied_canonical = sorted(RECOGNISED_UNEVALUABLE_RECIPIENTS & canonical)
+    if denied_canonical:
+        raise ImportError(
+            f"{denied_canonical} are canonical RecipientType values declared "
+            f"unevaluable. Remove the member or the deny row — a member the "
+            f"engine refuses to resolve is a member that should not exist."
+        )
+
+
 _assert_recipient_tables_total()
+_assert_recipient_vocabulary_coherent()
 
 
 def basis_for(recipient: "RecipientType") -> AmountBasis:

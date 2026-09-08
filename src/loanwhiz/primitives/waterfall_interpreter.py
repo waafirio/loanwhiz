@@ -60,7 +60,8 @@ from typing import Callable, Protocol, runtime_checkable
 from pydantic import BaseModel, Field, computed_field, model_validator
 
 from loanwhiz.domain.rules import (
-    LEGACY_RECIPIENT_SPELLINGS,
+    RECIPIENT_SPELLINGS,
+    RECOGNISED_UNEVALUABLE_RECIPIENTS,
     NeedSource,
     RecipientType,
     basis_for,
@@ -201,12 +202,20 @@ class TrancheFunds(BaseModel):
         coerce into a number (``"3 month EURIBOR + 1.80%"``) arrives as ``None``.
     pdl_balance:
         Outstanding PDL debit balance (the replenishment need).
+    deferred_interest_balance:
+        Accrued-but-unpaid (PIK'd) interest rolled up from earlier periods — the
+        need of a CLO's ``class_*_deferred_interest`` step, which is a *separate*
+        step from the class's current-period coupon (#503). Defaults to ``0.0``,
+        and that default is a real answer ("nothing is deferred on this class"),
+        exactly as ``pdl_balance``'s is — an absent *tranche* is the unknown, not
+        an absent balance.
     """
 
     name: str = Field(..., description="Tranche name.")
     balance: float = Field(default=0.0, ge=0.0)
     rate_pct: float | None = Field(default=None, ge=0.0)
     pdl_balance: float = Field(default=0.0, ge=0.0)
+    deferred_interest_balance: float = Field(default=0.0, ge=0.0)
 
 
 class WaterfallFunds(BaseModel):
@@ -417,8 +426,8 @@ NeedCalculator = Callable[[WaterfallFunds], "float | None"]
 #: calculator contributes 0 and is recorded ``not_evaluable`` in the trace.
 #:
 #: Keys are canonical :class:`~loanwhiz.domain.rules.RecipientType` values plus
-#: the six legacy spellings declared in
-#: :data:`~loanwhiz.domain.rules.LEGACY_RECIPIENT_SPELLINGS`. :func:`register_need`
+#: the non-canonical spellings declared in
+#: :data:`~loanwhiz.domain.rules.RECIPIENT_SPELLINGS`. :func:`register_need`
 #: refuses anything else, and the module-tail
 #: :func:`_assert_registry_covers_contract` refuses to import if a recipient the
 #: contract says needs a calculator has none.
@@ -457,9 +466,9 @@ def register_need(*recipients: str) -> Callable[[NeedCalculator], NeedCalculator
         if recipient is None:
             raise ValueError(
                 f"register_need({name!r}): not a RecipientType value and not a "
-                "declared legacy spelling. Add the recipient to RecipientType "
-                "(with its RECIPIENT_BASIS / RECIPIENT_NEED_SOURCE rows), or "
-                "declare the spelling in LEGACY_RECIPIENT_SPELLINGS."
+                "declared spelling. Add the recipient to RecipientType (with "
+                "its RECIPIENT_BASIS / RECIPIENT_NEED_SOURCE rows), or declare "
+                "the spelling in LEGACY_/CLO_RECIPIENT_SPELLINGS."
             )
         source = need_source_for(recipient)
         if source not in _REGISTRY_BACKED_SOURCES:
@@ -484,13 +493,21 @@ _REGISTRY_BACKED_SOURCES = frozenset({NeedSource.calculator, NeedSource.funds_in
 def _canonical_recipient(name: str) -> RecipientType | None:
     """The :class:`RecipientType` ``name`` denotes, or ``None`` if it denotes none.
 
-    Accepts a canonical enum value or a declared legacy spelling — the two
-    vocabularies the registry is legitimately keyed by.
+    Accepts a canonical enum value or a declared non-canonical spelling — the
+    two vocabularies the registry is legitimately keyed by. A string in
+    :data:`RECOGNISED_UNEVALUABLE_RECIPIENTS` resolves to
+    :attr:`RecipientType.unmapped`: we know what it says and have decided the
+    engine cannot place it, which is a different answer from ``None`` ("nobody
+    spelled this name") and must stay different — see
+    :func:`refusal_reason` (#503).
     """
     try:
         return RecipientType(name)
     except ValueError:
-        return LEGACY_RECIPIENT_SPELLINGS.get(name)
+        pass
+    if name in RECOGNISED_UNEVALUABLE_RECIPIENTS:
+        return RecipientType.unmapped
+    return RECIPIENT_SPELLINGS.get(name)
 
 
 def _accrued_interest(balance: float, rate_pct: float, days: int) -> float:
@@ -544,6 +561,29 @@ def _make_tranche_pdl_need(tranche: str) -> NeedCalculator:
         return t.pdl_balance
 
     _need.__name__ = f"_need_{tranche}_pdl_cure"
+    return _need
+
+
+def _make_tranche_deferred_interest_need(tranche: str) -> NeedCalculator:
+    """Pay down ``tranche``'s deferred (PIK'd) interest; ``None`` with no tranche.
+
+    Deliberately the same shape as :func:`_make_tranche_pdl_need` rather than
+    :func:`_make_tranche_interest_need`: the need is an outstanding *balance*
+    carried on the funds, not an accrual the engine recomputes. That is what
+    keeps a cascade paying both ``class_c_interest`` and
+    ``class_c_deferred_interest`` from charging one period's coupon twice — and
+    it is why this family does **not** refuse on an unresolved ``rate_pct``: a
+    deferred balance is already-crystallised interest, so it is known even while
+    the current coupon is not.
+    """
+
+    def _need(funds: WaterfallFunds) -> float | None:
+        t = funds.tranche(tranche)
+        if t is None:
+            return None
+        return t.deferred_interest_balance
+
+    _need.__name__ = f"_need_{tranche}_deferred_interest"
     return _need
 
 
@@ -616,6 +656,7 @@ _RESERVE_FIELDS: dict[RecipientType, tuple[str, str]] = {
 
 _INTEREST_SUFFIX = "_interest"
 _PDL_CURE_SUFFIX = "_pdl_cure"
+_DEFERRED_INTEREST_SUFFIX = "_deferred_interest"
 
 
 def _calculator_for(recipient: RecipientType) -> NeedCalculator | None:
@@ -627,6 +668,10 @@ def _calculator_for(recipient: RecipientType) -> NeedCalculator | None:
         )
     if basis == "pdl_balance":
         return _make_tranche_pdl_need(recipient.value.removesuffix(_PDL_CURE_SUFFIX))
+    if basis == "deferred_interest_balance":
+        return _make_tranche_deferred_interest_need(
+            recipient.value.removesuffix(_DEFERRED_INTEREST_SUFFIX)
+        )
     if basis == "target_shortfall":
         fields = _RESERVE_FIELDS.get(recipient)
         return _make_reserve_need(*fields) if fields else None
@@ -652,10 +697,10 @@ def _register_contract_calculators() -> None:
         calc = _calculator_for(recipient)
         if calc is not None:
             register_need(recipient.value)(calc)
-    # The legacy free-string spellings resolve to the same function as their
-    # canonical recipient — derived from the one declaration, so a spelling can
-    # never drift onto a different formula than the enum value it aliases.
-    for spelling, recipient in LEGACY_RECIPIENT_SPELLINGS.items():
+    # The free-string spellings resolve to the same function as their canonical
+    # recipient — derived from the one declaration, so a spelling can never
+    # drift onto a different formula than the enum value it aliases.
+    for spelling, recipient in RECIPIENT_SPELLINGS.items():
         calc = NEED_CALCULATORS.get(recipient.value)
         if calc is not None:
             register_need(spelling)(calc)
@@ -703,13 +748,64 @@ def compute_need(recipient: str, funds: WaterfallFunds) -> tuple[float, bool]:
     audit trace stays structurally complete and no unanswerable need is ever
     reported as an authoritative ``0.0`` (#453).
     """
+    need, evaluable, _reason = _evaluate_need(recipient, funds)
+    return need, evaluable
+
+
+#: Why a step's need was unanswerable. Before #503 these four collapsed into one
+#: ``not_evaluable`` bool, so "the engine has never heard of this recipient" and
+#: "the engine knows this recipient and the funds carry no input for it" were
+#: the same output — and a whole cascade refusing for the FIRST reason looked
+#: exactly like one refusing for the fourth.
+REFUSAL_UNKNOWN_RECIPIENT = "unknown_recipient"
+REFUSAL_RECOGNISED_NOT_EVALUABLE = "recognised_not_evaluable"
+REFUSAL_REPORT_SUPPLIED = "report_supplied"
+REFUSAL_INPUT_UNAVAILABLE = "input_unavailable"
+
+
+def _evaluate_need(
+    recipient: str, funds: WaterfallFunds
+) -> tuple[float, bool, str | None]:
+    """``(need, evaluable, refusal_reason)`` — the one place the four are decided.
+
+    :func:`compute_need` and :func:`refusal_reason` are both thin views over
+    this, so the amount and the explanation can never disagree about whether a
+    step evaluated.
+    """
+    canonical = _canonical_recipient(recipient)
+    if canonical is None:
+        # Nobody spelled this name. NOT the same as an unanswerable need, and
+        # the distinction is the point (#503).
+        return 0.0, False, REFUSAL_UNKNOWN_RECIPIENT
+    if canonical is RecipientType.unmapped:
+        # We recognise the string and have decided the engine cannot place it.
+        return 0.0, False, REFUSAL_RECOGNISED_NOT_EVALUABLE
+
     calc = NEED_CALCULATORS.get(recipient)
     if calc is None:
-        return 0.0, False
+        # A declared recipient whose need legitimately comes from elsewhere —
+        # a step_override or the principal allocation — and none was supplied.
+        return 0.0, False, REFUSAL_REPORT_SUPPLIED
+
     need = calc(funds)
     if need is None:
-        return 0.0, False
-    return max(0.0, need), True
+        # Registered, ran, and refused for want of an input: an unresolved
+        # coupon (#493), an unconfigured fee rate, a tranche the deal lacks.
+        return 0.0, False, REFUSAL_INPUT_UNAVAILABLE
+    return max(0.0, need), True, None
+
+
+def refusal_reason(recipient: str, funds: WaterfallFunds) -> str | None:
+    """Why ``recipient``'s need is unanswerable this period; ``None`` if it is not.
+
+    One of the four ``REFUSAL_*`` constants. The pair a reader most needs kept
+    apart is :data:`REFUSAL_UNKNOWN_RECIPIENT` (a vocabulary gap — fix the
+    spelling tables) and :data:`REFUSAL_INPUT_UNAVAILABLE` (a genuine unknown —
+    the deal carries no such input), because a deal refusing wholly for the
+    first reason never reaches the second and the two look identical in a
+    ``not_evaluable`` tally.
+    """
+    return _evaluate_need(recipient, funds)[2]
 
 
 # ---------------------------------------------------------------------------
@@ -859,6 +955,13 @@ class StepResult(BaseModel):
         input (an unresolved tranche coupon, an unconfigured fee rate, a tranche
         the deal does not have). ``need`` is 0 in both cases, and this flag is
         what separates that from a genuine "owed nothing".
+    not_evaluable_reason:
+        Which of those it was — one of the ``REFUSAL_*`` constants, or ``None``
+        when the step evaluated. The flag says a step refused; this says whether
+        it refused because the engine has no word for the recipient
+        (``unknown_recipient`` — a vocabulary gap) or because the need is
+        genuinely unanswerable (``input_unavailable``). Mirrors
+        ``covenant_monitor.CovenantStatus.not_evaluable_reason`` (#503).
     """
 
     priority: str
@@ -872,6 +975,7 @@ class StepResult(BaseModel):
     shortfall: float
     gated: bool = False
     not_evaluable: bool = False
+    not_evaluable_reason: str | None = None
 
 
 class WaterfallExecution(BaseModel):
@@ -957,10 +1061,10 @@ def interpret(
 
     results: list[StepResult] = []
 
-    def _need_for(spec: StepSpec) -> tuple[float, bool]:
+    def _need_for(spec: StepSpec) -> tuple[float, bool, str | None]:
         if spec.recipient in overrides:
-            return max(0.0, overrides[spec.recipient]), True
-        return compute_need(spec.recipient, funds)
+            return max(0.0, overrides[spec.recipient]), True, None
+        return _evaluate_need(spec.recipient, funds)
 
     def _eval_condition(spec: StepSpec) -> bool:
         """Run the evaluator over a step's condition + its linked terms.
@@ -1024,21 +1128,21 @@ def interpret(
                 ]
                 pot_before = available
                 needs = [(m, *_need_for(m)) for m in members]
-                total_need = sum(n for _, n, _ in needs)
+                total_need = sum(n for _, n, _, _ in needs)
                 ratio = (
                     1.0
                     if total_need <= available + _EPS
                     else (available / total_need if total_need > _EPS else 0.0)
                 )
                 distributed_total = 0.0
-                for m, m_need, _m_eval in needs:
+                for m, m_need, _m_eval, _m_reason in needs:
                     dist = max(0.0, min(m_need, m_need * ratio))
                     dist = min(dist, available - distributed_total)
                     distributed_total += dist
                     group_share[id(m)] = (dist, m_need, pot_before)
                 available = max(0.0, available - distributed_total)
             dist, need, pot_before = group_share.get(id(spec), (0.0, 0.0, available))
-            _, evaluable = _need_for(spec)
+            _, evaluable, reason = _need_for(spec)
             results.append(
                 StepResult(
                     priority=spec.priority,
@@ -1051,6 +1155,7 @@ def interpret(
                     amount_distributed=dist,
                     shortfall=max(0.0, need - dist),
                     not_evaluable=not evaluable,
+                    not_evaluable_reason=reason,
                 )
             )
             continue
@@ -1075,7 +1180,7 @@ def interpret(
             continue
 
         # Plain single-recipient step.
-        need, evaluable = _need_for(spec)
+        need, evaluable, reason = _need_for(spec)
         dist = min(need, available)
         dist = max(0.0, dist)
         results.append(
@@ -1090,6 +1195,7 @@ def interpret(
                 amount_distributed=dist,
                 shortfall=max(0.0, need - dist),
                 not_evaluable=not evaluable,
+                not_evaluable_reason=reason,
             )
         )
         available = max(0.0, available - dist)
