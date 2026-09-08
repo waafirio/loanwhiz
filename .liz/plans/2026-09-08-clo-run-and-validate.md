@@ -1,7 +1,7 @@
 ---
 id: 2026-09-08-clo-run-and-validate
 title: Run and validate the CLO — N-class structural config, trustee-report facts, a CLO answer key, and labelled synthetic pools
-status: draft
+status: decomposed
 created: 2026-09-08
 updated: 2026-09-08
 epics: []
@@ -170,7 +170,114 @@ the tape provenance layer and the RMBS deals, not the CLO's structural config.
 
 ## Decomposition
 
-_(Filled in phase 2.)_
+Two epics, six children. Epic A is a sequential chain (config → facts →
+validation). Epic B is independent and can run alongside it.
+
+### Epic A: Run and validate the CLO   (umbrella #<N>)
+
+Take the CLO from "the engine refuses to run it" to "the engine runs it and is
+graded against the deal's own published figures". The blocker is a legacy
+RMBS-shaped config adapter in front of an already-general engine; the ground
+truth is sitting in the trustee reports the derived tape already parses.
+
+- **Generalise `capital_structure` onto the N-class tranche list** — Replace the
+  four-field, three-class `capital_structure` shape (and
+  `_extracted_capital_structure`'s `seniority 0/1/2` lookup) with one that
+  expresses an arbitrary tranche stack, so an 8-class CLO resolves without
+  discarding classes. **Reuse:** `DealState` already carries
+  `tranches: list[TrancheState]` — #363 generalised the engine onto an N-class
+  list, so this is retiring an adapter, not building a parallel path; check
+  whether `waterfall_interpreter`'s `class_a_balance` / `class_b_balance` /
+  `class_c_balance` accessors are already views over that list before changing
+  them. **Contract:** a deal whose structure cannot be resolved must still fail
+  loudly with the deal named — the existing refusal-not-fallback behaviour is
+  the thing being preserved, not removed; pin it with a test that a
+  non-resolvable deal never borrows another deal's numbers. **Generality:** the
+  test to apply is whether the *next* deep-stack deal needs any code change.
+  Sequencing: parallel. Paths: `src/loanwhiz/api/main.py`,
+  `src/loanwhiz/config.py`, `src/loanwhiz/primitives/**`, `tests/**`.
+- **Give `projection_base` an extracted-model path** — `_resolve_projection_base`
+  reads `deal.get("projection_base")` and raises; unlike `capital_structure` it
+  has no secondary source at all, so `/deal/{id}/project` fails for any deal
+  without a hand-written context key. Add the extracted-model tier so a deal with
+  a complete extracted structure can project. **Contract:** same
+  refusal-not-fallback discipline; an incomplete extraction is "no value here",
+  never a half-built base. Sequencing: sequential. After the
+  capital-structure child, whose resolved shape it consumes. Paths:
+  `src/loanwhiz/api/main.py`, `src/loanwhiz/config.py`, `tests/**`.
+- **Source per-class coupons, balances and coverage thresholds from the trustee
+  report** — The report's Executive Summary states each class's balance, resolved
+  **current coupon** (A 4.544%, B-1 5.494%, B-2 6.870%, C 6.344%, D 8.044%,
+  E 10.204%) and periodic interest, totalling 404,100,000.00; the Par Value and
+  Interest Coverage detail pages state every test's **required level**. Extract
+  these as structural facts. **Reuse:** the same document the
+  `collateral_schedule_parser` from #469 already reads — extend that seam rather
+  than adding a second reader. **Contract:** these are *stated* figures, so they
+  must reconcile against the report's own totals the way #469's asset schedule
+  does, pinned by a test. **This resolves the "coverage thresholds are
+  uncapturable" limitation #456 recorded** — that finding was right about the
+  offering circular's truncated glossary and wrong about the document; say so
+  where it is documented. **Governance:** a coupon taken from a trustee report is
+  a report-derived fact, not a prospectus term — provenance must distinguish
+  them. Sequencing: parallel. Paths:
+  `src/loanwhiz/primitives/collateral_schedule_parser.py`,
+  `src/loanwhiz/primitives/**`, `tests/**`.
+- **Author the CLO answer key and grade it** — Build a `DealAnswerKey` for Cairn
+  from its published figures and let `/quality-matrix` grade the deal.
+  **Reuse — the format needs no change:** `DealAnswerKey` already carries
+  `revenue_pop`, `redemption_pop` and `covenants: list[CovenantResult]`, and
+  `quality_harness` already grades `covenants_matched` / `covenants_graded`;
+  `from_notes_cash_report` is one *constructor*, so add a sibling rather than a
+  schema. **Two independent routes to ground truth** — the Note Valuation
+  Report's Interest and Principal Priorities of Payments, and the trustee
+  report's stated test results (Par Value A/B 139.43%, IC A/B 184.35%, etc.).
+  Establish which is reachable; delivering only the covenant-outcome route is a
+  legitimate outcome, and is still the first graded CLO cell. **Contract:** an
+  answer key must never be inferred from the engine's own output — that would
+  grade the engine against itself; pin that. **Honesty:** a cell reads
+  `validated` only if it genuinely reconciles; if it does not, say so and leave
+  it `ran`. Sequencing: sequential. After the projection-base and
+  trustee-facts children. Paths:
+  `src/loanwhiz/data/deals/answer_keys/**`,
+  `src/loanwhiz/primitives/reconciliation_answer_key.py`,
+  `src/loanwhiz/primitives/quality_harness.py`, `docs/**`, `tests/**`.
+
+### Epic B: Make synthetic pool data honest, then give the tape-less deals one   (umbrella #<N>)
+
+Four of six deals have no loan tape, so the comparison charts are meaningless for
+them. Synthetic tapes are already established, labelled practice in this repo —
+Green Lion 2026-1's three tapes are synthetic and the data card says so — but the
+label does not reach the provenance layer, and that must be fixed **before** the
+practice is extended, not after.
+
+- **Add `synthetic` to the tape provenance kind** — An existing synthetic tape
+  (Green Lion 2026-1) currently reports `data_source: 'direct'`: identical
+  provenance to a filed regulatory tape. The word "synthetic" lives only in a
+  filename and a document, not in the layer the evidence pack, governance surface
+  and capability matrix read. Make it structural. **Reuse:** #470's
+  `TapeSourceKind` and the scheme-dispatching URI (`derived+trustee-report:`) —
+  `synthetic` belongs beside `derived`, resolved from the identifier so no call
+  site can forget it. **Contract:** it must be impossible for a synthetic tape to
+  report `direct`, pinned by a test; and a synthetic pool must never feed a
+  `validated` cell — Green Lion 2024-1's validation is Notes & Cash PoP
+  reconciliation rather than pool statistics, so the two are separable, but the
+  separation must be *pinned*, not assumed. Sequencing: parallel. Paths:
+  `src/loanwhiz/domain/tape_provenance.py`,
+  `src/loanwhiz/primitives/esma_tape_normaliser.py`,
+  `src/loanwhiz/primitives/derived_tape.py`, `docs/**`, `tests/**`.
+- **Generate labelled synthetic tapes for the tape-less deals** — Give
+  Green Lion 2023-1, Green Lion 2024-1, Leone Arancio and Sol-Lion II a synthetic
+  Annex 2 pool consistent with each deal's own published figures, so the
+  comparison charts render meaningfully. **Contract:** each tape must be
+  generated **from the deal's own reported aggregates** (pool balance, WA coupon,
+  arrears where published) rather than invented free-hand — a synthetic pool that
+  contradicts the deal's own investor reports is worse than no pool. Every one
+  must carry the `synthetic` provenance kind from the sibling child. **Governance:**
+  the data card records, per deal, what is synthetic and what it was fitted to;
+  the UI must be able to show a reader that a chart is synthetic without them
+  opening a doc. Sequencing: sequential. After the provenance child — extending
+  the practice before the label is structural would multiply the existing gap.
+  Paths: `src/loanwhiz/data/**`, `scripts/**`, `docs/**`, `tests/**`.
 
 ## Filed issues
 
