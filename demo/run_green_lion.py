@@ -22,7 +22,12 @@ sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 import pandas as pd
 
+# ``loanwhiz.domain``'s package init participates in an import cycle with
+# ``loanwhiz.primitives``; importing a primitives module first resolves it.
+import loanwhiz.primitives  # noqa: F401  (import-order side effect)
+
 from loanwhiz.config import GCP_LOCATION, GCP_PROJECT, GREEN_LION, MODEL_FLASH
+from loanwhiz.domain.tape_provenance import underlying_url
 
 # Make the bare ``genai.Client()`` used inside some primitives (e.g.
 # ReportVerifier) route to Vertex AI, matching the project/region configured in
@@ -219,7 +224,11 @@ def section_esma_analytics() -> dict[str, dict]:
         url = entry["url"]
         print(f"\n  Loading tape {date} ({_period_label(date)}) ...", end="", flush=True)
         t0 = time.time()
-        df = pd.read_csv(url)
+        # ``url`` is the registered *identifier*, which carries the provenance
+        # scheme declaring what the tape is (Green Lion's tapes are
+        # ``synthetic:``). ``underlying_url`` resolves it to the published file
+        # to fetch; pandas cannot open the identifier itself.
+        df = pd.read_csv(underlying_url(url))
         elapsed = time.time() - t0
         print(f" {len(df):,} loans  ({elapsed:.1f}s)")
         metrics[date] = _compute_tape_metrics(df, date)

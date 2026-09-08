@@ -35,7 +35,13 @@ import logging
 
 import pandas as pd
 
+# ``loanwhiz.domain``'s package init participates in an import cycle with
+# ``loanwhiz.primitives``; importing a primitives module first resolves it. Same
+# convention as ``tape_provenance``'s own module docstring and its callers.
+import loanwhiz.primitives  # noqa: F401  (import-order side effect)
+
 from loanwhiz.config import GREEN_LION, HF_BASE  # noqa: F401 — re-exported for convenience
+from loanwhiz.domain.tape_provenance import underlying_url
 
 logger = logging.getLogger(__name__)
 
@@ -116,8 +122,16 @@ def load_tape(date: str) -> pd.DataFrame:
             f"Unknown tape date {date!r}. Available dates: {available}"
         )
     url = tapes[date]
-    logger.info("Loading Green Lion tape %s from %s", date, url)
-    df = pd.read_csv(url)
+    # A registered tape URL is an *identifier*, not a path: Green Lion's tapes
+    # are registered under the ``synthetic:`` scheme, which declares that their
+    # rows describe no real obligor (see
+    # :mod:`loanwhiz.domain.tape_provenance`). ``underlying_url`` resolves the
+    # identifier to the published file this direct-read path actually fetches;
+    # handing the raw identifier to pandas raises, and is the bypass
+    # ``tests/test_tape_seam_bypass.py`` exists to red.
+    target = underlying_url(url)
+    logger.info("Loading Green Lion tape %s from %s", date, target)
+    df = pd.read_csv(target)
     logger.info("Loaded %d rows, %d columns from tape %s", len(df), len(df.columns), date)
     return df
 
