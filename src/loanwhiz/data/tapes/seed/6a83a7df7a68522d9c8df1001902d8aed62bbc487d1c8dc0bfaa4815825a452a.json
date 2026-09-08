@@ -7,7 +7,7 @@
   "default_pct": 0.0305
  },
  "asset_class": "RMBS",
- "data_source": "direct",
+ "data_source": "synthetic",
  "epc_breakdown": {
   "A": 51.3282,
   "A+": 15.6336,

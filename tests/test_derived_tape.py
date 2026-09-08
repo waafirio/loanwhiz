@@ -22,7 +22,7 @@ import pytest
 
 from loanwhiz.primitives.derived_tape import (
     DerivationError,
-    DerivedTapeScheme,
+    TapeScheme,
     derive_tape,
     derived_tape_uri,
     declared_annex_id_for,
@@ -55,7 +55,7 @@ _PERIODS = [
 def _uri(stem: str, period_label: str) -> str:
     source = (_FIXTURES / f"cairn-clo-xvii-{stem}.txt").resolve()
     return derived_tape_uri(
-        f"file://{source}", period_label, scheme=DerivedTapeScheme.TRUSTEE_REPORT
+        f"file://{source}", period_label, scheme=TapeScheme.TRUSTEE_REPORT
     )
 
 
@@ -269,7 +269,7 @@ def test_a_source_that_does_not_reconcile_is_refused_not_returned(
     truncated = tmp_path / "not-a-trustee-report.txt"
     truncated.write_text("--- page 1 ---\nCairn CLO XVII DAC\nMonthly Report\n")
     uri = derived_tape_uri(
-        f"file://{truncated}", "December 2024", scheme=DerivedTapeScheme.TRUSTEE_REPORT
+        f"file://{truncated}", "December 2024", scheme=TapeScheme.TRUSTEE_REPORT
     )
     with pytest.raises(ValueError):
         derive_tape(uri, cache_dir=cache)
@@ -329,7 +329,7 @@ def test_the_cache_is_read_from_disk_when_the_source_is_gone(
         (_FIXTURES / "cairn-clo-xvii-march-2025.txt").read_bytes()
     )
     uri = derived_tape_uri(
-        f"file://{source}", "March 2025", scheme=DerivedTapeScheme.TRUSTEE_REPORT
+        f"file://{source}", "March 2025", scheme=TapeScheme.TRUSTEE_REPORT
     )
 
     first = derive_tape(uri, cache_dir=cache)

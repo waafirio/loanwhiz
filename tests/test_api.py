@@ -569,7 +569,7 @@ def test_ingest_tape_accepts_a_derived_uri_through_the_same_seam(ingest_env, mon
     """
     from loanwhiz.api import main
     from loanwhiz.primitives import derived_tape as _dt
-    from loanwhiz.primitives.derived_tape import DerivedTapeScheme, derived_tape_uri
+    from loanwhiz.primitives.derived_tape import TapeScheme, derived_tape_uri
 
     # Keep the derivation cache out of the repo tree, and out of the next run:
     # a persisted artefact would let a broken derivation pass this test.
@@ -588,7 +588,7 @@ def test_ingest_tape_accepts_a_derived_uri_through_the_same_seam(ingest_env, mon
     entry = {
         "date": "2025-03-18",
         "url": derived_tape_uri(
-            f"file://{fixture}", "March 2025", scheme=DerivedTapeScheme.TRUSTEE_REPORT
+            f"file://{fixture}", "March 2025", scheme=TapeScheme.TRUSTEE_REPORT
         ),
     }
 
@@ -607,7 +607,7 @@ def test_ingest_tape_422s_a_source_that_does_not_reconcile(ingest_env, tmp_path,
     """
     from loanwhiz.api import main
     from loanwhiz.primitives import derived_tape as _dt
-    from loanwhiz.primitives.derived_tape import DerivedTapeScheme, derived_tape_uri
+    from loanwhiz.primitives.derived_tape import TapeScheme, derived_tape_uri
 
     monkeypatch.setattr(
         _dt, "DEFAULT_DERIVED_TAPE_CACHE_DIR", tmp_path / "derivation-cache"
@@ -622,7 +622,7 @@ def test_ingest_tape_422s_a_source_that_does_not_reconcile(ingest_env, tmp_path,
         "url": derived_tape_uri(
             f"file://{not_a_report}",
             "March 2025",
-            scheme=DerivedTapeScheme.TRUSTEE_REPORT,
+            scheme=TapeScheme.TRUSTEE_REPORT,
         ),
     }
 

@@ -15,3 +15,16 @@ absence with the *reason* — "published but not yet extracted" and "no such rep
 exists" are opposite findings that the same empty key would otherwise flatten.
 
 Refs: #455
+
+## 2026-09-08 · pitfall · #483
+
+Changing a registered tape's URL changes every artifact keyed *by* that URL.
+The committed tape-analytics seeds and the runtime cache are both named
+`sha256(tape_url).json`, so re-identifying a tape orphans its seed and the
+offline demo quietly drops that period — `_tape_analytics_period` degrades on
+any per-tape error rather than raising. Regenerate and re-key in the same
+commit, then diff the old seed against the new and assert only the field you
+meant to change moved. Grep for what hashes a registry *value*, not just what
+reads the key.
+
+Refs: #483

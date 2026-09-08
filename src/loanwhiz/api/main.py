@@ -2822,14 +2822,23 @@ class TapeAnalyticsPeriod(BaseModel):
     property_type_breakdown: dict[str, float] | None
     geographic_breakdown: dict[str, float] | None
     annex_detected: str
-    # Ingestion channel: "direct" when the tape was read from a published file
-    # (HuggingFace CSV/parquet, local file), "derived" when no published file
-    # exists and the rows were reconstructed at ingest from a source document
-    # the deal registers (loanwhiz.primitives.derived_tape). Surfaced so the
-    # demo's governance view can show honest provenance per period. The channel
-    # is not the same claim as what the tape IS — a derived tape is not a
+    # Ingestion channel (loanwhiz.domain.tape_provenance.TapeChannel): "direct"
+    # when the tape was read from a published file (HuggingFace CSV/parquet,
+    # local file), "derived" when no published file exists and the rows were
+    # reconstructed at ingest from a source document the deal registers,
+    # "synthetic" when the file is published and readable but its rows were
+    # generated and describe no real obligor. Surfaced so the demo's governance
+    # view can show honest provenance per period. The channel is not the same
+    # claim as what the tape IS — neither a derived nor a synthetic tape is a
     # regulatory filing, and the citation excerpt carries that sentence in full.
-    data_source: str = "direct"
+    #
+    # REQUIRED, with no default. It carried `= "direct"` until #483, which is
+    # the same defect one layer up from the one that issue fixed: a period whose
+    # source omitted the field reported the provenance of a filed regulatory
+    # tape, by omission. Every value here comes from `EsmaTapeOutput.model_dump()`
+    # and always carries the key, so the only thing a default could cover is a
+    # hand-edited seed — exactly the case that must fail loudly.
+    data_source: str
 
 
 def _tape_analytics_period(tape: dict) -> TapeAnalyticsPeriod | None:

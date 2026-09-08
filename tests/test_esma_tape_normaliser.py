@@ -19,6 +19,8 @@ import pytest
 
 from loanwhiz.config import GREEN_LION
 from loanwhiz.primitives.esma_tape_normaliser import (
+    DATA_SOURCE_DIRECT,
+    DATA_SOURCE_SYNTHETIC,
     EsmaTapeInput,
     EsmaTapeNormaliser,
     _detect_annex,
@@ -26,6 +28,11 @@ from loanwhiz.primitives.esma_tape_normaliser import (
     non_performing_mask,
     performing_mask,
 )
+
+# Imported after a ``primitives`` module on purpose: ``loanwhiz.domain``'s
+# package init cycles with ``loanwhiz.primitives``, and the domain module's own
+# docstring documents this ordering requirement.
+from loanwhiz.domain.tape_provenance import TapeSourceKind  # noqa: E402
 from loanwhiz.primitives.registry import PRIMITIVE_REGISTRY
 
 
@@ -622,3 +629,93 @@ class TestAnnexScopedResolution:
         ).output
         assert out.annex_detected == "Annex 2 (RMBS)"
         assert out.arrears_breakdown["default_pct"] == 50.0
+
+
+class TestSyntheticChannel:
+    """A synthetic tape is an ordinary file that must never report `direct` (#483).
+
+    This is the case the `derived` work did not cover. A derived tape is easy to
+    keep honest because it travels its own branch — there is no file to read, so
+    the direct label is out of reach by construction. A synthetic tape goes down
+    the *same* pandas branch as a plain URL and reads the same kind of file, so
+    the only thing separating it from `direct` is that the channel is decided by
+    the identifier before either branch runs.
+    """
+
+    def _write(self, tmp_path: Path, name: str) -> Path:
+        path = tmp_path / name
+        _rmbs_frame("2026-04-30", balances=[100_000.0, 200_000.0]).to_csv(
+            path, index=False
+        )
+        return path
+
+    def test_a_synthetic_identifier_reports_the_synthetic_channel(
+        self, tmp_path: Path
+    ) -> None:
+        path = self._write(tmp_path, "pool_synthetic_loan_tape.csv")
+        _, data_source = _load_tape(f"synthetic:file://{path}", period=None)
+        assert data_source == DATA_SOURCE_SYNTHETIC
+        assert data_source != DATA_SOURCE_DIRECT
+
+    def test_the_scheme_changes_the_provenance_and_nothing_else(
+        self, tmp_path: Path
+    ) -> None:
+        """The re-identification safety property, on a file the test controls.
+
+        Green Lion 2026-1's committed seeds rest on this: prefixing an existing
+        tape URL must change what the platform *claims* about the pool and no
+        figure it reports. Comparing the two loads of one file is the cheapest
+        honest proof.
+        """
+        path = self._write(tmp_path, "pool_synthetic_loan_tape.csv")
+        plain = EsmaTapeNormaliser().execute(EsmaTapeInput(file_url=f"file://{path}")).output
+        declared = EsmaTapeNormaliser().execute(
+            EsmaTapeInput(file_url=f"synthetic:file://{path}")
+        ).output
+
+        assert declared.data_source == DATA_SOURCE_SYNTHETIC
+        assert plain.data_source == DATA_SOURCE_DIRECT
+        # Everything that is not provenance is identical.
+        assert declared.model_dump(exclude={"data_source"}) == plain.model_dump(
+            exclude={"data_source"}
+        )
+
+    def test_the_scheme_is_stripped_before_the_extension_is_read(
+        self, tmp_path: Path
+    ) -> None:
+        """Dispatch order: scheme first, file format second.
+
+        Reading the extension off the raw identifier would send
+        `synthetic:…/x.parquet` to the CSV reader, so this is not a hypothetical
+        ordering preference — it decides whether the file loads at all.
+        """
+        path = tmp_path / "pool_synthetic.parquet"
+        _rmbs_frame("2026-04-30", balances=[100_000.0]).to_parquet(path)
+        loaded, data_source = _load_tape(f"synthetic:file://{path}", period=None)
+        assert len(loaded) == 1
+        assert data_source == DATA_SOURCE_SYNTHETIC
+
+    def test_the_citation_discloses_synthetic_provenance(self, tmp_path: Path) -> None:
+        """A reader who never opens the data card must still be told.
+
+        The excerpt quotes the source kind's own sentence verbatim, so the claim
+        cannot drift between the evidence pack, the capability matrix and here.
+        """
+        path = self._write(tmp_path, "pool_synthetic_loan_tape.csv")
+        result = EsmaTapeNormaliser().execute(
+            EsmaTapeInput(file_url=f"synthetic:file://{path}")
+        )
+        excerpt = result.citations[0].excerpt
+        assert f"ingested via {DATA_SOURCE_SYNTHETIC}" in excerpt
+        assert TapeSourceKind.SYNTHETIC_GENERATED.disclosure in excerpt
+
+    def test_a_plain_tape_gains_no_synthetic_wording(self, tmp_path: Path) -> None:
+        """The disclosure must be absent, not merely different, for an undeclared tape.
+
+        An undeclared tape gets silence about what it is — inventing a
+        reassuring sentence is the mirror image of the bug being fixed.
+        """
+        path = self._write(tmp_path, "pool.csv")
+        result = EsmaTapeNormaliser().execute(EsmaTapeInput(file_url=f"file://{path}"))
+        excerpt = result.citations[0].excerpt
+        assert "synthetic" not in excerpt.lower()
