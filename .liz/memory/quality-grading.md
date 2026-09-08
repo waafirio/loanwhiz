@@ -102,3 +102,15 @@ matches no step, so a real payment reconciles 0.00-vs-0.00 against its parent).
 On a failing grade, pin the figures and change neither side: the gap is it.
 
 Refs: #496
+
+## 2026-09-08 · pattern · #512
+
+Route a published *input* through the document, not the answer key, even when
+the key is where the figure was committed. `quality_harness` folds from the
+**series provider**, never the key, so an issue phrased "wire the key's
+`pool_stats` into the fold" is satisfied by reading the document the key was
+authored from and asserting the two equal in a test. The key stays ground truth
+and becomes checked rather than ungraded; putting it on the engine's input side
+would make the grade partly self-referential.
+
+Refs: #512

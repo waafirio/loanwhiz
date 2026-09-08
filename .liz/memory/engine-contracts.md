@@ -103,3 +103,15 @@ a code path, assert they agree over the real corpus: neither one's own tests can
 see the disagreement.
 
 Refs: #503
+
+## 2026-09-08 · gotcha · #512
+
+Check what the **report path** actually seeds before wiring a per-class input
+onto it. `ReportAdapter.seed` iterates `DEFAULT_TRANCHE_CLASSES` — the canonical
+`class_a/b/c` triple — and `_funds_from_state` looks inputs up by **tranche
+name**, so a deal whose stack is `class_b_1`/`class_d`..`class_f` has no tranche
+to attach to. A complete, correct input map can reach nothing with no error
+anywhere: the class just keeps refusing. Assert the map and the per-tranche
+arrival separately; one passing does not imply the other.
+
+Refs: #512
