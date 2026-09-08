@@ -79,8 +79,9 @@ import re
 import time
 import urllib.request
 from decimal import Decimal
+from enum import Enum
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any, Final
 
 from pydantic import BaseModel, Field
 
@@ -90,6 +91,9 @@ from loanwhiz.primitives.base import (
     Citation,
     PrimitiveResult,
 )
+
+if TYPE_CHECKING:  # pragma: no cover - annotation-only; see liability_provenance
+    from loanwhiz.domain.provenance import ProvenanceMap
 
 _PRIMITIVE_NAME = "collateral_schedule_parser"
 _PRIMITIVE_VERSION = "0.1.0"
@@ -114,6 +118,15 @@ SECTION_FITCH_INDUSTRY = "Fitch Industry Concentration"
 SECTION_SP_RATING = "S&P Rating Stratification"
 SECTION_PROFILE_TESTS = "Portfolio Profile Tests"
 
+#: The **liability-side** sections. The same document that details the
+#: collateral also states, about the notes that collateral funds, the figures a
+#: prospectus can only express as a formula: each class's *resolved* current
+#: coupon, and each coverage test's *required level*. They are read through the
+#: seam below rather than by a second reader, because it is one document.
+SECTION_EXEC_SUMMARY = "Executive Summary"
+SECTION_PAR_VALUE_DETAIL = "Par Value Tests Detail"
+SECTION_IC_DETAIL = "Interest Coverage Tests Detail"
+
 _SECTION_TITLES: tuple[str, ...] = (
     SECTION_ASSET_PART_III,
     SECTION_ASSET_PART_II,
@@ -124,6 +137,9 @@ _SECTION_TITLES: tuple[str, ...] = (
     SECTION_FITCH_INDUSTRY,
     SECTION_SP_RATING,
     SECTION_PROFILE_TESTS,
+    SECTION_EXEC_SUMMARY,
+    SECTION_PAR_VALUE_DETAIL,
+    SECTION_IC_DETAIL,
 )
 
 #: The eight Part III flags, in the column order the section header prints them:
@@ -203,6 +219,49 @@ _FLAG_RE = re.compile(r"(Yes|-)")
 _AGGREGATE_ROW_RE = re.compile(
     rf"^(?P<label>.*?){_S}(?P<balance>{MONEY}){_S}(?P<percent>\d+\.\d{{2}}){_S}(?P<count>\d+)\s*$"
 )
+
+#: One Executive Summary note-class row: ``Class <label> Notes`` followed by
+#: principal balance, current coupon and periodic interest. The coupon's **five**
+#: decimal places are what make the three cells separable when the rendering
+#: concatenates them with no delimiter (``248,000,000.004.544002,066,005.33``):
+#: money carries exactly two, a coupon exactly five, so the boundaries are fixed
+#: by digit count rather than by a separator that is not there.
+#:
+#: ``N/A`` is admitted for the two rate cells and is **not** a number. The
+#: subordinated note has no coupon at all, and the failure this exists to
+#: prevent is that absence arriving downstream as ``0.0`` \u2014 a note that pays
+#: nothing and a note whose coupon the report does not state are different
+#: facts. Matched with :func:`re.finditer`, since one rendering puts every class
+#: on one line and the other puts each on its own.
+_NOTE_CLASS_ROW_RE = re.compile(
+    rf"Class{_S}(?P<label>Subordinated|[A-Z](?:-\d)?){_S}Notes{_S}"
+    rf"(?P<balance>{MONEY}){_S}"
+    rf"(?P<coupon>\d+\.\d{{5}}|N/A){_S}"
+    rf"(?P<interest>{MONEY}|N/A)"
+)
+
+#: One coverage-test row, in **either** of the two sections that state it. The
+#: name alternation is the guard: the same page prints Collateral Quality Tests
+#: in an identical shape (``Fitch Maximum WA Rating Factor Test25.5024.46``),
+#: and those carry no ``%`` terminator, so their two figures cannot be split
+#: apart at all. Matching coverage tests by name rather than by position also
+#: survives the December rendering, which interleaves the two groups row by row.
+#:
+#: ``CALCULATION`` (``A/B``, ``A/G``) appears only on the detail pages, so it is
+#: optional here \u2014 the one regex reads both sections, and which figure is the
+#: required level is decided by the header, never by this pattern.
+_COVERAGE_TEST_RE = re.compile(
+    rf"(?P<name>(?:Class{_S}[A-Z](?:/[A-Z])?{_S}(?:Par{_S}Value|Interest{_S}Coverage)"
+    rf"|Reinvestment{_S}Overcollateralisation){_S}Test){_S}"
+    rf"(?P<first>\d+\.\d{{2}})%{_S}(?P<second>\d+\.\d{{2}})%{_S}"
+    rf"(?:(?P<calculation>[A-Z]/[A-Z]){_S})?"
+    rf"(?P<result>Passed|Failed|N/A)"
+)
+
+#: The stated totals line under the Executive Summary's note table: aggregate
+#: principal balance and aggregate periodic interest, in that order and nothing
+#: else on the line. Two independent oracles for one parse.
+_STATED_TOTALS_RE = re.compile(rf"^(?P<balance>{MONEY}){_S}(?P<interest>{MONEY})\s*$")
 
 #: Every character Python's ``str.splitlines()`` treats as a line break.
 _LINE_BREAKS = re.compile(r"[\r\n\v\f\x1c-\x1e\x85\u2028\u2029]+")
@@ -529,6 +588,23 @@ def _page_section(lines: list[str]) -> str | None:
 def _pages_for(pages: list[list[str]], section: str) -> list[list[str]]:
     """Every page belonging to one section, in document order."""
     return [lines for lines in pages if _page_section(lines) == section]
+
+
+def _report_header(pages: list[list[str]]) -> tuple[str | None, str | None]:
+    """The deal name and reporting date a report states about itself.
+
+    One implementation for both sides of the document — the collateral schedule
+    and the liability summary describe the same report, so a divergence between
+    two copies of this would be a report whose two halves disagree about which
+    period they are.
+    """
+    deal_name = pages[0][0] if pages and pages[0] else None
+    for lines in pages[:5]:
+        for line in lines:
+            match = _REPORTING_DATE_RE.search(line)
+            if match:
+                return deal_name, match.group(1)
+    return deal_name, None
 
 
 def _is_furniture(line: str) -> bool:
@@ -1090,16 +1166,7 @@ def parse_schedule_text(
     if not pages:
         raise ValueError("no pages found — text is not extracted trustee-report output")
 
-    deal_name = pages[0][0] if pages[0] else None
-    reporting_date = None
-    for lines in pages[:5]:
-        for line in lines:
-            match = _REPORTING_DATE_RE.search(line)
-            if match:
-                reporting_date = match.group(1)
-                break
-        if reporting_date:
-            break
+    deal_name, reporting_date = _report_header(pages)
 
     defects = ScheduleDefects()
     aggregates = _parse_aggregates(pages)
@@ -1308,6 +1375,561 @@ def parse_schedule_text_result(
     )
     return PrimitiveResult[CollateralSchedule](
         output=schedule,
+        confidence=_DETERMINISTIC_CONFIDENCE,
+        citations=citations,
+        audit_entry=audit,
+    )
+
+
+# ===========================================================================
+# The liability side — what the report states about the notes
+# ===========================================================================
+#
+# Everything above reads the collateral. This part reads the same document's
+# statements about the notes that collateral funds, and it exists because a
+# prospectus cannot answer the question the engine asks.
+#
+# The offering circular gives Class A's coupon as ``3 month EURIBOR + 1.80%``.
+# That is a **margin, not a rate**: resolving it needs the period's index
+# fixing, and inventing one is exactly what the engine's rate parser refuses to
+# do. The trustee report states the resolved figure — ``4.54400`` for March
+# 2025 — because by the time it is written the fixing has happened.
+#
+# The same is true of the coverage tests. #456 recorded their required levels
+# as unobtainable, and was right about the circular: the levels live in an
+# alphabetical definitions glossary that runs past the extractor's 40,000
+# character budget, so every test defined under C-F was lost. It was wrong
+# about the *document* — the Par Value and Interest Coverage Tests Detail pages
+# state each required level beside the computed ratio, every month.
+#
+# **These are report-derived facts, not prospectus terms**, and the distinction
+# is load-bearing rather than pedantic: a required level read off one month's
+# trustee report is that month's stated figure, where a prospectus term is the
+# deal's contractual definition. :func:`liability_provenance` can therefore only
+# emit ``source="report"`` — see the constant's note.
+#
+# Two things make the parse trustworthy rather than merely plausible:
+#
+# 1. **Two independent stated totals.** The Executive Summary states aggregate
+#    principal balance *and* aggregate periodic interest, and the per-class rows
+#    must sum to both. One total alone would be satisfied by two transposed
+#    rows; two totals over different quantities are not.
+# 2. **Two renderings of the same coverage tests, in opposite column order.**
+#    The Executive Summary prints ``Threshold`` then ``Current``; the detail
+#    pages print ``RATIO`` then ``REQUIRED LEVEL``. Requiring the two to agree
+#    is a genuine cross-check, and it is the reason the column order is read
+#    from each section's header instead of assumed — a silent swap would report
+#    a breaching test as passing, which is the worst failure available here.
+
+
+class CoverageTestOutcome(str, Enum):
+    """The result a trustee report states for a coverage test.
+
+    Closed on purpose. A row whose outcome is none of these does not match
+    :data:`_COVERAGE_TEST_RE` at all, so it is absent from one rendering and
+    present in the other — which the cross-rendering check in
+    :func:`reconcile_liability_summary` refuses. An unknown outcome therefore
+    surfaces as a refusal rather than as a row quietly dropped.
+    """
+
+    PASSED = "Passed"
+    FAILED = "Failed"
+    NOT_APPLICABLE = "N/A"
+
+
+class _ColumnOrder(str, Enum):
+    """Which of a coverage-test table's two percentage columns comes first."""
+
+    #: ``Test Description | Threshold | Current | Result`` — the Executive Summary.
+    REQUIRED_FIRST = "required-first"
+
+    #: ``… TEST | RATIO | REQUIRED LEVEL | CALCULATION | RESULT`` — detail pages.
+    RATIO_FIRST = "ratio-first"
+
+
+#: Header fingerprints, whitespace-stripped and upper-cased so one entry covers
+#: both renderings. The lookup is exhaustive by construction: a section whose
+#: header matches neither is refused rather than read in a guessed order.
+_ORDER_MARKERS: dict[str, _ColumnOrder] = {
+    "TESTDESCRIPTIONTHRESHOLDCURRENTRESULT": _ColumnOrder.REQUIRED_FIRST,
+    "TESTRATIOREQUIREDLEVELCALCULATIONRESULT": _ColumnOrder.RATIO_FIRST,
+}
+
+#: The provenance source every figure this seam emits carries — a **constant,
+#: exposed through no parameter**. A coupon or a required level taken from a
+#: trustee report is a report-derived fact; presenting one as an extracted
+#: prospectus term would lend it a contractual authority it does not have. The
+#: cheapest way to guarantee that is to leave the caller no way to say
+#: otherwise, so :func:`liability_provenance` takes no ``source`` argument and
+#: there is no code path in this module that writes any other value.
+_LIABILITY_PROVENANCE_SOURCE: Final[str] = "report"
+
+_PRIMITIVE_VERSION_LIABILITY = "0.1.0"
+
+
+def _trigger_key(name: str) -> str:
+    """Canonical key for a coverage test, from the name the report prints.
+
+    ``"Class A/B Par Value Test"`` becomes ``"class_a_b_par_value_test"`` — the
+    shape the extracted deal model already uses for its trigger names, so the
+    two are comparable without a translation table. That correspondence is
+    pinned by a test rather than asserted here.
+    """
+    return re.sub(r"[^a-z0-9]+", "_", " ".join(name.split()).lower()).strip("_")
+
+
+class NoteClassFigures(BaseModel):
+    """One note class, as the report's Executive Summary states it."""
+
+    note_class: str = Field(..., description="The class label, e.g. 'A', 'B-1', 'Subordinated'.")
+    principal_balance: Decimal
+    coupon_pct: Decimal | None = Field(
+        default=None,
+        description=(
+            "Current coupon in percent, already resolved to a number by the "
+            "trustee. None when the report states no coupon for this class — "
+            "which is a different fact from a coupon of zero."
+        ),
+    )
+    periodic_interest: Decimal | None = Field(
+        default=None,
+        description="Interest for the period. None when the report states none.",
+    )
+
+    @property
+    def class_key(self) -> str:
+        """Canonical dotted-path segment for this class, e.g. ``class_b_1``."""
+        return _trigger_key(f"Class {self.note_class}")
+
+
+class CoverageTestResult(BaseModel):
+    """One coverage test, with the required level the report states beside it."""
+
+    name: str
+    current_pct: Decimal = Field(..., description="The computed ratio, in percent.")
+    required_pct: Decimal = Field(..., description="The level the test requires, in percent.")
+    result: CoverageTestOutcome
+    stated_in: str = Field(..., description="The report section this reading came from.")
+
+    @property
+    def trigger_key(self) -> str:
+        """Canonical key, matching the extracted model's trigger names."""
+        return _trigger_key(self.name)
+
+
+class ReportLiabilitySummary(BaseModel):
+    """One reporting date's liability-side figures, plus its acceptance oracle."""
+
+    deal_name: str | None = None
+    period_label: str
+    reporting_date: str | None = None
+    note_classes: list[NoteClassFigures] = Field(default_factory=list)
+
+    #: Coverage tests as the **detail** pages state them (``RATIO``, then
+    #: ``REQUIRED LEVEL``). This is the authoritative reading.
+    coverage_tests: list[CoverageTestResult] = Field(default_factory=list)
+
+    #: The same tests as the **Executive Summary** states them, in the opposite
+    #: column order. Kept so the cross-check is a property of the model rather
+    #: than a step that ran once inside the parser and left no evidence.
+    summary_coverage_tests: list[CoverageTestResult] = Field(default_factory=list)
+
+    stated_total_balance: Decimal | None = None
+    stated_total_periodic_interest: Decimal | None = None
+
+    @property
+    def total_note_balance(self) -> Decimal:
+        """Sum of every parsed class's principal balance."""
+        return sum((c.principal_balance for c in self.note_classes), Decimal("0"))
+
+    @property
+    def total_periodic_interest(self) -> Decimal:
+        """Sum of the periodic interest the report states, over classes stating one."""
+        return sum(
+            (c.periodic_interest for c in self.note_classes if c.periodic_interest is not None),
+            Decimal("0"),
+        )
+
+    def note_class(self, label: str) -> NoteClassFigures | None:
+        """One class by its label, or None."""
+        return next((c for c in self.note_classes if c.note_class == label), None)
+
+    def coverage_test(self, trigger_key: str) -> CoverageTestResult | None:
+        """One coverage test by its canonical key, or None."""
+        return next((t for t in self.coverage_tests if t.trigger_key == trigger_key), None)
+
+
+class LiabilitySummaryParseInput(BaseInput):
+    """Governance input record for the envelope wrapper."""
+
+    period_label: str
+    text: str
+
+
+class LiabilitySummaryReconciliationError(ValueError):
+    """Raised when the liability summary does not tie out to the report's own figures.
+
+    The same enforced boundary as :class:`ScheduleReconciliationError`, for the
+    same reason: a coupon or a required level that reaches the engine wrong is
+    worse than one that never arrives.
+    """
+
+    def __init__(self, reconciliation: ScheduleReconciliation):
+        self.reconciliation = reconciliation
+        lines = [f"{c.name}: expected {c.expected}, got {c.actual}" for c in reconciliation.failures]
+        super().__init__(
+            "trustee-report liability summary does not reconcile to the report's "
+            "own stated figures — refusing to return it. " + " | ".join(lines)
+        )
+
+
+def _column_order(pages: list[list[str]], section: str) -> _ColumnOrder:
+    """Read a coverage-test table's column order off its own header.
+
+    Never inferred from position or from which section it is: the Executive
+    Summary and the detail pages state the same pairs in opposite orders, so a
+    parser that assumed either would silently swap a computed ratio with the
+    level it must clear. An unrecognised header is refused, because reading two
+    percentages in an unknown order is not a degraded answer — it is a wrong one.
+    """
+    found: set[_ColumnOrder] = set()
+    for lines in pages:
+        for line in lines:
+            squashed = _squash(line).upper()
+            for marker, order in _ORDER_MARKERS.items():
+                if marker in squashed:
+                    found.add(order)
+    if len(found) == 1:
+        return found.pop()
+    if not found:
+        raise ValueError(
+            f"{section}: no recognised coverage-test column header. Expected one "
+            f"of {sorted(_ORDER_MARKERS)}; refusing to read two percentage "
+            "columns in a guessed order."
+        )
+    raise ValueError(
+        f"{section}: the section states two different column orders "
+        f"({sorted(o.value for o in found)}); refusing rather than picking one."
+    )
+
+
+def _parse_note_classes(pages: list[list[str]]) -> list[NoteClassFigures]:
+    """Every ``Class <label> Notes`` row the Executive Summary states.
+
+    Deliberately does **not** de-duplicate. A class appearing twice would make
+    the balances sum past the report's stated total, and the reconciliation
+    below refuses on exactly that — where silently keeping the first occurrence
+    would return a plausible tape built from a page read twice.
+    """
+    classes: list[NoteClassFigures] = []
+    for lines in pages:
+        for line in lines:
+            for match in _NOTE_CLASS_ROW_RE.finditer(line):
+                coupon = match.group("coupon")
+                interest = match.group("interest")
+                classes.append(
+                    NoteClassFigures(
+                        note_class=match.group("label"),
+                        principal_balance=_decimal(match.group("balance")),
+                        coupon_pct=None if coupon == "N/A" else _decimal(coupon),
+                        periodic_interest=None if interest == "N/A" else _decimal(interest),
+                    )
+                )
+    return classes
+
+
+def _parse_coverage_tests(
+    pages: list[list[str]], section: str
+) -> list[CoverageTestResult]:
+    """Every coverage test one section states, read in that section's own order."""
+    order = _column_order(pages, section)
+    results: list[CoverageTestResult] = []
+    for lines in pages:
+        for line in lines:
+            for match in _COVERAGE_TEST_RE.finditer(line):
+                first = _decimal(match.group("first"))
+                second = _decimal(match.group("second"))
+                if order is _ColumnOrder.REQUIRED_FIRST:
+                    required, current = first, second
+                else:
+                    current, required = first, second
+                results.append(
+                    CoverageTestResult(
+                        name=" ".join(match.group("name").split()),
+                        current_pct=current,
+                        required_pct=required,
+                        result=CoverageTestOutcome(match.group("result")),
+                        stated_in=section,
+                    )
+                )
+    return results
+
+
+def _parse_stated_totals(pages: list[list[str]]) -> tuple[Decimal | None, Decimal | None]:
+    """The aggregate balance and periodic interest the Executive Summary states.
+
+    Two distinct candidate lines mean the section states its totals twice and
+    disagrees with itself; that is refused rather than resolved by taking the
+    first, since neither is more authoritative than the other.
+    """
+    seen: list[tuple[Decimal, Decimal]] = []
+    for lines in pages:
+        for line in lines:
+            match = _STATED_TOTALS_RE.match(line.strip())
+            if match:
+                pair = (_decimal(match.group("balance")), _decimal(match.group("interest")))
+                if pair not in seen:
+                    seen.append(pair)
+    if not seen:
+        return None, None
+    if len(seen) > 1:
+        raise ValueError(
+            "Executive Summary states more than one distinct pair of aggregate "
+            f"totals ({seen}); refusing rather than choosing between them."
+        )
+    return seen[0]
+
+
+def _decimal(token: str) -> Decimal:
+    """A report money/percentage token as an exact :class:`~decimal.Decimal`."""
+    return Decimal(token.replace(",", ""))
+
+
+def parse_liability_summary_text(
+    text: str,
+    *,
+    period_label: str,
+    strict: bool = True,
+) -> ReportLiabilitySummary:
+    """Parse a trustee report's text into its liability-side summary.
+
+    Pure and deterministic — no network, no LLM, and no second reader: the text
+    is the output of :func:`extract_report_lines`, the same seam the collateral
+    schedule is parsed from. Sections are located by header text, never by page
+    number.
+
+    With ``strict`` (the default) the summary is reconciled against the report's
+    own stated totals and its own second rendering of the coverage tests, and a
+    divergence raises :class:`LiabilitySummaryReconciliationError`. Pass
+    ``strict=False`` only to inspect a failing parse.
+    """
+    pages = _split_pages(text)
+    if not pages:
+        raise ValueError("no pages found — text is not extracted trustee-report output")
+
+    deal_name, reporting_date = _report_header(pages)
+
+    exec_pages = _pages_for(pages, SECTION_EXEC_SUMMARY)
+    par_value_pages = _pages_for(pages, SECTION_PAR_VALUE_DETAIL)
+    ic_pages = _pages_for(pages, SECTION_IC_DETAIL)
+    if not exec_pages:
+        raise ValueError(
+            "report has no Executive Summary section (located by header, not page "
+            "number) — the per-class balances and coupons are stated there"
+        )
+    if not (par_value_pages or ic_pages):
+        raise ValueError(
+            "report has no coverage-test detail section (located by header, not "
+            "page number) — the required levels are stated there"
+        )
+
+    stated_balance, stated_interest = _parse_stated_totals(exec_pages)
+    detail_tests: list[CoverageTestResult] = []
+    if par_value_pages:
+        detail_tests += _parse_coverage_tests(par_value_pages, SECTION_PAR_VALUE_DETAIL)
+    if ic_pages:
+        detail_tests += _parse_coverage_tests(ic_pages, SECTION_IC_DETAIL)
+
+    summary = ReportLiabilitySummary(
+        deal_name=deal_name,
+        period_label=period_label,
+        reporting_date=reporting_date,
+        note_classes=_parse_note_classes(exec_pages),
+        coverage_tests=detail_tests,
+        summary_coverage_tests=_parse_coverage_tests(exec_pages, SECTION_EXEC_SUMMARY),
+        stated_total_balance=stated_balance,
+        stated_total_periodic_interest=stated_interest,
+    )
+    if strict:
+        reconciliation = reconcile_liability_summary(summary)
+        if not reconciliation.ok:
+            raise LiabilitySummaryReconciliationError(reconciliation)
+    return summary
+
+
+def reconcile_liability_summary(summary: ReportLiabilitySummary) -> ScheduleReconciliation:
+    """Tie the liability summary back to what the report states about itself.
+
+    Four families of check, and the last two are the ones that matter:
+
+    - the per-class balances sum to the stated aggregate balance;
+    - the stated periodic interest sums to the stated aggregate interest —
+      a second oracle over a different quantity, so two transposed class rows
+      cannot satisfy both;
+    - the Executive Summary and the detail pages name the **same** set of
+      coverage tests, so a test that failed to parse in one rendering cannot be
+      quietly absent from the result;
+    - and for each, the two renderings agree on the required level, the current
+      level and the outcome — despite stating them in opposite column order.
+    """
+    checks: list[ReconciliationCheck] = []
+
+    if summary.stated_total_balance is not None:
+        checks.append(
+            _check(
+                "stated total note balance",
+                summary.stated_total_balance,
+                summary.total_note_balance,
+            )
+        )
+    if summary.stated_total_periodic_interest is not None:
+        checks.append(
+            _check(
+                "stated total periodic interest",
+                summary.stated_total_periodic_interest,
+                summary.total_periodic_interest,
+            )
+        )
+
+    detail = {t.trigger_key: t for t in summary.coverage_tests}
+    stated = {t.trigger_key: t for t in summary.summary_coverage_tests}
+    checks.append(
+        _check("coverage tests named in both renderings", sorted(stated), sorted(detail))
+    )
+    for key in sorted(set(detail) & set(stated)):
+        checks.append(
+            _check(f"required level · {key}", stated[key].required_pct, detail[key].required_pct)
+        )
+        checks.append(
+            _check(f"current level · {key}", stated[key].current_pct, detail[key].current_pct)
+        )
+        checks.append(_check(f"result · {key}", stated[key].result, detail[key].result))
+
+    return ScheduleReconciliation(checks=checks)
+
+
+def liability_provenance(
+    summary: ReportLiabilitySummary,
+    *,
+    reconciled: bool = True,
+) -> ProvenanceMap:
+    """Per-field provenance for every figure this summary states.
+
+    Keyed by dotted field path, the sidecar shape
+    :mod:`loanwhiz.domain.provenance` already defines — this adds no parallel
+    provenance record.
+
+    **There is no ``source`` parameter**, and that is the point. Every entry
+    carries ``source="report"``, so a coupon lifted from a trustee report cannot
+    be presented as an extracted prospectus term by any caller of this function.
+
+    A class whose coupon or periodic interest the report does not state gets
+    **no key** for it, rather than a key with a null value: absence of a fact
+    and a fact that happens to be absent read identically once a map has an
+    entry for both.
+    """
+    # Imported here rather than at module scope: ``loanwhiz.domain``'s package
+    # ``__init__`` participates in an import cycle with ``loanwhiz.primitives``,
+    # and this module is imported by ``collateral_tape_mapping``, which is
+    # itself on the domain side of that cycle. Deferring costs one lookup per
+    # call and keeps this module importable from anywhere.
+    from loanwhiz.domain.provenance import FieldProvenance
+
+    document = _report_document_name(summary.deal_name, summary.period_label)
+
+    def entry(section: str, excerpt: str) -> FieldProvenance:
+        return FieldProvenance(
+            source=_LIABILITY_PROVENANCE_SOURCE,
+            method="deterministic",
+            confidence=_DETERMINISTIC_CONFIDENCE,
+            citation=Citation(document=document, page_or_row=section, excerpt=excerpt),
+            reconciled=reconciled,
+        )
+
+    provenance: ProvenanceMap = {}
+    for note in summary.note_classes:
+        base = f"tranches.{note.class_key}"
+        provenance[f"{base}.principal_balance"] = entry(
+            SECTION_EXEC_SUMMARY,
+            f"Class {note.note_class} principal balance stated by the trustee.",
+        )
+        if note.coupon_pct is not None:
+            provenance[f"{base}.coupon_pct"] = entry(
+                SECTION_EXEC_SUMMARY,
+                f"Class {note.note_class} current coupon as resolved and stated by "
+                "the trustee for this period — a report-derived rate, not the "
+                "prospectus's index-plus-margin term.",
+            )
+        if note.periodic_interest is not None:
+            provenance[f"{base}.periodic_interest"] = entry(
+                SECTION_EXEC_SUMMARY,
+                f"Class {note.note_class} interest for the period, stated by the trustee.",
+            )
+
+    for test in summary.coverage_tests:
+        base = f"covenants.{test.trigger_key}"
+        provenance[f"{base}.required_pct"] = entry(
+            test.stated_in,
+            f"{test.name} required level, stated beside the computed ratio and "
+            "cross-checked against the Executive Summary's own statement of it.",
+        )
+        provenance[f"{base}.current_pct"] = entry(
+            test.stated_in, f"{test.name} ratio as computed and stated by the trustee."
+        )
+    return provenance
+
+
+def _report_document_name(deal_name: str | None, period_label: str) -> str:
+    """The citation document string for one report."""
+    return (
+        f"{deal_name} — Monthly Trustee Report ({period_label})"
+        if deal_name
+        else f"Monthly Trustee Report ({period_label})"
+    )
+
+
+def parse_liability_summary_text_result(
+    text: str,
+    *,
+    period_label: str,
+) -> PrimitiveResult[ReportLiabilitySummary]:
+    """Envelope-returning wrapper over :func:`parse_liability_summary_text`.
+
+    The parse is deterministic *and* reconciled against the report's own stated
+    totals and its own second rendering of the coverage tests before it is
+    returned, so the envelope confidence is ``1.0`` — the framework's rule-based
+    convention. One :class:`Citation` per source section.
+    """
+    started = time.perf_counter()
+    parse_input = LiabilitySummaryParseInput(period_label=period_label, text=text)
+    summary = parse_liability_summary_text(text, period_label=period_label)
+    duration_ms = (time.perf_counter() - started) * 1000.0
+
+    document = _report_document_name(summary.deal_name, period_label)
+    citations = [
+        Citation(
+            document=document,
+            page_or_row=section,
+            excerpt=(
+                "Liability-side figures parsed deterministically from the extracted "
+                "trustee-report text and reconciled against the report's own stated "
+                "totals and its second rendering of the same coverage tests."
+            ),
+        )
+        for section in (
+            SECTION_EXEC_SUMMARY,
+            SECTION_PAR_VALUE_DETAIL,
+            SECTION_IC_DETAIL,
+        )
+    ]
+    audit = AuditEntry.now(
+        primitive_name=_PRIMITIVE_NAME,
+        version=_PRIMITIVE_VERSION_LIABILITY,
+        input_hash=parse_input.input_hash(),
+        duration_ms=duration_ms,
+    )
+    return PrimitiveResult[ReportLiabilitySummary](
+        output=summary,
         confidence=_DETERMINISTIC_CONFIDENCE,
         citations=citations,
         audit_entry=audit,
