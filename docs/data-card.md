@@ -72,11 +72,11 @@ the per-cell source of truth; it reports the current tally itself.
 | Deal | Jurisdiction | Documents | Extraction completeness | What extracted | Validation |
 |---|---|---|---|---|---|
 | **Green Lion 2026-1 B.V.** | Netherlands | Prospectus (real) + 3 synthetic Annex 2 tapes + 3 investor reports (real) | **0.75** | Full waterfall (revenue/redemption/post-enforcement), 3 triggers, 0 definitions | Collateral reconciled to investor reports to the cent; liabilities prospectus-derived & invariant-checked (no in-window Notes & Cash) |
-| **Green Lion 2024-1 B.V.** | Netherlands | Prospectus (real) + investor reports + **quarterly Notes & Cash (real)** | **0.925** | Full waterfall, 3 triggers | **Validated to the cent** — engine reproduces the published Notes & Cash Priority of Payments (revenue 11/11, redemption 4/4; Class A interest engine-computed). This is the single `validated` cell. |
-| **Green Lion 2023-1 B.V.** | Netherlands | Prospectus (real) + investor reports + **quarterly Notes & Cash (real)** | **1.0** | Full waterfall, 4 triggers | **Graded to the cent** by `GET /quality-matrix` against a committed answer key (#440) — revenue + redemption PoP across all three published periods. The `/deal/{id}/validation` endpoint still returns `available=false`: the fixtures and key are committed, but no validation *builder* is registered, so that endpoint understates what is graded. |
+| **Green Lion 2024-1 B.V.** | Netherlands | Prospectus (real) + investor reports + **quarterly Notes & Cash (real)** | **0.925** | Full waterfall, 3 triggers | **Validated to the cent** — engine reproduces the published Notes & Cash Priority of Payments (revenue 11/11, redemption 4/4; Class A interest engine-computed). One of the two `validated` cells, both Dutch. |
+| **Green Lion 2023-1 B.V.** | Netherlands | Prospectus (real) + investor reports + **quarterly Notes & Cash (real)** | **1.0** | Full waterfall, 4 triggers | **Validated to the cent** — graded by `GET /quality-matrix` against a committed answer key (#440) across all three published periods, and since #492 `validated` on the capability matrix too, because that cell is now derived from the committed key rather than from a hand-built builder. The `/deal/{id}/validation` endpoint still returns `available=false`: no validation *builder* is registered, so that one endpoint continues to understate what is graded. |
 | **Leone Arancio RMBS 2023-1 S.r.l.** | Italy | Prospectus (real, Italian) + investor reports | **0.925** | Full waterfall (23/23/12 steps), 3 triggers, 3 note classes — A1 480m / A2 6,600m / J 920m | Pipeline ran; tranche sizes reconcile to the curated `deals.json` registry, but **no** Notes & Cash report is published, so no external validation is possible |
 | **Sol-Lion II RMBS Fondo de Titulización** | Spain | Prospectus (real, Spanish) + investor reports | **0.925** | Full waterfall (20/15/12 steps), 3 triggers, 8 note classes — A1–A6, B, C | Pipeline ran; tranche sizes reconcile to the curated `deals.json` registry, but **no** Notes & Cash report is published, so no external validation is possible |
-| **Cairn CLO XVII DAC** *(CLO — extracted, covenants graded, unvalidated)* | Ireland | Listing Particulars (real, 420pp) + 3 monthly trustee reports (real) + Note Valuation Report (real, 83pp) | **1.0** | Full 8-class stack (A, B-1, B-2, C, D, E, F + Subordinated, EUR 404.1m), both Priorities of Payments as distinct cascades (29-step Interest / 23-step Principal / 26-step Post-Acceleration), 10 triggers of which 8 are per-class coverage tests, 25 definitions | **Executes and is graded on one row; not validated.** The seed folds through the shared `run_period` kernel with the deal's own cascades (#457). Since #481 an answer key **is** committed — authored from the trustee reports' stated coverage-test results, so `GET /quality-matrix` grades the `covenants` row `passed`. It is still **not** `validated`: that capability cell needs a committed offline validation *builder* reconciling a published Priority of Payments, which needs the Note Valuation Report, still unregistered and unparsed. `covenant_monitoring`, `waterfall_execution` and — since #471 registered the derived tape — `tape_analytics` are `ran`; collateral reconciliation and engine validation stay `not-applicable`, each with a reason true of this deal. Collateral reconciliation stays refused because the deal registers no structural config, not because it has no tape. The coverage tests' required levels are extracted from the trustee reports (#480) and are **still not wired onto the deal model's triggers**, which carry `threshold: null` — so on the deal's own state the monitor still reports them not-evaluable. #481 did not change that; it supplies the published level *and* the published ratio from the answer key on the grading path only. See the limitation below |
+| **Cairn CLO XVII DAC** *(CLO — extracted, covenants graded, PoP ground truth committed, graded and does **not** reconcile)* | Ireland | Listing Particulars (real, 420pp) + 3 monthly trustee reports (real) + Note Valuation Report (real, 83pp) | **1.0** | Full 8-class stack (A, B-1, B-2, C, D, E, F + Subordinated, EUR 404.1m), both Priorities of Payments as distinct cascades (29-step Interest / 23-step Principal / 26-step Post-Acceleration), 10 triggers of which 8 are per-class coverage tests, 25 definitions | **Executes and is graded on one row; not validated.** The seed folds through the shared `run_period` kernel with the deal's own cascades (#457). Since #481 an answer key **is** committed — authored from the trustee reports' stated coverage-test results, so `GET /quality-matrix` grades the `covenants` row `passed`. It is still **not** `validated`: since #492 that cell is earned by committed *data* — an answer key carrying a Priority-of-Payments section plus an offline engine series — rather than by a bespoke validation builder. #494 **parses** the Note Valuation Report's Interest and Principal Priorities of Payments and #495 committed them as the key's January 2025 period, so the first artifact exists; the cell refuses on the second, the offline engine series. **#496 ran that grade anyway and it does not reconcile — the finding, not a deferral.** Folded against the very document the key's PoP period was authored from, the deal's 29-step Interest cascade distributes EUR 5,434,911.93 of the report's stated EUR 7,255,062.35 available revenue and leaves EUR 1,820,150.42 undistributed. The pot is the report's own figure and no step is starved — `total_shortfall` is EUR 0.00 — so this is not an under-funded cascade but an incomplete one: the money has no step to go to. No step disagrees: the report prints its 62 rows against the cascade's 29 labels, 20 of them are joined by no step at all, and the eight of those that carry money (`(A)(i)`, `(A)(ii)`, `(H)(i)`, `(H)(ii)`, `(CC)(1)(a)`, two it re-letters bare `(a)`) account for the shortfall to the cent — so the failure is the tie-out, not a delta. Two bounds on the 29 lines that do agree: none is engine-computed — no Cairn recipient is in `ENGINE_COMPUTED_RECIPIENTS`, so each step's amount is taken from the report and compared to itself, and Class B's published EUR 644,398.50 "passes" as 0.00-vs-0.00 against an unjoined parent — and the Principal cascade reconciles on EUR 0.00 of available principal funds, which an engine that never paid anything would reproduce exactly. Against the committed key the grade is not reachable at all: the key unions four periods and only one is foldable, so the reconciler refuses the join. `tests/test_clo_pop_grading.py` holds every figure above; no answer key or engine module was changed to produce them. `covenant_monitoring`, `waterfall_execution` and — since #471 registered the derived tape — `tape_analytics` are `ran`; collateral reconciliation and engine validation stay `not-applicable`, each with a reason true of this deal. Collateral reconciliation stays refused because the deal registers no structural config, not because it has no tape. The coverage tests' required levels are extracted from the trustee reports (#480) and are **still not wired onto the deal model's triggers**, which carry `threshold: null` — so on the deal's own state the monitor still reports them not-evaluable. #481 did not change that; it supplies the published level *and* the published ratio from the answer key on the grading path only. A second reason the deal's own cascades did not evaluate has since been closed: every extracted step recipient now resolves to a canonical `RecipientType` (#503, pinned by `tests/test_clo_recipient_vocabulary.py`), which is what made the grade above runnable at all. See the limitation below |
 
 ### Cairn CLO XVII DAC — what is and is not obtainable
 
@@ -103,30 +103,39 @@ identity confirmed by reading its text:
 | U.S. Bank monthly trustee report | 74 | 16 Dec 2024 | `investor_report_urls` |
 | U.S. Bank monthly trustee report | 74 | 18 Feb 2025 | `investor_report_urls` |
 | U.S. Bank monthly trustee report | 74 | 18 Mar 2025 | `investor_report_urls` |
-| **Note Valuation Report** | 83 | 08 Jan 2025 | **none yet — see below** |
+| **Note Valuation Report** | 83 | 08 Jan 2025 | `notes_cash_report_urls` |
 
-The Note Valuation Report is **obtainable but deliberately not registered** under
-`notes_cash_report_urls`. That key is a *routing promise*, not a URL slot:
-`_reconstruct_series` dispatches on it, and
+The Note Valuation Report was **obtainable but deliberately not registered** under
+`notes_cash_report_urls` until #495. That key is a *routing promise*, not a URL
+slot: `_reconstruct_series` dispatches on it, and
 `test_answer_keys_exist_exactly_where_published_ground_truth_does` treats its
 presence as an assertion that a **PoP-bearing** answer key exists for the deal.
-Setting it — with no parser for the CLO report format and no PoP ground truth —
-would assert a promise this deal cannot keep, and would trip that contract. #481
-committed a key for this deal by the *other* route (published coverage-test
-results, no Priority of Payments), which is exactly why that invariant now
-distinguishes the two: a key alone no longer implies a PoP reconciliation. So that nothing has to be re-sourced, the
-document is:
+Setting it with no parser for the CLO report format and no PoP ground truth would
+have asserted a promise this deal could not keep. #481 committed a key by the
+*other* route (published coverage-test results, no Priority of Payments), which is
+why that invariant distinguishes the two: a key alone does not imply a PoP
+reconciliation.
+
+**Both halves of the promise are now kept.** #494 parses the report's two
+Priorities of Payments, refusing any parse that does not tie out to the report's
+own running balances and stated totals; #495 commits the resulting PoP section
+into the deal's answer key and registers the document:
 
 ```
 https://ise-prodnr-eu-west-1-data-integration.s3-eu-west-1.amazonaws.com/202502/12423666-a060-4e34-b3e8-f5510297ac6f.pdf
 ```
 
-**This absence is a *not-yet*, not a *never* — and the difference is the finding.**
-Leone Arancio and Sol-Lion II carry no `notes_cash_report_urls` because no such
-report is published at all. Cairn carries none for the opposite reason: the report
-exists, is free, and carries both Priorities of Payments.
-`tests/test_clo_deal_registration.py` pins that distinction so it cannot quietly
-flatten into "another deal with no report".
+Registering it changes no routing for this deal — `_reconstruct_series` matches
+`tape_urls` first and the derived tapes have been registered since #471 — so the
+key is a *claim about published ground truth*, which is all it was ever meant to
+be.
+
+**The absence it used to record was a *not-yet*, not a *never*, and that
+distinction outlives it.** Leone Arancio and Sol-Lion II still carry no
+`notes_cash_report_urls` because no such report is published at all — never the
+same absence as Cairn's, which was a published report nobody had read yet.
+`tests/test_clo_deal_registration.py` pins both states so they cannot flatten
+into "another deal with no report".
 
 **The epic's decisive question — do trustee reports exist for a CLO? — is
 answered YES.** Epic #454 was written on the premise that CLO trustee reports are
@@ -318,15 +327,32 @@ key yet".
 - `engine_validation` said "No published Notes & Cash Priority-of-Payments report
   to reconcile the engine against for this deal." For Cairn that was **factually
   false** — the Note Valuation Report publishes both Priorities of Payments. The
-  reason now states only what the classifier actually verified: that no offline
-  validation builder is committed, explicitly noting that this says nothing about
-  what the deal publishes. The richer wording ("reports exist, but nobody authored
-  a key") was tried and rejected — the registry cannot support it, since
-  `investor_report_urls` counts periodic reports rather than PoP reports and this
-  deal deliberately leaves `notes_cash_report_urls` unset. It would have been
-  false of Green Lion 2023-1, which has a committed answer key. For Cairn the
-  substantive answer stands and is recorded here rather than inferred in code:
-  unvalidated for want of an authored key, not for want of an obtainable report.
+  reason now states only what the classifier actually verified, explicitly noting
+  that this says nothing about what the deal publishes. The richer wording
+  ("reports exist, but nobody authored a key") was tried and rejected — the
+  registry cannot support it, since `investor_report_urls` counts periodic reports
+  rather than PoP reports and this deal deliberately leaves
+  `notes_cash_report_urls` unset. It would have been false of Green Lion 2023-1,
+  which has a committed answer key. For Cairn the substantive answer stands and is
+  recorded here rather than inferred in code: unvalidated for want of an authored
+  key, not for want of an obtainable report.
+
+  **#492 changed what is verified, not that discipline.** The classifier now reads
+  the answer-key registry rather than the hand-built `_VALIDATION_BUILDERS` map,
+  so the single refusal became three, each naming the precondition that is
+  genuinely missing: no committed answer key, a committed key carrying no
+  Priority-of-Payments section (Cairn's shape between #481 and #495), or a
+  PoP-bearing key with no committed offline engine series — which is Cairn's
+  shape now, and the reason its `engine_validation` cell still refuses. That
+  reason is a fact about this repo's registry and stayed accurate through #496,
+  which measured what such a fold produces without registering one: the grade
+  fails, so registering a series would have replaced a true refusal with a
+  join-error string rather than moving the cell. Each still ends with the same
+  explicit disclaimer, because the registry still cannot see what an issuer
+  publishes.
+  Splitting the reason is what #471 asks for — "no key is committed" and "the
+  committed key carries no PoP" are different findings, and one sentence covering
+  both is false of one of them.
 - `tape_analytics` and `collateral_reconciliation` said "No loan tapes published
   for this deal", which was true of ESMA tapes but read as the stronger claim that
   no loan-level data exists. Both now say only what `tape_urls` encodes.
@@ -414,9 +440,14 @@ Values are the source document's own words (`Senior Secured Loan`), **not** ESMA
 RTS coded vocabularies (`SNDB`) — `TapeSourceKind.rts_coded_values` is `False`
 for this tape, and any consumer comparing against an RTS code must check it.
 
-**What it still does not unlock.** No `validated` cell. That state needs a
-committed validation builder reconciling a published Priority of Payments;
-nothing in #471 or #481 authored one, and #481's key deliberately carries no PoP.
+**What it still does not unlock.** No `validated` cell. Since #492 that state is
+earned by two committed artifacts: an answer key carrying a Priority-of-Payments
+section, and an offline engine series to reconcile it against. #495 supplied the
+first — the key's January 2025 period carries both waterfalls from the Note
+Valuation Report — so the cell refuses on the second. #496 ran the reconciliation
+without one and reports that it fails: the Interest cascade is short EUR
+1,820,150.42 of the report's stated available revenue, and not one of its steps
+is independently computed. The cell would not have turned green either way.
 
 **The engine executes this deal (#457).** The committed seed folds through the
 existing `run_period` kernel — the same one the RMBS deals use — over the full
@@ -648,10 +679,10 @@ The dataset is **not intended** for:
 
 | Limitation | Description |
 |---|---|
-| **One validated deal, three graded** | The pipeline *runs* on 5 of the 6 registered deals, but only **Green Lion 2024-1** is validated to the cent against external published actuals (its Notes & Cash report) — the single `validated` capability cell. **Green Lion 2023-1** is additionally graded to the cent by `GET /quality-matrix` against a committed answer key, and **Cairn CLO XVII** has its published coverage-test outcomes graded there (#481) — a different check, against a different kind of document, and not a to-the-cent reconciliation. Every other cell is `ran` or `not-applicable` — outputs there are unvalidated and do not generalise without re-validation. |
+| **Two validated deals of six** | The pipeline *runs* on 5 of the 6 registered deals; **Green Lion 2024-1** and **Green Lion 2023-1** are validated to the cent against their own published Notes & Cash reports — the only `validated` capability cells, and both Dutch RMBS. Since #492 that cell is earned by committed data (an answer key carrying a Priority-of-Payments section, plus an offline engine series) rather than by bespoke Python, which is what made 2023-1's long-standing to-the-cent grade legible as validation. **Cairn CLO XVII** is additionally graded by `GET /quality-matrix` on its published coverage-test outcomes (#481) — a different check, against a different kind of document, and not a to-the-cent reconciliation. Its to-the-cent reconciliation was run separately (#496) and **fails**, which is why the count of validated deals is two rather than three. Every other cell is `ran` or `not-applicable` — outputs there are unvalidated and do not generalise without re-validation, and no non-Dutch and no non-RMBS deal is validated at all. |
 | **Coverage without external truth on the non-English deals** | Extraction on the Italian (Leone Arancio) and Spanish (Sol-Lion II) prospectuses now reaches 0.925 completeness with a full waterfall on both — this card's earlier "≈ 0.38 / ≈ 0.30, no waterfall" described pre-#438/#439 seeds. Neither deal publishes a Notes & Cash report, so neither can ever be graded against published actuals without inventing ground truth. High coverage on these two is not evidence that their numbers are right. |
 | **Ungraded PDL / reserve proximity** | Principal-deficiency-ledger and reserve-account proximity are computed and surfaced, but the Green Lion keys carry empty `covenants` and `pool_stats` for every period and the CLO key carries coverage tests only, so those checks grade `not-applicable` for every deal and no PDL or reserve check key exists. A flat or zero proximity there means "not evaluable from current inputs", not "healthy". |
-| **Two asset classes are extracted; only one is validated** | The pipeline now reads both RMBS (Dutch, Italian, Spanish) and a CLO (Cairn CLO XVII DAC). Extraction is not validation, and neither is grading one row: the CLO's committed key carries published coverage-test outcomes and **no published-report reconciliation**, so its distributions and balances are still externally unchecked, and its per-deal endpoints still refuse it. CMBS, US RMBS, ABS and other asset classes are not represented at all. |
+| **Two asset classes are extracted; only one is validated** | The pipeline now reads both RMBS (Dutch, Italian, Spanish) and a CLO (Cairn CLO XVII DAC). Extraction is not validation, and neither is grading one row. The CLO's committed key now carries a published-report Priority of Payments too (#495), and #496 reconciled the engine against it: **it does not tie out** — the Interest cascade is short EUR 1,820,150.42 of the report's stated available revenue and none of its steps is independently computed. So the deal's distributions are not merely unchecked; they are checked and disagreeing, and its per-deal endpoints still refuse it. CMBS, US RMBS, ABS and other asset classes are not represented at all. |
 | **Synthetic loan performance** | No real default history in the synthetic tapes. Arrears rates, default rates, and prepayment rates reflect synthetic generation assumptions, not observed market behaviour. |
 | **Three jurisdictions run, a fourth only registered** | The deals the pipeline runs on span Dutch, Italian, and Spanish RMBS only — three legal regimes, three EPC/market conventions. Ireland is present in the registry (the CLO) but nothing has been run against it. Coverage of other European or non-European markets is untested. |
 | **Synthetic time series (snapshots, not a panel)** | The deal's three 2026 monthly tapes enable time-series views and multi-period waterfall runs. The tapes are **re-sampled each period** — loan IDs do not persist — so the series is a sequence of point-in-time snapshots, not a tracked-cohort longitudinal panel. It is synthetically generated, so prepayment/default speeds estimated from it reflect the generation process, not observed market behaviour. |

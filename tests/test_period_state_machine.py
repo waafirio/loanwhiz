@@ -309,6 +309,55 @@ def test_run_period_uses_real_trigger_engine() -> None:
     assert result.redemption_execution.steps
 
 
+def _revenue_step(result, recipient: str):
+    """The single revenue-cascade step paying ``recipient``."""
+    steps = [s for s in result.revenue_execution.steps if s.recipient == recipient]
+    assert len(steps) == 1, f"expected one {recipient} step, got {len(steps)}"
+    return steps[0]
+
+
+def test_an_unresolved_class_a_coupon_refuses_instead_of_servicing_free() -> None:
+    """A missing coupon must refuse, not become a free senior note (#493).
+
+    ``class_a_interest`` is a canonical recipient with a registered calculator,
+    and Class A is present with a billion-euro balance, so the coupon is the
+    ONLY missing input. Before this change the funds view defaulted it to 0.0
+    and the step computed an authoritative €0 need: the deal serviced its senior
+    note for free and the shortfall it owed simply vanished.
+
+    The second half is the load-bearing half. Asserting only that the step is
+    ``not_evaluable`` would pass even if some layer above had refused for an
+    unrelated reason, so supplying the coupon — and changing nothing else — must
+    flip the very same step to evaluable. That is what pins the refusal to the
+    unresolved rate rather than to the cascade or the recipient registry.
+    """
+    opening = _clean_state(reporting_date="2026-01-31")
+    period = _synthetic_periods()[1]
+
+    without_coupon = run_period(opening, period, rates={})
+    refused = _revenue_step(without_coupon, "class_a_interest")
+    assert refused.not_evaluable is True
+    assert refused.need == 0.0
+    assert refused.amount_distributed == 0.0
+
+    with_coupon = run_period(opening, period, rates={"class_a_rate_pct": 3.62})
+    accrued = _revenue_step(with_coupon, "class_a_interest")
+    assert accrued.not_evaluable is False
+    assert accrued.need > 0.0
+    assert accrued.amount_distributed > 0.0
+
+
+def test_a_genuine_zero_class_a_coupon_still_evaluates() -> None:
+    """An explicit 0% coupon is a real answer and must keep evaluating."""
+    opening = _clean_state(reporting_date="2026-01-31")
+    period = _synthetic_periods()[1]
+
+    result = run_period(opening, period, rates={"class_a_rate_pct": 0.0})
+    step = _revenue_step(result, "class_a_interest")
+    assert step.not_evaluable is False
+    assert step.need == 0.0
+
+
 # ===========================================================================
 # 3. Real-tape chain (offline, over the warm tape-analytics cache)
 # ===========================================================================

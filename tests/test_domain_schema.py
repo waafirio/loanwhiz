@@ -80,6 +80,13 @@ def test_public_surface_importable():
 def test_recipient_type_closed_set():
     assert {r.value for r in RecipientType} == {
         "senior_expenses",
+        # The CLO's separately capped senior tiers (#503). Distinct members
+        # rather than aliases onto `senior_expenses`, whose need is the single
+        # `senior_fees` funds_input scalar: several of these appear in ONE
+        # cascade, and sharing that member would claim the scalar once each.
+        "issuer_tax_and_profit",
+        "administrative_expenses",
+        "senior_expenses_uncapped",
         "servicing_fee",
         # CLO collateral-manager fees (#453). The **incentive** fee is
         # deliberately absent: it hangs on an equity IRR hurdle the engine
@@ -94,9 +101,25 @@ def test_recipient_type_closed_set():
         "class_d_interest",
         "class_e_interest",
         "class_f_interest",
+        # Deferred (PIK'd) interest (#503) — an outstanding balance, NOT the
+        # current-period accrual: a CLO cascade pays both steps, so folding the
+        # deferred one onto `class_*_interest` would charge one accrual twice.
+        "class_c_deferred_interest",
+        "class_d_deferred_interest",
+        "class_e_deferred_interest",
+        "class_f_deferred_interest",
         "class_a_pdl_cure",
         "class_b_pdl_cure",
         "class_c_pdl_cure",
+        # Coverage- / par-value-test cures (#503). The engine holds no
+        # collateral par or test threshold, so the AMOUNT is report-supplied —
+        # but naming the recipient keeps the attachment point in the trace
+        # instead of losing it to `unmapped`.
+        "class_ab_coverage_test_cure",
+        "class_c_coverage_test_cure",
+        "class_d_coverage_test_cure",
+        "class_e_par_value_test_cure",
+        "class_f_par_value_test_cure",
         "liquidity_reserve_replenishment",
         "reserve_replenishment",
         "class_a_principal",

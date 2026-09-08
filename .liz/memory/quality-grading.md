@@ -15,6 +15,9 @@ ground truth, never the opening balances the fold seeds from. Add the
 same PR, then assert a `passed` cell; a key alone silently grades nothing.
 
 Refs: #440
+Refs: #492 — same pairing needed when the capability matrix left the builder map.
+Refs: #495 — committing a CLO's PoP key changed no cell's grade, only its reason.
+Refs: #496 — the pairing is unavailable when the key's period count exceeds the foldable documents.
 
 ## 2026-09-05 · pitfall · #457
 
@@ -52,6 +55,18 @@ list be the specification.
 
 Refs: #471
 
+## 2026-09-08 · pitfall · #492
+
+Replacing a hand-built map with the registry it generalizes is **not**
+behaviour-preserving by default. Enumerate every row the DATA admits that the
+map did not, before accepting a framing where one named regression covers the
+swap. Green Lion 2023-1 had held a PoP-bearing key and an offline fold since
+#440, so converging `/capability-matrix` moved it `not-applicable` →
+`validated` and falsified the "1 validated" tally four committed docs restate.
+Grep every transcription of the old count and fix it in the same PR: a
+converged surface whose docs still quote the map's answer claims worse.
+
+Refs: #492
 ## 2026-09-08 · pitfall · #481
 
 Before publishing a graded cell, check whether the published outcomes **vary**:
@@ -61,3 +76,29 @@ where the grade is published. Apply the mutant that should NOT red alongside
 those that should — what a cell cannot detect is the honest half of the finding.
 
 Refs: #481
+
+## 2026-09-08 · pattern · #495
+
+When one entity's ground truth comes from **several documents**, give each
+document its own constructor and union them — never one reading both, or neither
+document's regressions have anything left to hold.
+
+Assert what each record may claim **per period, not per key**. A key-level "this
+key carries no Priority of Payments" stops covering anything the moment a second
+document supplies one; the per-period form gets *stricter*, because it also pins
+that the two documents stay unmixed.
+
+Refs: #495
+
+## 2026-09-08 · pitfall · #496
+
+A reconciliation can pass every step and still be wrong twice over. Assert three
+things beside the deltas, never `steps_passed` alone: the **tie-out** (distributed
++ rounding == available funds — the join loses money silently); the **source
+classification** (a step whose amount is taken from the report is compared to
+itself, so zero engine-computed lines proves routing, not computation); and the
+**unjoined published rows** (a label the report prints as sub-lettered components
+matches no step, so a real payment reconciles 0.00-vs-0.00 against its parent).
+On a failing grade, pin the figures and change neither side: the gap is it.
+
+Refs: #496

@@ -42,7 +42,8 @@ from dataclasses import dataclass
 # __init__ pulls in provenance -> primitives.base -> the whole primitives
 # package, which (when imported before primitives) trips a partial-init cycle.
 from loanwhiz.domain.rules import (
-    LEGACY_RECIPIENT_SPELLINGS,
+    RECIPIENT_SPELLINGS,
+    RECOGNISED_UNEVALUABLE_RECIPIENTS,
     AmountRule,
     MetricType,
     RecipientType,
@@ -221,7 +222,7 @@ _RECIPIENT_ALIASES: dict[str, RecipientType] = {
 # ``register_need`` can validate against them without importing this module,
 # and are merged back here so this table's behaviour is unchanged and the two
 # readers cannot disagree about which free strings are legitimate.
-_RECIPIENT_ALIASES.update(LEGACY_RECIPIENT_SPELLINGS)
+_RECIPIENT_ALIASES.update(RECIPIENT_SPELLINGS)
 
 # Recipients we can NAME but deliberately cannot evaluate — declared unmappable
 # rather than left to fall through (#453).
@@ -237,6 +238,16 @@ _RECIPIENT_ALIASES.update(LEGACY_RECIPIENT_SPELLINGS)
 # This is the deny half of a closed vocabulary: a string we recognise and have
 # decided is not evaluable is more auditable than one that merely failed to
 # match, and it degrades to exactly the same honest ``unmapped``.
+#
+# The CLO half of this set lives in ``domain.rules`` for the same reason the
+# spellings do — the interpreter must consult it and cannot import this module —
+# and is merged in below rather than restated (#503). Without it the substring
+# ladder and ``_refine_class_recipient`` below reach strings they should never
+# see: a redemption-cascade cross-reference like
+# ``interest_proceeds_priority_of_payments_l_shortfall_for_class_c_coverage_tests``
+# carries a class letter and the word "interest", so the refinement reads it as
+# Class C interest and the engine accrues a full period's coupon out of
+# principal proceeds.
 _UNEVALUABLE_RECIPIENTS: frozenset[str] = frozenset(
     {
         "incentive_management_fee",
@@ -245,7 +256,7 @@ _UNEVALUABLE_RECIPIENTS: frozenset[str] = frozenset(
         "collateral_management_fee_incentive",
         "deferred_incentive_management_fee",
     }
-)
+) | RECOGNISED_UNEVALUABLE_RECIPIENTS
 
 # Substring rules applied when no exact alias hit. Ordered most-specific first;
 # the first whose pattern is contained in the normalised string wins.
@@ -599,6 +610,17 @@ def map_recipient(
     # reach the classifier, which would only see a near neighbour it can.
     if normalised in _UNEVALUABLE_RECIPIENTS:
         return TaxonomyMapping(RecipientType.unmapped, 0.0, "deterministic")
+
+    # A canonical value denotes itself. Checked before the alias/substring
+    # ladder because a member the enum declares must never be re-derived by a
+    # heuristic: without this, a CLO member like ``class_c_coverage_test_cure``
+    # matched no alias row and no substring, and fell through to ``unmapped``
+    # while the engine resolved it perfectly well — the two readers disagreeing
+    # about a string the domain declares (#503).
+    try:
+        return TaxonomyMapping(RecipientType(normalised), 1.0, "deterministic")
+    except ValueError:
+        pass
 
     # Exact alias.
     hit = _RECIPIENT_ALIASES.get(normalised)

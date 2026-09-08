@@ -183,6 +183,14 @@ class NoteClassBalance(BaseModel):
     pdl_balance_after_payment: float | None = Field(
         default=None, description="Principal Deficiency Ledger balance after payment (EUR)."
     )
+    interest_rate_applied: float | None = Field(
+        default=None,
+        description=(
+            "The all-in interest rate the report says was actually applied to "
+            "this class this period, in per cent. ``None`` means the report "
+            "publishes no rate for the class — never 'zero per cent'."
+        ),
+    )
 
 
 class PoPStep(BaseModel):
@@ -203,6 +211,13 @@ class PoPStep(BaseModel):
     previous_amount:
         The same step's amount in the *previous* period (the report prints both
         columns). Useful as a chaining cross-check; ``None`` if not printed.
+    balance_after:
+        The funds still available for disbursement *after* this step, where the
+        report prints a running balance beside each row (the CLO Note Valuation
+        Report does; the RMBS Notes & Cash report does not). It is what lets a
+        reader re-derive the waterfall's arithmetic instead of trusting it:
+        ``previous balance - amount`` must equal this, and a dropped row breaks
+        the chain at the row after the gap.
     """
 
     priority: str = Field(..., description="Prospectus priority label, e.g. '(d)'.")
@@ -210,6 +225,10 @@ class PoPStep(BaseModel):
     amount: float = Field(..., description="EUR distributed at this step (current period).")
     previous_amount: float | None = Field(
         default=None, description="Same step's amount in the previous period (EUR)."
+    )
+    balance_after: float | None = Field(
+        default=None,
+        description="Funds available for disbursement after this step (EUR), where printed.",
     )
 
 

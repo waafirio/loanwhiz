@@ -10,9 +10,10 @@ Three honest states (carrying the #193 honesty discipline — the matrix must te
 the *true* cross-jurisdiction story, not a wall of green):
 
 - ``validated`` — the primitive ran **and** its output reconciled to external
-  truth. The only ``validated`` cell today is Green Lion 2024-1's engine vs. its
-  **own published Notes & Cash Priority of Payments**, reconciled to the cent by
-  :func:`loanwhiz.primitives.reconciler.validate_green_lion_2024_1`.
+  truth. Reachable only at the engine-validation row, where a deal's engine is
+  reconciled to the cent against its **own published Priority of Payments**,
+  taken from its committed
+  :class:`~loanwhiz.primitives.reconciliation_answer_key.DealAnswerKey` (#492).
 - ``ran`` — the primitive's inputs exist and it executes, but there is **no
   external ground truth** to reconcile against (e.g. a deal with an extracted
   waterfall but no published per-step distribution).
@@ -28,17 +29,21 @@ Design
 - **Data-driven applicability.** Whether a cell is ``ran`` / ``not-applicable``
   is derived from the deal's *actual* inputs — does the registry context carry
   ``tape_urls``? does the committed seed :class:`DealModel` carry ``waterfalls``?
-  ``covenants.triggers``? is there a committed offline validation builder? — so
-  the matrix stays correct as deals and seeds evolve, and the same code genuinely
-  runs across every jurisdiction. Nothing is hardcoded per deal.
+  ``covenants.triggers``? is there a committed answer key carrying a
+  Priority-of-Payments section? — so the matrix stays correct as deals and seeds
+  evolve, and the same code genuinely runs across every jurisdiction. Nothing is
+  hardcoded per deal, and no deal id appears in this module.
 - **Dependency-injected loaders.** :func:`build_capability_matrix` takes the deal
-  registry, a seed-model loader, and the validation-builder map as arguments, so
-  it is unit-testable offline and deal-generic. The API wires it to the live
-  ``DEAL_REGISTRY`` / ``_load_cached_deal_model`` / ``_VALIDATION_BUILDERS``.
+  registry, a seed-model loader, an answer-key loader and an engine-series
+  provider, so it is unit-testable offline and deal-generic. The API wires it to
+  the live ``DEAL_REGISTRY`` / ``_load_cached_deal_model`` / ``load_answer_key``
+  and the same committed offline folds the quality harness grades from. Before
+  #492 the last of these was the hand-built ``api.main._VALIDATION_BUILDERS``
+  map, so a validated deal cost bespoke Python; it is now committed data.
 - **Offline & deterministic.** The applicability decision reads only committed
-  registry + seed metadata; the single ``validated`` cell reuses the
-  committed-fixture validation builder (no network, no LLM). The matrix never
-  fetches a loan tape or runs a live waterfall in its decision path.
+  registry + seed metadata; a ``validated`` cell folds the deal's committed
+  offline series and reconciles it against its committed answer key (no network,
+  no LLM). The matrix never fetches a loan tape in its decision path.
 
 The result is JSON-serialisable structured data the C4 demo UI renders.
 """
@@ -46,7 +51,7 @@ The result is JSON-serialisable structured data the C4 demo UI renders.
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping
-from typing import Any, Literal
+from typing import TYPE_CHECKING, Any, Literal, NamedTuple
 
 from pydantic import BaseModel, Field
 
@@ -57,6 +62,10 @@ from loanwhiz.primitives.capital_structure import (
 )
 from loanwhiz.primitives.derived_tape import source_kind_for
 from loanwhiz.primitives.reconciler import ReconciliationReport
+
+if TYPE_CHECKING:  # pragma: no cover - typing only, keeps this reader import-light
+    from loanwhiz.primitives.quality_harness import SeriesProvider
+    from loanwhiz.primitives.reconciliation_answer_key import DealAnswerKey
 
 # ---------------------------------------------------------------------------
 # Cell state vocabulary — the three honest outcomes.
@@ -200,13 +209,42 @@ class CapabilityMatrix(BaseModel):
 # ---------------------------------------------------------------------------
 #
 # Each capability declares how, given a deal's registry context + committed seed
-# model + the validation-builder map, to classify the cell. The classifier
+# model + the injected ground-truth sources, to classify the cell. The classifier
 # returns ``(state, reason, evidence)``. Applicability is derived from real
 # inputs — never hardcoded per deal — so the matrix tracks the deals/seeds.
 
+
+class ValidationSources(NamedTuple):
+    """The injected ground-truth seams the engine-validation cell reads (#492).
+
+    Replaces the hand-built ``api.main._VALIDATION_BUILDERS`` map this matrix used
+    to consume. ``validated`` is now a property of committed *data* — a deal's
+    answer key plus its offline engine series — so a deal earns the claim by
+    having both committed, with no edit to this module.
+
+    Attributes
+    ----------
+    answer_key_loader:
+        Resolves a deal's committed
+        :class:`~loanwhiz.primitives.reconciliation_answer_key.DealAnswerKey`
+        from its registry context, or ``None`` on a miss. The API passes
+        ``load_answer_key``; tests inject a fake.
+    series_provider:
+        Yields the deal's committed offline-folded engine
+        :class:`~loanwhiz.primitives.period_state_machine.DealStateSeries`, or
+        ``None`` when none is registered. The answer key deliberately does *not*
+        carry this: a key holds the deal's published ground truth, never the
+        opening balances the fold seeds from (the same split
+        :mod:`loanwhiz.primitives.quality_harness` documents).
+    """
+
+    answer_key_loader: Callable[[Mapping[str, Any]], "DealAnswerKey | None"]
+    series_provider: "SeriesProvider"
+
+
 #: Signature of a cell classifier.
 CellClassifier = Callable[
-    [str, Mapping[str, Any], "DealModel | None", "Mapping[str, Callable[[], ReconciliationReport]]"],
+    [str, Mapping[str, Any], "DealModel | None", ValidationSources],
     "tuple[CellState, str, CellEvidence]",
 ]
 
@@ -352,7 +390,7 @@ def _classify_tape_analytics(
     deal_id: str,
     deal_ctx: Mapping[str, Any],
     model: DealModel | None,
-    validators: Mapping[str, Callable[[], ReconciliationReport]],
+    sources: ValidationSources,
 ) -> tuple[str, str, CellEvidence]:
     """ESMA tape normalisation / pool analytics — applies only when loan tapes exist."""
     tapes = deal_ctx.get("tape_urls") or []
@@ -396,7 +434,7 @@ def _classify_covenant_monitor(
     deal_id: str,
     deal_ctx: Mapping[str, Any],
     model: DealModel | None,
-    validators: Mapping[str, Callable[[], ReconciliationReport]],
+    sources: ValidationSources,
 ) -> tuple[str, str, CellEvidence]:
     """Covenant monitoring — applies when the deal has extracted triggers."""
     triggers = (model.covenants.get("triggers") if model else None) or []
@@ -437,7 +475,7 @@ def _classify_waterfall_execution(
     deal_id: str,
     deal_ctx: Mapping[str, Any],
     model: DealModel | None,
-    validators: Mapping[str, Callable[[], ReconciliationReport]],
+    sources: ValidationSources,
 ) -> tuple[str, str, CellEvidence]:
     """Waterfall execution — applies when *any* priority-of-payments waterfall
     with executable steps was extracted.
@@ -526,7 +564,7 @@ def _classify_collateral_reconciliation(
     deal_id: str,
     deal_ctx: Mapping[str, Any],
     model: DealModel | None,
-    validators: Mapping[str, Callable[[], ReconciliationReport]],
+    sources: ValidationSources,
 ) -> tuple[str, str, CellEvidence]:
     """Collateral / pool-state reconstruction — applies when loan tapes exist.
 
@@ -594,46 +632,151 @@ def _classify_collateral_reconciliation(
     )
 
 
+#: Every engine-validation refusal ends with this sentence. The classifier reads
+#: what is *committed in this repo*; it can see nothing about what an issuer
+#: discloses, and #457 retracted the wording that implied otherwise. Stating the
+#: limit explicitly is what stops a per-condition reason being read as the wider
+#: claim it is not.
+_VALIDATION_DISCLAIMER = (
+    "This is a statement about what is committed, not about what the deal "
+    "publishes — docs/data-card.md records what is obtainable, per deal."
+)
+
+#: The closed vocabulary of engine-validation refusals, keyed by the precondition
+#: the classifier actually verified. Each names *which* input is missing rather
+#: than reusing one "no input" sentence for all of them (#471): "no key is
+#: committed" and "the committed key carries no PoP section" are different
+#: findings, and a deal told the wrong one is told a story true only of another.
+_NO_ANSWER_KEY = (
+    "No committed answer key resolves for this deal, so there is nothing here "
+    f"for the engine to be reconciled against. {_VALIDATION_DISCLAIMER}"
+)
+_NO_POP_SECTION = (
+    "This deal's committed answer key carries no Priority-of-Payments section, "
+    f"so there is nothing here for the engine to be reconciled against. {_VALIDATION_DISCLAIMER}"
+)
+_NO_ENGINE_SERIES = (
+    "This deal's committed answer key carries a Priority-of-Payments section, but "
+    "no committed offline engine series is registered for it, so the engine has "
+    f"not been run against that ground truth here. {_VALIDATION_DISCLAIMER}"
+)
+
+#: A malformed key/series pair degrades this one cell rather than the endpoint.
+#: Unlike the three refusals above this reason carries the exception text, so it
+#: is a prefix rather than a fixed sentence.
+_RECONCILE_ERROR_PREFIX = (
+    "This deal's committed answer key and committed engine series could not be "
+    "reconciled — "
+)
+
+
+def _has_pop_section(answer_key: "DealAnswerKey") -> bool:
+    """Does this key carry Priority-of-Payments ground truth to reconcile against?
+
+    A key can be genuine and still carry no PoP: Cairn CLO XVII's (#481) was
+    authored from trustee coverage-test outcomes and holds covenants only. Such a
+    key grades a `covenants` row on ``/quality-matrix`` and must not be mistaken
+    for engine-validation ground truth — mirrors the same check in
+    :func:`loanwhiz.primitives.quality_harness._reconcile_deal`.
+    """
+    return any(p.revenue_pop or p.redemption_pop for p in answer_key.periods)
+
+
 def _classify_engine_validation(
     deal_id: str,
     deal_ctx: Mapping[str, Any],
     model: DealModel | None,
-    validators: Mapping[str, Callable[[], ReconciliationReport]],
+    sources: ValidationSources,
 ) -> tuple[str, str, CellEvidence]:
-    """Engine validation vs. published PoP — ``validated`` only with a committed builder.
+    """Engine validation vs. published PoP — ``validated`` from committed data (#492).
 
-    This is the only capability that can reach ``validated``: a deal has a
-    committed offline validation builder (the engine reconciled against the
-    deal's *own* published Notes & Cash Priority of Payments, to the cent). A
-    deal with an extracted waterfall but no published-PoP builder is
-    ``not-applicable`` here (the engine can run — see waterfall execution — but
-    there is no external truth to reconcile against for this capability).
+    This is the only capability that can reach ``validated``, and the claim it
+    makes is narrow: *the engine reproduced this deal's own published Priority of
+    Payments, to the cent*. It is earned by two committed artifacts, never by
+    bespoke Python — a
+    :class:`~loanwhiz.primitives.reconciliation_answer_key.DealAnswerKey` carrying
+    a PoP section, and an offline-folded engine series to reconcile against it.
+    A deal registers both as data and the cell follows; the hand-built
+    ``_VALIDATION_BUILDERS`` map this used to read is no longer its interface.
+
+    Every refusal names the precondition that is actually missing and disclaims
+    any inference about what the deal publishes (#457/#471) — the registry cannot
+    tell "publishes nothing" from "published but unread", so the classifier says
+    only what it checked.
     """
-    builder = validators.get(deal_id)
-    if builder is None:
-        # State only what was actually checked. The tempting richer reason —
-        # "reports are published, but nobody authored a key" — is an inference
-        # this function is not entitled to make, and the registry cannot support
-        # it: `investor_report_urls` counts periodic reports, which are not
-        # Priority-of-Payments reports, and a deal whose PoP report exists may
-        # deliberately not register it (`notes_cash_report_urls` is a routing
-        # promise, not a URL slot — see docs/data-card.md). Guessing in either
-        # direction produces a confidently false sentence: "nothing is published"
-        # wrongly says a deal *cannot* be validated, and "no key has been
-        # authored" is false of a deal that already has one committed.
+    answer_key = sources.answer_key_loader(deal_ctx)
+    if answer_key is None:
         return (
             STATE_NOT_APPLICABLE,
-            "No offline validation builder is committed for this deal, so there is "
-            "nothing here for the engine to be reconciled against. This is a "
-            "statement about what is committed, not about what the deal publishes — "
-            "docs/data-card.md records what is obtainable, per deal.",
+            _NO_ANSWER_KEY,
             CellEvidence(
                 confidence=None,
-                citation="No committed engine-validation builder for this deal.",
-                detail={"has_validation_builder": False},
+                citation="No committed ground-truth answer key for this deal.",
+                detail={"has_answer_key": False},
             ),
         )
-    report: ReconciliationReport = builder()
+    if not _has_pop_section(answer_key):
+        return (
+            STATE_NOT_APPLICABLE,
+            _NO_POP_SECTION,
+            CellEvidence(
+                confidence=None,
+                citation=(
+                    f"Committed answer key for {answer_key.deal_name} carries no "
+                    "Priority-of-Payments section."
+                ),
+                detail={"has_answer_key": True, "has_pop_section": False},
+            ),
+        )
+
+    series = sources.series_provider(deal_id, deal_ctx, model)
+    if series is None:
+        return (
+            STATE_NOT_APPLICABLE,
+            _NO_ENGINE_SERIES,
+            CellEvidence(
+                confidence=None,
+                citation=(
+                    f"Committed answer key for {answer_key.deal_name} carries a "
+                    "Priority-of-Payments section, but no offline engine series is "
+                    "registered for this deal."
+                ),
+                detail={
+                    "has_answer_key": True,
+                    "has_pop_section": True,
+                    "has_engine_series": False,
+                },
+            ),
+        )
+
+    from loanwhiz.primitives.reconciliation_answer_key import reconcile_against_answer_key
+
+    try:
+        report: ReconciliationReport = reconcile_against_answer_key(series, answer_key)
+    except Exception as exc:  # noqa: BLE001 — per-cell degradation, never a 500
+        # One deal's malformed pair must not sink the whole matrix. The commonest
+        # cause is a join mismatch — a key whose period count differs from the
+        # fold's — which `reconcile_series` raises on rather than grading a
+        # partial answer. Surface it as this cell's reason (the same per-cell
+        # degradation `quality_harness` uses) so the endpoint stays a 200 and the
+        # broken pair is named rather than hidden behind a stack trace.
+        return (
+            STATE_NOT_APPLICABLE,
+            f"{_RECONCILE_ERROR_PREFIX}{type(exc).__name__}: {exc} {_VALIDATION_DISCLAIMER}",
+            CellEvidence(
+                confidence=None,
+                citation=(
+                    f"Committed answer key for {answer_key.deal_name} could not be "
+                    "reconciled against this deal's committed engine series."
+                ),
+                detail={
+                    "has_answer_key": True,
+                    "has_pop_section": True,
+                    "has_engine_series": True,
+                    "reconcile_error": type(exc).__name__,
+                },
+            ),
+        )
     passed = report.passed
     return (
         STATE_VALIDATED if passed else STATE_RAN,
@@ -736,7 +879,8 @@ def build_capability_matrix(
     deals: Mapping[str, Mapping[str, Any]],
     *,
     seed_loader: Callable[[Mapping[str, Any]], DealModel | None],
-    validators: Mapping[str, Callable[[], ReconciliationReport]],
+    answer_key_loader: Callable[[Mapping[str, Any]], "DealAnswerKey | None"],
+    series_provider: "SeriesProvider",
 ) -> CapabilityMatrix:
     """Build the cross-deal capability matrix.
 
@@ -750,10 +894,14 @@ def build_capability_matrix(
         Loads a deal's committed extracted :class:`DealModel` from its context,
         or returns ``None`` on a miss (never triggers a cold extraction). The API
         passes ``_load_cached_deal_model``; tests pass a fake.
-    validators:
-        ``{deal_id: offline-validation-builder}`` — a builder returns an
-        :class:`ReconciliationReport` reconciling the engine against the deal's
-        own published PoP. The API passes ``_VALIDATION_BUILDERS``.
+    answer_key_loader:
+        Resolves a deal's committed
+        :class:`~loanwhiz.primitives.reconciliation_answer_key.DealAnswerKey` from
+        its registry context, or ``None`` on a miss. The API passes
+        ``load_answer_key``; tests pass a fake.
+    series_provider:
+        Yields the deal's committed offline-folded engine series, or ``None``.
+        The API passes the same default the quality harness uses.
 
     Returns
     -------
@@ -761,6 +909,9 @@ def build_capability_matrix(
         Every (capability × deal) cell with its honest state, real reason, and
         governance evidence, plus per-state tally and the standing disclosure.
     """
+    sources = ValidationSources(
+        answer_key_loader=answer_key_loader, series_provider=series_provider
+    )
     rows = [row for row, _ in _CAPABILITIES]
     columns: list[DealColumn] = []
     cells: list[CapabilityCell] = []
@@ -779,7 +930,7 @@ def build_capability_matrix(
             )
         )
         for row, classifier in _CAPABILITIES:
-            state, reason, evidence = classifier(deal_id, deal_ctx, model, validators)
+            state, reason, evidence = classifier(deal_id, deal_ctx, model, sources)
             # Honesty contract: a not-applicable cell must carry a real reason.
             if state == STATE_NOT_APPLICABLE and not reason.strip():
                 reason = "Not applicable for this deal (inputs absent)."

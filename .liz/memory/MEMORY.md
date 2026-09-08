@@ -7,14 +7,19 @@ triage by opening the entry, not by reading the line.
   - [2026-09-02 · gotcha · #440](#2026-09-02--gotcha--440) — keywords: answer_keys, quality_harness, _default_series_provider, fold_green_lion, not-applicable, backfill
   - [2026-09-05 · pitfall · #457](#2026-09-05--pitfall--457) — keywords: not-applicable reason, reason string, tape_urls, registry fact, answer key, retracted wording, capability_matrix
   - [2026-09-06 · pitfall · #471](#2026-09-06--pitfall--471) — keywords: positive branch, overclaim, precondition, ran cell, structural config, missing input, capability cell
+  - [2026-09-08 · pitfall · #492](#2026-09-08--pitfall--492) — keywords: hand-built map, converge, answer-key registry, behaviour-preserving, validated tally, stale count, capability_matrix
   - [2026-09-06 · gotcha · #471](#2026-09-06--gotcha--471) — keywords: grep-for-absence, banned substring, retracted wording, prose assertion, denial, false positive
   - [2026-09-08 · pitfall · #481](#2026-09-08--pitfall--481) — keywords: all-pass ground truth, never-fires mutant, graded cell bound, covenants_graded, published outcomes vary, answer key
+  - [2026-09-08 · pattern · #495](#2026-09-08--pattern--495) — keywords: several documents, one constructor per document, merge_answer_keys, per-period assertion, answer key, PoP section
+  - [2026-09-08 · pitfall · #496](#2026-09-08--pitfall--496) — keywords: steps_passed, tie-out gate, report-supplied, engine_computed_passed, unjoined label, sub-lettered rows, failing grade
 - [Extraction guards & false-positive filters](extraction-guards.md)
   - [2026-09-02 · pitfall · #439](#2026-09-02--pitfall--439) — keywords: _CLASS_LETTERS, tranche, note class, Class J, Class O, false positive, guard, proxy range
   - [2026-09-05 · pitfall · #456](#2026-09-05--pitfall--456) — keywords: widening a guard, newly visible input, N/A cell, scavenged rating, Subordinated Notes, untested downstream
 - [Extraction: locating the right section](extraction-section-routing.md) — keywords: descendant span, heading level, section number, Docling, has_payment_list, LLM router, empty result
 - [Published figures & doc drift](published-figures.md) — keywords: stale tally, completeness_score, capability matrix, re-derive, stored metric, published figure
   - [2026-09-06 · pattern · #469](#2026-09-06--pattern--469) — keywords: reconcile to stated aggregates, self-describing report, per-bucket distribution, refuse on divergence, document contradicts itself, source defect
+  - [2026-09-02 · pitfall · #441](#2026-09-02--pitfall--441) — keywords: completeness_score
+  - [2026-09-08 · pitfall · #494](#2026-09-08--pitfall--494) — keywords: vacuous reconciliation, zero rows, empty section, presence check, stated total 0.00, nothing is wrong vs I saw nothing
   - [2026-09-08 · pitfall · #484](#2026-09-08--pitfall--484) — keywords: balance share, count share, generated population, per-bucket draw, stratification, arrears bucket, rendered axis
   - [2026-09-02 · pitfall · #441](#2026-09-02--pitfall--441) — keywords: completeness_score
 - [Registering a deal (deals.json)](deal-registration.md) — keywords: deals.json, notes_cash_report_urls, routing promise, registry key, asset_class, answer key invariant
@@ -35,8 +40,14 @@ triage by opening the entry, not by reading the line.
   - [2026-09-04 · pitfall · #451](#2026-09-04--pitfall--451) — keywords: AnnexField(code=None, ...)
 - [Engine contracts (closed enums, registries, need calculators)](engine-contracts.md)
   - [2026-09-05 · pattern · #453](#2026-09-05--pattern--453) — keywords: NEED_CALCULATORS, register_need, RecipientType, closed enum, registry coverage, import-time assert, silent default, generated calculators
+  - [2026-09-08 · decision · #503](#2026-09-08--decision--503) — keywords: alias vs enum member, double-claim, step_override, funds_input, RECIPIENT_SPELLINGS, cascade, deferred interest, uncapped tier
+  - [2026-09-08 · pitfall · #503](#2026-09-08--pitfall--503) — keywords: canonical value first, alias ladder, map_recipient, two readers disagree, _canonical_recipient, unmapped fall-through
   - [2026-09-05 · pitfall · #453](#2026-09-05--pitfall--453) — keywords: LLM classifier options, deny list, enum growth, near-miss, incentive fee, use_llm=False, unmapped escape
   - [2026-09-06 · pitfall · #471](#2026-09-06--pitfall--471) — keywords: absent column, all-False mask, arrears breakdown, silent clean pool, degrade, no key not zero
+  - [2026-09-08 · pattern · #493](#2026-09-08--pattern--493) — keywords: not_evaluable, layered refusal, paired assertion, unresolved coupon, rate_pct, silent zero, false green
+- [Extracting tables from PDFs](pdf-table-extraction.md) — keywords: visitor_text, text matrix, tm[4], rotated table, extraction_mode layout, row boundary, continuation line, column order, pypdf
+  - [2026-09-06 · pitfall · #469](#2026-09-06--pitfall--469) — keywords: extract_text(), extraction_mode="layout", visitor_text=, tm[4]
+  - [2026-09-08 · pitfall · #494](#2026-09-08--pitfall--494) — keywords: page furniture, banner prefix, data row first, footer eats a row, numeric tail, prefix filter ordering
 - [Extracting tables from PDFs](pdf-table-extraction.md) — keywords: visitor_text, text matrix, tm[4], rotated table, extraction_mode layout, row boundary, continuation line, column order, pypdf
 - [Live seams the offline suite never executes](live-seam-coverage.md)
   - [2026-09-08 · pitfall · #483](#2026-09-08--pitfall--483) — keywords: false green, needs the network, registry value shape, reader not caller, AST guard, test_tape_seam_bypass, underlying_url, pypdf

@@ -20,13 +20,17 @@ What works (the cross-jurisdiction headline):
 
 What is genuinely NOT cold-start-modelable (asserted as honest, reasoned facts,
 never papered over):
-  * Every IT/ES extracted recipient uses a *jurisdiction-native* label
-    (``class_a_notes_interest``, ``series_a1_notes_redemption``, ``expenses``, …)
-    that the NL-derived canonical need-calculator registry does not resolve, so
-    every step is recorded ``not_evaluable`` and nothing is distributed. The
-    *numeric* distribution cannot cold-start without a recipient→canonical
-    mapping the extracted seeds do not carry — the engine surfaces this honestly
-    rather than fabricating amounts.
+  * Every IT/ES step is recorded ``not_evaluable`` and nothing is distributed:
+    neither deal has an ingested tape or report, so it carries no coupon and no
+    tranche state, and the engine surfaces that honestly rather than fabricating
+    amounts. **Corrected in #503:** this used to be stated as "the recipients
+    are jurisdiction-native labels the registry does not resolve", which was not
+    the real reason — both seeds spell their note steps in plain English
+    (``class_a_notes_interest``), and nothing resolved only because the engine's
+    recipient table was too small to carry that spelling. Those recipients now
+    resolve by name and refuse one layer lower, for the missing input. The
+    boundary is unchanged; what changed is that it no longer rests on a
+    vocabulary gap that would have vanished the moment the table grew.
   * The Spanish revenue priority-of-payments has **0 enumerable steps** (the
     prospectus income section yielded none) — an empty trace, asserted as the
     honest fact it is.
@@ -50,12 +54,14 @@ from loanwhiz.api import app
 from loanwhiz.api.main import _load_cached_deal_model
 from loanwhiz.config import DEAL_REGISTRY
 from loanwhiz.primitives.waterfall_interpreter import (
-    NEED_CALCULATORS,
+    REFUSAL_INPUT_UNAVAILABLE,
+    REFUSAL_UNKNOWN_RECIPIENT,
     StepSpec,
     WaterfallExecution,
     WaterfallFunds,
     compute_need,
     interpret,
+    refusal_reason,
 )
 
 client = TestClient(app)
@@ -92,15 +98,28 @@ _COLD_START_DEALS = {
 
 _WATERFALL_SECTIONS = ("revenue", "redemption", "post_enforcement")
 
-# A funds context with non-zero pots so that, IF any recipient resolved to a
-# need-calculator, it WOULD distribute — making the "everything is not_evaluable"
-# assertion meaningful (it is not an artefact of an empty pot). Deal-generic; not
-# a claim about either deal's real cash.
+# A funds context with non-zero pots so that, IF any need evaluated, it WOULD
+# distribute — making the "everything is not_evaluable" assertion meaningful (it
+# is not an artefact of an empty pot). Deal-generic; not a claim about either
+# deal's real cash.
+#
+# The Class A **coupon is deliberately left unresolved** (#503). It used to be
+# fabricated as `class_a_rate_pct=1.0`, and that mattered more than it looked:
+# these seeds spell their steps `class_a_notes_interest`, which the engine's
+# recipient table simply did not carry, so nothing resolved and the fabricated
+# rate was never reached. The "numeric distribution is not modelable" guarantee
+# was therefore resting on a VOCABULARY gap, not on anything true about the
+# deals — and it would have been a wall of green the moment that gap closed.
+#
+# What is actually true is that neither deal has an ingested tape or report, so
+# it carries no coupon and no tranche state. Modelling that as an unresolved
+# rate is the honest probe: the pot stays funded, the recipients now resolve by
+# name, and every step still refuses — because the INPUT is missing, which is
+# the real boundary.
 _PROBE_FUNDS = WaterfallFunds(
     available_revenue_funds=10_000_000.0,
     available_principal_funds=10_000_000.0,
     class_a_balance=100_000_000.0,
-    class_a_rate_pct=1.0,
     reserve_target=1_000_000.0,
     days_in_period=90,
 )
@@ -267,12 +286,21 @@ def test_numeric_distribution_is_honestly_not_modelable(
     """Every IT/ES step runs but is ``not_evaluable`` — numeric distribution is
     not cold-start-modelable, and the engine says so rather than fabricating it.
 
-    The extracted recipients are jurisdiction-native labels with no entry in the
-    NL-derived ``NEED_CALCULATORS`` registry. The engine resolves a 0 need with
-    ``evaluable=False`` for each (``compute_need``), records the step
-    ``not_evaluable``, and distributes nothing — the honest cold-start boundary.
-    A probe pot is funded, so "nothing distributed" is a real not-evaluable
-    result, not an empty-pot artefact.
+    The engine resolves a 0 need with ``evaluable=False`` for each
+    (``compute_need``), records the step ``not_evaluable``, and distributes
+    nothing — the honest cold-start boundary. A probe pot is funded, so "nothing
+    distributed" is a real not-evaluable result, not an empty-pot artefact.
+
+    **What refuses, and why (#503).** This used to assert the recipient was
+    absent from ``NEED_CALCULATORS`` — true then, but for the wrong reason: the
+    docstring called these "jurisdiction-native labels", when both seeds in fact
+    spell their note steps in English (``class_a_notes_interest``), the same
+    spelling the CLO uses. Nothing resolved because the engine's table was
+    small. Now that the table carries it, the recipient resolves and the step
+    refuses one layer lower — for want of the coupon neither deal has. The
+    boundary is unchanged and better founded: it now rests on a missing INPUT
+    rather than on a missing NAME, which is the distinction the engine records
+    in ``not_evaluable_reason``.
     """
     model = _model_for(deal_id)
     total_steps = 0
@@ -284,8 +312,12 @@ def test_numeric_distribution_is_honestly_not_modelable(
                 f"{deal_id}/{section}: recipient {src_spec.recipient!r} unexpectedly "
                 f"resolved a canonical need-calculator"
             )
-            # The honest *reason*: the recipient is not in the canonical registry.
-            assert src_spec.recipient not in NEED_CALCULATORS
+            # A refusing step always NAMES its reason — an unexplained refusal
+            # is the one thing an operator cannot act on.
+            assert step_result.not_evaluable_reason is not None, (
+                f"{deal_id}/{section}: {src_spec.recipient!r} refused without "
+                "recording why"
+            )
             need, evaluable = compute_need(src_spec.recipient, _PROBE_FUNDS)
             assert evaluable is False and need == 0.0
             assert step_result.amount_distributed == 0.0
@@ -295,27 +327,63 @@ def test_numeric_distribution_is_honestly_not_modelable(
     assert total_steps == spec["revenue"] + spec["redemption"] + spec["post_enforcement"]
 
 
-def test_no_it_es_recipient_resolves_a_canonical_calculator() -> None:
+def test_no_it_es_recipient_evaluates_a_need() -> None:
     """Belt-and-braces: across BOTH deals and ALL sections, not one extracted
-    recipient matches a canonical need-calculator key.
+    recipient produces an evaluable need from what these deals actually carry.
 
     This is the single fact behind the "numeric distribution not modelable"
     story — pinned once, deal- and section-agnostic, so the honest boundary
-    can't silently erode (e.g. a future canonical-recipient rename that
-    accidentally started resolving a native label).
+    can't silently erode.
+
+    **It used to assert something narrower and less true (#503):** that no
+    recipient matched a ``NEED_CALCULATORS`` key at all. That held only while
+    the engine's recipient table was too small to name a step these seeds spell
+    in plain English, so the guarantee an operator relies on — "this deal's
+    numbers are not modelable" — was standing on a vocabulary gap. Closing the
+    gap for the CLO closed it here too, which is correct: the deals are not
+    modelable because they have **no ingested tape or report**, and that is what
+    this now asserts. Resolving a recipient by name was never the thing that
+    made a deal modelable; having its inputs is.
     """
-    resolved: list[str] = []
+    evaluable: list[str] = []
     for deal_id in _COLD_START_DEALS:
         model = _model_for(deal_id)
         for section in _WATERFALL_SECTIONS:
             for step in _extracted_steps(model, section):
                 recipient = str(step.get("recipient", ""))
-                if recipient in NEED_CALCULATORS:
-                    resolved.append(f"{deal_id}/{section}:{recipient}")
-    assert resolved == [], (
-        "an IT/ES extracted recipient now resolves a canonical need-calculator — "
-        f"the cold-start numeric boundary changed: {resolved}"
+                _need, is_evaluable = compute_need(recipient, _PROBE_FUNDS)
+                if is_evaluable:
+                    evaluable.append(f"{deal_id}/{section}:{recipient}")
+    assert evaluable == [], (
+        "an IT/ES extracted recipient now evaluates a need — the cold-start "
+        f"numeric boundary changed: {evaluable}"
     )
+
+
+def test_it_es_steps_refuse_for_a_missing_input_not_a_missing_name() -> None:
+    """The refusal moved down a layer, and that is visible rather than implied.
+
+    Without this, the change above reads as "the guarantee was weakened": both
+    the old and new worlds report every step ``not_evaluable``, so nothing would
+    show that these deals now refuse for the *right* reason. Assert the shift
+    directly — a recipient the engine can name, refusing because the deal
+    carries no coupon for it.
+    """
+    model = _model_for("sol-lion-ii")
+    reasons = {
+        str(step.get("recipient", "")): refusal_reason(
+            str(step.get("recipient", "")), _PROBE_FUNDS
+        )
+        for section in _WATERFALL_SECTIONS
+        for step in _extracted_steps(model, section)
+    }
+    assert reasons.get("class_a_notes_interest") == REFUSAL_INPUT_UNAVAILABLE, (
+        "the engine should now NAME this recipient and refuse for want of the "
+        f"coupon, not for want of a spelling: {reasons.get('class_a_notes_interest')}"
+    )
+    # And a genuinely unknown native label still says so — the two reasons must
+    # stay distinguishable, which is the whole point of recording one.
+    assert reasons.get("seller_remuneration") == REFUSAL_UNKNOWN_RECIPIENT
 
 
 # ---------------------------------------------------------------------------

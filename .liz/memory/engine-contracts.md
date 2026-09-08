@@ -40,6 +40,18 @@ distinct branch from "states it as zero".
 
 Refs: #471
 
+## 2026-09-08 · pattern · #493
+
+Assert a refusal in BOTH directions or it proves nothing. `not_evaluable` is
+reached from several layers — unregistered recipient, absent tranche, missing
+rate — so a test asserting only "this step refused" passes for whichever layer
+refuses first, and keeps passing with the fix reverted. Pair it: supply the one
+missing input, change nothing else, and assert the SAME step flips to
+evaluable. Check which layer refuses first — a deal's extracted,
+jurisdiction-native labels may resolve to no calculator, so the deal that
+motivated the fix can be the one it does not change.
+
+Refs: #493
 ## 2026-09-08 · pitfall · #478
 
 Grep an untyped dict shape's **key names**, not a mapper's function name,
@@ -65,3 +77,29 @@ positive value fires" — reporting a healthy 108.68% ratio as breached. Feed th
 guard every name the deal model carries and watch which miss.
 
 Refs: #481
+
+## 2026-09-08 · decision · #503
+
+Whether an extracted string earns an **alias or a new enum member** is not
+decided by how close the wording is — it is decided by whether the target's need
+is engine-computed. Two steps of one cascade sharing a `funds_input` or
+`calculator` member each claim the WHOLE amount, so a plausible alias double-pays;
+sharing a `step_override` member is safe, because those needs are keyed by the
+step's own label. Before aliasing onto a near neighbour, count how many steps of
+the SAME cascade already resolve there — a CLO's capped and uncapped expense
+tiers, and a class's coupon and its deferred interest, are distinct steps that
+read as synonyms.
+
+Refs: #503
+
+## 2026-09-08 · pitfall · #503
+
+Resolve a closed enum's **own values first**, before any alias/substring/LLM
+ladder. A resolver that starts at its alias table answers `unmapped` for a member
+the enum declares but no alias row names — so adding members left the engine
+(exact lookup) and the extractor (ladder) returning different recipients for one
+string, each internally consistent. Where two readers share a vocabulary but not
+a code path, assert they agree over the real corpus: neither one's own tests can
+see the disagreement.
+
+Refs: #503
