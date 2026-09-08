@@ -33,6 +33,7 @@ from loanwhiz.primitives.capability_matrix import (
     _NO_ENGINE_SERIES,
     _NO_POP_SECTION,
     _RECONCILE_ERROR_PREFIX,
+    _has_pop_section,
     STATE_NOT_APPLICABLE,
     STATE_RAN,
     STATE_VALIDATED,
@@ -776,6 +777,63 @@ def test_cairn_cells_revert_when_the_derived_tape_is_deregistered() -> None:
     # absent configuration.
     waterfall = _cell(matrix, "cairn-clo-xvii", "waterfall_execution")
     assert "no registered tape or Notes & Cash report" in waterfall.reason
+
+
+@pytest.mark.parametrize(
+    ("revenue", "redemption", "has_pop"),
+    [
+        (True, True, True),
+        (True, False, True),
+        (False, True, True),
+        (False, False, False),  # a covenants-only key — Cairn's real shape (#481)
+    ],
+)
+def test_the_two_ground_truth_surfaces_agree_on_which_keys_carry_pop(
+    revenue: bool, redemption: bool, has_pop: bool
+) -> None:
+    """`/capability-matrix` and `/quality-matrix` must not drift apart (#492).
+
+    Both decide "does this key carry Priority-of-Payments ground truth?", but each
+    spells the predicate out for itself — ``capability_matrix._has_pop_section``
+    mirrors the check inside ``quality_harness._reconcile_deal`` rather than
+    importing it. #492 created that second copy, so something has to hold them
+    together: a deal graded on its PoP checks but refused by engine validation
+    (or the reverse) is the two honesty surfaces telling an operator different
+    stories about the same deal.
+
+    Driven off synthetic keys, not the registry: every committed key today carries
+    PoP, so a registry-only assertion would pass while the predicates disagreed —
+    it can see no counter-example. The covenants-only row is the one that fires.
+    """
+    from loanwhiz.primitives.quality_harness import _reconcile_deal
+
+    _, committed_series = _committed_key_and_series()
+    key = DealAnswerKey(
+        deal_id="d",
+        deal_name="Synthetic Deal",
+        periods=[
+            AnswerKeyPeriod(
+                reporting_date="2025-03-31",
+                period_label="March 2025",
+                revenue_pop=(
+                    [AnswerKeyPopStep(priority="(a)", amount=1.0)] if revenue else []
+                ),
+                redemption_pop=(
+                    [AnswerKeyPopStep(priority="(a)", amount=1.0)] if redemption else []
+                ),
+                covenants=[CovenantResult(name="par_coverage", passed=True)],
+            )
+        ],
+    )
+
+    assert _has_pop_section(key) is has_pop
+
+    # The harness's own verdict on the same key, through its real entry point.
+    _, _, error = _reconcile_deal(
+        "d", {"deal_name": "Synthetic Deal"}, None, key, lambda *_a: committed_series
+    )
+    harness_saw_pop = error != "answer key carries no Priority-of-Payments to reconcile"
+    assert harness_saw_pop is has_pop, error
 
 
 def test_missing_structural_config_agrees_with_the_api_resolver() -> None:
