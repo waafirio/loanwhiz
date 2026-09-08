@@ -44,6 +44,14 @@ where = ["src"]
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
+# The offline suite is the default. `slow` and `integration` (below) mark the 77
+# tests that need live credentials or network; without this line a bare `pytest`
+# ran them, and with no ADC they do not fail fast — they hang until each call's
+# own timeout. That turned a 77-second suite into a multi-hour one that had to be
+# killed, repeatedly, at varying progress points (the network tests are scattered
+# through the run, so it read as flakiness rather than a systematic cause).
+# Opt back in explicitly: `pytest -m integration`, `-m slow`, or `-m ""` for all.
+addopts = ["-m", "not integration and not slow"]
 # Put the repo root on sys.path so the offline driver scripts (``scripts/``,
 # which live outside the ``src/`` package) are importable from tests — the
 # #384 "one extraction path, not a fork" check imports ``scripts.extract_c2_deals``.
