@@ -15,3 +15,16 @@ COLUMN order, so consume columns left to right, taking each remainder off the
 front; appending it to the row's end files a name fragment under the last column.
 
 Refs: #469
+
+## 2026-09-08 · pitfall · #494
+
+Ask "is this a data row?" **before** "is this page furniture?". A furniture
+filter keyed on banner prefixes eats any data row that opens with the same
+words — the U.S. Bank footer `U.S. Bank Global Corporate Trust` also opens the
+payee row `U.S. Bank Global Corporate Trust Limited 15,818.69 …`, and the step
+silently under-reported. Match the row's own shape (its anchored numeric tail)
+first, and only ask the furniture question of what is left over. A prefix list
+is a heuristic about *layout*; a row's numeric tail is evidence about *content*,
+and evidence outranks heuristics.
+
+Refs: #494

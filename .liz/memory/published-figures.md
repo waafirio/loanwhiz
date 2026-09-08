@@ -28,3 +28,16 @@ wrong rather than the parse — drop that table from the oracle, keep its counts
 and record the discrepancy as a defect instead of absorbing it.
 
 Refs: #469
+
+## 2026-09-08 · pitfall · #494
+
+Assert a section **parsed something** as its own named check, separately from
+any arithmetic over it. A reconciliation that sums rows and chains balances
+passes *vacuously* on zero rows, and it does so most convincingly where the
+document's own stated total is `0.00` — the CLO Principal waterfall. So a
+section title that misses reads as a clean reconciliation rather than as a
+missing section. Presence and correctness are two different questions; a check
+that only answers the second cannot tell "nothing is wrong" from "I saw
+nothing".
+
+Refs: #494
