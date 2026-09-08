@@ -13,6 +13,7 @@ or needs ``pypdf`` installed.
 
 from __future__ import annotations
 
+import json
 import re
 from decimal import Decimal
 from pathlib import Path
@@ -23,9 +24,15 @@ from loanwhiz.primitives.base import PrimitiveResult
 from loanwhiz.primitives.collateral_schedule_parser import (
     PART_III_FLAGS,
     CollateralSchedule,
+    LiabilitySummaryReconciliationError,
+    ReportLiabilitySummary,
     ScheduleReconciliationError,
+    liability_provenance,
+    parse_liability_summary_text,
+    parse_liability_summary_text_result,
     parse_schedule_text,
     parse_schedule_text_result,
+    reconcile_liability_summary,
     reconcile_schedule,
 )
 
@@ -413,3 +420,461 @@ def test_result_wrapper_returns_the_governance_envelope() -> None:
     assert result.audit_entry is not None
     assert result.audit_entry.primitive_name == "collateral_schedule_parser"
     assert len(result.output.assets) == 196
+
+
+# ===========================================================================
+# The liability side — the notes, their coupons, and the coverage thresholds
+# ===========================================================================
+#
+# The bar is the same as above and for the same reason: these figures exist to
+# be consumed by the engine and graded against, so a plausible-but-wrong one is
+# worse than none. What differs is the oracle. The collateral schedule ties to
+# concentration tables; the liability summary ties to two stated totals over
+# different quantities, and to the report's own second rendering of the same
+# coverage tests in the opposite column order.
+
+
+#: Every figure the March 2025 Executive Summary states, transcribed from the
+#: document. Eight classes, not the six an eye skimming the table sees: Class F
+#: and the Subordinated notes are what make the balances reach the stated
+#: 404,100,000.00 rather than the 354,400,000.00 the report separately calls
+#: "Total for E".
+MARCH_NOTE_CLASSES: list[tuple[str, str, str | None, str | None]] = [
+    ("A", "248000000.00", "4.54400", "2066005.33"),
+    ("B-1", "24600000.00", "5.49400", "247779.40"),
+    ("B-2", "15000000.00", "6.87000", "200375.00"),
+    ("C", "23100000.00", "6.34400", "268668.40"),
+    ("D", "26500000.00", "8.04400", "390804.33"),
+    ("E", "17200000.00", "10.20400", "321766.13"),
+    ("F", "14600000.00", "12.38400", "331478.40"),
+    ("Subordinated", "35100000.00", None, None),
+]
+
+#: The required levels, which are deal terms rather than period figures — so
+#: they must be identical in all three reports, and a parse that read them off
+#: the wrong column would not be.
+REQUIRED_LEVELS: dict[str, str] = {
+    "class_a_b_par_value_test": "130.08",
+    "class_c_par_value_test": "121.74",
+    "class_d_par_value_test": "112.62",
+    "class_e_par_value_test": "107.87",
+    "class_f_par_value_test": "103.90",
+    "reinvestment_overcollateralisation_test": "104.40",
+    "class_a_b_interest_coverage_test": "120.00",
+    "class_c_interest_coverage_test": "110.00",
+    "class_d_interest_coverage_test": "105.00",
+}
+
+
+def _summary(period: str, filename: str) -> ReportLiabilitySummary:
+    return parse_liability_summary_text(_text(filename), period_label=period)
+
+
+@pytest.fixture(scope="module")
+def march_liabilities() -> ReportLiabilitySummary:
+    return _summary("March 2025", "cairn-clo-xvii-march-2025.txt")
+
+
+@pytest.mark.parametrize(("period", "filename", "_assets", "_par", "as_of"), PERIODS)
+def test_every_period_reconciles_to_the_reports_own_liability_totals(
+    period: str, filename: str, _assets: int, _par: str, as_of: str
+) -> None:
+    """All three periods tie out, through the one path, in both renderings.
+
+    December is the space-separated rendering and February/March the rotated
+    one where cells arrive with no delimiter at all. Parametrising over all
+    three is what proves a single parse path handles both — a fork would show up
+    here as one period failing.
+    """
+    summary = parse_liability_summary_text(_text(filename), period_label=period)
+
+    assert summary.reporting_date == as_of
+    assert summary.deal_name == "Cairn CLO XVII DAC"
+    assert len(summary.note_classes) == 8
+    assert len(summary.coverage_tests) == 9
+
+    # The capital structure does not amortise across these three periods, so the
+    # stated total is the same 404,100,000.00 every month — and the parsed
+    # classes must sum to it.
+    assert summary.stated_total_balance == Decimal("404100000.00")
+    assert summary.total_note_balance == summary.stated_total_balance
+    assert summary.total_periodic_interest == summary.stated_total_periodic_interest
+
+    reconciliation = reconcile_liability_summary(summary)
+    assert reconciliation.ok, [c.name for c in reconciliation.failures]
+
+
+def test_march_matches_every_figure_the_report_states(
+    march_liabilities: ReportLiabilitySummary,
+) -> None:
+    """Transcribed figures, class by class — the point of the whole exercise.
+
+    Class A's ``4.54400`` is the number the prospectus could not give: there it
+    is ``3 month EURIBOR + 1.80%``, and resolving that needs the period's
+    fixing.
+    """
+    parsed = [
+        (
+            c.note_class,
+            str(c.principal_balance),
+            None if c.coupon_pct is None else str(c.coupon_pct),
+            None if c.periodic_interest is None else str(c.periodic_interest),
+        )
+        for c in march_liabilities.note_classes
+    ]
+    assert parsed == MARCH_NOTE_CLASSES
+
+    # The two stated totals, both of which the classes above must sum to.
+    assert march_liabilities.stated_total_balance == Decimal("404100000.00")
+    assert march_liabilities.stated_total_periodic_interest == Decimal("3826876.99")
+
+
+def test_a_class_with_no_stated_coupon_reads_none_not_zero(
+    march_liabilities: ReportLiabilitySummary,
+) -> None:
+    """``N/A`` is an absent fact, not a zero.
+
+    The subordinated notes are the first-loss piece: they take residual cash,
+    not a coupon, and the report prints ``N/A`` for both rate cells. A note
+    paying a 0% coupon and a note whose coupon the report does not state are
+    different claims about the world, and only one of them is true here.
+    """
+    subordinated = march_liabilities.note_class("Subordinated")
+    assert subordinated is not None
+    assert subordinated.principal_balance == Decimal("35100000.00")
+    assert subordinated.coupon_pct is None
+    assert subordinated.periodic_interest is None
+    assert subordinated.coupon_pct != Decimal("0")
+
+    # And the stated interest total is over the classes that state one, so the
+    # absent cells do not silently drag the reconciliation to a false pass.
+    assert march_liabilities.total_periodic_interest == Decimal("3826876.99")
+
+
+def test_a_lost_note_class_is_refused_not_returned() -> None:
+    """Dropping one class must fail the balance oracle loudly."""
+    text = _text("cairn-clo-xvii-march-2025.txt")
+    without = text.replace("Class F Notes14,600,000.0012.38400331,478.40B-B-", "")
+
+    with pytest.raises(LiabilitySummaryReconciliationError) as raised:
+        parse_liability_summary_text(without, period_label="March 2025")
+
+    failures = {c.name for c in raised.value.reconciliation.failures}
+    assert "stated total note balance" in failures
+    assert "does not reconcile" in str(raised.value)
+
+
+def test_a_transposition_is_invisible_to_both_totals() -> None:
+    """States what the oracles do NOT catch, so nobody over-trusts them.
+
+    Swapping two classes' periodic interest leaves every balance untouched and
+    the interest *sum* unchanged, so both stated totals still tie perfectly.
+    A sum is invariant under transposition — which is exactly why the per-class
+    figures are pinned by transcription in
+    :func:`test_march_matches_every_figure_the_report_states` rather than by the
+    reconciliation alone. Recorded here as a known limit of the oracle, not as
+    a defect: no total over these rows can distinguish this case.
+    """
+    text = _text("cairn-clo-xvii-march-2025.txt")
+    # Class C's interest attributed to Class D and vice versa. The sum is
+    # unchanged, so this specifically defeats a totals-only check.
+    mutated = text.replace(
+        "Class C Notes23,100,000.006.34400268,668.40AAClass D Notes26,500,000.008.04400390,804.33BBB-BBB-",
+        "Class C Notes23,100,000.006.34400390,804.33AAClass D Notes26,500,000.008.04400268,668.40BBB-BBB-",
+    )
+    assert mutated != text, "fixture text changed — the mutation no longer applies"
+
+    summary = parse_liability_summary_text(mutated, period_label="March 2025", strict=False)
+    # The balance oracle is satisfied, and the interest oracle's *total* is too:
+    # a transposition is invisible to both, which is why the per-class figures
+    # are pinned by transcription above rather than by a sum alone.
+    assert summary.total_note_balance == summary.stated_total_balance
+    assert summary.total_periodic_interest == summary.stated_total_periodic_interest
+    assert summary.note_class("C").periodic_interest == Decimal("390804.33")
+
+
+def test_dropping_a_stated_interest_figure_fails_the_second_oracle() -> None:
+    """The interest total is a real check, not decoration."""
+    text = _text("cairn-clo-xvii-march-2025.txt")
+    # Same balance, no stated interest: the balance oracle still ties.
+    mutated = text.replace(
+        "Class E Notes17,200,000.0010.20400321,766.13BB-BB-",
+        "Class E Notes17,200,000.00N/AN/ABB-BB-",
+    )
+    assert mutated != text, "fixture text changed — the mutation no longer applies"
+
+    with pytest.raises(LiabilitySummaryReconciliationError) as raised:
+        parse_liability_summary_text(mutated, period_label="March 2025")
+
+    failures = {c.name for c in raised.value.reconciliation.failures}
+    assert "stated total periodic interest" in failures
+    assert "stated total note balance" not in failures
+
+
+def test_required_levels_come_from_the_header_not_from_position() -> None:
+    """The two sections state the same pairs in opposite column order.
+
+    The Executive Summary prints ``Threshold`` then ``Current``; the detail
+    pages print ``RATIO`` then ``REQUIRED LEVEL``. A parser that assumed either
+    would swap a computed ratio with the level it has to clear — reporting a
+    breaching test as passing, which is the worst answer available here. So the
+    order is read off each section's own header, and this pins that it is: give
+    the detail page the Executive Summary's header and its columns are read the
+    other way round.
+    """
+    text = _text("cairn-clo-xvii-march-2025.txt")
+    honest = parse_liability_summary_text(text, period_label="March 2025")
+    assert honest.coverage_test("class_a_b_par_value_test").required_pct == Decimal("130.08")
+    assert honest.coverage_test("class_a_b_par_value_test").current_pct == Decimal("139.43")
+
+    swapped_header = text.replace(
+        "OVERCOLLATERALIZATION TESTRATIOREQUIRED LEVELCALCULATIONRESULT",
+        "Test DescriptionThresholdCurrentResult",
+    )
+    assert swapped_header != text, "fixture text changed — the mutation no longer applies"
+
+    read_back = parse_liability_summary_text(
+        swapped_header, period_label="March 2025", strict=False
+    )
+    par_value = next(
+        t for t in read_back.coverage_tests if t.trigger_key == "class_a_b_par_value_test"
+    )
+    # Read in the order the header now claims: the detail page's first column is
+    # taken as the required level rather than the ratio.
+    assert par_value.required_pct == Decimal("139.43")
+    assert par_value.current_pct == Decimal("130.08")
+
+    # And the cross-check refuses it, because the two renderings now disagree.
+    with pytest.raises(LiabilitySummaryReconciliationError):
+        parse_liability_summary_text(swapped_header, period_label="March 2025")
+
+
+def test_an_unrecognised_column_header_is_refused_not_guessed() -> None:
+    """Two percentages in an unknown order is a wrong answer, not a degraded one."""
+    text = _text("cairn-clo-xvii-march-2025.txt")
+    mangled = text.replace(
+        "OVERCOLLATERALIZATION TESTRATIOREQUIRED LEVELCALCULATIONRESULT",
+        "OVERCOLLATERALIZATION TESTCOLUMN ONECOLUMN TWOCALCULATIONRESULT",
+    )
+    assert mangled != text, "fixture text changed — the mutation no longer applies"
+
+    with pytest.raises(ValueError, match="no recognised coverage-test column header"):
+        parse_liability_summary_text(mangled, period_label="March 2025")
+
+
+def test_the_two_renderings_must_agree_or_the_parse_is_refused() -> None:
+    """A figure stated twice and differently is a parse nobody should trust."""
+    text = _text("cairn-clo-xvii-march-2025.txt")
+    # Change one required level on the detail page only.
+    mutated = text.replace(
+        "Class D Par Value Test118.92%112.62%A/DPassed",
+        "Class D Par Value Test118.92%111.11%A/DPassed",
+    )
+    assert mutated != text, "fixture text changed — the mutation no longer applies"
+
+    with pytest.raises(LiabilitySummaryReconciliationError) as raised:
+        parse_liability_summary_text(mutated, period_label="March 2025")
+
+    failures = {c.name for c in raised.value.reconciliation.failures}
+    assert "required level · class_d_par_value_test" in failures
+
+
+def test_a_test_missing_from_one_rendering_is_refused() -> None:
+    """A row that parsed in one section and not the other must not vanish quietly."""
+    text = _text("cairn-clo-xvii-march-2025.txt")
+    mutated = text.replace(
+        "Class E Par Value Test113.15%107.87%A/EPassed", "", 1
+    )
+    assert mutated != text, "fixture text changed — the mutation no longer applies"
+
+    with pytest.raises(LiabilitySummaryReconciliationError) as raised:
+        parse_liability_summary_text(mutated, period_label="March 2025")
+
+    failures = {c.name for c in raised.value.reconciliation.failures}
+    assert "coverage tests named in both renderings" in failures
+
+
+@pytest.mark.parametrize(("period", "filename", "_assets", "_par", "_as_of"), PERIODS)
+def test_required_levels_are_the_same_in_every_report(
+    period: str, filename: str, _assets: int, _par: str, _as_of: str
+) -> None:
+    """A required level is a deal term, so it cannot move month to month.
+
+    The computed ratios do move (139.20% → 139.43%), which is what makes this a
+    real check rather than a restatement of the fixture: a parse that read the
+    wrong column would produce three *different* sets of "required" levels.
+    """
+    summary = parse_liability_summary_text(_text(filename), period_label=period)
+    levels = {t.trigger_key: str(t.required_pct) for t in summary.coverage_tests}
+    assert levels == REQUIRED_LEVELS
+
+
+def test_coverage_test_keys_match_the_extracted_models_trigger_names() -> None:
+    """The keys line up with the deal model's triggers, and #456 is why it matters.
+
+    Those triggers all carry ``threshold: null`` today, because the offering
+    circular's alphabetical glossary was truncated at 40,000 characters and
+    every coverage test is defined under C-F. This asserts the correspondence
+    that makes the gap closable — not that it is closed, which is a wiring
+    change this PR deliberately does not make.
+    """
+    seed = json.loads(
+        (
+            Path(__file__).parents[1]
+            / "src/loanwhiz/data/deals/seed/cairn-clo-xvii-dac.json"
+        ).read_text(encoding="utf-8")
+    )
+    triggers = {t["name"]: t for t in seed["covenants"]["triggers"]}
+
+    summary = _summary("March 2025", "cairn-clo-xvii-march-2025.txt")
+    parsed_keys = {t.trigger_key for t in summary.coverage_tests}
+
+    assert parsed_keys <= set(triggers), sorted(parsed_keys - set(triggers))
+    assert parsed_keys == set(REQUIRED_LEVELS)
+    # Every one of them is a threshold the extracted model still lacks — the
+    # limitation this parse makes closable.
+    for key in parsed_keys:
+        assert triggers[key]["threshold"] is None
+        # And the report's name for the test is the model's display name, so the
+        # match above is a real correspondence rather than a lucky slug.
+        assert triggers[key]["display_name"] == summary.coverage_test(key).name
+
+
+def test_collateral_quality_tests_are_not_read_as_coverage_tests(
+    march_liabilities: ReportLiabilitySummary,
+) -> None:
+    """The same page prints a second family of tests in an identical shape.
+
+    ``Weighted Average Life Test7.024.27`` has no ``%`` terminator, so its two
+    figures cannot be split apart at all; ``Fitch Maximum WA Rating Factor
+    Test25.5024.46`` is the same trap with different digits. They are excluded
+    by name rather than by position, because December's rendering interleaves
+    the two families row by row.
+    """
+    names = {t.name for t in march_liabilities.coverage_tests}
+    names |= {t.name for t in march_liabilities.summary_coverage_tests}
+    for quality_test in (
+        "S&P CDO Monitor Test",
+        "Fitch Maximum WA Rating Factor Test",
+        "Fitch Minimum WA Recovery Rate Test",
+        "Maximum Obligor Concentration Test",
+        "Minimum Weighted Average Spread Test",
+        "Weighted Average Life Test",
+    ):
+        assert quality_test not in names
+
+
+def test_a_report_figure_can_only_present_as_report_derived(
+    march_liabilities: ReportLiabilitySummary,
+) -> None:
+    """Provenance must distinguish a trustee-report fact from a prospectus term.
+
+    A coupon read off one month's trustee report is that month's stated figure;
+    a prospectus term is the deal's contractual definition. Presenting the first
+    as the second lends it an authority it does not have — so the source is a
+    module constant with no parameter, and there is no call that can say
+    ``prospectus``.
+    """
+    provenance = liability_provenance(march_liabilities)
+
+    assert provenance
+    assert {p.source for p in provenance.values()} == {"report"}
+    assert all(p.method == "deterministic" for p in provenance.values())
+    assert all(p.citation is not None for p in provenance.values())
+    assert all(
+        "Trustee Report" in p.citation.document for p in provenance.values()
+    )
+
+    coupon = provenance["tranches.class_a.coupon_pct"]
+    assert coupon.confidence == 1.0
+    assert coupon.reconciled is True
+    assert coupon.citation.page_or_row == "Executive Summary"
+
+    # A required level cites the section that states it beside the ratio.
+    required = provenance["covenants.class_a_b_par_value_test.required_pct"]
+    assert required.citation.page_or_row == "Par Value Tests Detail"
+    assert provenance[
+        "covenants.class_a_b_interest_coverage_test.required_pct"
+    ].citation.page_or_row == "Interest Coverage Tests Detail"
+
+
+def test_provenance_cannot_claim_a_reconciliation_that_did_not_run() -> None:
+    """``reconciled`` is a recorded fact, not something a caller can assert.
+
+    ``FieldProvenance.reconciled`` is the strong correctness signal the
+    human-review gate routes by: it sends *unreconciled, low-confidence* fields
+    to a person. A caller able to set it could route a figure that was never
+    cross-checked straight past that reviewer — so the parser records whether
+    the check ran and passed, and `liability_provenance` takes no argument for
+    it at all.
+    """
+    text = _text("cairn-clo-xvii-march-2025.txt")
+
+    checked = parse_liability_summary_text(text, period_label="March 2025")
+    assert checked.reconciled is True
+    assert {p.reconciled for p in liability_provenance(checked).values()} == {True}
+
+    # strict=False is the documented inspection path: nothing was verified, and
+    # the provenance must say so rather than inherit an optimistic default.
+    unchecked = parse_liability_summary_text(
+        text, period_label="March 2025", strict=False
+    )
+    assert unchecked.reconciled is False
+    assert {p.reconciled for p in liability_provenance(unchecked).values()} == {False}
+
+
+def test_an_unstated_figure_gets_no_provenance_key_at_all(
+    march_liabilities: ReportLiabilitySummary,
+) -> None:
+    """Absence is a fact, and a key with a null value is not how to state it.
+
+    The subordinated notes have a balance and no coupon. A map carrying a
+    coupon key for them would read as "we have provenance for this coupon",
+    which is the shape of claim #451 found reporting ``default_pct: 0.0`` for a
+    pool of defaulted obligors.
+    """
+    provenance = liability_provenance(march_liabilities)
+
+    assert "tranches.class_subordinated.principal_balance" in provenance
+    assert "tranches.class_subordinated.coupon_pct" not in provenance
+    assert "tranches.class_subordinated.periodic_interest" not in provenance
+    # Every other class does state one.
+    assert "tranches.class_f.coupon_pct" in provenance
+
+
+def test_liability_result_wrapper_returns_the_governance_envelope() -> None:
+    """The envelope, with citations naming the sections the figures came from."""
+    result = parse_liability_summary_text_result(
+        _text("cairn-clo-xvii-march-2025.txt"), period_label="March 2025"
+    )
+
+    assert isinstance(result, PrimitiveResult)
+    assert result.confidence == 1.0
+    assert len(result.citations) == 3
+    assert {c.page_or_row for c in result.citations} == {
+        "Executive Summary",
+        "Par Value Tests Detail",
+        "Interest Coverage Tests Detail",
+    }
+    assert all(
+        c.document == "Cairn CLO XVII DAC — Monthly Trustee Report (March 2025)"
+        for c in result.citations
+    )
+    assert result.audit_entry.primitive_name == "collateral_schedule_parser"
+    assert len(result.output.note_classes) == 8
+    assert len(result.output.coverage_tests) == 9
+
+
+def test_the_liability_sections_are_located_by_header_not_page_number() -> None:
+    """The brief's page numbers were off by one; the section titles were not.
+
+    Prepending a page shifts every page number in the document by one. A parse
+    keyed on position would break; one keyed on header text does not notice.
+    """
+    text = _text("cairn-clo-xvii-march-2025.txt")
+    shifted = "--- page 0 ---\nCairn CLO XVII DAC\nInserted cover page\n" + text
+
+    summary = parse_liability_summary_text(shifted, period_label="March 2025")
+    assert len(summary.note_classes) == 8
+    assert len(summary.coverage_tests) == 9
+    assert summary.coverage_test("class_e_par_value_test").required_pct == Decimal("107.87")

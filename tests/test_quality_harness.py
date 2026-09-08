@@ -28,12 +28,16 @@ They run fully offline (no network, no LLM):
 
 from __future__ import annotations
 
+from contextlib import suppress
+from pathlib import Path
+from tempfile import mkdtemp
+
 import pytest
 from fastapi.testclient import TestClient
 
 from loanwhiz.api import app
 from loanwhiz.api.main import _load_cached_deal_model
-from loanwhiz.config import DEAL_REGISTRY
+from loanwhiz.config import ANSWER_KEY_DATA_DIR, DEAL_REGISTRY
 from loanwhiz.primitives.base import Citation
 from loanwhiz.primitives.covenant_monitor import TriggerDefinition
 from loanwhiz.primitives.reconciler import (
@@ -46,6 +50,7 @@ from loanwhiz.primitives.reconciliation_answer_key import (
     AnswerKeyPeriod,
     CovenantResult,
     DealAnswerKey,
+    answer_key_path,
     load_answer_key,
 )
 from loanwhiz.primitives.quality_harness import (
@@ -53,6 +58,8 @@ from loanwhiz.primitives.quality_harness import (
     GRADE_NOT_APPLICABLE,
     GRADE_PASSED,
     QualityMatrix,
+    _DealGrading,
+    _grade_covenants,
     build_quality_matrix,
     quality_check_rows,
 )
@@ -63,9 +70,25 @@ GL_DEAL_ID = "green-lion-2024-1"
 GL_DEAL_NAME = "Green Lion 2024-1 B.V."
 GL23_DEAL_ID = "green-lion-2023-1"
 GL23_DEAL_NAME = "Green Lion 2023-1 B.V."
-#: Every deal whose published Notes & Cash ground truth is committed as an answer
-#: key, so the harness genuinely grades it (#429 GL-2024-1, #440 GL-2023-1).
-GRADED_DEAL_IDS = {GL_DEAL_ID, GL23_DEAL_ID}
+CLO_DEAL_ID = "cairn-clo-xvii"
+CLO_DEAL_NAME = "Cairn CLO XVII DAC"
+
+#: Deals whose published **Notes & Cash Priority of Payments** is committed as an
+#: answer key, so the harness grades their distributions to the cent (#429
+#: GL-2024-1, #440 GL-2023-1).
+POP_GRADED_DEAL_IDS = {GL_DEAL_ID, GL23_DEAL_ID}
+
+#: Deals whose published **coverage-test results** are committed as an answer key
+#: (#481). A trustee report states no Priority of Payments, so these deals earn a
+#: key through the other constructor and grade the covenants row instead.
+COVENANT_GRADED_DEAL_IDS = {CLO_DEAL_ID}
+
+#: Every deal carrying a committed key, by either route.
+GRADED_DEAL_IDS = POP_GRADED_DEAL_IDS | COVENANT_GRADED_DEAL_IDS
+
+#: The published coverage results the CLO key carries: 8 decided tests (Class F
+#: is published N/A and is excluded, not coerced) across 3 reporting dates.
+CLO_COVENANTS_GRADED = 24
 _EXPECTED_CHECK_KEYS = ["revenue_pop", "redemption_pop", "covenants", "pool_stats"]
 
 
@@ -99,6 +122,18 @@ def _gl_2023_key_from_report() -> DealAnswerKey:
     """A GL-2023-1 answer key authored from its committed Notes & Cash report."""
     return DealAnswerKey.from_notes_cash_report(
         load_green_lion_2023_1_report(), deal_id=GL23_DEAL_ID
+    )
+
+
+def _named_trigger(name: str, *, metric: str, threshold: float | None) -> TriggerDefinition:
+    return TriggerDefinition(
+        name=name,
+        description=name,
+        metric=metric,
+        threshold=threshold,
+        direction="below",
+        consequence="n/a",
+        citation=Citation(document="test", excerpt="test"),
     )
 
 
@@ -147,38 +182,54 @@ def test_matrix_shape_covers_every_deal_x_check() -> None:
 
 
 def test_live_registry_reflects_the_backfilled_answer_keys_honestly() -> None:
-    """The backfills committed Green Lion 2024-1's (#429) and Green Lion 2023-1's
-    (#440) answer keys from their published Notes & Cash reports, so the honest
-    verdict over the *live* registry is mixed: both deals' revenue + redemption PoP
-    grade `passed` to the cent, every other (deal × check) — including those two
-    deals' covenants / pool stats, which have no committed published figures —
-    grades `not-applicable` with a real reason. Nothing is fabricated and nothing
-    fails.
+    """The honest verdict over the *live* registry, by route.
 
-    Leone Arancio and Sol-Lion II publish no Notes & Cash report at all, so they
-    have no ground truth to author a key from and stay wholly not-applicable —
-    the #193 discipline, pinned here so a future backfill cannot fabricate one."""
+    Two routes to ground truth are committed, and they grade different rows.
+    Green Lion 2024-1 (#429) and 2023-1 (#440) publish a Notes & Cash report, so
+    their revenue + redemption PoP grade ``passed`` to the cent. Cairn CLO XVII
+    (#481) publishes monthly trustee reports stating each coverage test's result
+    and required level, so its covenants row grades ``passed`` — and its PoP rows
+    stay not-applicable, because a trustee report states no Priority of Payments.
+
+    Leone Arancio and Sol-Lion II publish neither, so they have no ground truth
+    to author a key from and stay wholly not-applicable — the #193 discipline,
+    pinned here so a future backfill cannot fabricate one."""
     m = _real_matrix()
 
     # Exactly the deals with committed published ground truth carry an answer key.
     assert {d.deal_id for d in m.deals if d.has_answer_key} == GRADED_DEAL_IDS
 
-    # Each graded deal's two PoP checks passed to the cent.
-    for deal_id in GRADED_DEAL_IDS:
+    # Route 1 — each PoP-graded deal's two PoP checks passed to the cent.
+    for deal_id in POP_GRADED_DEAL_IDS:
         rev = _cell(m, deal_id, "revenue_pop")
         red = _cell(m, deal_id, "redemption_pop")
         assert rev.grade == GRADE_PASSED and rev.score == pytest.approx(1.0)
         assert red.grade == GRADE_PASSED and red.score == pytest.approx(1.0)
 
-    # Honest, not green-painted: exactly those pass, nothing fails, and every other
-    # cell (incl. their covenants/pool_stats with no published figures) is
-    # not-applicable.
-    graded_cells = 2 * len(GRADED_DEAL_IDS)
-    assert m.tally[GRADE_PASSED] == graded_cells
+    # Route 2 — the covenant-graded deal's published outcomes all matched, and
+    # the COUNT is pinned. A cell that quietly stopped resolving its metrics
+    # would grade not-applicable rather than fail, so "did not go red" is not
+    # evidence here; only the number of things actually graded is.
+    for deal_id in COVENANT_GRADED_DEAL_IDS:
+        cov = _cell(m, deal_id, "covenants")
+        assert cov.grade == GRADE_PASSED and cov.score == pytest.approx(1.0)
+        assert cov.evidence["covenants_graded"] == CLO_COVENANTS_GRADED
+        assert cov.evidence["covenants_matched"] == CLO_COVENANTS_GRADED
+        assert cov.evidence["not_evaluable_covenant_names"] == []
+        assert cov.evidence["unmatched_covenant_names"] == []
+
+    # Honest, not green-painted: exactly those pass, nothing fails, and every
+    # other cell is not-applicable — including each graded deal's *other* rows,
+    # which have no committed published figures of that kind.
+    passed_cells = 2 * len(POP_GRADED_DEAL_IDS) + len(COVENANT_GRADED_DEAL_IDS)
+    assert m.tally[GRADE_PASSED] == passed_cells
     assert m.tally.get(GRADE_FAILED, 0) == 0
-    assert m.tally[GRADE_NOT_APPLICABLE] == len(m.cells) - graded_cells
-    for deal_id in GRADED_DEAL_IDS:
+    assert m.tally[GRADE_NOT_APPLICABLE] == len(m.cells) - passed_cells
+    for deal_id in POP_GRADED_DEAL_IDS:
         for ck in ("covenants", "pool_stats"):
+            assert _cell(m, deal_id, ck).grade == GRADE_NOT_APPLICABLE
+    for deal_id in COVENANT_GRADED_DEAL_IDS:
+        for ck in ("revenue_pop", "redemption_pop", "pool_stats"):
             assert _cell(m, deal_id, ck).grade == GRADE_NOT_APPLICABLE
     for d in m.deals:
         if d.deal_id in GRADED_DEAL_IDS:
@@ -219,36 +270,118 @@ def test_committed_gl_2023_1_key_matches_its_published_report() -> None:
     assert loaded == _gl_2023_key_from_report()
 
 
-def test_answer_keys_exist_exactly_where_published_reports_do() -> None:
-    """The #193 honesty discipline, pinned as a test: a committed answer key exists
-    for exactly those deals that publish a Notes & Cash report to author it from.
+def test_answer_keys_exist_exactly_where_published_ground_truth_does() -> None:
+    """The #193 honesty discipline, pinned as a test: a committed answer key
+    exists for exactly those deals that publish ground truth to author it from.
 
-    Asserted in BOTH directions on purpose. A one-way "report-less deals have no
-    key" loop passes by finding nothing, so it would go quiet if the registry ever
-    lost its report-less deals; the equality below cannot, and the explicit
-    non-empty guard makes the vacuous case a failure rather than a silent pass."""
+    The proxy for "publishes ground truth" is now two routes, not one, because
+    a second kind of document earned a key (#481) — but the shape of the guard
+    is unchanged, and deliberately so.
+
+    Route 1 is a **registry fact**: ``notes_cash_report_urls`` is what says a
+    deal publishes a Priority of Payments, and the equality below is what makes
+    setting that key a promise rather than a URL slot.
+
+    Route 2 cannot use a registry fact — nothing in ``deals.json`` distinguishes
+    a trustee report that states its coverage tests from one that does not — so
+    membership is **earned by regeneration instead**: every covenant-graded key
+    must reproduce byte-for-byte from committed report fixtures. That is what
+    stops the constant below being widened by declaration: adding a deal to it
+    without an authoring path fails in
+    ``test_committed_clo_answer_key_regenerates_from_its_report_fixtures``, and
+    adding one *with* a fabricated path fails against the documents.
+
+    Asserted in BOTH directions on purpose. A one-way "ground-truth-less deals
+    have no key" loop passes by finding nothing, so it would go quiet if the
+    registry ever lost its ground-truth-less deals; the equalities below cannot,
+    and the explicit non-empty guard makes the vacuous case a failure rather
+    than a silent pass."""
     with_reports = {
         deal_id
         for deal_id, ctx in DEAL_REGISTRY.items()
         if ctx.get("notes_cash_report_urls")
     }
-    without_reports = set(DEAL_REGISTRY) - with_reports
-    assert with_reports and without_reports, (
-        "this guard is only meaningful while the registry holds deals of both "
-        "kinds; it must never pass vacuously"
+    keyed = {
+        deal_id
+        for deal_id in DEAL_REGISTRY
+        if load_answer_key(DEAL_REGISTRY[deal_id]) is not None
+    }
+    without_ground_truth = set(DEAL_REGISTRY) - GRADED_DEAL_IDS
+    assert with_reports and COVENANT_GRADED_DEAL_IDS and without_ground_truth, (
+        "this guard is only meaningful while the registry holds deals of all "
+        "three kinds; it must never pass vacuously"
     )
 
-    # Publishing a report is exactly what earns a key — no more, no less.
-    assert with_reports == GRADED_DEAL_IDS
+    # Route 1: publishing a Notes & Cash report is exactly what earns a
+    # PoP-bearing key — no more, no less.
+    assert with_reports == POP_GRADED_DEAL_IDS
     for deal_id in with_reports:
-        assert load_answer_key(DEAL_REGISTRY[deal_id]) is not None, (
-            f"{deal_id} publishes a Notes & Cash report but has no committed key"
-        )
-    for deal_id in without_reports:
+        key = load_answer_key(DEAL_REGISTRY[deal_id])
+        assert key is not None, f"{deal_id} publishes a report but has no committed key"
+        assert any(p.revenue_pop or p.redemption_pop for p in key.periods)
+
+    # Route 2: a covenant-bearing key carries published test results and no PoP.
+    for deal_id in COVENANT_GRADED_DEAL_IDS:
+        key = load_answer_key(DEAL_REGISTRY[deal_id])
+        assert key is not None
+        assert any(p.covenants for p in key.periods)
+        assert not any(p.revenue_pop or p.redemption_pop for p in key.periods)
+
+    # Both directions, over the whole registry.
+    assert keyed == GRADED_DEAL_IDS
+    for deal_id in without_ground_truth:
         assert load_answer_key(DEAL_REGISTRY[deal_id]) is None, (
-            f"{deal_id} publishes no Notes & Cash report, so its answer key could "
-            "only be fabricated"
+            f"{deal_id} publishes no ground truth this repo can read, so its "
+            "answer key could only be fabricated"
         )
+
+    # And no key file exists under a slug no registered deal resolves to — a
+    # committed key nothing loads would slip past every check above.
+    expected_slugs = {
+        answer_key_path(DEAL_REGISTRY[deal_id]["deal_name"]).stem for deal_id in GRADED_DEAL_IDS
+    }
+    assert {p.stem for p in ANSWER_KEY_DATA_DIR.glob("*.json")} == expected_slugs
+
+
+def test_committed_clo_answer_key_regenerates_from_its_report_fixtures() -> None:
+    """The committed CLO key is what the documents say — not what someone typed.
+
+    This is the guard the whole graded-CLO claim rests on. An answer key
+    inferred from the engine's own output would grade the engine against itself
+    and make the cell vacuously green, which is the most damaging failure this
+    surface has available to it. Regenerating the committed bytes from the
+    committed report fixtures, through a path with no engine module on it, is
+    what makes that unrepresentable rather than merely discouraged.
+
+    Byte-for-byte against the file on disk, so hand-editing a single published
+    threshold reds here."""
+    from clo_answer_key_source import clo_key_from_reports  # noqa: PLC0415
+
+    from loanwhiz.primitives.reconciliation_answer_key import write_answer_key  # noqa: PLC0415
+
+    committed = answer_key_path(CLO_DEAL_NAME)
+    assert committed.exists(), "the CLO answer key is not committed"
+    regenerated = write_answer_key(clo_key_from_reports(), base_dir=Path(mkdtemp()))
+    assert regenerated.read_text(encoding="utf-8") == committed.read_text(encoding="utf-8")
+
+
+def test_clo_cells_revert_without_the_key() -> None:
+    """Delete the key and every CLO cell returns to its prior not-applicable state.
+
+    The inverse of committing it, exercised through the real ``load_answer_key``
+    against an empty directory rather than by injecting ``None`` — so the loader's
+    own miss path is what produces the reversion, as it would on disk."""
+    empty = Path(mkdtemp())
+    m = build_quality_matrix(
+        DEAL_REGISTRY,
+        seed_loader=_load_cached_deal_model,
+        answer_key_loader=lambda ctx: load_answer_key(ctx, base_dir=empty),
+    )
+    assert not any(d.has_answer_key for d in m.deals)
+    for ck in _EXPECTED_CHECK_KEYS:
+        cell = _cell(m, CLO_DEAL_ID, ck)
+        assert cell.grade == GRADE_NOT_APPLICABLE
+        assert "no committed answer key" in cell.reason.lower()
 
 
 def test_every_not_applicable_cell_carries_a_real_reason() -> None:
@@ -534,10 +667,86 @@ def test_quality_matrix_endpoint_returns_graded_matrix_offline() -> None:
     assert len(body["cells"]) == len(body["deals"]) * len(body["checks"])
     assert sum(body["tally"].values()) == len(body["cells"])
     assert body["note"]
-    # Offline + the committed GL-2024-1 (#429) and GL-2023-1 (#440) answer keys:
-    # the honest verdict is each graded deal's two PoP checks pass, nothing fails,
-    # the rest are not-applicable.
-    graded_cells = 2 * len(GRADED_DEAL_IDS)
-    assert body["tally"][GRADE_PASSED] == graded_cells
+    # Offline + the three committed answer keys: GL-2024-1 (#429) and GL-2023-1
+    # (#440) pass both PoP checks; Cairn CLO XVII (#481) passes covenants. The
+    # honest verdict is those five cells, nothing fails, the rest not-applicable.
+    passed_cells = 2 * len(POP_GRADED_DEAL_IDS) + len(COVENANT_GRADED_DEAL_IDS)
+    assert body["tally"][GRADE_PASSED] == passed_cells
     assert body["tally"].get(GRADE_FAILED, 0) == 0
-    assert body["tally"][GRADE_NOT_APPLICABLE] == len(body["cells"]) - graded_cells
+    assert body["tally"][GRADE_NOT_APPLICABLE] == len(body["cells"]) - passed_cells
+    # The graded CLO cell is reachable through the endpoint, with its count.
+    clo = next(
+        c for c in body["cells"] if c["deal_id"] == CLO_DEAL_ID and c["check_key"] == "covenants"
+    )
+    assert clo["grade"] == GRADE_PASSED
+    assert clo["evidence"]["covenants_graded"] == CLO_COVENANTS_GRADED
+
+
+def test_a_triggers_metric_name_cannot_displace_the_period_structure(monkeypatch) -> None:
+    """A published value is offered under its trigger's metric name, and a metric
+    is a free string — so ``pool_stats`` and ``reporting_date`` are writable
+    names. They are written last on purpose.
+
+    The damage a collision would do is not local: replacing ``pool_stats`` with
+    a float makes ``_extract_metric``'s ``period.get("pool_stats", {})`` lookup
+    raise for **every other** trigger, so one hostile metric name would take the
+    whole deal's grading down. (A trigger genuinely named after a structural key
+    still fails on its own — ``float()`` of a dict — which is pre-existing and
+    honest; what must not happen is it corrupting its neighbours.)
+
+    The period dict is captured at the monitor boundary rather than inferred
+    from a grade: the invariant is about the dict's shape, so assert the shape.
+    """
+    from loanwhiz.primitives.covenant_monitor import CovenantMonitor  # noqa: PLC0415
+
+    key = DealAnswerKey(
+        deal_id="d",
+        deal_name="D",
+        periods=[
+            AnswerKeyPeriod(
+                reporting_date="2025-03-18",
+                period_label="March 2025",
+                covenants=[
+                    CovenantResult(name="hostile_stats", threshold=1.0, actual=99.0, passed=True),
+                    CovenantResult(name="hostile_date", threshold=1.0, actual=98.0, passed=True),
+                    CovenantResult(name="neighbour", threshold=50.0, passed=True),
+                ],
+                pool_stats={"neighbour_ratio": 75.0},
+            )
+        ],
+    )
+    triggers = [
+        _named_trigger("hostile_stats", metric="pool_stats", threshold=1.0),
+        _named_trigger("hostile_date", metric="reporting_date", threshold=1.0),
+        _named_trigger("neighbour", metric="neighbour_ratio", threshold=None),
+    ]
+    captured: list[dict] = []
+    real_execute = CovenantMonitor.execute
+
+    def spy(self, input):
+        captured.extend(input.periods)
+        return real_execute(self, input)
+
+    monkeypatch.setattr(CovenantMonitor, "execute", spy)
+
+    ctx = _DealGrading(
+        deal_id="d",
+        deal_ctx={"deal_name": "D"},
+        model=None,
+        answer_key=key,
+        series=None,
+        recon=None,
+        fold_error=None,
+    )
+    # The hostile trigger may or may not fail on its own metric; that is not what
+    # is under test and must not decide the outcome, so it is suppressed and the
+    # captured period's SHAPE is the assertion.
+    with suppress(Exception):
+        _grade_covenants("covenants", ctx, triggers_loader=lambda _ctx: triggers)
+
+    assert len(captured) == 1
+    period = captured[0]
+    assert period["reporting_date"] == "2025-03-18"
+    assert period["pool_stats"] == {"neighbour_ratio": 75.0}
+    # The neighbour's published pool statistic is still reachable at top level.
+    assert period["neighbour_ratio"] == pytest.approx(75.0)

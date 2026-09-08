@@ -60,6 +60,7 @@ from typing import Any
 from pydantic import BaseModel, Field
 
 from loanwhiz.extraction.collateral_ledger import CollateralLedger, CollateralPeriod
+from loanwhiz.primitives.capital_structure import CapitalStructure
 from loanwhiz.primitives.deal_state import DealState, PeriodCollections
 from loanwhiz.primitives.notes_cash_parser import NotesCashPeriod, NotesCashReport
 from loanwhiz.primitives.period_state_machine import (
@@ -180,18 +181,26 @@ def build_period_inputs(
 # Step 2 — prospectus capital structure from the extracted deal model
 # ===========================================================================
 
-_TRANCHE_KEY_BY_SENIORITY = ("class_a_balance", "class_b_balance", "class_c_balance")
+#: The three canonical names ``DealState.seed_from_prospectus`` still requires
+#: together when a structure names *only* canonical classes. Kept so a 2-tranche
+#: canonical deal seeds exactly as before; a deeper stack is passed through whole.
+_CANONICAL_BALANCE_KEYS = ("class_a_balance", "class_b_balance", "class_c_balance")
 
 
 def capital_structure_from_deal_model(deal_model: dict[str, Any]) -> dict[str, float]:
     """Read the seed prospectus capital structure into the engine's shape.
 
-    Maps the extracted deal model's ``tranche_structure`` (a list of
-    ``{name, size_eur, rating, rate, seniority}`` ordered senior→junior) onto the
-    ``class_{a,b,c}_balance`` keys ``DealState.seed_from_prospectus`` expects.
-    Tranches are ordered by their ``seniority`` field (ascending = most senior
-    first); the first three map to Class A / B / C. A numeric ``rate`` is carried
-    through as ``class_x_rate_pct`` for the interest needs where parseable.
+    Maps the extracted deal model's ``tranche_structure`` onto the
+    ``{<name>_balance, <name>_rate_pct}`` mapping
+    ``DealState.seed_from_prospectus`` consumes, via the one shared builder
+    (:meth:`CapitalStructure.from_tranche_structure`).
+
+    **This used to take the first three tranches by seniority and zero-fill the
+    rest** (#478). On a three-class RMBS that was invisible; on Cairn's
+    eight-class CLO it would have mapped Class A / B-1 / B-2 onto A / B / C and
+    silently dropped five classes — publishing a capital structure 39% smaller
+    than the deal's, with no error anywhere. The builder now refuses a stack it
+    cannot place in full instead.
 
     Parameters
     ----------
@@ -202,63 +211,28 @@ def capital_structure_from_deal_model(deal_model: dict[str, Any]) -> dict[str, f
     Returns
     -------
     dict[str, float]
-        ``{class_a_balance, class_b_balance, class_c_balance}`` plus any parseable
-        ``class_x_rate_pct``.
+        ``{<name>_balance}`` for every class, plus ``{<name>_rate_pct}`` for
+        each class stating a genuinely numeric coupon.
 
     Raises
     ------
     ValueError
-        If the deal model carries no usable tranche balances.
+        If the deal model states no placeable tranche stack.
+        :class:`UnresolvableCapitalStructure` is a ``ValueError``, so an existing
+        caller catching ``ValueError`` keeps working.
     """
-    tranches = list(deal_model.get("tranche_structure") or [])
-    tranches.sort(key=lambda t: (t.get("seniority") if t.get("seniority") is not None else 99))
-
-    cap: dict[str, float] = {}
-    for idx, key in enumerate(_TRANCHE_KEY_BY_SENIORITY):
-        if idx >= len(tranches):
-            break
-        size = tranches[idx].get("size_eur")
-        if size is None:
-            continue
-        cap[key] = float(size)
-        rate = _parse_rate(tranches[idx].get("rate"))
-        if rate is not None:
-            cap[key.replace("_balance", "_rate_pct")] = rate
-
-    if not any(k in cap for k in _TRANCHE_KEY_BY_SENIORITY):
-        raise ValueError(
-            "deal model has no usable tranche_structure size_eur figures — "
-            "cannot seed the liability side from the prospectus"
-        )
-    # seed_from_prospectus requires all three balances; default a missing tranche
-    # to 0 (a 2-tranche deal still seeds cleanly).
-    for key in _TRANCHE_KEY_BY_SENIORITY:
-        cap.setdefault(key, 0.0)
+    structure = CapitalStructure.from_tranche_structure(
+        deal_model.get("tranche_structure")
+    )
+    cap = structure.to_engine_mapping()
+    # ``seed_from_prospectus`` keeps a strict all-three contract for a structure
+    # naming *only* canonical classes, so a canonical-but-short stack (a
+    # two-tranche deal) still needs its missing sibling present. A stack with any
+    # non-canonical name seeds exactly the classes it states and is left alone.
+    if all(name in ("class_a", "class_b", "class_c") for name in structure.names):
+        for key in _CANONICAL_BALANCE_KEYS:
+            cap.setdefault(key, 0.0)
     return cap
-
-
-def _parse_rate(raw: Any) -> float | None:
-    """Best-effort parse of a tranche ``rate`` into a percent float, or None.
-
-    Tranche rates in the seed are free text like ``"3m EURIBOR + 0.45"`` or a
-    bare number. Only a cleanly numeric leading value is taken (the spread/margin
-    is not a usable absolute coupon); a floating-rate description with no fixed
-    coupon yields ``None`` (no interest need modelled for that tranche, matching
-    the engine's missing-rate default).
-    """
-    if raw is None:
-        return None
-    if isinstance(raw, (int, float)):
-        return float(raw)
-    text = str(raw).strip()
-    if not text:
-        return None
-    # A bare numeric string ("3.62") is a usable coupon; anything with letters
-    # (a EURIBOR description) is not a fixed coupon we can apply.
-    try:
-        return float(text)
-    except ValueError:
-        return None
 
 
 # ===========================================================================

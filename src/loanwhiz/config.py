@@ -75,7 +75,10 @@ GREEN_LION = {
 #   2. the deal's *extracted model* (the cached ``DealModel`` from the
 #      extraction pipeline), where it yields a complete engine-ready value —
 #      today only ``capital_structure``, and only when the extracted tranches
-#      carry a numeric coupon (a EURIBOR/margin reference string is not coerced);
+#      carry a numeric coupon (a EURIBOR/margin reference string is not coerced).
+#      ``projection_base`` has a tier here too, but a *derived* rather than an
+#      extracted one — the deal's latest loan tape plus the senior coupon
+#      already resolved above (#479);
 #   3. the ``_GREEN_LION_*`` constants in ``loanwhiz.api.main`` as a **labelled
 #      last-resort fallback consulted ONLY for the in-code Green Lion 2026-1
 #      deal** (whose context deliberately omits these keys because those
@@ -100,9 +103,19 @@ GREEN_LION = {
 #   - ``original_pool_balance``: float (EUR) — the pool balance at deal closing,
 #       used as the denominator for clean-up-call proximity and the loss-rate.
 #       Used by ``/deal/{id}/compliance``.
-#   - ``projection_base``: dict carrying ``current_pool_balance`` plus the
-#       capital-structure / reserve-account figures the forward projection runs
-#       on. Used by ``/deal/{id}/project``.
+#   - ``projection_base``: dict stating the forward projection's starting point,
+#       read for exactly two values — ``current_pool_balance`` (the pool's
+#       balance today, the projected series' period-0 opening) and
+#       ``class_a_rate_pct`` (the annual rate the pool accrues at, in practice
+#       the senior class's coupon). Used by ``/deal/{id}/project``,
+#       ``/deal/{id}/stress-matrix`` and /compare's projected-series fallback.
+#       Any further keys are ignored: the in-code Green Lion constant also
+#       carries tranche and reserve figures, and no consumer has ever read them.
+#       **This key does not need declaring for a deal that registers a loan tape
+#       and states a numeric senior coupon** — ``_resolve_projection_base``
+#       derives both values from those (#479). It has no *extracted-model* tier
+#       and cannot have one: the extracted deal model is a prospectus extraction
+#       and states no pool balance at any date.
 #
 # Covenant TRIGGERS are NOT a deal-context key: ``/deal/{id}/compliance`` reads
 # the deal model's *extracted* ``covenants.triggers`` from the cached deal model
