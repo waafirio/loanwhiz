@@ -91,13 +91,39 @@ Three properties of that period are deliberate:
 - **A class the report states no rate for is excluded, not coerced** — the
   Subordinated Notes, by the same rule that excludes Class F above.
 
-**What a graded PoP cell here will *not* prove.** The report states EUR 0.00 of
-available principal funds for this period, so all 62 of its Principal
-Priority-of-Payments steps are zero. An engine that never pays anything
-reproduces that waterfall exactly, so the redemption row cannot distinguish a
-correct cascade from a silent one; only the Interest row, whose 62 steps
-distribute EUR 7,255,062.35 across 22 non-zero payments, carries that signal.
+**What a graded PoP cell here does *not* prove — now measured, not predicted
+(#496).** The report states EUR 0.00 of available principal funds for this
+period, so every one of its Principal Priority-of-Payments steps is zero. An
+engine that never pays anything reproduces that waterfall exactly, so the
+redemption row cannot distinguish a correct cascade from a silent one; only the
+Interest row, whose steps distribute EUR 7,255,062.35, carries that signal.
 State the bound wherever the grade is published (#481).
+
+**And the Interest row, run, does not reconcile.** #496 folded the deal's own
+extracted 29-step cascade against this document and reports a shortfall of EUR
+1,820,150.42 against the stated available revenue: this report prints its
+waterfall as 62 rows, several of them sub-lettered components of one cascade
+step (`(A)(i)`, `(H)(i)`, `(H)(ii)`, `(CC)(1)(a)`, and two it re-letters bare
+`(a)`), and the reconciler's report-label folding handles only the purely-numeric
+`(b)(1..n)` wrap the Dutch RMBS reports produce. Two consequences worth stating
+beside the key rather than only in the grade: the rows that *do* join agree
+because each step's amount is taken from the report and compared to itself —
+no Cairn recipient is in `ENGINE_COMPUTED_RECIPIENTS`, so not one line is
+independently computed — and Class B's published EUR 644,398.50, which the
+report splits across `(H)(i)` and `(H)(ii)`, reconciles as 0.00-vs-0.00 against
+an unjoined parent label.
+
+**A fourth property of the union, found by grading it.** Because three of this
+key's four periods come from trustee reports that state no Priority of Payments,
+a fold built from the one PoP-bearing document produces one period result against
+the key's four, and `reconcile_series` refuses the join rather than grading a
+partial answer — so `reconcile_against_answer_key` raises on this key before
+comparing a figure. The refusal is correct; it is recorded here because it means
+the union's cadence, not any number in it, is what stands between this key and a
+gradeable cell. `tests/test_clo_pop_grading.py` holds all of the above. Whoever
+takes it on: **do not close a gap from this side.** An answer key edited to fit
+the engine grades the engine against itself, which is the failure this whole
+directory exists to prevent.
 
 ### The discipline all three routes share
 

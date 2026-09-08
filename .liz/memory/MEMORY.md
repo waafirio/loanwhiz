@@ -11,6 +11,7 @@ triage by opening the entry, not by reading the line.
   - [2026-09-06 · gotcha · #471](#2026-09-06--gotcha--471) — keywords: grep-for-absence, banned substring, retracted wording, prose assertion, denial, false positive
   - [2026-09-08 · pitfall · #481](#2026-09-08--pitfall--481) — keywords: all-pass ground truth, never-fires mutant, graded cell bound, covenants_graded, published outcomes vary, answer key
   - [2026-09-08 · pattern · #495](#2026-09-08--pattern--495) — keywords: several documents, one constructor per document, merge_answer_keys, per-period assertion, answer key, PoP section
+  - [2026-09-08 · pitfall · #496](#2026-09-08--pitfall--496) — keywords: steps_passed, tie-out gate, report-supplied, engine_computed_passed, unjoined label, sub-lettered rows, failing grade
 - [Extraction guards & false-positive filters](extraction-guards.md)
   - [2026-09-02 · pitfall · #439](#2026-09-02--pitfall--439) — keywords: _CLASS_LETTERS, tranche, note class, Class J, Class O, false positive, guard, proxy range
   - [2026-09-05 · pitfall · #456](#2026-09-05--pitfall--456) — keywords: widening a guard, newly visible input, N/A cell, scavenged rating, Subordinated Notes, untested downstream

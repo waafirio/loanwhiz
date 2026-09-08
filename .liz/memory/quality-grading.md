@@ -17,6 +17,7 @@ same PR, then assert a `passed` cell; a key alone silently grades nothing.
 Refs: #440
 Refs: #492 — same pairing needed when the capability matrix left the builder map.
 Refs: #495 — committing a CLO's PoP key changed no cell's grade, only its reason.
+Refs: #496 — the pairing is unavailable when the key's period count exceeds the foldable documents.
 
 ## 2026-09-05 · pitfall · #457
 
@@ -87,3 +88,16 @@ document supplies one; the per-period form gets *stricter*, because it also pins
 that the two documents stay unmixed.
 
 Refs: #495
+
+## 2026-09-08 · pitfall · #496
+
+A reconciliation can pass every step and still be wrong twice over. Assert three
+things beside the deltas, never `steps_passed` alone: the **tie-out** (distributed
++ rounding == available funds — the join loses money silently); the **source
+classification** (a step whose amount is taken from the report is compared to
+itself, so zero engine-computed lines proves routing, not computation); and the
+**unjoined published rows** (a label the report prints as sub-lettered components
+matches no step, so a real payment reconciles 0.00-vs-0.00 against its parent).
+On a failing grade, pin the figures and change neither side: the gap is it.
+
+Refs: #496
