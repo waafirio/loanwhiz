@@ -39,3 +39,16 @@ bucket that means "nothing to report", and make "states it in no form" a
 distinct branch from "states it as zero".
 
 Refs: #471
+
+## 2026-09-08 · pitfall · #478
+
+Grep an untyped dict shape's **key names**, not a mapper's function name,
+before changing one: such a shape gets built in several places and they drift
+*asymmetrically*. Three built `capital_structure` here — one refused an
+unmappable stack, one silently kept the top three and zero-filled, one was a
+hand-copy — and the permissive one is both the dangerous one and the one no
+test caught, since dropping classes shrinks a *denominator* and reads as
+health. Give the shape a type and one builder, and put the "every input row
+survived" check in the builder: a type is satisfied by a shorter list.
+
+Refs: #478
