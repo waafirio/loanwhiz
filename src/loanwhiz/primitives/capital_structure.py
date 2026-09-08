@@ -344,6 +344,11 @@ def senior_tranche_name(capital_structure: Mapping[str, Any]) -> str | None:
     mapping names no class at all, which the callers report against
     ``capital_structure`` itself.
     """
+    if not isinstance(capital_structure, Mapping):
+        # A ``deals.json`` value is operator-authored and only checked to be
+        # JSON; a list or string here must reach the caller's labelled 422 for
+        # a misconfigured deal, not an AttributeError 500 from inside the type.
+        return None
     try:
         return CapitalStructure.from_engine_mapping(capital_structure).senior.name
     except UnresolvableCapitalStructure:

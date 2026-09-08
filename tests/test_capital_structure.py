@@ -29,6 +29,7 @@ from loanwhiz.primitives.capital_structure import (
     UnresolvableCapitalStructure,
     engine_tranche_name,
     numeric_rate_pct,
+    senior_tranche_name,
 )
 from loanwhiz.primitives.deal_state import DealState, PeriodCollections
 from loanwhiz.primitives.period_state_machine import (
@@ -247,6 +248,24 @@ class TestTheStackIsPlacedInFull:
         assert structure.names == ("class_a", "class_b", "class_c")
         assert structure.senior.rate_pct == pytest.approx(1.07)
         assert structure.tranche("class_b").rate_pct is None
+
+
+    def test_a_malformed_declared_config_refuses_rather_than_500ing(self) -> None:
+        """`deals.json` is operator-authored and only checked to be JSON.
+
+        A list or string where a structure belongs must reach the resolver's
+        labelled 422 for a misconfigured deal, not an AttributeError from inside
+        the type — the operator needs to be told which deal and which key.
+        """
+        for malformed in ([], "class_a_balance", 7, None):
+            assert senior_tranche_name(malformed) is None
+
+        with pytest.raises(HTTPException) as excinfo:
+            api_main._with_senior_coupon(
+                "sponsor-2025-1", ["class_a_balance"], is_green_lion=False
+            )
+        assert "capital_structure" in excinfo.value.detail
+        assert "sponsor-2025-1" in excinfo.value.detail
 
 
 # ===========================================================================
