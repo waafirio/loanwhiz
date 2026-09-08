@@ -39,6 +39,7 @@ import pytest
 # `loanwhiz.domain` unimportable as the first loanwhiz import. Same ordering
 # note as `test_recipient_need_contract.py`; unrelated to this change.
 from loanwhiz.primitives.waterfall_interpreter import (  # isort: skip
+    REFUSAL_ALLOCATION_NOT_SUPPLIED,
     REFUSAL_INPUT_UNAVAILABLE,
     REFUSAL_RECOGNISED_NOT_EVALUABLE,
     REFUSAL_REPORT_SUPPLIED,
@@ -299,6 +300,18 @@ class TestRefusalsStayDistinguishable:
         assert (
             refusal_reason("class_c_coverage_test_cure", _funds())
             == REFUSAL_REPORT_SUPPLIED
+        )
+
+    def test_a_principal_step_waiting_on_the_allocation_is_not_report_supplied(self):
+        """Two different missing inputs, two different answers.
+
+        A principal step is waiting on ``allocate_principal``; a cure is waiting
+        on a reported amount. Collapsing them sends whoever reads the trace
+        looking for the wrong thing.
+        """
+        assert (
+            refusal_reason("class_a_notes_principal", _funds())
+            == REFUSAL_ALLOCATION_NOT_SUPPLIED
         )
 
     def test_an_unresolved_coupon_refuses_at_the_input_not_the_vocabulary(self):

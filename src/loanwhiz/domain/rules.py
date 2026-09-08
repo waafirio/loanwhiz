@@ -497,6 +497,17 @@ def _assert_recipient_vocabulary_coherent() -> None:
     """
     canonical = {r.value for r in RecipientType}
 
+    # The merged view is built with ``{**LEGACY, **CLO}``, so a key in both
+    # tables silently takes CLO's target and the legacy row reads as if it were
+    # still in force. There is no overlap today; this is what keeps it that way.
+    collisions = sorted(set(LEGACY_RECIPIENT_SPELLINGS) & set(CLO_RECIPIENT_SPELLINGS))
+    if collisions:
+        raise ImportError(
+            f"{collisions} are declared in BOTH LEGACY_RECIPIENT_SPELLINGS and "
+            f"CLO_RECIPIENT_SPELLINGS. The merge would silently keep the CLO "
+            f"target and drop the legacy one — declare each spelling once."
+        )
+
     shadowed = sorted(set(RECIPIENT_SPELLINGS) & canonical)
     if shadowed:
         raise ImportError(

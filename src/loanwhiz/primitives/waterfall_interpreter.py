@@ -760,6 +760,7 @@ def compute_need(recipient: str, funds: WaterfallFunds) -> tuple[float, bool]:
 REFUSAL_UNKNOWN_RECIPIENT = "unknown_recipient"
 REFUSAL_RECOGNISED_NOT_EVALUABLE = "recognised_not_evaluable"
 REFUSAL_REPORT_SUPPLIED = "report_supplied"
+REFUSAL_ALLOCATION_NOT_SUPPLIED = "allocation_not_supplied"
 REFUSAL_INPUT_UNAVAILABLE = "input_unavailable"
 
 
@@ -783,8 +784,13 @@ def _evaluate_need(
 
     calc = NEED_CALCULATORS.get(recipient)
     if calc is None:
-        # A declared recipient whose need legitimately comes from elsewhere —
-        # a step_override or the principal allocation — and none was supplied.
+        # A declared recipient whose need legitimately comes from elsewhere, and
+        # none was supplied. Which elsewhere matters to whoever reads this: a
+        # principal step is waiting on ``allocate_principal``, a cure or an
+        # expense tier on a reported amount. Collapsing them would put an
+        # operator looking for the wrong missing input.
+        if need_source_for(canonical) is NeedSource.allocation:
+            return 0.0, False, REFUSAL_ALLOCATION_NOT_SUPPLIED
         return 0.0, False, REFUSAL_REPORT_SUPPLIED
 
     need = calc(funds)
