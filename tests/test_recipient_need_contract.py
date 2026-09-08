@@ -48,6 +48,7 @@ from loanwhiz.primitives.waterfall_interpreter import (  # isort: skip
 )
 from loanwhiz.domain.rules import (  # isort: skip
     LEGACY_RECIPIENT_SPELLINGS,
+    RECIPIENT_SPELLINGS,
     RECIPIENT_BASIS,
     RECIPIENT_NEED_SOURCE,
     AmountRule,
@@ -216,7 +217,7 @@ class TestRegistryMatchesContract:
         A registry entry under an undeclared spelling reads as coverage in a
         `len(NEED_CALCULATORS)` glance while being unreachable in practice.
         """
-        declared = {r.value for r in RecipientType} | set(LEGACY_RECIPIENT_SPELLINGS)
+        declared = {r.value for r in RecipientType} | set(RECIPIENT_SPELLINGS)
         assert sorted(set(NEED_CALCULATORS) - declared) == []
 
     def test_legacy_spelling_resolves_to_its_canonical_recipients_calculator(
@@ -228,7 +229,12 @@ class TestRegistryMatchesContract:
         ``class_a_pdl_replenishment`` and ``class_a_pdl_cure`` drifting onto
         different formulas.
         """
-        for spelling, recipient in LEGACY_RECIPIENT_SPELLINGS.items():
+        for spelling, recipient in RECIPIENT_SPELLINGS.items():
+            if recipient.value not in NEED_CALCULATORS:
+                # An allocation- or step_override-backed recipient has no
+                # calculator by design; the alias correctly has none either.
+                assert spelling not in NEED_CALCULATORS
+                continue
             assert NEED_CALCULATORS[spelling] is NEED_CALCULATORS[recipient.value]
 
     def test_every_legacy_spelling_also_maps_through_the_taxonomy(self) -> None:
