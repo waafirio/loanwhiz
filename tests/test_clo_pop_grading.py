@@ -397,3 +397,65 @@ def test_grading_left_the_committed_answer_key_untouched(clo_key: DealAnswerKey)
     (pop_period,) = [p for p in committed["periods"] if p["revenue_pop"]]
     assert pop_period["available_revenue_funds"] == PUBLISHED_AVAILABLE_REVENUE
     assert len(pop_period["revenue_pop"]) == 62
+
+
+# ---------------------------------------------------------------------------
+# 5. The published statements say what was measured, and not what it retracted.
+# ---------------------------------------------------------------------------
+
+#: Where the grade is stated for a reader, and what each may no longer claim.
+#: Each entry is the whole retracted assertion, lower-cased — never a fragment
+#: of one (#471): the corrected prose still contains "the cell refuses on the
+#: second, the offline engine series", which is true, and a crude ban on that
+#: substring would flag the sentence that now carries the result.
+RETRACTED_CLAIMS: tuple[tuple[str, tuple[str, ...]], ...] = (
+    (
+        "docs/data-card.md",
+        (
+            "the offline engine series, which is #496's",
+            "refuses on the second, which is #496's",
+            "all 65 of its extracted step recipients resolve to no canonical",
+            "no published-report reconciliation",
+        ),
+    ),
+    (
+        "README.md",
+        ("no answer key is authored, so no cell of it is",),
+    ),
+    (
+        "src/loanwhiz/data/deals/answer_keys/README.md",
+        ("what a graded pop cell here will *not* prove",),
+    ),
+)
+
+
+def test_the_published_statements_carry_the_measured_result() -> None:
+    """The cards state the grade, and no longer state what it disproved.
+
+    Three documents predicted this reconciliation before it was run, and each
+    said something the run falsified — the data card twice over (it deferred the
+    cell to "#496's" and still said every extracted recipient resolved to no
+    canonical ``RecipientType``, which #503 had already closed), the top-level
+    README once ("no answer key is authored"). A reason that stopped being true
+    tells this deal a story true only of its past, which is the #457/#471 failure
+    this repo has now had to correct three times.
+
+    Both directions are asserted, for the reason ``test_the_user_facing_no_tape_card``
+    gives: a ban alone passes by deleting the paragraph, so the shortfall itself
+    must appear in each card. That also makes the published figure re-derived
+    rather than transcribed — it is the same constant the reconciliation above
+    asserts, so a card quoting a stale number reds here.
+    """
+    repo_root = Path(__file__).resolve().parents[1]
+    shortfall = f"{REVENUE_SHORTFALL:,.2f}"
+
+    for relative_path, retracted_claims in RETRACTED_CLAIMS:
+        prose = (repo_root / relative_path).read_text(encoding="utf-8")
+        lowered = prose.lower()
+        # `in` is evaluated into a bool first: asserting the operator directly
+        # makes pytest print the whole document on failure, burying the claim.
+        still_present = [claim for claim in retracted_claims if claim in lowered]
+        assert still_present == [], (relative_path, still_present)
+        # And it still states the result, so this cannot pass by deleting it.
+        states_the_result = shortfall in prose
+        assert states_the_result, (relative_path, shortfall)
