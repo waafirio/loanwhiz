@@ -453,9 +453,21 @@ def _grade_covenants(
     for that period and compares published pass/fail to the engine's
     breached/OK. Only evaluable, name-matched covenants are graded — unmatched or
     not-evaluable published covenants are surfaced honestly, never faked.
+
+    Two published figures may reach the engine here, both strictly filling an
+    absence and never overriding one: a required level the extracted trigger
+    lacks (:func:`~loanwhiz.primitives.reconciliation_answer_key.quantify_triggers`)
+    and a computed ratio the monitor cannot resolve from an answer key's periods
+    (:func:`~loanwhiz.primitives.reconciliation_answer_key.published_metric_values`).
+    The reverse direction is what must never happen: an answer key inferred from
+    engine output would grade the engine against itself. Nothing here writes to
+    the key, and the committed keys are regenerated from their source documents.
     """
     from loanwhiz.primitives.covenant_monitor import CovenantInput, CovenantMonitor
-    from loanwhiz.primitives.reconciliation_answer_key import quantify_triggers
+    from loanwhiz.primitives.reconciliation_answer_key import (
+        published_metric_values,
+        quantify_triggers,
+    )
 
     deal_id = ctx.deal_id
     key = ctx.answer_key
@@ -474,24 +486,20 @@ def _grade_covenants(
     # A published ``CovenantResult.actual`` is offered under its trigger's own
     # metric name, so a report that states the computed ratio beside the result
     # — a CLO's coverage tests do — resolves without a pool statistic standing
-    # in for a liability-side figure. ``pool_stats`` is spread LAST and wins:
-    # this only ever supplies a value nothing else carries, the same
-    # fill-an-absence direction :func:`quantify_triggers` takes for thresholds.
+    # in for a liability-side figure. It only ever supplies a value nothing else
+    # carries: the same fill-an-absence direction :func:`quantify_triggers` takes
+    # for thresholds, and a pool statistic of the same name still wins.
     periods = []
     for p in key.periods:
-        published = {
-            metric_by_name[c.name]: c.actual
-            for c in p.covenants
-            if c.actual is not None and c.name in metric_by_name
-        }
-        periods.append(
-            {
-                "reporting_date": p.reporting_date,
-                "pool_stats": dict(p.pool_stats),
-                **published,
-                **p.pool_stats,
-            }
-        )
+        # Precedence, lowest first: a published ``actual``, then any pool
+        # statistic carrying the same name, then the two structural keys — which
+        # are written LAST so a trigger whose metric happens to be called
+        # ``pool_stats`` or ``reporting_date`` cannot displace them.
+        period_input: dict[str, Any] = dict(published_metric_values(p, metric_by_name))
+        period_input.update(p.pool_stats)
+        period_input["reporting_date"] = p.reporting_date
+        period_input["pool_stats"] = dict(p.pool_stats)
+        periods.append(period_input)
     result = CovenantMonitor().execute(CovenantInput(periods=periods, triggers=triggers))
     status_by = {(s.trigger_name, s.period): s for s in result.output.trigger_statuses}
 

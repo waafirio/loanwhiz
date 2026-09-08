@@ -28,6 +28,7 @@ They run fully offline (no network, no LLM):
 
 from __future__ import annotations
 
+from contextlib import suppress
 from pathlib import Path
 from tempfile import mkdtemp
 
@@ -57,6 +58,8 @@ from loanwhiz.primitives.quality_harness import (
     GRADE_NOT_APPLICABLE,
     GRADE_PASSED,
     QualityMatrix,
+    _DealGrading,
+    _grade_covenants,
     build_quality_matrix,
     quality_check_rows,
 )
@@ -119,6 +122,18 @@ def _gl_2023_key_from_report() -> DealAnswerKey:
     """A GL-2023-1 answer key authored from its committed Notes & Cash report."""
     return DealAnswerKey.from_notes_cash_report(
         load_green_lion_2023_1_report(), deal_id=GL23_DEAL_ID
+    )
+
+
+def _named_trigger(name: str, *, metric: str, threshold: float | None) -> TriggerDefinition:
+    return TriggerDefinition(
+        name=name,
+        description=name,
+        metric=metric,
+        threshold=threshold,
+        direction="below",
+        consequence="n/a",
+        citation=Citation(document="test", excerpt="test"),
     )
 
 
@@ -665,3 +680,73 @@ def test_quality_matrix_endpoint_returns_graded_matrix_offline() -> None:
     )
     assert clo["grade"] == GRADE_PASSED
     assert clo["evidence"]["covenants_graded"] == CLO_COVENANTS_GRADED
+
+
+def test_a_triggers_metric_name_cannot_displace_the_period_structure(monkeypatch) -> None:
+    """A published value is offered under its trigger's metric name, and a metric
+    is a free string — so ``pool_stats`` and ``reporting_date`` are writable
+    names. They are written last on purpose.
+
+    The damage a collision would do is not local: replacing ``pool_stats`` with
+    a float makes ``_extract_metric``'s ``period.get("pool_stats", {})`` lookup
+    raise for **every other** trigger, so one hostile metric name would take the
+    whole deal's grading down. (A trigger genuinely named after a structural key
+    still fails on its own — ``float()`` of a dict — which is pre-existing and
+    honest; what must not happen is it corrupting its neighbours.)
+
+    The period dict is captured at the monitor boundary rather than inferred
+    from a grade: the invariant is about the dict's shape, so assert the shape.
+    """
+    from loanwhiz.primitives.covenant_monitor import CovenantMonitor  # noqa: PLC0415
+
+    key = DealAnswerKey(
+        deal_id="d",
+        deal_name="D",
+        periods=[
+            AnswerKeyPeriod(
+                reporting_date="2025-03-18",
+                period_label="March 2025",
+                covenants=[
+                    CovenantResult(name="hostile_stats", threshold=1.0, actual=99.0, passed=True),
+                    CovenantResult(name="hostile_date", threshold=1.0, actual=98.0, passed=True),
+                    CovenantResult(name="neighbour", threshold=50.0, passed=True),
+                ],
+                pool_stats={"neighbour_ratio": 75.0},
+            )
+        ],
+    )
+    triggers = [
+        _named_trigger("hostile_stats", metric="pool_stats", threshold=1.0),
+        _named_trigger("hostile_date", metric="reporting_date", threshold=1.0),
+        _named_trigger("neighbour", metric="neighbour_ratio", threshold=None),
+    ]
+    captured: list[dict] = []
+    real_execute = CovenantMonitor.execute
+
+    def spy(self, input):
+        captured.extend(input.periods)
+        return real_execute(self, input)
+
+    monkeypatch.setattr(CovenantMonitor, "execute", spy)
+
+    ctx = _DealGrading(
+        deal_id="d",
+        deal_ctx={"deal_name": "D"},
+        model=None,
+        answer_key=key,
+        series=None,
+        recon=None,
+        fold_error=None,
+    )
+    # The hostile trigger may or may not fail on its own metric; that is not what
+    # is under test and must not decide the outcome, so it is suppressed and the
+    # captured period's SHAPE is the assertion.
+    with suppress(Exception):
+        _grade_covenants("covenants", ctx, triggers_loader=lambda _ctx: triggers)
+
+    assert len(captured) == 1
+    period = captured[0]
+    assert period["reporting_date"] == "2025-03-18"
+    assert period["pool_stats"] == {"neighbour_ratio": 75.0}
+    # The neighbour's published pool statistic is still reachable at top level.
+    assert period["neighbour_ratio"] == pytest.approx(75.0)

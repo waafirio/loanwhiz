@@ -428,6 +428,33 @@ def published_thresholds(key: DealAnswerKey) -> dict[str, float]:
     return {name: next(iter(values)) for name, values in seen.items() if len(values) == 1}
 
 
+def published_metric_values(
+    period: AnswerKeyPeriod,
+    metric_by_name: Mapping[str, str],
+) -> dict[str, float]:
+    """Metric name → the value this period publishes for it, where unambiguous.
+
+    The value half of the same transfer :func:`quantify_triggers` makes for
+    thresholds: a report that states a test's computed ratio beside its result
+    has already published the figure the monitor would otherwise have to resolve
+    from state it cannot reach. ``CovenantResult.actual`` is where that figure
+    lives, and ``metric_by_name`` maps each published covenant onto the metric
+    name its trigger reads.
+
+    Two triggers may legitimately share one metric. If they publish *different*
+    values for it this period, the metric is omitted — the same silence
+    :func:`published_thresholds` keeps, and for the same reason: picking one of
+    two disagreeing published figures would put a wrong number three layers
+    downstream, where it reads as a grading verdict rather than as ambiguity.
+    """
+    seen: dict[str, set[float]] = {}
+    for covenant in period.covenants:
+        metric = metric_by_name.get(covenant.name)
+        if metric is not None and covenant.actual is not None:
+            seen.setdefault(metric, set()).add(covenant.actual)
+    return {metric: next(iter(values)) for metric, values in seen.items() if len(values) == 1}
+
+
 def quantify_triggers(
     triggers: Iterable[TriggerDefinition],
     key: DealAnswerKey,

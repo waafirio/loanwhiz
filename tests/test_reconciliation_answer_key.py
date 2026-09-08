@@ -33,6 +33,7 @@ from loanwhiz.primitives.reconciliation_answer_key import (
     DealAnswerKey,
     answer_key_path,
     load_answer_key,
+    published_metric_values,
     published_thresholds,
     quantify_triggers,
     reconcile_against_answer_key,
@@ -397,3 +398,29 @@ def test_quantify_triggers_fills_an_absent_threshold_but_never_overrides_one() -
     assert by_name["declared"] is triggers[1]
     assert by_name["open"].metric == triggers[0].metric
     assert by_name["open"].direction == triggers[0].direction
+
+
+def test_published_metric_values_stays_silent_when_two_triggers_disagree() -> None:
+    """Two triggers may share a metric; two different published values for it is
+    ambiguity, and ambiguity resolved by picking one is a wrong number reported
+    three layers downstream as a grading verdict."""
+    period = AnswerKeyPeriod(
+        reporting_date="2025-03-18",
+        period_label="March 2025",
+        covenants=[
+            CovenantResult(name="agree_a", actual=108.68, passed=True),
+            CovenantResult(name="agree_b", actual=108.68, passed=True),
+            CovenantResult(name="clash_a", actual=100.0, passed=True),
+            CovenantResult(name="clash_b", actual=101.0, passed=True),
+            CovenantResult(name="no_actual", passed=True),
+            CovenantResult(name="not_a_trigger", actual=7.0, passed=True),
+        ],
+    )
+    metric_by_name = {
+        "agree_a": "shared_ratio",
+        "agree_b": "shared_ratio",
+        "clash_a": "contested_ratio",
+        "clash_b": "contested_ratio",
+        "no_actual": "silent_ratio",
+    }
+    assert published_metric_values(period, metric_by_name) == {"shared_ratio": 108.68}
