@@ -73,18 +73,26 @@ GL23_DEAL_NAME = "Green Lion 2023-1 B.V."
 CLO_DEAL_ID = "cairn-clo-xvii"
 CLO_DEAL_NAME = "Cairn CLO XVII DAC"
 
-#: Deals whose published **Notes & Cash Priority of Payments** is committed as an
-#: answer key, so the harness grades their distributions to the cent (#429
-#: GL-2024-1, #440 GL-2023-1).
+#: Deals whose committed answer key carries a **Priority-of-Payments** section —
+#: Green Lion's from its quarterly Notes & Cash reports (#429, #440), Cairn's from
+#: the Note Valuation Report that is the CLO analogue of one (#495). This is the
+#: set the registry's ``notes_cash_report_urls`` promise must equal.
+POP_KEYED_DEAL_IDS = {GL_DEAL_ID, GL23_DEAL_ID, CLO_DEAL_ID}
+
+#: Of those, the deals the harness can actually *grade* to the cent: a PoP key
+#: alone grades nothing, because the engine side comes from a committed offline
+#: fold registered in ``_default_series_provider`` (the #440 lesson). Cairn has
+#: no such fold yet — that is #496 — so its PoP cells stay honestly
+#: not-applicable on the series precondition rather than on the key.
 POP_GRADED_DEAL_IDS = {GL_DEAL_ID, GL23_DEAL_ID}
 
 #: Deals whose published **coverage-test results** are committed as an answer key
-#: (#481). A trustee report states no Priority of Payments, so these deals earn a
-#: key through the other constructor and grade the covenants row instead.
+#: (#481). A trustee report states no Priority of Payments, so these results reach
+#: the key through the other constructor and grade the covenants row.
 COVENANT_GRADED_DEAL_IDS = {CLO_DEAL_ID}
 
-#: Every deal carrying a committed key, by either route.
-GRADED_DEAL_IDS = POP_GRADED_DEAL_IDS | COVENANT_GRADED_DEAL_IDS
+#: Every deal carrying a committed key, by any route.
+GRADED_DEAL_IDS = POP_KEYED_DEAL_IDS | COVENANT_GRADED_DEAL_IDS
 
 #: The published coverage results the CLO key carries: 8 decided tests (Class F
 #: is published N/A and is excluded, not coerced) across 3 reporting dates.
@@ -188,8 +196,14 @@ def test_live_registry_reflects_the_backfilled_answer_keys_honestly() -> None:
     Green Lion 2024-1 (#429) and 2023-1 (#440) publish a Notes & Cash report, so
     their revenue + redemption PoP grade ``passed`` to the cent. Cairn CLO XVII
     (#481) publishes monthly trustee reports stating each coverage test's result
-    and required level, so its covenants row grades ``passed`` — and its PoP rows
-    stay not-applicable, because a trustee report states no Priority of Payments.
+    and required level, so its covenants row grades ``passed``.
+
+    Since #495 Cairn's key **also** carries a Priority of Payments, authored from
+    its Note Valuation Report — and its PoP rows are still not-applicable, for a
+    reason that moved: not "no ground truth" but "no offline engine series to
+    reconcile it against" (#440's half, supplied by #496). That is asserted
+    below rather than left implicit, because a cell whose grade is unchanged but
+    whose reason is now false is exactly the #457/#471 failure.
 
     Leone Arancio and Sol-Lion II publish neither, so they have no ground truth
     to author a key from and stay wholly not-applicable — the #193 discipline,
@@ -230,7 +244,12 @@ def test_live_registry_reflects_the_backfilled_answer_keys_honestly() -> None:
             assert _cell(m, deal_id, ck).grade == GRADE_NOT_APPLICABLE
     for deal_id in COVENANT_GRADED_DEAL_IDS:
         for ck in ("revenue_pop", "redemption_pop", "pool_stats"):
-            assert _cell(m, deal_id, ck).grade == GRADE_NOT_APPLICABLE
+            cell = _cell(m, deal_id, ck)
+            assert cell.grade == GRADE_NOT_APPLICABLE
+            # The reason names the series, and no longer claims the key is
+            # empty — that claim was retracted when #495 committed the PoP.
+            assert "engine series" in cell.reason.lower()
+            assert "carries no" not in cell.reason.lower()
     for d in m.deals:
         if d.deal_id in GRADED_DEAL_IDS:
             continue
@@ -312,20 +331,28 @@ def test_answer_keys_exist_exactly_where_published_ground_truth_does() -> None:
         "three kinds; it must never pass vacuously"
     )
 
-    # Route 1: publishing a Notes & Cash report is exactly what earns a
-    # PoP-bearing key — no more, no less.
-    assert with_reports == POP_GRADED_DEAL_IDS
+    # Route 1: registering a report that publishes a Priority of Payments is
+    # exactly what earns a PoP-bearing key — no more, no less.
+    assert with_reports == POP_KEYED_DEAL_IDS
     for deal_id in with_reports:
         key = load_answer_key(DEAL_REGISTRY[deal_id])
         assert key is not None, f"{deal_id} publishes a report but has no committed key"
         assert any(p.revenue_pop or p.redemption_pop for p in key.periods)
 
-    # Route 2: a covenant-bearing key carries published test results and no PoP.
+    # Route 2: a covenant-bearing key carries published test results. Since #495
+    # one deal earns both routes, so the "and no PoP" half is asserted **per
+    # period** rather than per key: a trustee report states no Priority of
+    # Payments, so a period carrying its covenants must carry no PoP — while the
+    # same key may hold a separate period authored from a different document.
+    # A key-level check would have to be dropped here; a period-level one gets
+    # stricter, because it now also pins that the two documents stay unmixed.
     for deal_id in COVENANT_GRADED_DEAL_IDS:
         key = load_answer_key(DEAL_REGISTRY[deal_id])
         assert key is not None
-        assert any(p.covenants for p in key.periods)
-        assert not any(p.revenue_pop or p.redemption_pop for p in key.periods)
+        covenant_periods = [p for p in key.periods if p.covenants]
+        assert covenant_periods
+        for period in covenant_periods:
+            assert not period.revenue_pop and not period.redemption_pop
 
     # Both directions, over the whole registry.
     assert keyed == GRADED_DEAL_IDS
@@ -353,15 +380,29 @@ def test_committed_clo_answer_key_regenerates_from_its_report_fixtures() -> None
     committed report fixtures, through a path with no engine module on it, is
     what makes that unrepresentable rather than merely discouraged.
 
+    Since #495 the key is authored from **two** document sets — the trustee
+    reports and the Note Valuation Report — so the regeneration runs through the
+    union. Both halves are asserted to be present first: a byte comparison
+    against a builder that had silently stopped reading one document would still
+    pass if the committed file had been regenerated from the same broken builder,
+    so "the bytes match" is only worth what the shape check in front of it is.
+
     Byte-for-byte against the file on disk, so hand-editing a single published
-    threshold reds here."""
-    from clo_answer_key_source import clo_key_from_reports  # noqa: PLC0415
+    threshold or one waterfall step reds here."""
+    from clo_answer_key_source import clo_key_from_all_documents  # noqa: PLC0415
 
     from loanwhiz.primitives.reconciliation_answer_key import write_answer_key  # noqa: PLC0415
 
     committed = answer_key_path(CLO_DEAL_NAME)
     assert committed.exists(), "the CLO answer key is not committed"
-    regenerated = write_answer_key(clo_key_from_reports(), base_dir=Path(mkdtemp()))
+
+    key = clo_key_from_all_documents()
+    assert any(p.covenants for p in key.periods), "the trustee half is missing"
+    assert any(p.revenue_pop and p.redemption_pop for p in key.periods), (
+        "the Note Valuation half is missing"
+    )
+
+    regenerated = write_answer_key(key, base_dir=Path(mkdtemp()))
     assert regenerated.read_text(encoding="utf-8") == committed.read_text(encoding="utf-8")
 
 

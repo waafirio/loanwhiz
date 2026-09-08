@@ -559,10 +559,13 @@ def test_engine_validation_reasons_come_from_a_closed_verified_vocabulary() -> N
 
 
 def test_a_key_without_a_priority_of_payments_section_is_not_ground_truth() -> None:
-    """Cairn's real shape (#481): a genuine key carrying covenants and no PoP.
+    """A genuine key carrying covenants and no PoP — Cairn's shape until #495.
 
-    It grades a `covenants` row on /quality-matrix and must still refuse here,
-    with the reason that names *which* input is missing — never the no-key one.
+    Such a key grades a `covenants` row on /quality-matrix and must still refuse
+    here, with the reason that names *which* input is missing — never the no-key
+    one. The key is synthetic on purpose: Cairn's committed one now carries a PoP
+    section too, and this branch must stay covered by something after the one
+    deal that exercised it moved off it.
     """
     key = _fake_answer_key("cairn-clo-xvii", "Cairn CLO XVII DAC", pop=False)
     _, committed_series = _committed_key_and_series()
@@ -760,16 +763,20 @@ def test_cairn_cells_revert_when_the_derived_tape_is_deregistered() -> None:
     #457 wording — which also proves the new reasons are driven by the registry
     rather than by anything hardcoded about this deal.
     """
+    def _matrix(ctx):
+        return build_capability_matrix(
+            {"cairn-clo-xvii": ctx},
+            seed_loader=_load_cached_deal_model,
+            answer_key_loader=load_answer_key,
+            series_provider=_default_series_provider(),
+        )
+
     ctx = dict(DEAL_REGISTRY["cairn-clo-xvii"])
     assert ctx["tape_urls"], "precondition: the derived tapes are registered"
+    assert ctx["notes_cash_report_urls"], "precondition: the NVR is registered (#495)"
     ctx["tape_urls"] = []
 
-    matrix = build_capability_matrix(
-        {"cairn-clo-xvii": ctx},
-        seed_loader=_load_cached_deal_model,
-        answer_key_loader=load_answer_key,
-        series_provider=_default_series_provider(),
-    )
+    matrix = _matrix(ctx)
     for capability_key in ("tape_analytics", "collateral_reconciliation"):
         cell = _cell(matrix, "cairn-clo-xvii", capability_key)
         assert cell.state == STATE_NOT_APPLICABLE
@@ -777,9 +784,18 @@ def test_cairn_cells_revert_when_the_derived_tape_is_deregistered() -> None:
         assert cell.evidence.citation == "Deal registry context: tape_urls is empty."
         assert cell.evidence.detail["tape_count"] == 0
 
-    # And the waterfall qualifier returns to naming the absent source, not the
-    # absent configuration.
+    # The waterfall qualifier does NOT return yet, and that is the point since
+    # #495: the Note Valuation Report is a registered ingestible source in its
+    # own right, so "no registered tape or Notes & Cash report" would be false
+    # of this deal while it is still set. The reason tracks the sources rather
+    # than the tape alone.
     waterfall = _cell(matrix, "cairn-clo-xvii", "waterfall_execution")
+    assert "no registered tape or Notes & Cash report" not in waterfall.reason
+
+    # Deregister the other source too and it does return — naming the absent
+    # source, not the absent configuration.
+    ctx["notes_cash_report_urls"] = []
+    waterfall = _cell(_matrix(ctx), "cairn-clo-xvii", "waterfall_execution")
     assert "no registered tape or Notes & Cash report" in waterfall.reason
 
 
@@ -789,7 +805,7 @@ def test_cairn_cells_revert_when_the_derived_tape_is_deregistered() -> None:
         (True, True, True),
         (True, False, True),
         (False, True, True),
-        (False, False, False),  # a covenants-only key — Cairn's real shape (#481)
+        (False, False, False),  # a covenants-only key — Cairn's shape until #495
     ],
 )
 def test_the_two_ground_truth_surfaces_agree_on_which_keys_carry_pop(

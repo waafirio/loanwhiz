@@ -19,7 +19,12 @@ per-deal answer key carrying the deal's published
 - **pool statistics** (per period) — e.g. end-of-period pool balance,
   principal collected,
 
-attachable per deal under ``data/deals/answer_keys/<slug>.json`` (resolved by
+attachable per deal under ``data/deals/answer_keys/<slug>.json``. A deal may
+publish those across more than one document — Cairn CLO XVII states its coverage
+tests in monthly trustee reports and its two Priorities of Payments in a
+quarterly Note Valuation Report — so each document has its own constructor and
+:func:`merge_answer_keys` unions them into the one committed file (#495). Keys
+are resolved by
 the same deal-name slug the committed *seed model* uses,
 ``data/deals/seed/<slug>.json``), plus the loader and the thin reconciler-
 consume adapter (:func:`reconcile_against_answer_key`) the quality_harness
@@ -67,6 +72,17 @@ from loanwhiz.primitives.reconciler import (
 #: The current answer-key schema version. Bump on a breaking shape change so a
 #: stale committed key fails loudly at load rather than mis-grading silently.
 ANSWER_KEY_FORMAT_VERSION = 1
+
+
+#: Prefix for the per-class applied-rate figures a Note Valuation Report
+#: publishes, recorded in :attr:`AnswerKeyPeriod.pool_stats` as
+#: ``applied_rate_class_a`` and so on. It is the **all-in rate the report says
+#: was applied** this period, in per cent — a CLO report publishes no index
+#: fixing, so none is recorded. No grader resolves these against the engine
+#: today; ``quality_harness._grade_pool_stats`` reports them under
+#: ``ungraded_stat_keys``, which is the honest surface for a published figure
+#: nothing yet checks.
+APPLIED_RATE_STAT_PREFIX = "applied_rate_"
 
 
 #: The date format a U.S. Bank trustee report prints in its section headers.
@@ -345,6 +361,178 @@ class DealAnswerKey(BaseModel):
             tolerance_eur=tolerance_eur,
             periods=periods,
         )
+
+    @classmethod
+    def from_note_valuation_report(
+        cls,
+        report: NotesCashReport,
+        *,
+        deal_id: str,
+        deal_name: str,
+        tolerance_eur: float = DEFAULT_TOLERANCE_EUR,
+    ) -> DealAnswerKey:
+        """Author a :class:`DealAnswerKey` from a parsed Note Valuation Report.
+
+        The **third** constructor, and a sibling of the two above rather than a
+        third format (#495). A CLO's quarterly Note Valuation Report publishes,
+        on facing sections, an Interest and a Principal Priority of Payments —
+        the same facts an RMBS Notes & Cash report carries, which is why
+        :mod:`loanwhiz.primitives.note_valuation_parser` emits the *existing*
+        :class:`NotesCashReport` shape. So the PoP half of this constructor is
+        deliberately identical in effect to :meth:`from_notes_cash_report`.
+
+        What it adds is the half that report carries and an RMBS one does not:
+        the **Distribution Summary's per-class all-in applied rate**, recorded
+        in ``pool_stats`` as ``applied_rate_<class key>``. That is the rate the
+        report says was actually applied this period — *not* an index fixing.
+        The document publishes no EURIBOR fixing anywhere, so none is written;
+        inventing one would put a figure in ground truth that no document
+        states. ``pool_stats`` is the only free-form published-figure map this
+        schema carries, and no reader grades an ``applied_rate_*`` key today, so
+        :func:`~loanwhiz.primitives.quality_harness._grade_pool_stats` reports
+        it under ``ungraded_stat_keys`` — surfaced honestly rather than faked.
+
+        **No engine module is on this path.** Every figure comes from
+        :mod:`loanwhiz.primitives.note_valuation_parser` reading the report's own
+        text. An answer key inferred from the engine's own output would grade the
+        engine against itself and make every cell vacuously green; the
+        regeneration regression in ``tests/test_quality_harness.py`` is what
+        makes that checkable rather than merely intended.
+
+        Three refusals, mirroring the trustee constructor's and preserving the
+        parser's own acceptance oracle rather than routing around it:
+
+        - a period stating **no available funds** for either waterfall never
+          passed :func:`~loanwhiz.primitives.note_valuation_parser.reconcile_note_valuation`'s
+          tie-out of the step sum to the report's own stated total, so its steps
+          are unverified against the document;
+        - a period with **no steps on either side** carries no Priority of
+          Payments at all — writing it would claim a section this key does not
+          have, which is exactly the overclaim ``_has_pop_section`` reads;
+        - a period whose **own** ``deal_name`` — the deal name the parser read
+          off the report's first page, not the one the caller passed — names a
+          different deal, the guard that stops one deal's report being authored
+          under another's slug.
+
+        A class the report publishes **no** rate for (Cairn's Subordinated
+        Notes) is **excluded, not coerced**: ``interest_rate_applied is None``
+        means the report prints none, never "zero per cent", and #481's rule
+        applies unchanged.
+        """
+        periods: list[AnswerKeyPeriod] = []
+        for period in report.periods:
+            if period.deal_name is not None and period.deal_name != deal_name:
+                raise ValueError(
+                    f"Note Valuation Report for {period.period_label!r} states deal "
+                    f"{period.deal_name!r}, not {deal_name!r} — refusing to author "
+                    "one deal's answer key from another deal's report"
+                )
+            if not period.revenue_pop and not period.redemption_pop:
+                raise ValueError(
+                    f"Note Valuation Report period {period.period_label!r} parsed no "
+                    "Priority-of-Payments steps on either side; a key authored from "
+                    "it would claim a PoP section it does not carry"
+                )
+            for side, funds in (
+                ("Interest", period.available_revenue_funds),
+                ("Principal", period.available_principal_funds),
+            ):
+                if funds is None:
+                    raise ValueError(
+                        f"Note Valuation Report period {period.period_label!r} states no "
+                        f"available funds for its {side} Priority of Payments, so its "
+                        "steps were never tied to the report's own stated total; parse "
+                        "it with strict=True before authoring an answer key from it"
+                    )
+            periods.append(
+                AnswerKeyPeriod(
+                    reporting_date=period.reporting_date,
+                    period_label=period.period_label,
+                    available_revenue_funds=period.available_revenue_funds,
+                    available_principal_funds=period.available_principal_funds,
+                    revenue_pop=[
+                        AnswerKeyPopStep(
+                            priority=s.priority, amount=s.amount, recipient=s.recipient
+                        )
+                        for s in period.revenue_pop
+                    ],
+                    redemption_pop=[
+                        AnswerKeyPopStep(
+                            priority=s.priority, amount=s.amount, recipient=s.recipient
+                        )
+                        for s in period.redemption_pop
+                    ],
+                    pool_stats={
+                        f"{APPLIED_RATE_STAT_PREFIX}{balance.note_class}": float(
+                            balance.interest_rate_applied
+                        )
+                        for balance in period.note_balances
+                        if balance.interest_rate_applied is not None
+                    },
+                )
+            )
+        return cls(
+            deal_id=deal_id,
+            deal_name=deal_name,
+            tolerance_eur=tolerance_eur,
+            periods=periods,
+        )
+
+
+# ===========================================================================
+# Union — one deal, two published documents, one committed key
+# ===========================================================================
+
+
+def merge_answer_keys(*keys: DealAnswerKey) -> DealAnswerKey:
+    """Union several keys for **one** deal into the single key that gets committed.
+
+    A deal can publish its ground truth across more than one document: Cairn CLO
+    XVII states its coverage-test results in monthly trustee reports and its two
+    Priorities of Payments in a quarterly Note Valuation Report, and each is read
+    by its own constructor. This is the seam that puts them in one file, so a
+    key stays "everything this deal publishes" rather than "whichever document
+    was read last".
+
+    Periods are unioned and returned in reporting-date order — a stable order, so
+    the committed JSON is a function of the documents rather than of the order
+    they were passed in, which is what makes the byte-for-byte regeneration
+    regression meaningful.
+
+    Two refusals:
+
+    - keys that disagree about ``deal_id``, ``deal_name``, ``tolerance_eur`` or
+      ``format_version`` are not two views of one deal; merging them would file
+      one deal's ground truth under another's identity, or silently adopt one of
+      two disagreeing tolerances as the gate every step is graded to;
+    - two keys carrying the **same reporting date** would need a field-by-field
+      reconciliation of two documents' figures for one period. Nothing here can
+      decide which is right, and picking one would publish a figure as ground
+      truth on no authority, so it refuses instead.
+    """
+    if not keys:
+        raise ValueError("merge_answer_keys needs at least one key")
+    first, *rest = keys
+    for other in rest:
+        for field in ("deal_id", "deal_name", "tolerance_eur", "format_version"):
+            if getattr(other, field) != getattr(first, field):
+                raise ValueError(
+                    f"refusing to merge answer keys disagreeing on {field}: "
+                    f"{getattr(first, field)!r} vs {getattr(other, field)!r}"
+                )
+    periods: dict[str, AnswerKeyPeriod] = {}
+    for key in keys:
+        for period in key.periods:
+            if period.reporting_date in periods:
+                raise ValueError(
+                    f"two answer keys both carry reporting date "
+                    f"{period.reporting_date!r}; reconciling one period's figures "
+                    "across two documents is not something this can decide"
+                )
+            periods[period.reporting_date] = period
+    return first.model_copy(
+        update={"periods": [periods[date] for date in sorted(periods)]}
+    )
 
 
 # ===========================================================================
