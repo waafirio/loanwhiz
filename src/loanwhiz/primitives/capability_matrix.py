@@ -51,6 +51,7 @@ from typing import Any, Literal
 from pydantic import BaseModel, Field
 
 from loanwhiz.extraction.assembler import DealModel
+from loanwhiz.primitives.capital_structure import CapitalStructure
 from loanwhiz.primitives.derived_tape import source_kind_for
 from loanwhiz.primitives.reconciler import ReconciliationReport
 
@@ -235,58 +236,73 @@ _GREEN_LION_DEAL_ID = "green-lion-2026-1"
 def _missing_structural_config(
     deal_id: str, deal_ctx: Mapping[str, Any], model: DealModel | None
 ) -> tuple[str, ...]:
-    """Structural-config keys this deal cannot resolve, in declaration order.
+    """Structural-config keys this deal cannot resolve, in the resolver's order.
 
     Empty means the tape-driven reconstruction has the configuration it needs.
-    ``capital_structure`` also resolves from a complete extracted tranche
-    structure (the resolver's tier 2), so a deal is only short of it when the
-    seed cannot supply one either.
+    ``capital_structure`` also resolves from the deal's extracted tranche stack
+    (the resolver's tier 2), so a deal is only short of it when the seed cannot
+    supply a placeable stack either.
+
+    The senior **coupon** is reported as its own key (#478). Balances and coupons
+    resolve as separate tiers up in the resolver, because a deal routinely states
+    its whole stack while quoting the notes as ``INDEX + margin`` — so "we know
+    the classes but not the rate" is a distinct state. Naming it here is what
+    keeps the cell's reason pointing at the thing the endpoint actually refuses
+    on: Cairn resolves eight classes and is short only its coupon, and a matrix
+    that answered "missing capital_structure" would send the reader to write a
+    structure the seed already carries.
     """
     if deal_id == _GREEN_LION_DEAL_ID:
         return ()
     missing: list[str] = []
     for key in ENGINE_STRUCTURAL_CONFIG_KEYS:
-        if deal_ctx.get(key) is not None:
+        declared = deal_ctx.get(key)
+        if key == "capital_structure":
+            structure = declared if declared is not None else _extracted_structure(model)
+            if structure is None:
+                missing.append(key)
+                continue
+            coupon_key = _missing_senior_coupon_key(structure)
+            if coupon_key is not None:
+                missing.append(coupon_key)
             continue
-        if key == "capital_structure" and _extracted_tranche_balances(model):
-            continue
-        missing.append(key)
+        if declared is None:
+            missing.append(key)
     return tuple(missing)
 
 
-def _extracted_tranche_balances(model: DealModel | None) -> bool:
-    """Whether the seed can supply a complete engine-ready ``capital_structure``.
+def _extracted_structure(model: DealModel | None) -> dict[str, float] | None:
+    """The engine-shaped capital structure the seed can supply, or ``None``.
 
-    Mirrors ``loanwhiz.api.main._extracted_capital_structure``: the three senior/
-    mezz/junior ``size_eur`` balances **and** a numerically-usable coupon on the
-    senior tranche. The rate matters — an extracted ``"3m EURIBOR + 0.43"`` is
-    deliberately not coerced there, so a seed carrying only reference-rate
-    strings does not in fact yield a capital structure, and a cell that assumed
-    it did would name the wrong missing key. ``test_capability_matrix`` pins the
-    two against every registered deal rather than trusting this comment.
+    Mirrors ``loanwhiz.api.main._extracted_capital_structure`` — both go through
+    the one shared builder, so the mirror is now a *delegation* rather than a
+    hand-copy that can drift. ``test_capability_matrix`` still pins the two
+    against every registered deal.
     """
     if model is None:
-        return False
-    by_seniority = {
-        t.get("seniority"): t
-        for t in (model.tranche_structure or [])
-        if isinstance(t, dict) and isinstance(t.get("seniority"), int)
-    }
-    if not all(
-        isinstance((by_seniority.get(rank) or {}).get("size_eur"), (int, float))
-        for rank in (0, 1, 2)
-    ):
-        return False
-    rate = (by_seniority.get(0) or {}).get("rate")
-    if isinstance(rate, (int, float)):
-        return True
-    if isinstance(rate, str):
-        try:
-            float(rate.strip().rstrip("%").strip())
-        except ValueError:
-            return False
-        return True
-    return False
+        return None
+    try:
+        return CapitalStructure.from_tranche_structure(
+            model.tranche_structure
+        ).to_engine_mapping()
+    except Exception:  # noqa: BLE001 — an unplaceable stack is "no value here"
+        return None
+
+
+def _missing_senior_coupon_key(structure: Mapping[str, Any]) -> str | None:
+    """The senior ``<name>_rate_pct`` key this structure lacks, or ``None``.
+
+    Mirrors ``loanwhiz.api.main._with_senior_coupon``: both config sources are
+    ordered senior → junior, so the first ``<name>_balance`` key names the senior
+    class. A structure naming no class at all is reported against
+    ``capital_structure`` itself, matching the resolver.
+    """
+    senior = next(
+        (k[: -len("_balance")] for k in structure if k.endswith("_balance")), None
+    )
+    if senior is None:
+        return "capital_structure"
+    return None if structure.get(f"{senior}_rate_pct") is not None else f"{senior}_rate_pct"
 
 
 def _tape_source_kinds(tapes: list) -> dict[str, int]:
