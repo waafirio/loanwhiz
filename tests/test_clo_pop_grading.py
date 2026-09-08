@@ -287,7 +287,7 @@ def test_class_b_interest_passes_without_ever_being_compared(
     nothing about the largest single figure the engine failed to place. A grade
     that reported only ``steps_passed`` would call this correct.
     """
-    ((class_b,),) = ([s for s in recon.periods[0].revenue.steps if s.priority == "(H)"],)
+    (class_b,) = [s for s in recon.periods[0].revenue.steps if s.priority == "(H)"]
     assert class_b.recipient == "class_b_notes_interest"
     assert class_b.engine_amount == 0.0
     assert class_b.report_amount == 0.0
