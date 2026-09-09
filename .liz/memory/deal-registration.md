@@ -55,3 +55,15 @@ the rule itself. `_set_aside_tape_periods` is the shape: empty when nothing was
 displaced, so "folds everything" and "narrowed" stay distinguishable.
 
 Refs: #524
+
+## 2026-09-09 · pitfall · #523
+
+Assert a provenanced field at the seam that computes it, never through
+`resolve_parsed_report`. `_splice_periods` builds a fresh `ParsedReport` out of
+each period's parse and never copies the sidecar, so any deal served from
+committed fixtures resolves with `provenance == {}` however carefully the
+format's parser filled it — Green Lion included. The values themselves survive
+the splice, so the symptom reads as "my provenance edit did not work" rather
+than as a lossy splice, and the wrong thing gets rewritten.
+
+Refs: #523
