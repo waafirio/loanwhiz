@@ -616,6 +616,20 @@ def test_resolution_refuses_the_same_asset_in_two_tiers() -> None:
         )
 
 
+def test_resolution_refuses_a_member_from_an_undeclared_deal() -> None:
+    """`deals` is checked against the members, so the header cannot lie.
+
+    A consumer reads `deals` to label the figure; a resolution whose members
+    come from somewhere it does not name would attribute one deal's exposure
+    to another.
+    """
+    with pytest.raises(ValidationError, match="does not declare"):
+        CrossDealObligorResolution(
+            deals=(CAIRN,),
+            unresolved=(_unresolved(ObligorGroup(members=(_ref(CONTEGO, "LX1", "A Ltd"),))),),
+        )
+
+
 def test_resolution_needs_two_deals_to_compare() -> None:
     with pytest.raises(ValueError, match="at least two parsed schedules"):
         resolve_obligors({"a": _sched(_asset("LX1", "Alpha Ltd"))})

@@ -443,12 +443,18 @@ class CrossDealObligorResolution(BaseModel, frozen=True):
 
     @model_validator(mode="after")
     def _tiers_are_disjoint(self) -> CrossDealObligorResolution:
+        declared = set(self.deals)
         seen: set[tuple[str, str]] = set()
         for group in self.all_groups:
             for member in group.members:
                 if member.key in seen:
                     raise ValueError(
                         f"asset {member.key} appears in more than one obligor group"
+                    )
+                if member.deal not in declared:
+                    raise ValueError(
+                        f"asset {member.key} belongs to a deal this resolution does "
+                        f"not declare: {sorted(declared)}"
                     )
                 seen.add(member.key)
 
@@ -662,19 +668,14 @@ def resolve_obligors(
     # Candidates: single-deal groups from different deals folding to one name.
     by_fold: dict[str, list[ObligorGroup]] = {}
     for group in single_deal:
-        folds = {
-            candidate_fold(m.issuer_name)
-            for m in group.members
-            if name_is_usable(m.issuer_name)
-        }
+        if any(not name_is_usable(m.issuer_name) for m in group.members):
+            continue
+        folds = {candidate_fold(m.issuer_name) for m in group.members}
         if len(folds) != 1:
             continue
         fold = folds.pop()
-        if not fold:
-            continue
-        if any(not name_is_usable(m.issuer_name) for m in group.members):
-            continue
-        by_fold.setdefault(fold, []).append(group)
+        if fold:
+            by_fold.setdefault(fold, []).append(group)
 
     candidates: list[ObligorCandidate] = []
     for fold in sorted(by_fold):
