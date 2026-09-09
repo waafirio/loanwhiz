@@ -169,3 +169,16 @@ publishing the count, check what the *un*counted members lack; if the answer is
 "nothing" say so beside the figure, and never widen the set to raise it.
 
 Refs: #515
+
+## 2026-09-09 · pitfall · #525
+
+Before treating a per-subject count as evidence of a defect, compute the same
+count for a subject you already trust. "46 of 55 structural rows are blank for
+the CLO" survived an epic body, a child issue and a dispatch as a measured gap
+the coupon work would close; the same query against both externally validated
+deals returns the same blanks, because the null is `StructuralCell.value` — a
+cross-deal comparable scalar that a waterfall step or qualitative trigger has
+for no deal. A count with no control subject measures the schema, not the deal.
+The control is one query, and it runs before the fix, not after it fails.
+
+Refs: #525
