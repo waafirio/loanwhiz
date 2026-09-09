@@ -128,6 +128,18 @@ arrival separately; one passing does not imply the other.
 
 Refs: #512
 
+## 2026-09-09 · pitfall · #520
+
+A defect catalogue keyed on **one syntax misses the same bug written in
+another**. #478 listed three sites collapsing an N-class stack, all found by
+grepping *dict keys*; a fourth survived in `_primitives_seed_from_report_seed`,
+spelled as constructor **arguments** (`class_a_balance=`) that grep could not
+reach. Corollary: generalising a list off its producer does not generalise its
+consumers — `ReportAdapter` resolved eight classes while the bridge below
+delivered three. Assert arrival where the value is *read*: the list and the
+arrival are two assertions, and only the second failed.
+
+Refs: #520
 ## 2026-09-09 · pitfall · #511
 
 A reconciliation that **ties** proves nothing until you know where the engine's
