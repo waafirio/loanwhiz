@@ -28,6 +28,7 @@ from loanwhiz.primitives.report_adapter import (
     DEFAULT_REVENUE_RESIDUAL_LABEL,
     DEFAULT_TRANCHE_CLASSES,
     _fold_revenue_pop,
+    _step_labels,
 )
 
 _REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -185,8 +186,8 @@ def test_period_inputs_overrides_keyed_by_priority_label(
     # Engine-computed (d) class_a_interest has NO override (engine formulates it).
     assert "(d)" not in pi.revenue_step_overrides
     # The folded (b) override equals the summed (1)…(14) sub-items.
-    folded = _fold_revenue_pop(period)
-    assert pi.revenue_step_overrides["(b)"] == pytest.approx(folded["(b)"])
+    folded = _fold_revenue_pop(period, _step_labels(adapter.revenue_steps))
+    assert pi.revenue_step_overrides["(b)"] == pytest.approx(folded.amounts["(b)"])
 
 
 def test_period_inputs_per_waterfall_maps_resolve_collision(
@@ -205,7 +206,7 @@ def test_period_inputs_per_waterfall_maps_resolve_collision(
     assert pi.revenue_step_sources["(d)"] == "engine"
     assert "(d)" not in pi.revenue_step_overrides
     # Revenue (a): the report-supplied security-trustee-fee amount.
-    revenue_a = _fold_revenue_pop(period)["(a)"]
+    revenue_a = _fold_revenue_pop(period, _step_labels(adapter.revenue_steps)).amounts["(a)"]
     assert pi.revenue_step_overrides["(a)"] == pytest.approx(revenue_a)
     # Redemption (a): the ~€43.49M purchase line, NOT corrupted by revenue's (a).
     assert pi.redemption_step_sources["(a)"] == "reported"
@@ -216,15 +217,30 @@ def test_period_inputs_per_waterfall_maps_resolve_collision(
     )
 
 
-def test_revenue_pop_folding_collapses_b_subitems(period: NotesCashPeriod) -> None:
-    folded = _fold_revenue_pop(period)
+def test_revenue_pop_folding_collapses_b_subitems(
+    adapter: ReportAdapter, period: NotesCashPeriod
+) -> None:
+    """The (1)…(14) wrap folds onto (b), and #514's general fold still does it.
+
+    Green Lion's is the artefact the fold was written for, and it is the one deal
+    the engine is validated against to the cent — so this stays an assertion about
+    *this* report even though the fold that satisfies it is now deal-agnostic.
+    Nothing is left over: every published row reaches a step.
+    """
+    folded = _fold_revenue_pop(period, _step_labels(adapter.revenue_steps))
     # The raw PoP prints (1)…(14); folding yields a single (b) and no bare digits.
-    assert "(b)" in folded
-    assert not any(k.strip("()").isdigit() for k in folded)
+    assert "(b)" in folded.amounts
+    assert not any(k.strip("()").isdigit() for k in folded.amounts)
     raw_subtotal = sum(
         s.amount for s in period.revenue_pop if s.priority.strip("()").isdigit()
     )
-    assert folded["(b)"] == pytest.approx(raw_subtotal)
+    assert folded.amounts["(b)"] == pytest.approx(raw_subtotal)
+    # And the fold placed everything — a wrap artefact left unjoined would show
+    # up here rather than as a silently smaller (b).
+    assert folded.unplaced == []
+    assert folded.total == pytest.approx(
+        sum(s.amount for s in period.revenue_pop), abs=0.01
+    )
 
 
 # ---------------------------------------------------------------------------

@@ -28,11 +28,13 @@ from loanwhiz.primitives.reconciler import (
     DEFAULT_TOLERANCE_EUR,
     PeriodValidation,
     ReconciliationReport,
+    WaterfallReconciliation,
     fold_green_lion_2024_1,
     load_green_lion_2024_1_report,
     reconcile_series,
     validate_green_lion_2024_1,
 )
+from loanwhiz.primitives.report_label_fold import UnplacedReportRow
 
 
 @pytest.fixture()
@@ -202,3 +204,52 @@ def test_reconcile_series_join_mismatch_raises() -> None:
     series.period_results = series.period_results[:-1]
     with pytest.raises(ValueError, match="join mismatch"):
         reconcile_series(series, rep)
+
+
+def test_the_summary_names_every_published_row_no_step_claims() -> None:
+    """A row the join could not place is named in the summary, not merely counted.
+
+    ``unjoined_report_rows`` is a report-the-gap surface, and its normal value is
+    empty — so on every committed deal the branch that renders it never executes,
+    and "nothing to show" and "the rendering is broken" produce the same output
+    (#494). Constructing the state directly is the only way to make it fire.
+
+    Naming rather than counting is the point (#496): the ratio "26/29 steps"
+    would read as a near-pass to anyone who could not see which published money
+    the grade never reached.
+    """
+    revenue = WaterfallReconciliation(
+        waterfall_type="revenue",
+        steps=[],
+        engine_total=0.0,
+        report_total=644_398.50,
+        available_funds=644_398.50,
+        unjoined_report_rows=[
+            UnplacedReportRow(priority="(H)(i)", amount=386_773.50),
+            UnplacedReportRow(priority="(H)(ii)", amount=257_625.00),
+        ],
+    )
+    empty = WaterfallReconciliation(
+        waterfall_type="redemption",
+        steps=[],
+        engine_total=0.0,
+        report_total=0.0,
+        available_funds=0.0,
+    )
+    summary = ReconciliationReport(
+        deal_name="X",
+        periods=[
+            PeriodValidation(
+                reporting_date="2025-01-08",
+                period_label="January 2025",
+                revenue=revenue,
+                redemption=empty,
+            )
+        ],
+    ).summary()
+
+    assert "revenue (H)(i): EUR 386,773.50 published, joined to no step" in summary
+    assert "revenue (H)(ii): EUR 257,625.00 published, joined to no step" in summary
+    # The redemption side placed everything, so it contributes no lines — the
+    # section is per-waterfall, not one undifferentiated list.
+    assert "redemption (" not in summary
