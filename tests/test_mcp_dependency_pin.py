@@ -43,9 +43,40 @@ from packaging.version import Version
 _REPO_ROOT = Path(__file__).resolve().parent.parent
 _MCP_PYPROJECT = _REPO_ROOT / "mcp" / "pyproject.toml"
 
-# The major the server's decorator API does not survive. Raising the declared
-# bound past this is a deliberate act that must come with a server.py rewrite.
-_INCOMPATIBLE_MAJOR = Version("2.0.0")
+# Versions the server's decorator API does not survive. The declared range must
+# admit *none* of them. Checking only 2.0.0 would leave a hole: a range such as
+# ">=2.1,<3" excludes 2.0.0 while still resolving to an SDK with no
+# Server.list_tools(), so sample across and above the incompatible major.
+_INCOMPATIBLE_VERSIONS = tuple(
+    Version(v) for v in ("2.0.0", "2.2.0", "2.99.0", "3.0.0", "99.0.0")
+)
+
+
+def _run_probe(source: str) -> subprocess.CompletedProcess[str]:
+    """Run *source* in a fresh interpreter that can import both packages.
+
+    A subprocess rather than in-process imports, for two reasons: the rest of
+    this suite has already imported FastAPI, so an in-process ``sys.modules``
+    check proves nothing; and putting ``mcp/`` on this process's ``sys.path``
+    is the shadowing hazard this PR removed.
+
+    The environment is inherited rather than replaced -- a bare env drops HOME
+    and friends -- and the two package roots are *prepended* to any existing
+    PYTHONPATH rather than replacing it. Replacing it would drop whatever makes
+    the SDK importable in environments that put it on PYTHONPATH rather than in
+    site-packages, so the child would fail to import a dependency the parent
+    can see, and the failure would look like the defect under test.
+    """
+    env = dict(os.environ)
+    roots = [str(_REPO_ROOT / "src"), str(_REPO_ROOT / "mcp")]
+    inherited = env.get("PYTHONPATH", "")
+    env["PYTHONPATH"] = os.pathsep.join([*roots, inherited] if inherited else roots)
+    return subprocess.run(
+        [sys.executable, "-c", source],
+        capture_output=True,
+        text=True,
+        env=env,
+    )
 
 
 def _declared_mcp_requirement() -> Requirement:
@@ -70,8 +101,13 @@ def test_declared_mcp_requirement_excludes_the_incompatible_major() -> None:
         f"'{requirement}' declares no version bound at all; server.py calls the "
         "SDK's decorator API directly and does not survive a major bump"
     )
-    assert not requirement.specifier.contains(_INCOMPATIBLE_MAJOR, prereleases=True), (
-        f"'{requirement}' admits mcp {_INCOMPATIBLE_MAJOR}, where "
+    admitted = [
+        str(v)
+        for v in _INCOMPATIBLE_VERSIONS
+        if requirement.specifier.contains(v, prereleases=True)
+    ]
+    assert not admitted, (
+        f"'{requirement}' admits mcp {', '.join(admitted)}, where "
         "Server.list_tools() does not exist and build_server() raises "
         "AttributeError. Raise this bound only together with the server.py "
         "rewrite the 2.x API requires."
@@ -106,13 +142,20 @@ def test_server_builds_against_the_installed_sdk() -> None:
     ``test_live_seam_dependencies.py::test_pdf_reader_opens_a_real_pdf``.
     """
     pytest.importorskip("mcp.types", reason="MCP SDK not installed")
-    sys.path.insert(0, str(_REPO_ROOT / "mcp"))
-    try:
-        from loanwhiz_primitives_mcp.server import build_server
-
-        assert build_server() is not None
-    finally:
-        sys.path.remove(str(_REPO_ROOT / "mcp"))
+    # In a subprocess, not via sys.path surgery in-process: putting ``mcp/`` on
+    # sys.path mid-suite is the same hazard this PR removed by deleting
+    # mcp/tests/__init__.py, and a test should not reintroduce it even briefly.
+    probe = (
+        "from loanwhiz_primitives_mcp.server import build_server\n"
+        "assert build_server() is not None\n"
+        "print('built')\n"
+    )
+    result = _run_probe(probe)
+    assert result.returncode == 0, (
+        "build_server() failed against the installed SDK -- the declared range "
+        f"admits an SDK this server cannot build on:\n{result.stderr}"
+    )
+    assert result.stdout.strip() == "built"
 
 
 def test_mcp_catalogue_import_does_not_pull_in_the_rest_app() -> None:
@@ -127,25 +170,19 @@ def test_mcp_catalogue_import_does_not_pull_in_the_rest_app() -> None:
     Runs in a subprocess because the rest of this suite imports FastAPI long
     before this test executes, so ``sys.modules`` in-process proves nothing.
     """
+    # ``fastapi`` and ``loanwhiz.api`` only. Deliberately NOT ``starlette``:
+    # it is FastAPI's transport layer but other packages pull it in on their
+    # own (``sse_starlette`` and ``uvicorn``, both MCP SDK dependencies), so it
+    # flags environments where the REST app was never imported. The claim here
+    # is "the REST app stays out", and these two names are that claim exactly.
     probe = (
         "import sys\n"
         "from loanwhiz_primitives_mcp.catalogue import build_catalogue\n"
         "build_catalogue()\n"
-        "leaked = [m for m in ('fastapi', 'starlette', 'loanwhiz.api')\n"
-        "          if m in sys.modules]\n"
+        "leaked = [m for m in ('fastapi', 'loanwhiz.api') if m in sys.modules]\n"
         "print(','.join(leaked))\n"
     )
-    # Inherit the environment rather than replacing it -- a bare env drops HOME
-    # and friends, which some interpreters and site hooks need. Only PYTHONPATH
-    # matters to what is being asserted, so only PYTHONPATH is overridden.
-    env = dict(os.environ)
-    env["PYTHONPATH"] = f"{_REPO_ROOT / 'src'}:{_REPO_ROOT / 'mcp'}"
-    result = subprocess.run(
-        [sys.executable, "-c", probe],
-        capture_output=True,
-        text=True,
-        env=env,
-    )
+    result = _run_probe(probe)
     assert result.returncode == 0, result.stderr
     leaked = result.stdout.strip()
     assert not leaked, (
