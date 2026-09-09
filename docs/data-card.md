@@ -965,7 +965,7 @@ much of the CLO support was a specimen:
   but not the performance panel: it has no reconstructable series, so no
   `latest_period`, and `/deal/contego-clo-xi/compliance` and `/waterfall` return
   422 where Cairn's return 200. The cause is specific and worth naming — the
-  seed places all eight classes but gives every one a **null coupon**, so the
+  seed places every class of the stack but gives each a **null coupon**, so the
   engine refuses on a missing `class_a_rate_pct` rather than falling back to
   another deal's rate. The comparison keeps the deal in the set with
   `has_performance: false` and a note saying why, so the gap reads as a refusal
