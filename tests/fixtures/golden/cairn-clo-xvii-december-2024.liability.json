@@ -115,6 +115,19 @@
       "principal_balance": "35100000.00"
     }
   ],
+  "par_value_numerator": {
+    "components": [
+      "407181748.22",
+      "-5747614.46",
+      "0.00",
+      "-1000000.00",
+      "200000.00",
+      "-1000000.00",
+      "700000.00",
+      "0.00"
+    ],
+    "stated_total": "400334133.76"
+  },
   "period_label": "December 2024",
   "reconciled": true,
   "reporting_date": "16/12/2024",

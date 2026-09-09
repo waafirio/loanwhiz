@@ -115,6 +115,19 @@
       "principal_balance": "35100000.00"
     }
   ],
+  "par_value_numerator": {
+    "components": [
+      "411342140.14",
+      "-10328417.06",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00"
+    ],
+    "stated_total": "401013723.08"
+  },
   "period_label": "March 2025",
   "reconciled": true,
   "reporting_date": "18/03/2025",
