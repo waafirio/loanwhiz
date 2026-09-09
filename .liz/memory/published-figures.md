@@ -76,3 +76,16 @@ for every deal. Keep serving the declared value where one exists (a four-cent
 test.
 
 Refs: #479
+
+## 2026-09-09 · pattern · #528
+
+When an input is reachable only by back-solving it from the answer, the choice is
+not "refuse or assume" — read the source document directly first. The extractor's
+output is not the document: an LLM pass truncated at a character budget drops a
+whole alphabetical range, so a term it never emitted may still be stated on the
+page, and `pypdf` reads a 420pp text layer in seconds with no OCR or credentials.
+Recover the one lost fact with a deterministic parser (#480) rather than widening
+the budget and re-running a non-deterministic extraction over everything else.
+Then check the result against a value another document states independently.
+
+Refs: #528
