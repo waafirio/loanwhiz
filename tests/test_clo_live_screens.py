@@ -215,6 +215,12 @@ def test_source_split(
     The tally is asserted both ways round on purpose. A check that only looked
     for missing overrides would read the same on an empty input as on a correct
     one — "nothing to find" and "I cannot see" would be one output (#494).
+
+    **If this count moves, that is the event, not the breakage.** 3 rising is
+    real progress and 3 falling is a regression to the circularity this guards;
+    either way the figure is published in ``docs/data-card.md``'s Cairn row and
+    in ``README.md``, so move those with it rather than bumping the number here
+    to restore green.
     """
     sources, overrides = live_step_sources
     rendered = {step["priority"] for step in rendered_waterfall["revenue_waterfall"]}
