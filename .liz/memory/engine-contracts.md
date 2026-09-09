@@ -52,6 +52,7 @@ jurisdiction-native labels may resolve to no calculator, so the deal that
 motivated the fix can be the one it does not change.
 
 Refs: #493
+Refs: #535 — same rule at the API refusal: a bare 422 outlived its cause.
 ## 2026-09-08 · pitfall · #478
 
 Grep an untyped dict shape's **key names**, not a mapper's function name,
