@@ -43,6 +43,7 @@ triage by opening the entry, not by reading the line.
   - [2026-09-05 · decision · #452](#2026-09-05--decision--452) — keywords: classless default, senior class, positional metric, unmapped escape, alias row, LLM invents a position
   - [2026-09-05 · pitfall · #457](#2026-09-05--pitfall--457) — keywords: layered refusal, not_evaluable, documented cause, coverage threshold, equity tranche, unplaceable, counterfactual
   - [2026-09-08 · pitfall · #478](#2026-09-08--pitfall--478) — keywords: fixed field list, vacuous invariant, accessor default, series_invariants, chaining, non-negativity, derive from instance
+  - [2026-09-09 · pitfall · #549](#2026-09-09--pitfall--549) — keywords: _tranche_class_rank, _seniority_for, named residual, mirrors claim, unplaceable, subordinated_notes, wrong cause
 - [Extraction determinism & LLM caching](extraction-determinism.md) — keywords: classify_segments_llm, section router, determinism cache, prompt hash, force_refresh, sections_found, completeness_score, degrade-to-default
 - [Regulatory mapping tables (ESMA annexes, field codes, locators)](regulatory-mapping-tables.md) — keywords: AnnexField, extension field, code=None, field code, locator, ESMA RTS, annex numbering, CRPL, AUTL, RREL, borrowed code
   - [2026-09-06 · decision · #470](#2026-09-06--decision--470) — keywords: field identity, value conformance, NACE, NUTS-3, market price vs value, unit mismatch, obligor identifier, RTS vocabulary, derived tape
@@ -59,6 +60,7 @@ triage by opening the entry, not by reading the line.
   - [2026-09-09 · pitfall · #520](#2026-09-09--pitfall--520) — keywords: _primitives_seed_from_report_seed, class_a_balance kwargs, domain vs engine DealState, flat scalar kwargs, generalise the consumer, assert arrival
   - [2026-09-09 · pitfall · #511](#2026-09-09--pitfall--511) — keywords: tie proves nothing, amount-recovered coupon, back-solved rate, report agrees with itself, circular reconciliation, input provenance, expect green to turn red
   - [2026-09-09 · pattern · #539](#2026-09-09--pattern--539) — keywords: fact scope, per-class not per-deal, day-count basis, TrancheFunds override, parse the scope, limb boundary, block runs to end-of-text, deal-level field averages
+  - [2026-09-09 · pitfall · #549](#2026-09-09--pitfall--549) — keywords: refusal keeps the value, metric_value, not_evaluable, screen vs grade, numerator identity, exactly 100.00, notes over notes
 - [Extracting tables from PDFs](pdf-table-extraction.md) — keywords: visitor_text, text matrix, tm[4], rotated table, extraction_mode layout, row boundary, continuation line, column order, pypdf
   - [2026-09-06 · pitfall · #469](#2026-09-06--pitfall--469) — keywords: extract_text(), extraction_mode="layout", visitor_text=, tm[4]
   - [2026-09-08 · pitfall · #494](#2026-09-08--pitfall--494) — keywords: page furniture, banner prefix, data row first, footer eats a row, numeric tail, prefix filter ordering

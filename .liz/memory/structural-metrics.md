@@ -42,6 +42,7 @@ a counterfactual, never a deal figure.
 Refs: #457
 Refs: #493 — same rule, re-learned when a test would have asserted the refusal.
 Refs: #523 — the documented missing threshold was the second refusal, not the first.
+Refs: #549 — and the first refusal itself named the wrong cause.
 
 ## 2026-09-08 · pitfall · #478
 
@@ -55,3 +56,16 @@ too: `getattr(state, f"{name}_balance")` resolves only for the names that
 happen to have accessors.
 
 Refs: #478
+
+## 2026-09-09 · pitfall · #549
+
+Before refusing an input as unplaceable, check whether a sibling module already
+places it. `covenant_monitor._tranche_class_rank` claimed to mirror
+`assembler._seniority_for` but omitted its residual branch, so a CLO's equity
+tranche read as "no recognisable class letter" — a *correct* refusal naming a
+cause that was not the deal's, voiding eight coverage tests above the missing
+threshold that actually blocked them. Treat "Mirrors <fn>" as an unchecked
+claim: import the half that drifts (the vocabulary), pin the rest with a test
+walking the exporter's own list, and assert a residual moves no ratio.
+
+Refs: #549

@@ -236,29 +236,41 @@ class TestCoverageTestsResolveOntoTheStructuralMetrics:
         assert coverage["class_a_b_interest_coverage_ratio"] == "class_b_ic_ratio"
         assert len(coverage) == 8
 
-    def test_coverage_tests_refuse_at_the_placement_layer_on_the_real_stack(self, clo_deal):
-        """The *first* refusal is #452's tranche placement, not the missing threshold.
+    def test_coverage_tests_refuse_on_the_numerator_not_the_equity_tranche(self, clo_deal):
+        """The refusal names the reason that is actually true of this deal.
 
-        ``docs/data-card.md`` records that the coverage thresholds sit past the
-        definitions extractor's budget, so the tests cannot be quantified. True —
-        but on the real eight-class stack that is not the refusal that fires. The
-        equity tranche carries no class letter, so #452 refuses the whole metric
-        first (correctly: it will not narrow a denominator it cannot place).
-        Pinned because the two reasons are separately fixable, and reporting the
-        wrong one misdescribes what this deal needs.
+        Until #549 the first refusal was #452's tranche placement: the equity
+        tranche carries no class letter, so the whole metric was voided and the
+        deal was told to go find a class letter. But a named residual is not
+        unplaceable — it is *last*, which ``assembler._seniority_for`` has known
+        since #456.
+
+        What actually blocks this deal is the numerator. ``pool_balance`` here
+        is the total of the deal's own notes, so the ratio would be notes over
+        notes — and the monitor refuses the **value** as well as the verdict,
+        because a figure rendered beside "not evaluable" is read as the ratio.
+        Pinned because the reasons are separately fixable and reporting the
+        wrong one misdescribes what this deal needs: the collateral balance is
+        #550's, and only after it can a threshold mean anything.
         """
         statuses = _fold_one_period(clo_deal).trigger_evaluation.statuses
         oc = statuses["class_d_par_value_test"]
-        assert oc.metric_value is None
-        assert "subordinated_notes" in (oc.not_evaluable_reason or "")
+        assert oc.metric_value is None, "a wrong number is worse than no number"
+        assert "subordinated_notes" not in (oc.not_evaluable_reason or "")
+        assert "collateral balance" in (oc.not_evaluable_reason or "")
+        assert "#550" in (oc.not_evaluable_reason or "")
+        assert not oc.evaluable and not oc.is_triggered
 
     def test_without_the_equity_tranche_the_oc_ladder_computes_then_refuses(self, clo_deal):
         """Counterfactual — evidence the metric itself is sound on a CLO stack.
 
-        Not the deal's real structure: the equity tranche is removed so the
-        placement refusal above does not fire. It is junior to every attachment
-        point, so it enters no coverage denominator and removing it changes no
-        ratio — which is what makes this a clean probe of the *next* layer.
+        Not the deal's real structure. The equity is junior to every attachment
+        point, so it enters no coverage denominator — but this harness seeds the
+        pool from all eight tranches (404.1m) while the ladder sums seven
+        (369.0m), so dropping it also leaves the numerator no longer equal to the
+        note total. That is what gets past #549's numerator guard and makes this
+        a clean probe of the *next* layer: a real ~109% CLO overcollateralisation
+        rather than the notes-over-notes identity the live report path produces.
 
         The result is a correctly-ordered OC ladder that falls with seniority,
         and every test then refuses again for the documented reason: no threshold

@@ -15,6 +15,7 @@ Green Lion 2026-1 known triggers (from prospectus):
 
 from __future__ import annotations
 
+import math
 import re
 import time
 from typing import Any
@@ -22,6 +23,7 @@ from typing import Any
 from pydantic import BaseModel, Field
 
 from loanwhiz.domain.esma_annex2 import locator_for
+from loanwhiz.extraction.assembler import _RESIDUAL_CLASS_NAMES
 from loanwhiz.extraction.taxonomy import coverage_metric_for, normalize_threshold_unit
 from loanwhiz.primitives.base import (
     AuditEntry,
@@ -183,20 +185,69 @@ _COVERAGE_METRIC_RE = re.compile(r"^class_([a-f])_(oc|ic)_ratio$")
 #: The class letter inside a ``DealState`` tranche name (``"class_b"``).
 _TRANCHE_CLASS_RE = re.compile(r"class[_\s]*([a-z])(?![a-z])")
 
+#: A **named residual** at the start of a ``DealState`` tranche name, on the
+#: assembler's own vocabulary (``_RESIDUAL_CLASS_NAMES``) so there is one
+#: spelling of "this tranche is the equity" rather than two that can drift.
+#:
+#: The word boundary is spelled ``(?:[_\s]|$)`` rather than ``\b`` on purpose:
+#: ``DealState`` names are the snake_case slugs ``capital_structure
+#: .engine_tranche_name`` produces (``"Subordinated Notes"`` →
+#: ``"subordinated_notes"``), and ``_`` is a word character, so ``\b`` never
+#: fires after ``subordinated`` in that slug. Accepting a space as well as an
+#: underscore mirrors ``_TRANCHE_CLASS_RE``'s own ``class[_\s]*``, so both
+#: regexes read a slug and a document label the same way.
+#: ``re.escape`` because the point of importing the vocabulary is that it can
+#: grow: a member carrying a regex metacharacter would otherwise silently
+#: change the alternation's meaning (or fail to compile) at import time.
+_TRANCHE_RESIDUAL_RE = re.compile(
+    r"^(?:"
+    + "|".join(re.escape(n.lower()) for n in _RESIDUAL_CLASS_NAMES)
+    + r")(?:[_\s]|$)"
+)
+
+#: Rank for a named residual: below **every** class letter, including the
+#: residual letters ``J``/``R``/``X``/``Z``, because a residual is defined by
+#: being last rather than by how it is spelled (#456).
+#:
+#: This is ``assembler._RESIDUAL_SENIORITY`` on the monitor's scale. The
+#: assembler scores ``letter * 100 + series`` so a multi-series stack orders
+#: ``A1 < A2 < B``; the monitor only ever compares whole classes, so its scale
+#: is the bare letter rank and the same sentinel is ``26`` rather than ``2600``.
+#: The shared half — *which names are residual* — is imported, not restated;
+#: only the scale differs, and a test pins the two in step.
+_RESIDUAL_RANK = ord("z") - ord("a") + 1
+
 
 def _tranche_class_rank(name: str) -> int | None:
     """0-based seniority rank for a tranche name, or ``None`` if unplaceable.
 
-    Mirrors ``extraction.assembler._seniority_for``: the class letter is the
-    rank (``A`` = 0, most senior), so the conventional named classes the repo's
-    note-class alphabet allows (``J`` junior, ``M`` mezzanine, ``R``/``X``/``Z``
-    residual) rank below the lettered ladder by construction, with no separate
-    table to keep in step.
+    Mirrors ``extraction.assembler._seniority_for``, and — since #549 — that
+    is a claim the code keeps rather than only asserts. Two branches, in the
+    assembler's order:
 
-    ``None`` means the name carries no class letter at all (``"senior_notes"``,
-    ``"mezz"``) — the caller must refuse to compute rather than drop it.
+    - A **named residual** (``"subordinated_notes"``, ``"equity_notes"``)
+      ranks :data:`_RESIDUAL_RANK`, below every letter. It carries no class
+      letter because it genuinely has none: it is the equity, junior to the
+      whole lettered ladder, so it is never in the notes at-or-senior to any
+      attachment point. Checked **first**, anchored at the start, exactly as
+      the assembler checks it — so ``"class_e_subordinated_notes"`` is still a
+      Class E tranche, not a residual, in both places.
+    - Otherwise the class letter is the rank (``A`` = 0, most senior), so the
+      conventional named classes the repo's note-class alphabet allows
+      (``J`` junior, ``M`` mezzanine, ``R``/``X``/``Z`` residual) rank below
+      the lettered ladder by construction, with no separate table to keep in
+      step.
+
+    ``None`` means the name carries neither a class letter nor a residual word
+    (``"senior_notes"``, ``"mezz"``) — the caller must refuse to compute rather
+    than drop it. Widening this function is how that guard gets lost, so the
+    residual branch adds a *vocabulary the assembler already ships*, never a
+    new spelling: a name neither branch recognises is still a refusal (#452).
     """
-    m = _TRANCHE_CLASS_RE.search(name.strip().lower())
+    cleaned = name.strip().lower()
+    if _TRANCHE_RESIDUAL_RE.match(cleaned):
+        return _RESIDUAL_RANK
+    m = _TRANCHE_CLASS_RE.search(cleaned)
     if m is None:
         return None
     return ord(m.group(1)) - ord("a")
@@ -294,6 +345,41 @@ def _resolve_coverage(
         return None, reason
 
     if kind == "oc":
+        # The numerator must be a COLLATERAL balance. On the report path it is
+        # not: ``report_adapter.seed`` sets ``pool_balance`` to the opening
+        # liability total and says so — "the Notes & Cash report states
+        # liabilities, not the asset pool balance". Feeding that in makes this
+        # notes-over-notes, a subordination ratio wearing an overcollateralisation
+        # name, and the junior-most attachment point reads exactly 100.00% by
+        # construction rather than by measurement.
+        #
+        # Detected arithmetically rather than by provenance, so the claim is
+        # about the numbers in hand and needs no new plumbing: if the numerator
+        # equals the deal's own total note balance, the ratio is an identity.
+        # A deal whose collateral genuinely equals its notes to the cent has
+        # zero overcollateralisation, so its junior-most test is 100.00% either
+        # way — refusing is the honest answer under both readings.
+        #
+        # Refusing the VALUE, not just the verdict (#549 self-review, operator
+        # call): a figure rendered beside "not evaluable" is read as the ratio,
+        # and a wrong number is worse than no number. #550 gives the numerator a
+        # real collateral balance; until then there is nothing honest to show.
+        # ``isclose`` rather than ``==``: the identity is exact by construction
+        # today (both sides are the same ``opening_total``), but a numerator
+        # summed in a different order would differ in the last bits and slip
+        # past an equality test — and this guard's failure direction is to
+        # surface the wrong number, so it must not be brittle. The tolerance is
+        # float noise, not an economic cushion: 1e-9 relative on this deal's
+        # 369m is EUR 0.37, and a deal overcollateralised by 37 cents has no
+        # overcollateralisation to report either.
+        note_total = sum(t.balance for t in state.tranches)
+        if math.isclose(float(state.pool_balance), float(note_total), rel_tol=1e-9):
+            return None, (
+                "the pool balance on this deal state is exactly the total of its "
+                "own note balances, so it is the liability total and not a "
+                "collateral balance — the overcollateralisation numerator is "
+                "unavailable and the ratio would be notes over notes (#550)"
+            )
         covered = set(names)
         denominator = sum(t.balance for t in state.tranches if t.name in covered)
         if denominator <= 0.0:
