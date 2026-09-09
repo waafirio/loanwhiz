@@ -30,6 +30,7 @@ triage by opening the entry, not by reading the line.
   - [2026-09-08 · pitfall · #484](#2026-09-08--pitfall--484) — keywords: balance share, count share, generated population, per-bucket draw, stratification, arrears bucket, rendered axis
   - [2026-09-02 · pitfall · #441](#2026-09-02--pitfall--441) — keywords: completeness_score
   - [2026-09-09 · pattern · #528](#2026-09-09--pattern--528) — keywords: back-solved input, read past the extractor, max_chars truncation, pypdf text layer, stated schedule, deterministic parser, cross-check against another document
+  - [2026-09-10 · pattern · #571](#2026-09-10--pattern--571) — keywords: provenance guard, declaration side, spec entry, false positive, narrowing the signature, self-describing input, qualifier on the record
 - [Registering a deal (deals.json)](deal-registration.md) — keywords: deals.json, notes_cash_report_urls, routing promise, registry key, asset_class, answer key invariant
   - [2026-09-05 · pitfall · #455](#2026-09-05--pitfall--455) — keywords: notes_cash_report_urls, _reconstruct_series
   - [2026-09-08 · pitfall · #483](#2026-09-08--pitfall--483) — keywords: sha256(tape_url).json, _tape_analytics_period
@@ -62,6 +63,7 @@ triage by opening the entry, not by reading the line.
   - [2026-09-09 · pitfall · #511](#2026-09-09--pitfall--511) — keywords: tie proves nothing, amount-recovered coupon, back-solved rate, report agrees with itself, circular reconciliation, input provenance, expect green to turn red
   - [2026-09-09 · pattern · #539](#2026-09-09--pattern--539) — keywords: fact scope, per-class not per-deal, day-count basis, TrancheFunds override, parse the scope, limb boundary, block runs to end-of-text, deal-level field averages
   - [2026-09-09 · pitfall · #549](#2026-09-09--pitfall--549) — keywords: refusal keeps the value, metric_value, not_evaluable, screen vs grade, numerator identity, exactly 100.00, notes over notes
+  - [2026-09-10 · pitfall · #571](#2026-09-10--pitfall--571) — keywords: key by name, duplicate collapse, {name: obj} dict, behaviour-preserving refactor, strips summed, need under-stated, filter not index
 - [Extracting tables from PDFs](pdf-table-extraction.md) — keywords: visitor_text, text matrix, tm[4], rotated table, extraction_mode layout, row boundary, continuation line, column order, pypdf
   - [2026-09-06 · pitfall · #469](#2026-09-06--pitfall--469) — keywords: extract_text(), extraction_mode="layout", visitor_text=, tm[4]
   - [2026-09-08 · pitfall · #494](#2026-09-08--pitfall--494) — keywords: page furniture, banner prefix, data row first, footer eats a row, numeric tail, prefix filter ordering
