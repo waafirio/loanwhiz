@@ -2078,11 +2078,20 @@ def _set_aside_tape_periods(deal: dict) -> tuple[str, ...]:
     committed answer key's covenant rows, which ``quality_harness._grade_covenants``
     grades from ``key.periods`` with no series at all. What they stop being is
     the *ledger* ``/waterfall`` and ``/compliance`` fold.
+
+    **Total over the displaced tapes — one entry each, never a filtered subset.**
+    A tape stating no ``date`` still had its period displaced, so dropping it
+    would be this function committing, one level down, the silent narrowing it
+    exists to prevent; it falls back to the identifier, which is at least
+    something the reader can look up. The registry cannot hold such a tape today
+    (the tape path itself indexes ``tape["date"]`` unconditionally), which is why
+    this is a guard rather than a branch anyone exercises in production.
     """
     if not _tapes_yield_to_reports(deal):
         return ()
     return tuple(
-        str(tape["date"]) for tape in deal.get("tape_urls") or [] if tape.get("date")
+        str(tape.get("date") or tape.get("url") or "unstated period")
+        for tape in deal.get("tape_urls") or []
     )
 
 
@@ -2597,9 +2606,13 @@ def _not_modelable_deal(deal_id: str, deal: dict | None = None) -> HTTPException
                 f"folded neither."
             )
         elif deal.get("notes_cash_report_urls"):
+            # Deliberately names the effect and not the mechanism: this raise site
+            # is reached both from an unresolvable report AND from a deal with no
+            # extracted model, and the older wording asserted "no committed fixture
+            # and no durable cache" for a path that consults neither. A refusal
+            # naming a cause nobody checked sends the reader to fix the wrong thing.
             registered = (
-                " It registers a report, which did not resolve to a parsed source "
-                "(no committed fixture and no durable cache)."
+                " It registers a report the engine could not fold into a series."
             )
         else:
             registered = ""

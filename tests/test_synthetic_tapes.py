@@ -52,10 +52,6 @@ _DERIVED_TAPE = {
 }
 
 
-def url_of(tape: dict) -> str:
-    """The identifier a registry tape entry declares."""
-    return str(tape["url"])
-
 
 def _which_path(deal_id: str, deal: dict) -> str:
     """Run the real selector, reporting which adapter it chose.
@@ -158,7 +154,7 @@ def test_a_derived_tape_yields_to_a_registered_report():
     deal = deepcopy(DEAL_REGISTRY["cairn-clo-xvii"])
     assert deal["notes_cash_report_urls"], "precondition: the deal registers a report"
     assert all(
-        url_of(t).startswith("derived+trustee-report:") for t in deal["tape_urls"]
+        t["url"].startswith("derived+trustee-report:") for t in deal["tape_urls"]
     ), "precondition: every registered tape is derived"
 
     assert _which_path("cairn-clo-xvii", deal) == "reports"
@@ -214,6 +210,41 @@ def test_a_deal_that_does_not_yield_sets_nothing_aside():
         api_main._set_aside_tape_periods(deepcopy(DEAL_REGISTRY["leone-arancio-2023-1"]))
         == ()
     )
+
+
+def test_a_displaced_tape_stating_no_date_is_still_named():
+    """The set-aside list is total over displaced tapes, never a filtered subset.
+
+    Dropping a tape that states no period would be this rule committing, one
+    level down, the silent narrowing it exists to prevent — and it would make the
+    refusal contradict itself, listing fewer periods than the count beside them.
+    """
+    deal = deepcopy(DEAL_REGISTRY["cairn-clo-xvii"])
+    del deal["tape_urls"][1]["date"]
+
+    set_aside = api_main._set_aside_tape_periods(deal)
+
+    assert len(set_aside) == len(deal["tape_urls"])
+    assert set_aside[0] == "2024-12-16"
+    assert set_aside[2] == "2025-03-18"
+    assert deal["tape_urls"][1]["url"] in set_aside[1]
+
+
+def test_the_refusal_names_no_cause_it_did_not_check():
+    """A report-only deal reaches this refusal two ways; only one is about caches.
+
+    ``_reconstruct_series_from_reports`` raises here both when the report will not
+    resolve **and** when the deal has no extracted model, which consults neither a
+    committed fixture nor a durable cache. Naming that cause anyway sends the
+    reader to fix the wrong thing — the defect this refusal was rewritten to stop
+    committing for the both-sources case.
+    """
+    deal = {"notes_cash_report_urls": [{"period": "X", "url": "https://e.invalid/r.pdf"}]}
+    detail = api_main._not_modelable_deal("no-model-deal", deal).detail
+
+    assert "could not fold" in detail
+    assert "committed fixture" not in detail
+    assert "durable cache" not in detail
 
 
 def test_the_refusal_describes_what_the_deal_actually_registers():
