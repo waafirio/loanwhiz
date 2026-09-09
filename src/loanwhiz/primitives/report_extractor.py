@@ -56,6 +56,7 @@ from loanwhiz.primitives.base import (
     Primitive,
     PrimitiveResult,
 )
+from loanwhiz.primitives.note_valuation_parser import parse_note_valuation_text
 from loanwhiz.primitives.notes_cash_parser import (
     NoteClassBalance,
     NotesCashPeriod,
@@ -111,6 +112,14 @@ class NoteBalance(BaseModel):
     )
     interest_paid: float | None = Field(
         default=None, description="Interest paid to this class this period (EUR)."
+    )
+    interest_rate_applied: float | None = Field(
+        default=None,
+        description=(
+            "Annualised rate (%) the report states was applied to this class this "
+            "period. A published input read off the document — never back-solved "
+            "from the amount distributed, which is the answer being checked."
+        ),
     )
     pdl: float | None = Field(
         default=None, description="Principal Deficiency Ledger balance after payment (EUR)."
@@ -227,6 +236,7 @@ class ParsedReport(BaseModel):
                     principal_balance_after_payment=nb.closing,
                     total_principal_payments=nb.principal_paid,
                     total_interest_payments=nb.interest_paid,
+                    interest_rate_applied=nb.interest_rate_applied,
                     pdl_balance_after_payment=nb.pdl,
                 )
                 for nb in p.note_balances
@@ -355,6 +365,7 @@ def _notes_cash_period_to_parsed(period: NotesCashPeriod) -> ParsedReportPeriod:
                 closing=nb.principal_balance_after_payment,
                 principal_paid=nb.total_principal_payments,
                 interest_paid=nb.total_interest_payments,
+                interest_rate_applied=nb.interest_rate_applied,
                 pdl=nb.pdl_balance_after_payment,
             )
             for nb in period.note_balances
@@ -409,7 +420,14 @@ def _deterministic_provenance(report: ParsedReport, citation: Citation) -> Prove
         if period.available_principal is not None:
             prov[f"{base}.available_principal"] = fp()
         for j, nb in enumerate(period.note_balances):
-            for fld in ("opening", "closing", "principal_paid", "interest_paid", "pdl"):
+            for fld in (
+                "opening",
+                "closing",
+                "principal_paid",
+                "interest_paid",
+                "interest_rate_applied",
+                "pdl",
+            ):
                 if getattr(nb, fld) is not None:
                     prov[f"{base}.note_balances.{j}.{fld}"] = fp()
     return prov
@@ -457,16 +475,93 @@ def _parse_gl_notes_cash(text: str, deal_name: str) -> PrimitiveResult[ParsedRep
     )
 
 
+# --- second deterministic entry: the CLO "Note Valuation Report" -----------
+
+#: Layout markers that identify a CLO Note Valuation Report. All must be
+#: present, and none appears anywhere in a Green Lion Notes & Cash report, so
+#: the two recognizers cannot claim each other's text (the check that keeps
+#: Green Lion's byte-identical parse on its own format).
+_CAIRN_NOTE_VALUATION_MARKERS: tuple[str, ...] = (
+    "note valuation report",
+    "executive summary",
+    "distribution summary",
+)
+
+
+def _matches_cairn_note_valuation(text: str) -> bool:
+    """Recognize a CLO Note Valuation Report layout from text."""
+    low = text.lower()
+    return all(marker in low for marker in _CAIRN_NOTE_VALUATION_MARKERS)
+
+
+def _parse_cairn_note_valuation(
+    text: str, deal_name: str
+) -> PrimitiveResult[ParsedReport]:
+    """Deterministic parse of one CLO Note Valuation Report period.
+
+    Delegates to the existing :func:`parse_note_valuation_text` in ``strict``
+    mode — spelled out because it is load-bearing here, not a restated default:
+    strict is what runs the parser's own acceptance oracle (each waterfall's
+    step sum against the report's stated available funds, the printed running
+    balance chained without a break, and each class's applied rate against the
+    Executive Summary's separate printing of it) before any of it reaches the
+    live request path.
+
+    ``period_label`` is the deal name, as the Green Lion entry passes it: the
+    reporting date is read from the report's own text, and the bridge onto
+    :class:`ParsedReportPeriod` keys periods by that date rather than the label.
+    """
+    t0 = time.perf_counter()
+    period = parse_note_valuation_text(text, period_label=deal_name, strict=True)
+    parsed_period = _notes_cash_period_to_parsed(period)
+    report = ParsedReport(
+        deal_name=period.deal_name or deal_name,
+        report_type="notes_and_cash",
+        periods=[parsed_period],
+        extraction_method="deterministic",
+    )
+    citation = Citation(
+        document=f"{report.deal_name} — Note Valuation Report",
+        page_or_row=period.reporting_date,
+        excerpt=(
+            "Liability actuals parsed deterministically from the extracted Note "
+            "Valuation Report text (Executive Summary, Distribution Summary, "
+            "Interest and Principal Priorities of Payments)."
+        ),
+    )
+    report.provenance = _deterministic_provenance(report, citation)
+    duration_ms = (time.perf_counter() - t0) * 1000.0
+
+    audit = AuditEntry.now(
+        primitive_name=_PRIMITIVE_NAME,
+        version=_PRIMITIVE_VERSION,
+        input_hash=hashlib.sha256(text.encode()).hexdigest(),
+        duration_ms=duration_ms,
+    )
+    return PrimitiveResult[ParsedReport](
+        output=report,
+        confidence=_DETERMINISTIC_CONFIDENCE,
+        citations=[citation],
+        audit_entry=audit,
+    )
+
+
 #: The format registry — deterministic-first. Append a new ``ReportFormat`` to
 #: add a fast-path for another issuer (spec: optional + incremental; the LLM
-#: path covers everything until a deterministic parser is chosen). The Green
-#: Lion Notes & Cash parser is the first (and currently only) entry.
+#: path covers everything until a deterministic parser is chosen). Order is
+#: significant only in that the first ``matches`` wins, so each recognizer must
+#: reject every other registered layout — see the mutual-exclusion test.
 FORMAT_REGISTRY: list[ReportFormat] = [
     ReportFormat(
         name="green_lion_notes_cash",
         matches=_matches_gl_notes_cash,
         parse=_parse_gl_notes_cash,
-    )
+    ),
+    ReportFormat(
+        name="cairn_note_valuation",
+        matches=_matches_cairn_note_valuation,
+        parse=_parse_cairn_note_valuation,
+    ),
 ]
 
 
@@ -810,6 +905,7 @@ class ReportUnavailable(RuntimeError):
 #: is a data edit, not a new code loader. A deal absent here simply falls through
 #: to the durable cache / live extraction. Patchable in tests.
 _NOTES_CASH_FIXTURE_DIR = _REPO_ROOT / "tests" / "fixtures" / "notes_cash"
+_NOTE_VALUATION_FIXTURE_DIR = _REPO_ROOT / "tests" / "fixtures" / "note_valuation"
 COMMITTED_REPORT_FIXTURES: dict[str, tuple[Path, tuple[tuple[str, str], ...]]] = {
     "green-lion-2024-1": (
         _NOTES_CASH_FIXTURE_DIR,
@@ -818,6 +914,13 @@ COMMITTED_REPORT_FIXTURES: dict[str, tuple[Path, tuple[tuple[str, str], ...]]] =
             ("green-lion-2024-1-december-2025.txt", "December 2025"),
             ("green-lion-2024-1-march-2026.txt", "March 2026"),
         ),
+    ),
+    # The one Note Valuation Report Euronext's listing carries for this issuer.
+    # Its single period is why the CLO's series is short, not a truncation: the
+    # exchange publishes no other, and nothing is interpolated to lengthen it.
+    "cairn-clo-xvii": (
+        _NOTE_VALUATION_FIXTURE_DIR,
+        (("cairn-clo-xvii-january-2025.txt", "January 2025"),),
     ),
 }
 

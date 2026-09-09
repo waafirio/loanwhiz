@@ -103,6 +103,7 @@ a code path, assert they agree over the real corpus: neither one's own tests can
 see the disagreement.
 
 Refs: #503
+Refs: #549 — a docstring claiming "mirrors X" was the unchecked half.
 
 ## 2026-09-08 · pitfall · #511
 
@@ -174,3 +175,16 @@ unrelated purpose, so a block running to end-of-text spreads that rule over all
 of them while still looking like a clean parse.
 
 Refs: #539
+
+## 2026-09-09 · pitfall · #549
+
+A refusal that keeps the value is not a refusal. `not_evaluable` protects the
+*grade*, but the screen still renders `metric_value` beside it, and a number
+shown next to "could not evaluate" is read as the measurement — suppress both
+and put the cause in the reason. The tell that a numerator is not what it claims
+is an identity, not a rounding: an overcollateralisation ratio reading exactly
+100.00 at its junior-most attachment point is notes over notes. Detect that
+arithmetically over the values in hand rather than by provenance — it needs no
+plumbing, and it is a proof rather than a heuristic.
+
+Refs: #549
