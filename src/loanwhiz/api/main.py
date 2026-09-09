@@ -1996,46 +1996,94 @@ def _days_between(prev_date: str, cur_date: str) -> int:
     return delta if delta > 0 else 30
 
 
-def _tape_describes_real_assets(url: str) -> bool:
-    """Whether the tape at *url* describes assets that exist (#484).
+def _tape_is_first_hand(url: str) -> bool:
+    """Whether the tape at *url* is a first-hand account of the pool (#524).
 
-    Reads :attr:`TapeSourceKind.describes_real_assets` off the identifier. An
-    **undeclared** identifier answers ``True``: it names a published file, and
-    this repo holds no evidence that such a file is fabricated — asserting
-    otherwise would be the mirror of the laundering ``tape_provenance`` exists
-    to prevent. Only a tape that *declares* itself synthetic answers ``False``.
+    Reads :attr:`TapeSourceKind.first_hand` off the identifier. An **undeclared**
+    identifier answers ``True``: it names a published file, and this repo holds
+    no evidence that such a file is anything but the originator's own — asserting
+    otherwise would be the mirror of the laundering ``tape_provenance`` exists to
+    prevent. #484 made this defensive choice for ``describes_real_assets`` and it
+    is the same choice here, one rank finer.
     """
     kind = source_kind_for(url)
-    return True if kind is None else kind.describes_real_assets
+    return True if kind is None else kind.first_hand
 
 
-def _synthetic_tapes_yield_to_reports(deal: dict) -> bool:
+def _tapes_yield_to_reports(deal: dict) -> bool:
     """Whether this deal's tapes must not displace its report-derived series.
 
-    **Real published data outranks a generated pool.** #484 gives four
-    tape-less deals a synthetic Annex 2 pool so their pool charts render; two
-    of them — Green Lion 2023-1 and 2024-1 — also publish quarterly Notes &
-    Cash reports, and those reports are what their committed answer keys grade
-    against. ``_reconstruct_series`` selected the tape path on the mere
-    *presence* of ``tape_urls``, so registering a synthetic tape would have
-    silently moved both deals off the report path — taking the repo's only
-    ``validated`` cell (Green Lion 2024-1's Notes & Cash reconciliation) with
-    it, and failing loudly with a 422 besides, since neither carries the
-    ``reserve_account_target`` the tape path resolves.
+    **The document outranks our reading of the document, and both outrank a
+    generated pool.** The precedence contract has three ranks, senior first:
 
-    So a deal yields to its reports only when **both** hold: every registered
-    tape declares itself synthetic, and a real report path exists to yield to.
-    A deal whose only pool data is synthetic (Green Lion 2026-1, whose three
-    tapes are synthetic and which publishes no Notes & Cash report) keeps the
+    1. a **first-hand** tape — the originator's own loan-level statement. Nothing
+       the deal publishes stands closer to the pool, so it keeps the tape path.
+    2. a deal's **published report** — the document itself.
+    3. a **derived** or **synthetic** tape — LoanWhiz's rendering of a document
+       the deal already publishes, or rows describing nobody.
+
+    So a deal yields to its reports when **both** hold: no registered tape is
+    first-hand, and a real report path exists to yield to. A deal whose only pool
+    data is generated and which publishes no report (Green Lion 2026-1) keeps the
     tape path — yielding there would leave it not-modelable, which is a
     regression, not honesty.
+
+    #484 wrote ranks 2-vs-3 to stop a synthetic Annex 2 pool displacing the
+    quarterly Notes & Cash reports the Green Lion vintages' answer keys grade
+    against — taking the repo's only ``validated`` cell with it. It had no rank
+    for a **derived** tape against a registered report, so Cairn CLO XVII — three
+    ``derived+trustee-report:`` tapes (#471) and one Note Valuation Report
+    (#495) — stayed on the tape path by dispatch order rather than by decision.
+
+    #524 decided that rank on the merits. Cairn's report is its only
+    Priority-of-Payments-bearing document, the only one a ``validated`` cell can
+    be earned on, and the only path already fitted to its eight-class split-B
+    stack (``ReportAdapter`` reads the tranche list off the deal, #527, while
+    ``_collections_tranche_args`` is still shaped for ``class_a/b/c``). A
+    waterfall folded from a collateral schedule carries no published
+    distribution at all.
+
+    **Yielding narrows the series to the preferred source's periods, and that
+    must never be silent** — see :func:`_set_aside_tape_periods`, which names the
+    reporting dates this rule declines to fold.
     """
     tapes = deal.get("tape_urls") or []
     if not tapes:
         return False
-    if any(_tape_describes_real_assets(tape.get("url", "")) for tape in tapes):
+    if any(_tape_is_first_hand(tape.get("url", "")) for tape in tapes):
         return False
     return bool(deal.get("notes_cash_report_urls"))
+
+
+def _set_aside_tape_periods(deal: dict) -> tuple[str, ...]:
+    """The reporting dates this deal's tapes cover and its folded series will not.
+
+    The second half of the precedence contract (#524). Choosing a source is only
+    half a decision: the sources a deal registers need not cover the same
+    periods, so preferring one can *narrow* the deal's series — and a screen
+    showing one period of a four-period history looks like data rather than like
+    a gap. Cairn is exactly that shape: its three derived tapes are reconstructed
+    from December 2024, February 2025 and March 2025 trustee reports, while the
+    Note Valuation Report it yields to is a January 2025 cut, so the two sources
+    overlap on **no** period at all.
+
+    Empty for a deal that does not yield — nothing is set aside — and empty for a
+    deal with no tapes. Read from each tape's registered ``date``, the same key
+    the tape path itself folds as ``reporting_period``, so this answers from the
+    registry without re-deriving a tape or reaching past the derivation seam.
+
+    What set aside does **not** mean: these periods are not lost and not
+    unpublished. They remain the source of the deal's collateral time series
+    (the pool analytics read tapes directly, not the folded series) and of the
+    committed answer key's covenant rows, which ``quality_harness._grade_covenants``
+    grades from ``key.periods`` with no series at all. What they stop being is
+    the *ledger* ``/waterfall`` and ``/compliance`` fold.
+    """
+    if not _tapes_yield_to_reports(deal):
+        return ()
+    return tuple(
+        str(tape["date"]) for tape in deal.get("tape_urls") or [] if tape.get("date")
+    )
 
 
 def _reconstruct_series(deal_id: str, deal: dict) -> DealStateSeries:
@@ -2046,7 +2094,7 @@ def _reconstruct_series(deal_id: str, deal: dict) -> DealStateSeries:
     ingestion adapter per deal** (#269, the cold-start engine slice, epic #257):
 
     1. The deal has **loan tapes** that are not merely synthetic stand-ins for a
-       real report path (``_synthetic_tapes_yield_to_reports``) → the **tape path**:
+       real report path (``_tapes_yield_to_reports``) → the **tape path**:
        seed period-0 from the prospectus capital structure and fold
        ``collections_aggregator`` → ``reconstruct_period_series`` (the existing
        behaviour, unchanged — see ``_reconstruct_series_from_tapes``).
@@ -2065,11 +2113,11 @@ def _reconstruct_series(deal_id: str, deal: dict) -> DealStateSeries:
     this function wires the cold-start so the live endpoints serve the one
     report-driven ledger.
     """
-    if deal.get("tape_urls") and not _synthetic_tapes_yield_to_reports(deal):
+    if deal.get("tape_urls") and not _tapes_yield_to_reports(deal):
         return _reconstruct_series_from_tapes(deal_id, deal)
     if deal.get("notes_cash_report_urls"):
         return _reconstruct_series_from_reports(deal_id, deal)
-    raise _not_modelable_deal(deal_id)
+    raise _not_modelable_deal(deal_id, deal)
 
 
 def _reconstruct_series_from_tapes(deal_id: str, deal: dict) -> DealStateSeries:
@@ -2359,7 +2407,7 @@ def _reconstruct_series_from_reports(deal_id: str, deal: dict) -> DealStateSerie
     if model is None:
         # Reports are listed, but no extracted model exists for this deal — it
         # cannot be modelled (the fold needs the deal's waterfall step lists).
-        raise _not_modelable_deal(deal_id)
+        raise _not_modelable_deal(deal_id, deal)
 
     try:
         report = resolve_parsed_report(
@@ -2368,7 +2416,7 @@ def _reconstruct_series_from_reports(deal_id: str, deal: dict) -> DealStateSerie
     except ReportUnavailable as exc:
         # No committed fixture, durable cache, or live report source resolved —
         # honest 422, not an empty cascade.
-        raise _not_modelable_deal(deal_id) from exc
+        raise _not_modelable_deal(deal_id, deal) from exc
 
     adapter = ReportAdapter.from_deal_model(model)
     series = fold_report_series(model, report, adapter)
@@ -2520,21 +2568,47 @@ def fold_report_series(
     return DealStateSeries(states=states, period_results=period_results)
 
 
-def _not_modelable_deal(deal_id: str) -> HTTPException:
-    """A labelled 422 for a deal with neither a tape nor a report to model (#269).
+def _not_modelable_deal(deal_id: str, deal: dict | None = None) -> HTTPException:
+    """A labelled 422 for a deal the engine can select no ledger for (#269).
 
-    Raised when ``_reconstruct_series`` can select no ingestion adapter for a
-    deal — it has no loan tape AND no investor / Notes & Cash report the engine
-    can fold. Sibling to ``_misconfigured_deal``: degrade *honestly* (a 422 that
-    names the deal and the reason) rather than serving an empty waterfall /
-    compliance cascade that looks like a real, all-clear result.
+    Raised when ``_reconstruct_series`` can select no ingestion adapter, or when
+    the adapter it selected cannot resolve its source. Sibling to
+    ``_misconfigured_deal``: degrade *honestly* (a 422 that names the deal and
+    the reason) rather than serving an empty waterfall / compliance cascade that
+    looks like a real, all-clear result.
+
+    Pass *deal* wherever the registry entry is in hand. Without it the message
+    can only describe the empty-registry case, and it told a deal that registers
+    **both** a tape and a report that it had neither — the exact shape Cairn
+    presents once #524's precedence rule routes it onto its report path (three
+    derived tapes yielded, a Note Valuation Report that resolves offline for no
+    committed fixture). A refusal that misdescribes what the deal registers sends
+    the reader to add a source that is already there.
     """
+    if deal is None:
+        registered = ""
+    else:
+        set_aside = _set_aside_tape_periods(deal)
+        if set_aside:
+            registered = (
+                f" It registers {len(deal.get('tape_urls') or [])} tape(s) covering "
+                f"{', '.join(set_aside)}, which the source-precedence rule set aside "
+                f"in favour of a published report that did not resolve; the engine "
+                f"folded neither."
+            )
+        elif deal.get("notes_cash_report_urls"):
+            registered = (
+                " It registers a report, which did not resolve to a parsed source "
+                "(no committed fixture and no durable cache)."
+            )
+        else:
+            registered = ""
     return HTTPException(
         status_code=422,
         detail=(
-            f"Deal '{deal_id}' is not modelable: it has neither a loan tape "
-            f"(tape_urls) nor an investor / Notes & Cash report the engine can "
-            f"cold-start from. Add a tape or a (committed/cached) report for this "
+            f"Deal '{deal_id}' is not modelable: the engine could fold neither a "
+            f"loan tape (tape_urls) nor an investor / Notes & Cash report."
+            f"{registered} Add a tape or a (committed/cached) report for this "
             f"deal before requesting its waterfall / compliance."
         ),
     )
