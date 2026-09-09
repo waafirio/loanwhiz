@@ -1,9 +1,17 @@
 """Note Valuation Report parser — the *liability* ground truth for a CLO.
 
-This module parses U.S. Bank's **Note Valuation Report** — the quarterly CLO
-report that publishes, on facing sections, an **Interest Priority of Payments**
-and a **Principal Priority of Payments** — into the *existing*
+This module parses a **Note Valuation Report** — the quarterly CLO report that
+publishes, on facing sections, an **Interest Priority of Payments** and a
+**Principal Priority of Payments** — into the *existing*
 :class:`~loanwhiz.primitives.notes_cash_parser.NotesCashPeriod` shape.
+
+It owns no layout. Which titles those sections print under, and what counts as
+page furniture, are properties of the **collateral administrator** that
+published the report, so they come from the family
+:mod:`loanwhiz.domain.trustee_report_registry` detects from the report's own
+header (#531). A report matching no registered family is refused rather than
+parsed as another's. The U.S. Bank examples below are the family LoanWhiz reads
+today, not an assumption this parser makes.
 
 Why it emits somebody else's model (epic #491)
 ----------------------------------------------
@@ -60,6 +68,25 @@ from loanwhiz.primitives.base import (
     Citation,
     PrimitiveResult,
 )
+from loanwhiz.domain.trustee_report_families import (
+    FAMILY_REGISTRY,
+    DocumentKind,
+    DocumentLayout,
+    FurnitureOrder,
+    UnknownReportFamilyError,
+)
+from loanwhiz.domain.trustee_report_registry import (
+    SECTION_NV_DISTRIBUTION as SECTION_DISTRIBUTION,
+)
+from loanwhiz.domain.trustee_report_registry import (
+    SECTION_NV_EXECUTIVE as SECTION_EXECUTIVE,
+)
+from loanwhiz.domain.trustee_report_registry import (
+    SECTION_NV_INTEREST_POP as SECTION_INTEREST_POP,
+)
+from loanwhiz.domain.trustee_report_registry import (
+    SECTION_NV_PRINCIPAL_POP as SECTION_PRINCIPAL_POP,
+)
 from loanwhiz.primitives.collateral_schedule_parser import (
     MONEY,
     fetch_report_text,
@@ -79,33 +106,90 @@ _DETERMINISTIC_CONFIDENCE = 1.0
 
 
 # ===========================================================================
-# Section vocabulary — the report's own page titles
+# Section vocabulary — section *roles*, resolved to titles by the family
 # ===========================================================================
 
-#: The report prints its section title on every page of the section, so a
-#: section that spans four pages is found four times and never by page number.
-SECTION_EXECUTIVE = "Executive Summary"
-SECTION_DISTRIBUTION = "Distribution Summary"
-SECTION_INTEREST_POP = "Interest Priority of Payments"
-SECTION_PRINCIPAL_POP = "Principal Priority of Payments"
+# ``SECTION_*`` are LoanWhiz's role keys, re-exported from the family registry.
+# The *printed title* each maps to is a property of the collateral
+# administrator, not of this parser, so it lives on the detected family's
+# :class:`~loanwhiz.domain.trustee_report_registry.DocumentLayout` — see
+# :func:`_resolve_layout`. The report prints its section title on every page of
+# the section, so a section that spans four pages is found four times and never
+# by page number.
+#
+# **A role missing from a family's table silently drops that section's rows** —
+# the #480 lesson. Two things stand against it now: the registry refuses to
+# register a family that omits any required role, and
+# :func:`reconcile_note_valuation` still asserts each PoP section parsed at
+# least one step rather than trusting a clean-looking empty result. The second
+# is defence in depth for the case the first cannot see — a section whose title
+# is declared but whose rows do not parse.
 
-#: Every section this parser reads. **A title missing from this tuple silently
-#: drops its rows** — the #480 lesson — which is why
-#: :func:`reconcile_note_valuation` asserts each PoP section parsed at least one
-#: step rather than trusting a clean-looking empty result.
-_SECTION_TITLES: tuple[str, ...] = (
-    SECTION_EXECUTIVE,
-    SECTION_DISTRIBUTION,
-    SECTION_INTEREST_POP,
-    SECTION_PRINCIPAL_POP,
-)
+#: How much of the report is read to identify its family: the first
+#: ``_HEADER_LINES`` lines of each of the first ``_HEADER_PAGES`` pages. The
+#: administrator's banner sits on the title page above the table of contents,
+#: but a document can carry a cover page ahead of it, so the window spans the
+#: leading pages rather than page 1 alone. It stays a window rather than the
+#: whole document because a signature phrase quoted in a report's body is not
+#: evidence about who published it.
+_HEADER_LINES = 12
+_HEADER_PAGES = 3
 
-#: The two waterfalls, paired with the ``NotesCashPeriod`` field each fills.
-#: ``revenue``/``redemption`` are the RMBS names for the same two roles.
-_WATERFALLS: tuple[tuple[str, str], ...] = (
-    (SECTION_INTEREST_POP, "revenue"),
-    (SECTION_PRINCIPAL_POP, "redemption"),
-)
+
+def _resolve_layout(pages: list[list[str]]) -> DocumentLayout:
+    """The layout this report is parsed with, from the report's own header.
+
+    Takes the already-split pages rather than the raw text so the header is read
+    from page 1 proper, and so the structural check ("is this extracted report
+    output at all?") stays ahead of the family question — a document with no
+    pages has no header to identify.
+
+    Refuses rather than defaulting when no registered family matches (#494). A
+    Note Valuation Report parsed under the wrong family's section titles finds
+    no sections, parses no steps, and then reconciles vacuously against its own
+    empty result — so a wrong answer here is silent, and only refusal is safe.
+    """
+    header = "\n".join(
+        line for page in pages[:_HEADER_PAGES] for line in page[:_HEADER_LINES]
+    )
+    family = FAMILY_REGISTRY.detect(header)
+    if family is None:
+        known = ", ".join(f.label for f in FAMILY_REGISTRY.all()) or "none"
+        raise UnknownReportFamilyError(
+            "Note Valuation Report matches no registered trustee-report family "
+            f"(registered: {known}). The first {_HEADER_PAGES} pages carry none "
+            "of their header signatures, so the section titles, page furniture "
+            "and column orders to parse it with are unknown. Register the "
+            "administrator's family rather than parsing it as another's."
+        )
+    layout = family.layout(DocumentKind.NOTE_VALUATION_REPORT)
+    _assert_furniture_order(layout, family.label)
+    return layout
+
+
+#: The furniture ordering this parser implements. ``_parse_waterfall`` tests a
+#: line for its money tail *before* asking whether it is furniture, because this
+#: report's page footer also opens a real payee row (#494).
+_IMPLEMENTED_FURNITURE_ORDER = FurnitureOrder.DATA_FIRST
+
+
+def _assert_furniture_order(layout: DocumentLayout, family_label: str) -> None:
+    """Refuse a family whose declared furniture ordering this parser does not implement.
+
+    The ordering is declared on the family so it is reviewable, but a
+    declaration nothing reads drifts from the code it describes. Checking it
+    here makes registering a family that needs the other order a loud failure
+    rather than a silent re-run of the defect the ordering exists to prevent.
+    """
+    if layout.furniture_order is not _IMPLEMENTED_FURNITURE_ORDER:
+        raise UnknownReportFamilyError(
+            f"{family_label} declares furniture_order="
+            f"{layout.furniture_order.value!r} for its Note Valuation Report, but "
+            f"this parser implements {_IMPLEMENTED_FURNITURE_ORDER.value!r}: it "
+            "checks a line's money tail before asking whether the line is page "
+            "furniture. Parsing this family would apply the wrong order and can "
+            "drop real rows silently (#494)."
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -204,23 +288,6 @@ _NEXT_PAYMENT_DATE_RE = re.compile(
 
 _PAGE_MARKER_RE = re.compile(r"^--- page (\d+) ---$")
 
-#: Page furniture: banners, footers and the column headers the report repeats on
-#: every page of a section. **Checked only after a line has failed to match a
-#: data row** — see :func:`_is_furniture`.
-_FURNITURE_PREFIXES: tuple[str, ...] = (
-    "www.usbank.com",
-    "U.S. Bank Global Corporate Trust",
-    "Page ",
-    "As of",
-    "Next Payment",
-    "Available",
-    "Document Report Payment for",
-    "Reference Reference Amount Disbursements",
-    "Payments (EUR)",
-    "Original Face Opening Principal of Original Interest Amount Rate",
-    "Issue Name Value Balance Payment Balance Due Payable Current",
-    "Closing Balance Accrued Total Interest",
-)
 
 
 def stated_next_payment_date(text: str) -> str | None:
@@ -389,7 +456,7 @@ def _split_pages(text: str) -> list[list[str]]:
     return pages
 
 
-def _page_section(lines: list[str]) -> str | None:
+def _page_section(lines: list[str], layout: DocumentLayout) -> str | None:
     """The section title a page belongs to, located by its own header text.
 
     The table of contents names every section on one page with dot leaders;
@@ -397,26 +464,35 @@ def _page_section(lines: list[str]) -> str | None:
     it happens to list first.
     """
     head = " ".join(line for line in lines[:12] if ". . ." not in line)
-    for title in _SECTION_TITLES:
+    for title in layout.titles:
         if title in head:
             return title
     return None
 
 
-def _pages_for(pages: list[list[str]], section: str) -> list[list[str]]:
-    """Every page belonging to one section, in document order."""
-    return [lines for lines in pages if _page_section(lines) == section]
+def _pages_for(
+    pages: list[list[str]], layout: DocumentLayout, section_key: str
+) -> list[list[str]]:
+    """Every page belonging to one section role, in document order."""
+    title = layout.title(section_key)
+    return [lines for lines in pages if _page_section(lines, layout) == title]
 
 
-def _is_furniture(line: str) -> bool:
+def _is_furniture(line: str, layout: DocumentLayout) -> bool:
     """True for repeated page furniture — **asked only of non-data lines**.
 
     Order matters and is the reason this function is not called first: the page
     footer starts ``U.S. Bank Global Corporate Trust``, and so does the payee
     row ``U.S. Bank Global Corporate Trust Limited 15,818.69 7,222,548.16``.
     A furniture-first filter eats the payee and under-reports its step.
+
+    That ordering is now the family's declared
+    :attr:`~loanwhiz.domain.trustee_report_registry.DocumentLayout.furniture_order`
+    rather than a convention of this module, so a family whose furniture cannot
+    collide with a row opener is a data change rather than a silent re-run of
+    the defect.
     """
-    return line.startswith(_FURNITURE_PREFIXES) or line in _SECTION_TITLES
+    return line.startswith(layout.furniture_prefixes) or line in layout.titles
 
 
 # ===========================================================================
@@ -470,7 +546,9 @@ def _class_key(name: str) -> str | None:
 # ===========================================================================
 
 
-def _parse_waterfall(pages: list[list[str]], section: str) -> tuple[list[PoPStep], float | None]:
+def _parse_waterfall(
+    pages: list[list[str]], layout: DocumentLayout, section_key: str
+) -> tuple[list[PoPStep], float | None]:
     """Parse one Priority of Payments section into ordered steps.
 
     Four line shapes, resolved in this order — data row first, always:
@@ -495,7 +573,7 @@ def _parse_waterfall(pages: list[list[str]], section: str) -> tuple[list[PoPStep
     #: context, not an emitted field).
     continues: PoPStep | None = None
 
-    for lines in _pages_for(pages, section):
+    for lines in _pages_for(pages, layout, section_key):
         for line in lines:
             total = _WATERFALL_TOTAL_RE.match(line)
             if total:
@@ -530,7 +608,7 @@ def _parse_waterfall(pages: list[list[str]], section: str) -> tuple[list[PoPStep
                 continues = step
                 continue
 
-            if _is_furniture(line):
+            if _is_furniture(line, layout):
                 continues = None
                 continue
 
@@ -551,7 +629,9 @@ def _parse_waterfall(pages: list[list[str]], section: str) -> tuple[list[PoPStep
 # ===========================================================================
 
 
-def _parse_executive_coupons(pages: list[list[str]]) -> dict[str, float | None]:
+def _parse_executive_coupons(
+    pages: list[list[str]], layout: DocumentLayout
+) -> dict[str, float | None]:
     """Per-class applied coupon as the Executive Summary prints it.
 
     ``None`` where the report prints ``N/A`` — a class with no coupon at all.
@@ -559,7 +639,7 @@ def _parse_executive_coupons(pages: list[list[str]]) -> dict[str, float | None]:
     which is what makes it worth reading: the two must agree.
     """
     coupons: dict[str, float | None] = {}
-    for lines in _pages_for(pages, SECTION_EXECUTIVE):
+    for lines in _pages_for(pages, layout, SECTION_EXECUTIVE):
         for line in lines:
             match = _EXECUTIVE_ROW_RE.match(line)
             if not match:
@@ -571,7 +651,7 @@ def _parse_executive_coupons(pages: list[list[str]]) -> dict[str, float | None]:
 
 
 def _parse_distribution(
-    pages: list[list[str]], coupons: dict[str, float | None]
+    pages: list[list[str]], layout: DocumentLayout, coupons: dict[str, float | None]
 ) -> tuple[list[NoteClassBalance], dict[str, float]]:
     """Per-class balances from the Distribution Summary, plus its totals row.
 
@@ -585,7 +665,7 @@ def _parse_distribution(
     balances: list[NoteClassBalance] = []
     totals: dict[str, float] = {}
 
-    for lines in _pages_for(pages, SECTION_DISTRIBUTION):
+    for lines in _pages_for(pages, layout, SECTION_DISTRIBUTION):
         for line in lines:
             row = _DISTRIBUTION_ROW_RE.match(line)
             if row:
@@ -764,10 +844,15 @@ def parse_stated_totals(text: str) -> StatedTotals:
     which is the only way to *inspect* a failing parse rather than be refused.
     """
     pages = _split_pages(text)
-    coupons = _parse_executive_coupons(pages)
-    _, totals = _parse_distribution(pages, coupons)
-    _, interest_available = _parse_waterfall(pages, SECTION_INTEREST_POP)
-    _, principal_available = _parse_waterfall(pages, SECTION_PRINCIPAL_POP)
+    layout = _resolve_layout(pages)
+    coupons = _parse_executive_coupons(pages, layout)
+    _, totals = _parse_distribution(pages, layout, coupons)
+    stated = {
+        field_name: _parse_waterfall(pages, layout, section_key)[1]
+        for section_key, field_name in layout.waterfalls
+    }
+    interest_available = stated["revenue"]
+    principal_available = stated["redemption"]
     return StatedTotals(
         interest_available=interest_available,
         principal_available=principal_available,
@@ -818,6 +903,7 @@ def parse_note_valuation_text(
     if not pages:
         raise ValueError("no pages found — text is not extracted Note Valuation Report output")
 
+    layout = _resolve_layout(pages)
     iso = reporting_date or _iso_date(pages)
     if not iso:
         raise ValueError(
@@ -825,10 +911,17 @@ def parse_note_valuation_text(
             "(none in header and none passed) — cannot key the period by date"
         )
 
-    coupons = _parse_executive_coupons(pages)
-    note_balances, totals = _parse_distribution(pages, coupons)
-    revenue_pop, interest_available = _parse_waterfall(pages, SECTION_INTEREST_POP)
-    redemption_pop, principal_available = _parse_waterfall(pages, SECTION_PRINCIPAL_POP)
+    coupons = _parse_executive_coupons(pages, layout)
+    note_balances, totals = _parse_distribution(pages, layout, coupons)
+    # Driven off the family's declared waterfalls rather than hand-unrolled, so
+    # an administrator that names or orders its two Priorities of Payments
+    # differently is a table change here, not a parser change.
+    parsed_waterfalls = {
+        field_name: _parse_waterfall(pages, layout, section_key)
+        for section_key, field_name in layout.waterfalls
+    }
+    revenue_pop, interest_available = parsed_waterfalls["revenue"]
+    redemption_pop, principal_available = parsed_waterfalls["redemption"]
 
     period = NotesCashPeriod(
         reporting_date=iso,
@@ -907,6 +1000,10 @@ def parse_note_valuation_text_result(
     period = parse_note_valuation_text(text, period_label=period_label)
     duration_ms = (time.perf_counter() - started) * 1000.0
 
+    # Citations name each section as *this report* prints it, so the locator
+    # stays checkable against the document a reader opens.
+    layout = _resolve_layout(_split_pages(text))
+
     document = (
         f"{period.deal_name} — Note Valuation Report ({period_label})"
         if period.deal_name
@@ -922,7 +1019,11 @@ def parse_note_valuation_text_result(
                 "own stated available funds, running balances and totals."
             ),
         )
-        for section in (SECTION_DISTRIBUTION, SECTION_INTEREST_POP, SECTION_PRINCIPAL_POP)
+        for section in (
+            layout.title(SECTION_DISTRIBUTION),
+            layout.title(SECTION_INTEREST_POP),
+            layout.title(SECTION_PRINCIPAL_POP),
+        )
     ]
     audit = AuditEntry.now(
         primitive_name=_PRIMITIVE_NAME,
