@@ -12,9 +12,11 @@ What is measured here, and what each measurement means
 -----------------------------------------------------
 * **Both CLOs reach the cross-deal comparison with real structure.** `/compare`
   serves both, and every one of the eight seniority ranks carries a real
-  figure for each deal. Nothing in `compare.py` or the API layer was changed by
-  this epic — that is the *general* half of the answer, and it is asserted
-  rather than asserted-about.
+  figure for each deal. That is the *general* half of the answer, and it is
+  asserted here rather than asserted-about. (Epic #530's own diff touched no
+  file under `src/loanwhiz/api/` — a fact about that epic's history, recorded
+  in `docs/data-card.md`, deliberately not restated here as a present-tense
+  claim about the tree that nothing would keep true.)
 * **Only Cairn reaches the performance panel.** Contego has no reconstructable
   series, so it carries no `latest_period`. This is the *fitted* half, and it
   is deliberately left visible: the refusal is asserted **by name** — the
