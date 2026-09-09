@@ -104,6 +104,7 @@ On a failing grade, pin the figures and change neither side: the gap is it.
 Refs: #496
 Refs: #514 — closing the join turned the vacuous pass into a visible failure.
 Refs: #538 — the tie-out itself goes blind where a residual sweep absorbs.
+Refs: #515 — re-measured independently; all four hold and the count is the bound.
 
 ## 2026-09-08 · pattern · #512
 
@@ -155,3 +156,16 @@ a gap does split this way, assert both deltas AND that they cancel — a later f
 to one then reds the pair instead of silently re-balancing the total.
 
 Refs: #538
+
+## 2026-09-09 · pitfall · #515
+
+Read an `engine_computed` count as a property of the **declaration**, not of the
+deal: the classifier answers from an authored allowlist, so it stops where that
+list stops rather than where the data does. Cairn's Classes D, E and F reach the
+fold with a seeded balance, a published applied rate and a parsed day count and
+reproduce their published interest to the cent, yet grade `report-supplied`
+because `ENGINE_COMPUTED_RECIPIENTS` ends at `class_c_interest`. Before
+publishing the count, check what the *un*counted members lack; if the answer is
+"nothing" say so beside the figure, and never widen the set to raise it.
+
+Refs: #515

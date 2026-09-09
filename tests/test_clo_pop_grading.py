@@ -76,8 +76,12 @@ What the run says
       **unadjusted** Payment Dates. The seed carries the parsed bases per class;
       ``tests/test_day_count_parser.py`` holds the parse and its refusals.
 
-3. **Two lines of the cascade are genuinely engine-computed, and both now tie —
-   with every input sourced from a document rather than from the answer.**
+3. **Three lines of the cascade are genuinely engine-computed, and all three now
+   tie — with every input sourced from a document rather than from the answer.**
+   Classes A and C are shown first; Class B is the third and is shown below,
+   because it ties over two strips on two conventions. (This item read "two"
+   while its own body already named the third — #515 measured the count and
+   corrected the heading rather than the assertion.)
    Before #511 the membership test ran against the *raw* extracted recipient, so
    Cairn's ``class_a_notes_interest`` missed the set's ``class_a_interest`` and
    every step was classified ``report-supplied`` — its amount taken from the
@@ -167,7 +171,7 @@ from loanwhiz.extraction.payment_schedule_parser import (
     payment_date_on_or_after,
 )
 from loanwhiz.primitives.notes_cash_parser import NotesCashReport
-from loanwhiz.primitives.period_state_machine import DealStateSeries
+from loanwhiz.primitives.period_state_machine import DealStateSeries, published_rate_inputs
 from loanwhiz.primitives.reconciler import ReconciliationReport, reconcile_series
 from loanwhiz.primitives.reconciliation_answer_key import (
     DealAnswerKey,
@@ -176,7 +180,10 @@ from loanwhiz.primitives.reconciliation_answer_key import (
 )
 from loanwhiz.primitives.report_adapter import DEFAULT_TRANCHE_CLASSES, ReportAdapter
 from loanwhiz.primitives.report_label_fold import fold_report_pop
-from loanwhiz.primitives.step_source_classifier import ENGINE_COMPUTED_RECIPIENTS
+from loanwhiz.primitives.step_source_classifier import (
+    ENGINE_COMPUTED_RECIPIENTS,
+    is_engine_computed,
+)
 from loanwhiz.domain.rules import RecipientType
 from loanwhiz.primitives.waterfall_interpreter import WaterfallFunds, _canonical_recipient
 from tests.clo_answer_key_source import CLO_DEAL_ID, CLO_DEAL_NAME, clo_note_valuation_report
@@ -1222,6 +1229,12 @@ RETRACTED_CLAIMS: tuple[tuple[str, tuple[str, ...]], ...] = (
             # grade, not a join error. The corrected sentence still says
             # "join-error string", so the ban has to carry the whole claim.
             "replaced a true refusal with a join-error string",
+            # #515: the Cairn row narrates #496's failure, which is history and
+            # stays — but it stated it in the present tense, so the row said the
+            # cascade does not reconcile several sentences before saying all 29
+            # steps agree. The ban names the tense, not the history.
+            "grade anyway and it does not reconcile",
+            "so the failure is the tie-out, not a delta",
         ),
     ),
     (
@@ -1238,6 +1251,24 @@ RETRACTED_CLAIMS: tuple[tuple[str, tuple[str, ...]], ...] = (
             # present-tense claim that stopped being true.
             "raises on this key before comparing a figure",
             "the union's cadence, not any number in it, is what stands between",
+            # Retracted by #514/#538/#539, measured by #515: the row reconciles.
+            "and the interest row, run, does not reconcile",
+            "so not one line is",
+        ),
+    ),
+    # #515 added this file to the ban-list. Its Limitation 1 was the last
+    # committed surface still stating the pre-#514 result in the present tense,
+    # and nothing flagged it because no entry named it here — a card is only
+    # covered once it has a row, so adding the row IS the fix.
+    (
+        "docs/model-card.md",
+        (
+            "and it does not reconcile",
+            "no cairn line is engine-computed",
+            "(25%) undistributed",
+            # #492 brought Green Lion 2023-1's grade onto the matrix, so a
+            # transcribed "exactly one" has been false since.
+            "exactly one cell is validated",
         ),
     ),
 )
@@ -1271,8 +1302,11 @@ def test_the_published_statements_carry_the_measured_result() -> None:
     than the total. Pointing the cards at the total would now have them publish
     ``0.00`` for a cascade with two wrong steps in it, which is precisely the
     false green ``REVENUE_SHORTFALL``'s own comment warns about. Restating the
-    cards is #515's — ``docs/**`` is outside this issue's scope, and editing the
-    constant instead of the cards would hide drift rather than report it.
+    cards is #515's — it was outside this issue's scope, and editing the
+    constant instead of the cards would hide drift rather than report it. #515
+    has since done that restatement and added ``docs/model-card.md`` to the
+    table above, which was the last committed card still stating the pre-#514
+    result in the present tense with nothing to flag it.
     """
     repo_root = Path(__file__).resolve().parents[1]
     shortfall = f"{UNJOINED_REVENUE_ROWS_TOTAL:,.2f}"
@@ -1287,6 +1321,176 @@ def test_the_published_statements_carry_the_measured_result() -> None:
         # And it still states the result, so this cannot pass by deleting it.
         states_the_result = shortfall in prose
         assert states_the_result, (relative_path, shortfall)
+
+
+#: The cards that must state the Interest cascade's engine/report split. A card
+#: naming the grade without the split publishes "it reconciles" while hiding that
+#: most of what reconciled was the report compared with itself (#496).
+CARDS_STATING_THE_SPLIT: tuple[str, ...] = (
+    "README.md",
+    "docs/model-card.md",
+    "src/loanwhiz/data/deals/answer_keys/README.md",
+)
+
+
+def _collapsed(text: str) -> str:
+    """Prose with runs of whitespace flattened, so a wrapped line still matches."""
+    return re.sub(r"\s+", " ", text)
+
+
+def test_the_cards_state_the_split_as_a_figure_this_run_re_derives(
+    recon: ReconciliationReport,
+) -> None:
+    """Every count the cards publish is regenerated here, never transcribed.
+
+    #515's brief asks for the engine-computed / report-supplied split "as a
+    figure, not an adjective", and a figure written into four documents is four
+    places to drift. So the split is **derived from this run** and each card is
+    required to contain the derived sentence: change the engine's classification
+    and every card that still quotes the old number reds here, which is the
+    #492 lesson (a converged surface whose docs quote the old answer claims
+    worse) applied to a count rather than to a tally of cells.
+
+    The direction matters as much as the figure. A card may say the cascade
+    reconciles only while it also says how little of it was computed — 3 lines
+    of 29 in the Interest cascade, 3 of 52 across both — because "it
+    reconciles" and "the engine computes it" are different claims and this deal
+    is the one that made the difference visible.
+    """
+    period = recon.periods[0]
+    revenue, redemption = period.revenue, period.redemption
+    every_step = [*revenue.steps, *redemption.steps]
+
+    revenue_engine = [s for s in revenue.steps if s.source == "engine"]
+    revenue_reported = [s for s in revenue.steps if s.source != "engine"]
+    all_engine = [s for s in every_step if s.source == "engine"]
+    all_reported = [s for s in every_step if s.source != "engine"]
+    engine_money = sum(s.engine_amount for s in all_engine)
+    vacuous = [
+        s
+        for s in every_step
+        if abs(s.engine_amount) <= recon.tolerance_eur
+        and abs(s.report_amount) <= recon.tolerance_eur
+    ]
+
+    # The split is a real split: neither side is empty, or the sentence below
+    # would be true of a grade that computed nothing (#496) or of one with no
+    # report-supplied lines left to warn about.
+    assert revenue_engine and revenue_reported
+    assert len(all_engine) + len(all_reported) == len(every_step)
+
+    # One whole sentence, not two loose fragments: a short fragment like
+    # "3 of th" matches almost any prose and would let a card drop the count
+    # while still passing. The cards differ only in "the"/"those", so both
+    # readings are accepted and nothing weaker is.
+    split = tuple(
+        f"{len(revenue_engine)} of {article} {len(revenue.steps)} lines are "
+        f"engine-computed and {len(revenue_reported)} are report-supplied"
+        for article in ("the", "those")
+    )
+    for relative_path in CARDS_STATING_THE_SPLIT:
+        prose = _collapsed(
+            (Path(__file__).resolve().parents[1] / relative_path).read_text(
+                encoding="utf-8"
+            )
+        )
+        assert any(fragment in prose for fragment in split), (relative_path, split)
+
+    # The data card carries the cross-cascade form and the money behind it,
+    # because that is where a reader meets what `validated` would mean here.
+    data_card = _collapsed(
+        (Path(__file__).resolve().parents[1] / "docs/data-card.md").read_text(
+            encoding="utf-8"
+        )
+    )
+    for fragment in (
+        f"{len(every_step)} steps are compared and **{len(all_engine)} are "
+        f"engine-computed; {len(all_reported)} are report-supplied**",
+        f"{len(all_engine)} lines carrying EUR {engine_money:,.2f} of the "
+        f"Interest cascade's EUR {revenue.available_funds:,.2f} pot",
+        f"{len(vacuous)} of the {len(every_step)} compare EUR 0.00 with EUR 0.00",
+    ):
+        assert fragment in data_card, fragment
+
+    # And the redemption cascade is named as proving nothing wherever it is
+    # counted, since all of its steps are in that vacuous set.
+    assert len(redemption.steps) == len([s for s in vacuous if s in redemption.steps])
+
+
+#: The note classes the classifier does NOT count, paired with the cascade
+#: recipient each is issued under. Cairn has seven interest-bearing classes and
+#: ``ENGINE_COMPUTED_RECIPIENTS`` reaches three, so these are the remainder.
+UNCOUNTED_NOTE_CLASSES: tuple[tuple[str, str], ...] = (
+    ("class_d", "class_d_notes_interest"),
+    ("class_e", "class_e_notes_interest"),
+    ("class_f", "class_f_notes_interest"),
+)
+
+
+def test_the_uncounted_classes_would_compute_too_so_three_bounds_the_declaration(
+    clo_model: DealModel, nvr_report: NotesCashReport, recon: ReconciliationReport
+) -> None:
+    """``engine_computed_passed`` of 3 is a fact about a list, not about Cairn.
+
+    #515's verdict rests on this, and it is the half a reader is most likely to
+    take on trust, so it is measured rather than asserted. The classifier counts
+    a note-interest line only when its recipient is in
+    ``ENGINE_COMPUTED_RECIPIENTS``, a set authored for a three-tranche RMBS
+    stack that ends at ``class_c_interest``. Classes D, E and F arrive at the
+    fold holding *exactly* what Classes A and C hold — a seeded balance, an
+    applied rate in the report's own ``Rate Current`` column, and a day count
+    parsed from Condition 6(e)(ii) — and each reproduces its published interest
+    to the cent from them. They grade ``report-supplied`` anyway.
+
+    So the count bounds the declaration, not the deal, and the cards say so.
+    **Do not make this test pass by widening the set**: that would change the
+    engine to raise the number #515 was sent to measure, which is the one thing
+    the issue forbids. If a later issue widens it deliberately, this test reds
+    and the cards' published figures red with it — they are re-derived from the
+    same run — which is the intended way for that decision to surface.
+    """
+    seed, inputs = ReportAdapter.from_deal_model(clo_model).to_inputs(nvr_report)
+    balances = {tranche.name: tranche.balance for tranche in seed.tranches}
+    days = inputs[0].tranche_days_in_period
+    rates = published_rate_inputs(
+        {
+            balance.note_class: balance.interest_rate_applied
+            for balance in nvr_report.periods[0].note_balances
+        }
+    )
+    published = {
+        step.recipient: step.report_amount for step in recon.periods[0].revenue.steps
+    }
+
+    for tranche, recipient in UNCOUNTED_NOTE_CLASSES:
+        # Every input the counted classes use is present for this one too, so
+        # its absence from the count cannot be laid at the document's door.
+        accrued = balances[tranche] * rates[f"{tranche}_rate_pct"] / 100 / 360 * days[tranche]
+        assert abs(accrued - published[recipient]) <= recon.tolerance_eur, (
+            recipient,
+            accrued,
+            published[recipient],
+        )
+        # And yet the classifier does not count it — which is the finding.
+        assert not is_engine_computed(recipient), recipient
+
+    # The contrast is the point: the counted classes differ only by membership.
+    assert is_engine_computed("class_a_notes_interest")
+    assert is_engine_computed("class_c_notes_interest")
+
+    # The data card publishes these three figures. Re-derive them, so a card
+    # quoting a stale one reds here rather than misinforming a reader.
+    data_card = _collapsed(
+        (Path(__file__).resolve().parents[1] / "docs/data-card.md").read_text(
+            encoding="utf-8"
+        )
+    )
+    head = ", ".join(
+        f"EUR {published[recipient]:,.2f}"
+        for _, recipient in UNCOUNTED_NOTE_CLASSES[:-1]
+    )
+    tail = f"EUR {published[UNCOUNTED_NOTE_CLASSES[-1][1]]:,.2f}"
+    assert f"{head} and {tail}" in data_card, (head, tail)
 
 
 def test_both_sides_of_the_comparison_fold_the_report_the_same_way(

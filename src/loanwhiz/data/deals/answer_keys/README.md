@@ -99,19 +99,25 @@ redemption row cannot distinguish a correct cascade from a silent one; only the
 Interest row, whose steps distribute EUR 7,255,062.35, carries that signal.
 State the bound wherever the grade is published (#481).
 
-**And the Interest row, run, does not reconcile.** #496 folded the deal's own
-extracted 29-step cascade against this document and reports a shortfall of EUR
-1,820,150.42 against the stated available revenue: this report prints its
-waterfall as 62 rows, several of them sub-lettered components of one cascade
-step (`(A)(i)`, `(H)(i)`, `(H)(ii)`, `(CC)(1)(a)`, and two it re-letters bare
-`(a)`), and the reconciler's report-label folding handles only the purely-numeric
-`(b)(1..n)` wrap the Dutch RMBS reports produce. Two consequences worth stating
-beside the key rather than only in the grade: the rows that *do* join agree
-because each step's amount is taken from the report and compared to itself —
-no Cairn recipient is in `ENGINE_COMPUTED_RECIPIENTS`, so not one line is
-independently computed — and Class B's published EUR 644,398.50, which the
-report splits across `(H)(i)` and `(H)(ii)`, reconciles as 0.00-vs-0.00 against
-an unjoined parent label.
+**And the Interest row, run, reconciles — but read what it compares.** #496
+folded the deal's own extracted 29-step cascade against this document and
+reported a shortfall of EUR 1,820,150.42 against the stated available revenue:
+this report prints its waterfall as 62 rows, several of them sub-lettered
+components of one cascade step (`(A)(i)`, `(H)(i)`, `(H)(ii)`, `(CC)(1)(a)`, and
+two it re-letters bare `(a)`), and the report-label folding of the time handled
+only the purely-numeric `(b)(1..n)` wrap the Dutch RMBS reports produce. #514
+generalised that fold, so every published row now reaches a step; #538 resolved
+Class B onto the two strips it was issued in, and #539 gave each strip the
+day-count basis its own Condition states. All 29 Interest steps now agree at
+this key's EUR 0.01 tolerance. The consequence still worth stating beside the
+key is the one the tie does not remove: **3 of the 29 lines are engine-computed
+and 26 are report-supplied**, so those 26 have each step's amount taken from the
+report and compared to itself. Only `class_{a,b,c}_interest` are in
+`ENGINE_COMPUTED_RECIPIENTS`; Classes D, E and F carry a published balance, a
+published applied rate and a parsed day count, and reproduce their published
+interest to the cent, so the count of 3 bounds that declaration rather than this
+document. 12 of the 29 steps carry money at all — the remaining 17 compare
+EUR 0.00 with EUR 0.00 and can distinguish nothing.
 
 **A fourth property of the union, found by grading it — and since #513 the
 grader handles it.** Because three of this key's four periods come from trustee
@@ -123,8 +129,10 @@ the Note Valuation Report directly and bypassing the key.
 `reconcile_against_answer_key` now grades the periods that carry a Priority of
 Payments and reports the rest not-applicable, naming the real reason — that the
 document behind them publishes no cascade — so the union's cadence no longer
-stands between this key and a gradeable cell. Through the key it reaches the same
-EUR 1,820,150.42 shortfall #496 reached around it.
+stands between this key and a gradeable cell. Through the key it now reaches the
+same reconciled figures the direct fold reaches around it — the shortfall #496
+measured is closed, and what the join had to recover to close it was that same
+EUR 1,820,150.42.
 
 **A period skipped for want of a Priority of Payments is not a period passed.**
 Skipped periods are recorded outside the reconciliation's graded `periods` list,
