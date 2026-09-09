@@ -28,3 +28,15 @@ retainer-less pages of Cairn CLO XVII while `Article 6(3)` appears on one page o
 `option 3 (a) of article 6`. Stated both ways they must agree.
 
 Refs: #566
+## 2026-09-09 · pitfall · #532
+
+A short-but-plausible extraction and a budget-truncated one present identically
+— a definitions map holding only the leading alphabetical range. Measure the
+section actually sent before blaming `definitions_graph.py`'s `max_chars`:
+Contego's was 3,255 chars against a 40,000 budget, so widening it fixes
+nothing. The loss is in `route_sections`, which ends a section at the next
+heading while Docling renders many defined terms *as* headings, orphaning the
+glossary into siblings. A second document losing facts at one stage by a second
+route means the defect is the stage trusting whatever it is handed.
+
+Refs: #532

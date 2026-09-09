@@ -42,6 +42,9 @@ NOTE_VALUATION_FIXTURE_DIR = Path(__file__).parent / "fixtures" / "note_valuatio
 CLO_DEAL_ID = "cairn-clo-xvii"
 CLO_DEAL_NAME = "Cairn CLO XVII DAC"
 
+CONTEGO_DEAL_ID = "contego-clo-xi"
+CONTEGO_DEAL_NAME = "Contego CLO XI DAC"
+
 #: The three monthly trustee reports Euronext's listing carries for this issuer,
 #: in reporting order. January 2025 is absent from the exchange's filing, so the
 #: series is deliberately not contiguous and nothing is interpolated.
@@ -132,3 +135,56 @@ def clo_key_from_all_documents() -> DealAnswerKey:
     preferring one document's figures.
     """
     return merge_answer_keys(clo_key_from_reports(), clo_key_from_note_valuation())
+
+
+#: The two BNY COMPLIANCE REPORTs Euronext's listing carries for Contego CLO XI,
+#: in reporting order. Both predate the 19-Nov-2024 reset, which is why #532
+#: registered the deal against its **2023** Listing Particulars: the capital
+#: structure these reports report on is the pre-reset one.
+CONTEGO_REPORT_FIXTURES: tuple[tuple[str, str], ...] = (
+    ("contego-clo-xi-august-2024.txt", "August 2024"),
+    ("contego-clo-xi-september-2024.txt", "September 2024"),
+)
+
+
+def contego_report_summaries() -> list[ReportLiabilitySummary]:
+    """Parse both committed Contego trustee reports, strictly.
+
+    ``strict=True`` carries exactly what it carries on the Cairn side, over a
+    different administrator's layout: the per-class balances against the
+    report's stated total, and the coverage tests against BNY's *second*
+    rendering of them — which lives in its Compliance Tests table rather than
+    in the Compliance Summary, because BNY's summary states only the note
+    classes. The family says which section that is; naming the wrong one would
+    not fail, it would compare the detail pages against no tests at all.
+    """
+    return [
+        parse_liability_summary_text(
+            (FIXTURE_DIR / filename).read_text(encoding="utf-8"),
+            period_label=period_label,
+            strict=True,
+        )
+        for filename, period_label in CONTEGO_REPORT_FIXTURES
+    ]
+
+
+def contego_key_from_reports() -> DealAnswerKey:
+    """The Contego answer key, authored from those reports.
+
+    The **second** use of ``from_trustee_liability_summaries`` and the first
+    evidence it is a route rather than a one-off (#534). Nothing about the
+    constructor changed to accept a second administrator; what changed is that
+    the parser beneath it reads the row layout off the family instead of
+    carrying one administrator's as a module constant.
+
+    Contego publishes a Note Valuation Report too, so a PoP half is *available*
+    to this deal in a way it was not to a trustee-report-only one — but grading
+    Contego's waterfall is deliberately outside epic #530, so no second
+    constructor is called here and no ``merge_answer_keys`` union is built. The
+    key carries what these two documents state and nothing else.
+    """
+    return DealAnswerKey.from_trustee_liability_summaries(
+        contego_report_summaries(),
+        deal_id=CONTEGO_DEAL_ID,
+        deal_name=CONTEGO_DEAL_NAME,
+    )

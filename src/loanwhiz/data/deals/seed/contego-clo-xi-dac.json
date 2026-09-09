@@ -1,0 +1,1247 @@
+{
+  "metadata": {
+    "deal_name": "Contego CLO XI DAC",
+    "prospectus_url": "https://ise-prodnr-eu-west-1-data-integration.s3-eu-west-1.amazonaws.com/202306/769c88dc-c38d-42af-b7d7-49cbe7c9bf4e.pdf",
+    "extracted_at": "2026-09-09T14:26:33.529644+00:00",
+    "extraction_duration_sec": 422.82689905166626,
+    "sections_found": [
+      "definitions",
+      "revenue_priority_of_payments",
+      "redemption_priority_of_payments",
+      "eligibility_criteria"
+    ],
+    "completeness_score": 0.8500000000000001,
+    "cache_path": "data/deals/contego-clo-xi-dac.json"
+  },
+  "definitions": {
+    "Acceleration Notice": {
+      "definition": "shall have the meaning ascribed to it in Condition 10(b) ( Acceleration ).",
+      "page_or_section": "Definitions"
+    },
+    "Accounts": {
+      "definition": "means the Principal Account, the Custody Account, the Issuer Notes Custody Account, the Interest Account, the Unused Proceeds Account, the Payment Account, the Expense Reserve Account, the Supplemental Reserve Account, the Counterparty Downgrade Collateral Accounts, the Currency Accounts, the Hedge Termination Accounts, the First Period Reserve Account, the Interest Smoothing Account and the Unfunded Revolver Reserve Account.",
+      "page_or_section": "Definitions"
+    },
+    "Accrual Period": {
+      "definition": "means, in respect of each Class of Notes, the period from and including the Issue Date (or, in the case of a Class that is subject to Refinancing, the Payment Date upon which the Refinancing occurs) to, but excluding, the first Payment Date (or in the case of a Class that is subject to Refinancing, the first Payment Date following the Refinancing) and each successive period from and including each Payment Date to, but excluding, the following Payment Date, provided that for the purpose of calculating the interest payable on the Class B-2 Notes in accordance with Condition 6(e)(iii) ( Interest on the Fixed Rate Notes ), the Payment Date shall not be adjusted if the relevant Payment Date would have fallen on a day other than a Business Day but for the proviso in the definition of 'Payment Date'.",
+      "page_or_section": "Definitions"
+    },
+    "Adjusted Collateral Principal Amount": {
+      "definition": "means, as of any date of determination:\n\n- (a) the Aggregate Principal Balance of the Collateral Obligations (other than Defaulted Obligations, Discount Obligations, Long-Dated Obligations and Deferring Obligations); plus\n- (b) the Aggregate Principal Balance of Workout Loans; plus\n- (c) unpaid accrued interest purchased with Principal Proceeds (other than with respect to Defaulted Obligations), plus\n- (d) without duplication, the amounts on deposit in (i) the Principal Account (other than any am ounts received in connection with the issuance of the Class F Notes) and (ii) the Unused Proceeds Account (only to the extent such amounts represent Principal Proceeds and are not designated as Interest Proceeds to be credited to the Interest Account), including, in each case, any Eligible Investm ents but save for interest accrued on Eligible Investments, acquired with cash standing to the credit of such Accounts; plus\n- (e) in relation to a Deferring Obligation or a Defaulted Obligation the lesser of (i) its Fitch Collateral Value and (ii) its S&P Collateral Value, provided that the value determined under this paragraph (e) in the case of a Defaulted Obligation that has been a Defaulted Obligation for more than three years after the date on which it became a Defaulted Obligation and continues to be a Defaulted Obligation on such date shall be zero; plus\n- (f) the aggregate, for each Discount Obligation, of the product of the (x) purchase price (expressed as a percentage of par and excluding accrued interest) and (y) Principal Balance of such Discount Obligation; plus\n- (g) in relation to a Long-Dated Obligation, the product of its Principal Balance outstanding and the lesser of its (i) Market Value, (ii) Fitch Recovery Rate and (iii) 70 per cent.; minus\n- (h) the Excess CCC Adjustment Amount;",
+      "page_or_section": "Definitions"
+    }
+  },
+  "waterfalls": {
+    "revenue": {
+      "deal_name": "Contego CLO XI DAC",
+      "waterfall_type": "revenue",
+      "steps": [
+        {
+          "priority": "(a)",
+          "recipient": "subordinated_management_fee",
+          "description": "firstly , on a pro rata and pari passu basis to the Collateral Manager of the Subordi nated Management Fee due and payable on such Payment Date and any VAT in respect thereof (whether payable to the Collateral Manager or directly to the relevant tax ing authority) (save for any Deferred Subordinated Collateral Management Amounts) until such amount has been paid in full, provided however that the Collateral Manager m ay, in its sole discretion, elect to (x) irrevocably waive, (y) designate for reinvestm ent i n Collateral Obligations or purchase of Notes (provided that to do so would not cause a Retention Deficiency) or (z) defer payment of some or all of the amounts that would have been payable to the Collateral Manager under this paragraph (W) (any such amounts pursuant to (y) or (z) being ' Deferred Subordinated Collateral Management Amounts ') on any Payment Date, provided that any such amount i n the case of (y) shall (i) be used to purchase additional Collateral Obligations or Notes pursuant to Condition 7(k) ( Purchase ) or (ii) be deposited in the Principal Account pending reinvestment in additional Collateral Obligations (provided that such purchase and/or deposit would not cause a Retention Deficiency) or, in the case of (x) or (z), shall be applied to the payment of amounts in accordance with paragraphs (X) through (DD) below, subject to the Collateral Manager having notified the Collateral Administrator in writing not later than one Business Day prior to the relevant Determination Date of any amounts to be so applied",
+          "amount_formula": "due and payable on such Payment Date",
+          "condition": null,
+          "is_pari_passu": true,
+          "citation": {
+            "excerpt": "firstly , on a pro rata and pari passu basis to the Collateral Manager of the Subordi nated Management Fee due and payable on such Payment Date and any",
+            "page_or_row": "(W)(a)",
+            "document": "Contego CLO XI DAC Prospectus"
+          },
+          "condition_terms": []
+        },
+        {
+          "priority": "(b)",
+          "recipient": "unpaid_subordinated_management_fee",
+          "description": "secondly , on a pro rata and pari passu basis to the Collateral Manager of any previously due and unpaid Subordinated Management Fee (other than Deferred Subordinated Collateral Management Amounts) and any VAT in respect thereof (whether payable to the Collateral Manager or directly to the relevant taxing authority)",
+          "amount_formula": "previously due and unpaid",
+          "condition": null,
+          "is_pari_passu": true,
+          "citation": {
+            "excerpt": "secondly , on a pro rata and pari passu basis to the Collateral Manager of any previously due and unpaid Subordinated Management Fee (other than Deferr",
+            "document": "Contego CLO XI DAC Prospectus",
+            "page_or_row": "(W)(b)"
+          },
+          "condition_terms": []
+        },
+        {
+          "priority": "(c)",
+          "recipient": "deferred_collateral_management_amounts",
+          "description": "thirdly , at the election of the Collateral Manager (in its sole discretion) to the Collateral Manager in payment of any Deferred Senior Collateral Management Amounts and Deferred Subordinated Collateral Management Amounts",
+          "amount_formula": "any Deferred Senior Collateral Management Amounts and Deferred Subordinated Collateral Management Amounts",
+          "condition": "at the election of the Collateral Manager (in its sole discretion)",
+          "is_pari_passu": false,
+          "citation": {
+            "page_or_row": "(W)(c)",
+            "excerpt": "thirdly , at the election of the Collateral Manager (in its sole discretion) to the Collateral Manager in payment of any Deferred Senior Collateral Man",
+            "document": "Contego CLO XI DAC Prospectus"
+          },
+          "condition_terms": []
+        },
+        {
+          "priority": "(d)",
+          "recipient": "collateral_manager_advances",
+          "description": "fourthly , to the repayment of any Collateral Manager Advances and any interest thereon",
+          "amount_formula": "any Collateral Manager Advances and any interest thereon",
+          "condition": null,
+          "is_pari_passu": false,
+          "citation": {
+            "document": "Contego CLO XI DAC Prospectus",
+            "page_or_row": "(W)(d)",
+            "excerpt": "fourthly , to the repayment of any Collateral Manager Advances and any interest thereon"
+          },
+          "condition_terms": []
+        },
+        {
+          "priority": "(X)",
+          "recipient": "trustee_fees_and_expenses_above_cap",
+          "description": "to the payment of Trustee Fees and Expenses (if any) not paid by reason of the Senior Expenses Cap",
+          "amount_formula": "Trustee Fees and Expenses (if any) not paid by reason of the Senior Expenses Cap",
+          "condition": null,
+          "is_pari_passu": false,
+          "citation": {
+            "excerpt": "to the payment of Trustee Fees and Expenses (if any) not paid by reason of the Senior Expenses Cap",
+            "page_or_row": "(X)",
+            "document": "Contego CLO XI DAC Prospectus"
+          },
+          "condition_terms": []
+        },
+        {
+          "priority": "(Y)",
+          "recipient": "administrative_expenses_above_cap",
+          "description": "to the payment of Administrative Expenses (if any) not paid by reason of the Senior Expenses Cap, in relation to each item thereof in the order of priority stated in the definition thereof",
+          "amount_formula": "Administrative Expenses (if any) not paid by reason of the Senior Expenses Cap",
+          "condition": null,
+          "is_pari_passu": false,
+          "citation": {
+            "page_or_row": "(Y)",
+            "excerpt": "to the payment of Administrative Expenses (if any) not paid by reason of the Senior Expenses Cap, in relation to each item thereof in the order of prio",
+            "document": "Contego CLO XI DAC Prospectus"
+          },
+          "condition_terms": []
+        },
+        {
+          "priority": "(Z)",
+          "recipient": "defaulted_hedge_termination_payments",
+          "description": "to the payment on a pari passu and pro rata basis of any Defaulted Currency Hedge Termination Payments due to a Currency Hedge Counterparty or Defaulted Interest Rate Hedge Termination Payment due to an Interest Rate Hedge Counterparty (in each case to the extent not paid out of the applicable Hedge Termination Account or the applicable Counterparty Downgrade Collateral Account)",
+          "amount_formula": "any Defaulted Currency Hedge Termination Payments due to a Currency Hedge Counterparty or Defaulted Interest Rate Hedge Termination Payment due to an Interest Rate Hedge Counterparty",
+          "condition": "to the extent not paid out of the applicable Hedge Termination Account or the applicable Counterparty Downgrade Collateral Account",
+          "is_pari_passu": true,
+          "citation": {
+            "excerpt": "to the payment on a pari passu and pro rata basis of any Defaulted Currency Hedge Termination Payments due to a Currency Hedge Counterparty or Defaulted",
+            "document": "Contego CLO XI DAC Prospectus",
+            "page_or_row": "(Z)"
+          },
+          "condition_terms": []
+        },
+        {
+          "priority": "(AA)",
+          "recipient": "supplemental_reserve_account",
+          "description": "during the Reinvestment Period at the direction and in the discretion of the Collateral Manager, to transfer to the Supplemental Reserve Account any Supplemental Reserve Amounts",
+          "amount_formula": "any Supplemental Reserve Amounts",
+          "condition": "during the Reinvestment Period at the direction and in the discretion of the Collateral Manager",
+          "is_pari_passu": false,
+          "citation": {
+            "document": "Contego CLO XI DAC Prospectus",
+            "excerpt": "during the Reinvestment Period at the direction and in the discretion of the Collateral Manager, to transfer to the Supplemental Reserve Account any Supp",
+            "page_or_row": "(AA)"
+          },
+          "condition_terms": []
+        },
+        {
+          "priority": "(BB)",
+          "recipient": "incentive_management_fee",
+          "description": "subject to the Incentive Management Fee IRR Threshold having been reached (after taking into account all prior distributions to Subordinated Noteholders and any distributions to be made to Subordinated Noteholders on such Payment Date, including pursuant to paragraph (DD) below, paragraph (V) of the Principal Priority of Payments, paragraph (BB) of the Post-Acceleration Priority of Payments, paragraph (8) of Condition 3(k)(vi) ( Supplemental Reserve Account ) and paragraphs (A) and (B) of the Collateral Enhancement Obligation Proceeds Priority of Payments), to the payment to the Collateral Manager of 20 per cent. of any remaining Interest Proceeds (after any payment required to be made in order to satisfy the Incentive Managem ent Fee IRR Threshold) in payment of an Incentive Management Fee, provided however that the Collateral Manager may, in its sole discretion, elect to (x) irrevocably waive or (y) designate for reinvestment some or all of the amounts that would have been payable to the Collateral Manager under this paragraph (BB) on any Payment Date and apply such amount to, in the case of (y), (i) be used to purchase additional Collateral Obligations (provided that such purchase would not cause a Retention Deficiency) and/or (ii) be deposited in the Principal Account pending reinvestment in additional Collateral Obligations (provided that such purchase and/or deposit would not cause a Retention Deficiency)or, in the case of (x), be applied to the paym ent of amounts in accordance with paragraph (DD) below, subject in each case to the Collateral Manager having notified the Collateral Administrator in writing not later than one Business Day prior to the relevant Determination Date of any amounts to be so applied",
+          "amount_formula": "20 per cent. of any remaining Interest Proceeds (after any payment required to be made in order to satisfy the Incentive Managem ent Fee IRR Threshold)",
+          "condition": "subject to the Incentive Management Fee IRR Threshold having been reached",
+          "is_pari_passu": false,
+          "citation": {
+            "document": "Contego CLO XI DAC Prospectus",
+            "excerpt": "subject to the Incentive Management Fee IRR Threshold having been reached (after taking into account all prior distributions to Subordinated Noteholders and",
+            "page_or_row": "(BB)"
+          },
+          "condition_terms": []
+        },
+        {
+          "priority": "(CC)",
+          "recipient": "incentive_management_fee_vat",
+          "description": "to the payment of any VAT in respect of the Incentive Management Fee under paragraph (BB) above (whether payable to the Collateral Manager or directly to the relevant taxing authority)",
+          "amount_formula": "any VAT in respect of the Incentive Management Fee under paragraph (BB) above",
+          "condition": null,
+          "is_pari_passu": false,
+          "citation": {
+            "document": "Contego CLO XI DAC Prospectus",
+            "page_or_row": "(CC)",
+            "excerpt": "to the payment of any VAT in respect of the Incentive Management Fee under paragraph (BB) above (whether payable to the Collateral Manager or directly to"
+          },
+          "condition_terms": []
+        },
+        {
+          "priority": "(DD)",
+          "recipient": "subordinated_notes_interest",
+          "description": "any remaining Interest Proceeds to the payment of interest on the Subordinated Notes on a pro rata basis (determined upon redemption in full thereof by reference to the proportion that the principal amount of the Subordinated Notes held by Subordinated Noteholders bore to the Principal Amount Outstanding of the Subordinated Notes immediately prior to such redemption)",
+          "amount_formula": "any remaining Interest Proceeds",
+          "condition": null,
+          "is_pari_passu": true,
+          "citation": {
+            "document": "Contego CLO XI DAC Prospectus",
+            "excerpt": "any remaining Interest Proceeds to the payment of interest on the Subordinated Notes on a pro rata basis (determined upon redemption in full thereof by r",
+            "page_or_row": "(DD)"
+          },
+          "condition_terms": []
+        },
+        {
+          "priority": "(A)",
+          "recipient": "interest_priority_of_payments_a_to_h",
+          "description": "to the payment on a sequential basis of the amounts referred to in paragraphs (A) through (H) (inclusive) of the Interest Priority of Payments, but only to the extent not paid in full thereunder",
+          "amount_formula": "amounts referred to in paragraphs (A) through (H) (inclusive) of the Interest Priority of Payments",
+          "condition": "only to the extent not paid in full thereunder",
+          "is_pari_passu": false,
+          "citation": {
+            "excerpt": "to the payment on a sequential basis of the amounts referred to in paragraphs (A) through (H) (inclusive) of the Interest Priority of Payments, but onl",
+            "page_or_row": "(ii)(A)",
+            "document": "Contego CLO XI DAC Prospectus"
+          },
+          "condition_terms": []
+        },
+        {
+          "priority": "(B)",
+          "recipient": "interest_priority_of_payments_i",
+          "description": "to the payment of the amounts referred to in paragraph (I) of the Interest Priority of Payments but only to the extent not paid in full thereunder and only to the extent necessary to cause the Class A/B Coverage Tests that are applicable on such Payment Date with respect to the Class A Notes and the Class B Notes to be satisfied if recalculated immediately following such redemption",
+          "amount_formula": "amounts referred to in paragraph (I) of the Interest Priority of Payments",
+          "condition": "only to the extent not paid in full thereunder and only to the extent necessary to cause the Class A/B Coverage Tests that are applicable on such Payment Date with respect to the Class A Notes and the Class B Notes to be satisfied if recalculated immediately following such redemption",
+          "is_pari_passu": false,
+          "citation": {
+            "document": "Contego CLO XI DAC Prospectus",
+            "page_or_row": "(ii)(B)",
+            "excerpt": "to the payment of the amounts referred to in paragraph (I) of the Interest Priority of Payments but only to the extent not paid in full thereunder and on"
+          },
+          "condition_terms": []
+        },
+        {
+          "priority": "(C)",
+          "recipient": "interest_priority_of_payments_j",
+          "description": "to the payment of the amounts referred to in paragraph (J) of the Interest Priority of Payments but only to the extent not paid in full thereunder and only to the extent that the Class C Notes are the Controlling Class",
+          "amount_formula": "amounts referred to in paragraph (J) of the Interest Priority of Payments",
+          "condition": "only to the extent not paid in full thereunder and only to the extent that the Class C Notes are the Controlling Class",
+          "is_pari_passu": false,
+          "citation": {
+            "excerpt": "to the payment of the amounts referred to in paragraph (J) of the Interest Priority of Payments but only to the extent not paid in full thereunder and on",
+            "page_or_row": "(ii)(C)",
+            "document": "Contego CLO XI DAC Prospectus"
+          },
+          "condition_terms": []
+        },
+        {
+          "priority": "(D)",
+          "recipient": "interest_priority_of_payments_k",
+          "description": "to the payment of the amounts referred to in paragraph (K) of the Interest Priority of Paym ents but only to the extent not paid in full thereunder and to the extent that the Class C Notes are the Controlling Class",
+          "amount_formula": "amounts referred to in paragraph (K) of the Interest Priority of Paym ents",
+          "condition": "only to the extent not paid in full thereunder and to the extent that the Class C Notes are the Controlling Class",
+          "is_pari_passu": false,
+          "citation": {
+            "page_or_row": "(ii)(D)",
+            "document": "Contego CLO XI DAC Prospectus",
+            "excerpt": "to the payment of the amounts referred to in paragraph (K) of the Interest Priority of Paym ents but only to the extent not paid in full thereunder and to"
+          },
+          "condition_terms": []
+        },
+        {
+          "priority": "(E)",
+          "recipient": "interest_priority_of_payments_l",
+          "description": "to the payment of the amounts referred to in paragraph (L) of the Interest Priority of Payments but only to the extent not paid in full thereunder and only to the extent necessary to cause the Class C Coverage Tests that are applicable on such Payment Date with respect to the Class C Notes to be satisfied if recalculated immediately following such redemption",
+          "amount_formula": "amounts referred to in paragraph (L) of the Interest Priority of Payments",
+          "condition": "only to the extent not paid in full thereunder and only to the extent necessary to cause the Class C Coverage Tests that are applicable on such Payment Date with respect to the Class C Notes to be satisfied if recalculated immediately following such redemption",
+          "is_pari_passu": false,
+          "citation": {
+            "excerpt": "to the payment of the amounts referred to in paragraph (L) of the Interest Priority of Payments but only to the extent not paid in full thereunder and on",
+            "document": "Contego CLO XI DAC Prospectus",
+            "page_or_row": "(ii)(E)"
+          },
+          "condition_terms": []
+        },
+        {
+          "priority": "(F)",
+          "recipient": "interest_priority_of_payments_m",
+          "description": "to the payment of the amounts referred to in paragraph (M) of the Interest Priority of Paym ents but only to the extent not paid in full thereunder and only to the extent that the Class D Notes are the Controlling Class",
+          "amount_formula": "amounts referred to in paragraph (M) of the Interest Priority of Paym ents",
+          "condition": "only to the extent not paid in full thereunder and only to the extent that the Class D Notes are the Controlling Class",
+          "is_pari_passu": false,
+          "citation": {
+            "document": "Contego CLO XI DAC Prospectus",
+            "page_or_row": "(ii)(F)",
+            "excerpt": "to the payment of the amounts referred to in paragraph (M) of the Interest Priority of Paym ents but only to the extent not paid in full thereunder and on"
+          },
+          "condition_terms": []
+        },
+        {
+          "priority": "(G)",
+          "recipient": "interest_priority_of_payments_n",
+          "description": "to the payment of the amounts referred to in paragraph (N) of the Interest Priority of Paym ents but only to the extent not paid in full thereunder and to the extent that the Class D Notes are the Controlling Class",
+          "amount_formula": "amounts referred to in paragraph (N) of the Interest Priority of Paym ents",
+          "condition": "only to the extent not paid in full thereunder and to the extent that the Class D Notes are the Controlling Class",
+          "is_pari_passu": false,
+          "citation": {
+            "excerpt": "to the payment of the amounts referred to in paragraph (N) of the Interest Priority of Paym ents but only to the extent not paid in full thereunder and to",
+            "page_or_row": "(ii)(G)",
+            "document": "Contego CLO XI DAC Prospectus"
+          },
+          "condition_terms": []
+        },
+        {
+          "priority": "(H)",
+          "recipient": "interest_priority_of_payments_o",
+          "description": "to the payment of the amounts referred to in paragraph (O) of the Interest Priority of Paym ents but only to the extent not paid in full thereunder and only to the extent necessary to cause the Class D Coverage Tests that are applicable on such Payment Date with respect to the Class D Notes to be satisfied if recalculated immediately following such redemption",
+          "amount_formula": "amounts referred to in paragraph (O) of the Interest Priority of Paym ents",
+          "condition": "only to the extent not paid in full thereunder and only to the extent necessary to cause the Class D Coverage Tests that are applicable on such Payment Date with respect to the Class D Notes to be satisfied if recalculated immediately following such redemption",
+          "is_pari_passu": false,
+          "citation": {
+            "document": "Contego CLO XI DAC Prospectus",
+            "page_or_row": "(ii)(H)",
+            "excerpt": "to the payment of the amounts referred to in paragraph (O) of the Interest Priority of Paym ents but only to the extent not paid in full thereunder and on"
+          },
+          "condition_terms": []
+        },
+        {
+          "priority": "(I)",
+          "recipient": "interest_priority_of_payments_p",
+          "description": "to the payment of the amounts referred to in paragraph (P) of the Interest Priority of Payments but only to the extent not paid in full thereunder and only to the extent that the Class E Notes are the Controlling Class",
+          "amount_formula": "amounts referred to in paragraph (P) of the Interest Priority of Payments",
+          "condition": "only to the extent not paid in full thereunder and only to the extent that the Class E Notes are the Controlling Class",
+          "is_pari_passu": false,
+          "citation": {
+            "document": "Contego CLO XI DAC Prospectus",
+            "page_or_row": "(ii)(I)",
+            "excerpt": "to the payment of the amounts referred to in paragraph (P) of the Interest Priority of Payments but only to the extent not paid in full thereunder and on"
+          },
+          "condition_terms": []
+        },
+        {
+          "priority": "(J)",
+          "recipient": "interest_priority_of_payments_q",
+          "description": "to the payment of the amounts referred to in paragraph (Q) of the Interest Priority of Paym ents but only to the extent not paid in full thereunder and to the extent that the Class E Notes are the Controlling Class",
+          "amount_formula": "amounts referred to in paragraph (Q) of the Interest Priority of Paym ents",
+          "condition": "only to the extent not paid in full thereunder and to the extent that the Class E Notes are the Controlling Class",
+          "is_pari_passu": false,
+          "citation": {
+            "page_or_row": "(ii)(J)",
+            "excerpt": "to the payment of the amounts referred to in paragraph (Q) of the Interest Priority of Paym ents but only to the extent not paid in full thereunder and to",
+            "document": "Contego CLO XI DAC Prospectus"
+          },
+          "condition_terms": []
+        },
+        {
+          "priority": "(K)",
+          "recipient": "interest_priority_of_payments_r",
+          "description": "to the payment of the amounts referred to in paragraph (R) of the Interest Priority of Paym ents but only to the extent not paid in full thereunder and only to the extent necessary to cause the Class E Coverage Tests that are applicable on such Payment Date with respect to the Class E Notes to be satisfied if recalculated immediately following such redemption",
+          "amount_formula": "amounts referred to in paragraph (R) of the Interest Priority of Paym ents",
+          "condition": "only to the extent not paid in full thereunder and only to the extent necessary to cause the Class E Coverage Tests that are applicable on such Payment Date with respect to the Class E Notes to be satisfied if recalculated immediately following such redemption",
+          "is_pari_passu": false,
+          "citation": {
+            "page_or_row": "(ii)(K)",
+            "excerpt": "to the payment of the amounts referred to in paragraph (R) of the Interest Priority of Paym ents but only to the extent not paid in full thereunder and on",
+            "document": "Contego CLO XI DAC Prospectus"
+          },
+          "condition_terms": []
+        },
+        {
+          "priority": "(L)",
+          "recipient": "interest_priority_of_payments_s",
+          "description": "to the payment of the amounts referred to in paragraph (S) of the Interest Priority of Payments but only to the extent not paid in full thereunder and only to the extent that the Class F Notes are the Controlling Class",
+          "amount_formula": "amounts referred to in paragraph (S) of the Interest Priority of Payments",
+          "condition": "only to the extent not paid in full thereunder and only to the extent that the Class F Notes are the Controlling Class",
+          "is_pari_passu": false,
+          "citation": {
+            "page_or_row": "(ii)(L)",
+            "document": "Contego CLO XI DAC Prospectus",
+            "excerpt": "to the payment of the amounts referred to in paragraph (S) of the Interest Priority of Payments but only to the extent not paid in full thereunder and on"
+          },
+          "condition_terms": []
+        },
+        {
+          "priority": "(M)",
+          "recipient": "interest_priority_of_payments_t",
+          "description": "to the payment of the amounts referred to in paragraph (T) of the Interest Priority of Payments but only to the extent not paid in full thereunder and to the extent that the Class F Notes are the Controlling Class",
+          "amount_formula": "amounts referred to in paragraph (T) of the Interest Priority of Payments",
+          "condition": "only to the extent not paid in full thereunder and to the extent that the Class F Notes are the Controlling Class",
+          "is_pari_passu": false,
+          "citation": {
+            "document": "Contego CLO XI DAC Prospectus",
+            "page_or_row": "(ii)(M)",
+            "excerpt": "to the payment of the amounts referred to in paragraph (T) of the Interest Priority of Payments but only to the extent not paid in full thereunder and to"
+          },
+          "condition_terms": []
+        },
+        {
+          "priority": "(N)",
+          "recipient": "interest_priority_of_payments_u",
+          "description": "to the payment of the amounts referred to in paragraph (U) of the Interest Priority of Paym ents, but only to the extent not paid in full thereunder",
+          "amount_formula": "amounts referred to in paragraph (U) of the Interest Priority of Paym ents",
+          "condition": "only to the extent not paid in full thereunder",
+          "is_pari_passu": false,
+          "citation": {
+            "document": "Contego CLO XI DAC Prospectus",
+            "excerpt": "to the payment of the amounts referred to in paragraph (U) of the Interest Priority of Paym ents, but only to the extent not paid in full thereunder",
+            "page_or_row": "(ii)(N)"
+          },
+          "condition_terms": []
+        },
+        {
+          "priority": "(O)",
+          "recipient": "redeem_notes_and_refinancing_costs",
+          "description": "if such Payment Date is a Redemption Date in respect of which the Notes are being redeem ed in full (other than a Special Redemption Date or after the Reinvestment Period has ended), to redeem the Notes in accordance with the Note Payment Sequence and, if applicable, in paym ent of any Refinancing Costs",
+          "amount_formula": "in accordance with the Note Payment Sequence and, if applicable, in paym ent of any Refinancing Costs",
+          "condition": "if such Payment Date is a Redemption Date in respect of which the Notes are being redeem ed in full (other than a Special Redemption Date or after the Reinvestment Period has ended)",
+          "is_pari_passu": false,
+          "citation": {
+            "excerpt": "if such Payment Date is a Redemption Date in respect of which the Notes are being redeem ed in full (other than a Special Redemption Date or after the Re",
+            "document": "Contego CLO XI DAC Prospectus",
+            "page_or_row": "(ii)(O)"
+          },
+          "condition_terms": []
+        },
+        {
+          "priority": "(P)",
+          "recipient": "special_redemption_amount",
+          "description": "if such Payment Date is a Special Redemption Date, at the election of the Collateral Manager to make payments in an amount equal to the Special Redemption Amount (if any) applicable to such Payment Date in accordance with the Note Payment Sequence",
+          "amount_formula": "Special Redemption Amount (if any) applicable to such Payment Date in accordance with the Note Payment Sequence",
+          "condition": "if such Payment Date is a Special Redemption Date, at the election of the Collateral Manager",
+          "is_pari_passu": false,
+          "citation": {
+            "excerpt": "if such Payment Date is a Special Redemption Date, at the election of the Collateral Manager to make payments in an amount equal to the Special Redempti",
+            "page_or_row": "(ii)(P)",
+            "document": "Contego CLO XI DAC Prospectus"
+          },
+          "condition_terms": []
+        },
+        {
+          "priority": "(Q)",
+          "recipient": "purchase_substitute_collateral_obligations",
+          "description": "(i) during the Reinvestment Period, at the discretion of the Collateral Manager, either to the purchase of Substitute Collateral Obligations or to the Principal Account pending reinvestm ent in Substitute Collateral Obligations at a later date in each case in accordance with the Collateral Management and Administration Agreement (provided that and to the extent that such purchase and/or deposit would not cause a Retention Deficiency); and\n\n(ii) after the Reinvestment Period in the case of Principal Proceeds representing Unscheduled Principal Proceeds and Sale Proceeds from the sale of Credit Risk Obligations at the discretion of the Collateral Manager, either to the purchase of Substitute Collateral Obligations or to the Principal Account pending reinvestment in Substitute Collateral Obligations at a later date in each case in accordance with the Collateral Management and Administration Agreem ent (provided that and to the extent that such purchase and/or deposit would not cause a Retention Deficiency)",
+          "amount_formula": "at the discretion of the Collateral Manager",
+          "condition": "during the Reinvestment Period or after the Reinvestment Period for Unscheduled Principal Proceeds and Sale Proceeds from Credit Risk Obligations",
+          "is_pari_passu": false,
+          "citation": {
+            "excerpt": "(i) during the Reinvestment Period, at the discretion of the Collateral Manager, either to the purchase of Substitute Collateral Obligations or to the Pr",
+            "page_or_row": "(ii)(Q)",
+            "document": "Contego CLO XI DAC Prospectus"
+          },
+          "condition_terms": []
+        },
+        {
+          "priority": "(R)",
+          "recipient": "redeem_notes_post_reinvestment",
+          "description": "after the Reinvestment Period, to redeem the Notes in accordance with the Note Paym ent Sequence",
+          "amount_formula": "in accordance with the Note Paym ent Sequence",
+          "condition": "after the Reinvestment Period",
+          "is_pari_passu": false,
+          "citation": {
+            "document": "Contego CLO XI DAC Prospectus",
+            "page_or_row": "(ii)(R)",
+            "excerpt": "after the Reinvestment Period, to redeem the Notes in accordance with the Note Paym ent Sequence"
+          },
+          "condition_terms": []
+        },
+        {
+          "priority": "(S)",
+          "recipient": "interest_priority_of_payments_bb_to_dd",
+          "description": "after the Reinvestment Period, to the payment on a sequential basis of the amounts referred to in paragraphs (BB) through DD) (inclusive) of the Interest Priority of Payments, but only to the extent not paid in full thereunder",
+          "amount_formula": "amounts referred to in paragraphs (BB) through DD) (inclusive) of the Interest Priority of Payments",
+          "condition": "after the Reinvestment Period, and only to the extent not paid in full thereunder",
+          "is_pari_passu": false,
+          "citation": {
+            "document": "Contego CLO XI DAC Prospectus",
+            "excerpt": "after the Reinvestment Period, to the payment on a sequential basis of the amounts referred to in paragraphs (BB) through DD) (inclusive) of the Intere",
+            "page_or_row": "(ii)(S)"
+          },
+          "condition_terms": []
+        },
+        {
+          "priority": "(T)",
+          "recipient": "incentive_management_fee_from_principal",
+          "description": "subject to the Incentive Management Fee IRR Threshold having been reached (after taking into account all prior distributions to Subordinated Noteholders and any distributions to be made to Subordinated Noteholders on such Payment Date, including pursuant to paragraph (V) below, paragraph (DD) of the Interest Priority of Payments, paragraph (BB) of the Post-Acceleration Priority of Payments, paragraph (8) of Condition 3(k)(vi) ( Supplemental Reserve Account ) and paragraphs (A) and (B) of the Collateral Enhancement Obligation Proceeds Priority of Payments) to the payment to the Collateral Manager of 20 per cent. of any remaining Principal Proceeds (after any payment required to be made in order to satisfy the Incentive Managem ent Fee IRR Threshold) in payment of an Incentive Management Fee, provided however that the Collateral Manager may, in its sole discretion, elect to (x) irrevocably waive or (y) designate for reinvestment some or all of the amounts that would have been payable to the Collateral Manager under this paragraph (T) on any Payment Date and apply such amount to, in the case of (y), (i) be used to purchase additional Collateral Obligations (provided that such purchase would not cause a Retention Deficiency)or (ii) be deposited in the Principal Account pending reinvestment in additional Collateral Obligations (provided that such purchase and/or deposit would not cause a Retention Deficiency) or, in the case of (x), be applied to the paym ent of amounts in accordance with paragraph (V) below, subject in each case to the Collateral Manager having notified the Collateral Administrator in writing not later than one Business Day prior to the relevant Determination Date of any amounts to be so applied",
+          "amount_formula": "20 per cent. of any remaining Principal Proceeds (after any payment required to be made in order to satisfy the Incentive Managem ent Fee IRR Threshold)",
+          "condition": "subject to the Incentive Management Fee IRR Threshold having been reached",
+          "is_pari_passu": false,
+          "citation": {
+            "document": "Contego CLO XI DAC Prospectus",
+            "page_or_row": "(ii)(T)",
+            "excerpt": "subject to the Incentive Management Fee IRR Threshold having been reached (after taking into account all prior distributions to Subordinated Noteholders and"
+          },
+          "condition_terms": []
+        },
+        {
+          "priority": "(U)",
+          "recipient": "incentive_management_fee_vat_from_principal",
+          "description": "to the payment of any VAT in respect of the Incentive Management Fee under paragraph (T) above (whether payable to the Collateral Manager or directly to the relevant taxing authority)",
+          "amount_formula": "any VAT in respect of the Incentive Management Fee under paragraph (T) above",
+          "condition": null,
+          "is_pari_passu": false,
+          "citation": {
+            "page_or_row": "(ii)(U)",
+            "document": "Contego CLO XI DAC Prospectus",
+            "excerpt": "to the payment of any VAT in respect of the Incentive Management Fee under paragraph (T) above (whether payable to the Collateral Manager or directly to"
+          },
+          "condition_terms": []
+        },
+        {
+          "priority": "(V)",
+          "recipient": "subordinated_notes_principal_and_interest",
+          "description": "any remaining Principal Proceeds to the payment of principal on the Subordinated Notes on a pro rata basis and thereafter to the payment of interest on a pro rata basis on the Subordinated Notes (in each case determined upon redemption in full thereof by reference to the proportion that the principal amount of the Subordinated Notes held by Subordinated Noteholders bore to the Principal Amount Outstanding of the Subordinated Notes immediately prior to such redemption)",
+          "amount_formula": "any remaining Principal Proceeds",
+          "condition": null,
+          "is_pari_passu": true,
+          "citation": {
+            "page_or_row": "(ii)(V)",
+            "document": "Contego CLO XI DAC Prospectus",
+            "excerpt": "any remaining Principal Proceeds to the payment of principal on the Subordinated Notes on a pro rata basis and thereafter to the payment of interest on a"
+          },
+          "condition_terms": []
+        },
+        {
+          "priority": "(A)",
+          "recipient": "subordinated_notes_interest_to_irr_threshold",
+          "description": "to the payment of interest on the Subordinated Notes until the Incentive Management Fee IRR Threshold has been reached",
+          "amount_formula": "until the Incentive Management Fee IRR Threshold has been reached",
+          "condition": null,
+          "is_pari_passu": false,
+          "citation": {
+            "excerpt": "to the payment of interest on the Subordinated Notes until the Incentive Management Fee IRR Threshold has been reached",
+            "page_or_row": "(iii)(A)",
+            "document": "Contego CLO XI DAC Prospectus"
+          },
+          "condition_terms": []
+        },
+        {
+          "priority": "(B)(1)",
+          "recipient": "incentive_management_fee_from_collateral_enhancement",
+          "description": "if the Incentive Management Fee IRR Threshold has been reached: to the payment to the Collateral Manager of 20 per cent. of any remaining Collateral Enhancement Obligation Proceeds (after any payment required to be made in order to satisfy the Incentive Management Fee IRR Threshold) in payment of an Incentive Management Fee, provided however that the Collateral Manager may, in its sole discreti on, elect to (x) irrevocably waive or(y) designate for reinvestment some or all of the amounts that would have been payable to the Collateral Manager under this paragraph (1) on any Payment Date and apply such amount to, in the case of (y), (i) be used to purchase additional Collateral Obligations (provided that such purchase would not cause a Retention Deficiency) or (ii) be deposited in the Principal Account pending reinvestment in additional Collateral Obligations (provided that such purchase and/or deposit would not cause a Retention Deficiency) or, in the case of (x), be applied to the payment of amounts in accordance with paragraph (3) below, subject in each case to the Collateral Manager having notified the Collateral Administrator in writing not later than one Business Day prior to the relevant Determination Date of any amounts to be so applied",
+          "amount_formula": "20 per cent. of any remaining Collateral Enhancement Obligation Proceeds (after any payment required to be made in order to satisfy the Incentive Management Fee IRR Threshold)",
+          "condition": "if the Incentive Management Fee IRR Threshold has been reached",
+          "is_pari_passu": false,
+          "citation": {
+            "page_or_row": "(iii)(B)(1)",
+            "excerpt": "if the Incentive Management Fee IRR Threshold has been reached:\n- (1) to the payment to the Collateral Manager of 20 per cent. of any remaining Collater",
+            "document": "Contego CLO XI DAC Prospectus"
+          },
+          "condition_terms": []
+        },
+        {
+          "priority": "(B)(2)",
+          "recipient": "incentive_management_fee_vat_from_collateral_enhancement",
+          "description": "to the payment of any VAT in respect of the Incentive Management Fee under paragraph (1) above (whether payable to the Collateral Manager or directly to the relevant tax ing authority)",
+          "amount_formula": "any VAT in respect of the Incentive Management Fee under paragraph (1) above",
+          "condition": "if the Incentive Management Fee IRR Threshold has been reached",
+          "is_pari_passu": false,
+          "citation": {
+            "excerpt": "to the payment of any VAT in respect of the Incentive Management Fee under paragraph (1) above (whether payable to the Collateral Manager or directly to",
+            "page_or_row": "(iii)(B)(2)",
+            "document": "Contego CLO XI DAC Prospectus"
+          },
+          "condition_terms": []
+        },
+        {
+          "priority": "(B)(3)",
+          "recipient": "subordinated_notes_principal_and_interest_from_collateral_enhancement",
+          "description": "any remaining Collateral Enhancement Obligation Proceeds to the payment of principal on the Subordinated Notes on a pro rata basis and thereafter to the payment of interest on a pro rata basis on the Subordinated Notes (in each case determined upon redemption in full thereof by reference to the proportion that the principal amount of the Subordinated Notes held by Subordinated Noteholders bore to the Principal Amount Outstanding of the Subordinated Notes immediately prior to such redemption)",
+          "amount_formula": "any remaining Collateral Enhancement Obligation Proceeds",
+          "condition": "if the Incentive Management Fee IRR Threshold has been reached",
+          "is_pari_passu": true,
+          "citation": {
+            "page_or_row": "(iii)(B)(3)",
+            "excerpt": "any remaining Collateral Enhancement Obligation Proceeds to the payment of principal on the Subordinated Notes on a pro rata basis and thereafter to the p",
+            "document": "Contego CLO XI DAC Prospectus"
+          },
+          "condition_terms": []
+        }
+      ],
+      "source_section": "Revenue Priority of Payments",
+      "extraction_confidence": 1.0
+    },
+    "redemption": {
+      "deal_name": "Contego CLO XI DAC",
+      "waterfall_type": "redemption",
+      "steps": [
+        {
+          "priority": "(a)",
+          "recipient": "subordinated_management_fee",
+          "description": "firstly , on a pro rata and pari passu basis to the Collateral Manager of the Subordi nated Management Fee due and payable on such Payment Date and any VAT in respect thereof (whether payable to the Collateral Manager or directly to the relevant tax ing authority) (save for any Deferred Subordinated Collateral Management Amounts) until such amount has been paid in full, provided however that the Collateral Manager m ay, in its sole discretion, elect to (x) irrevocably waive, (y) designate for reinvestm ent i n Collateral Obligations or purchase of Notes (provided that to do so would not cause a Retention Deficiency) or (z) defer payment of some or all of the amounts that would have been payable to the Collateral Manager under this paragraph (W) (any such amounts pursuant to (y) or (z) being ' Deferred Subordinated Collateral Management Amounts ') on any Payment Date, provided that any such amount i n the case of (y) shall (i) be used to purchase additional Collateral Obligations or Notes pursuant to Condition 7(k) ( Purchase ) or (ii) be deposited in the Principal Account pending reinvestment in additional Collateral Obligations (provided that such purchase and/or deposit would not cause a Retention Deficiency) or, in the case of (x) or (z), shall be applied to the payment of amounts in accordance with paragraphs (X) through (DD) below, subject to the Collateral Manager having notified the Collateral Administrator in writing not later than one Business Day prior to the relevant Determination Date of any amounts to be so applied",
+          "amount_formula": "Subordinated Management Fee due and payable on such Payment Date and any VAT in respect thereof",
+          "condition": "The Collateral Manager may, in its sole discretion, elect to (x) irrevocably waive, (y) designate for reinvestment or (z) defer payment of some or all of the amounts.",
+          "is_pari_passu": true,
+          "citation": {
+            "excerpt": "firstly , on a pro rata and pari passu basis to the Collateral Manager of the Subordi nated Management Fee due and payable on such Payment Date and any V...",
+            "page_or_row": "Section (W)(a)",
+            "document": "Contego CLO XI DAC Prospectus"
+          },
+          "condition_terms": []
+        },
+        {
+          "priority": "(b)",
+          "recipient": "unpaid_subordinated_management_fee",
+          "description": "secondly , on a pro rata and pari passu basis to the Collateral Manager of any previously due and unpaid Subordinated Management Fee (other than Deferred Subordinated Collateral Management Amounts) and any VAT in respect thereof (whether payable to the Collateral Manager or directly to the relevant taxing authority)",
+          "amount_formula": "Any previously due and unpaid Subordinated Management Fee (other than Deferred Subordinated Collateral Management Amounts) and any VAT in respect thereof",
+          "condition": null,
+          "is_pari_passu": true,
+          "citation": {
+            "document": "Contego CLO XI DAC Prospectus",
+            "excerpt": "secondly , on a pro rata and pari passu basis to the Collateral Manager of any previously due and unpaid Subordinated Management Fee (other than Deferre...",
+            "page_or_row": "Section (W)(b)"
+          },
+          "condition_terms": []
+        },
+        {
+          "priority": "(c)",
+          "recipient": "deferred_collateral_management_amounts",
+          "description": "thirdly , at the election of the Collateral Manager (in its sole discretion) to the Collateral Manager in payment of any Deferred Senior Collateral Management Amounts and Deferred Subordinated Collateral Management Amounts",
+          "amount_formula": "Any Deferred Senior Collateral Management Amounts and Deferred Subordinated Collateral Management Amounts",
+          "condition": "At the election of the Collateral Manager (in its sole discretion)",
+          "is_pari_passu": false,
+          "citation": {
+            "document": "Contego CLO XI DAC Prospectus",
+            "page_or_row": "Section (W)(c)",
+            "excerpt": "thirdly , at the election of the Collateral Manager (in its sole discretion) to the Collateral Manager in payment of any Deferred Senior Collateral Man..."
+          },
+          "condition_terms": []
+        },
+        {
+          "priority": "(d)",
+          "recipient": "collateral_manager_advances",
+          "description": "fourthly , to the repayment of any Collateral Manager Advances and any interest thereon",
+          "amount_formula": "Any Collateral Manager Advances and any interest thereon",
+          "condition": null,
+          "is_pari_passu": false,
+          "citation": {
+            "excerpt": "fourthly , to the repayment of any Collateral Manager Advances and any interest thereon;",
+            "document": "Contego CLO XI DAC Prospectus",
+            "page_or_row": "Section (W)(d)"
+          },
+          "condition_terms": []
+        },
+        {
+          "priority": "(X)",
+          "recipient": "trustee_fees_and_expenses",
+          "description": "to the payment of Trustee Fees and Expenses (if any) not paid by reason of the Senior Expenses Cap",
+          "amount_formula": "Trustee Fees and Expenses (if any) not paid by reason of the Senior Expenses Cap",
+          "condition": null,
+          "is_pari_passu": false,
+          "citation": {
+            "document": "Contego CLO XI DAC Prospectus",
+            "page_or_row": "Section (X)",
+            "excerpt": "to the payment of Trustee Fees and Expenses (if any) not paid by reason of the Senior Expenses Cap;"
+          },
+          "condition_terms": []
+        },
+        {
+          "priority": "(Y)",
+          "recipient": "administrative_expenses",
+          "description": "to the payment of Administrative Expenses (if any) not paid by reason of the Senior Expenses Cap, in relation to each item thereof in the order of priority stated in the definition thereof",
+          "amount_formula": "Administrative Expenses (if any) not paid by reason of the Senior Expenses Cap",
+          "condition": null,
+          "is_pari_passu": false,
+          "citation": {
+            "excerpt": "to the payment of Administrative Expenses (if any) not paid by reason of the Senior Expenses Cap, in relation to each item thereof in the order of prio...",
+            "page_or_row": "Section (Y)",
+            "document": "Contego CLO XI DAC Prospectus"
+          },
+          "condition_terms": []
+        },
+        {
+          "priority": "(Z)",
+          "recipient": "defaulted_hedge_termination_payments",
+          "description": "to the payment on a pari passu and pro rata basis of any Defaulted Currency Hedge Termination Payments due to a Currency Hedge Counterparty or Defaulted Interest Rate Hedge Termination Payment due to an Interest Rate Hedge Counterparty (in each case to the extent not paid out of the applicable Hedge Termination Account or the applicable Counterparty Downgrade Collateral Account)",
+          "amount_formula": "Any Defaulted Currency Hedge Termination Payments due to a Currency Hedge Counterparty or Defaulted Interest Rate Hedge Termination Payment due to an Interest Rate Hedge Counterparty",
+          "condition": "To the extent not paid out of the applicable Hedge Termination Account or the applicable Counterparty Downgrade Collateral Account",
+          "is_pari_passu": true,
+          "citation": {
+            "document": "Contego CLO XI DAC Prospectus",
+            "page_or_row": "Section (Z)",
+            "excerpt": "to the payment on a pari passu and pro rata basis of any Defaulted Currency Hedge Termination Payments due to a Currency Hedge Counterparty or Defaulte..."
+          },
+          "condition_terms": []
+        },
+        {
+          "priority": "(AA)",
+          "recipient": "supplemental_reserve_account",
+          "description": "during the Reinvestment Period at the direction and in the discretion of the Collateral Manager, to transfer to the Supplemental Reserve Account any Supplemental Reserve Amounts",
+          "amount_formula": "Any Supplemental Reserve Amounts",
+          "condition": "During the Reinvestment Period at the direction and in the discretion of the Collateral Manager",
+          "is_pari_passu": false,
+          "citation": {
+            "document": "Contego CLO XI DAC Prospectus",
+            "excerpt": "during the Reinvestment Period at the direction and in the discretion of the Collateral Manager, to transfer to the Supplemental Reserve Account any Su...",
+            "page_or_row": "Section (AA)"
+          },
+          "condition_terms": []
+        },
+        {
+          "priority": "(BB)",
+          "recipient": "incentive_management_fee",
+          "description": "subject to the Incentive Management Fee IRR Threshold having been reached (after taking into account all prior distributions to Subordinated Noteholders and any distributions to be made to Subordinated Noteholders on such Payment Date, including pursuant to paragraph (DD) below, paragraph (V) of the Principal Priority of Payments, paragraph (BB) of the Post-Acceleration Priority of Payments, paragraph (8) of Condition 3(k)(vi) ( Supplemental Reserve Account ) and paragraphs (A) and (B) of the Collateral Enhancement Obligation Proceeds Priority of Payments), to the payment to the Collateral Manager of 20 per cent. of any remaining Interest Proceeds (after any payment required to be made in order to satisfy the Incentive Managem ent Fee IRR Threshold) in payment of an Incentive Management Fee, provided however that the Collateral Manager may, in its sole discretion, elect to (x) irrevocably waive or (y) designate for reinvestment some or all of the amounts that would have been payable to the Collateral Manager under this paragraph (BB) on any Payment Date and apply such amount to, in the case of (y), (i) be used to purchase additional Collateral Obligations (provided that such purchase would not cause a Retention Deficiency) and/or (ii) be deposited in the Principal Account pending reinvestment in additional Collateral Obligations (provided that such purchase and/or deposit would not cause a Retention Deficiency)or, in the case of (x), be applied to the paym ent of amounts in accordance with paragraph (DD) below, subject in each case to the Collateral Manager having notified the Collateral Administrator in writing not later than one Business Day prior to the relevant Determination Date of any amounts to be so applied",
+          "amount_formula": "20 per cent. of any remaining Interest Proceeds (after any payment required to be made in order to satisfy the Incentive Management Fee IRR Threshold)",
+          "condition": "Subject to the Incentive Management Fee IRR Threshold having been reached",
+          "is_pari_passu": false,
+          "citation": {
+            "page_or_row": "Section (BB)",
+            "excerpt": "subject to the Incentive Management Fee IRR Threshold having been reached (after taking into account all prior distributions to Subordinated Noteholders...",
+            "document": "Contego CLO XI DAC Prospectus"
+          },
+          "condition_terms": []
+        },
+        {
+          "priority": "(CC)",
+          "recipient": "vat_on_incentive_management_fee",
+          "description": "to the payment of any VAT in respect of the Incentive Management Fee under paragraph (BB) above (whether payable to the Collateral Manager or directly to the relevant taxing authority)",
+          "amount_formula": "Any VAT in respect of the Incentive Management Fee under paragraph (BB) above",
+          "condition": null,
+          "is_pari_passu": false,
+          "citation": {
+            "excerpt": "to the payment of any VAT in respect of the Incentive Management Fee under paragraph (BB) above (whether payable to the Collateral Manager or directly ...",
+            "document": "Contego CLO XI DAC Prospectus",
+            "page_or_row": "Section (CC)"
+          },
+          "condition_terms": []
+        },
+        {
+          "priority": "(DD)",
+          "recipient": "subordinated_notes_interest",
+          "description": "any remaining Interest Proceeds to the payment of interest on the Subordinated Notes on a pro rata basis (determined upon redemption in full thereof by reference to the proportion that the principal amount of the Subordinated Notes held by Subordinated Noteholders bore to the Principal Amount Outstanding of the Subordinated Notes immediately prior to such redemption)",
+          "amount_formula": "Any remaining Interest Proceeds",
+          "condition": null,
+          "is_pari_passu": true,
+          "citation": {
+            "page_or_row": "Section (DD)",
+            "document": "Contego CLO XI DAC Prospectus",
+            "excerpt": "any remaining Interest Proceeds to the payment of interest on the Subordinated Notes on a pro rata basis (determined upon redemption in full thereof by..."
+          },
+          "condition_terms": []
+        },
+        {
+          "priority": "(A)",
+          "recipient": "interest_priority_a_to_h",
+          "description": "to the payment on a sequential basis of the amounts referred to in paragraphs (A) through (H) (inclusive) of the Interest Priority of Payments, but only to the extent not paid in full thereunder",
+          "amount_formula": "Amounts referred to in paragraphs (A) through (H) (inclusive) of the Interest Priority of Payments",
+          "condition": "Only to the extent not paid in full thereunder",
+          "is_pari_passu": false,
+          "citation": {
+            "document": "Contego CLO XI DAC Prospectus",
+            "page_or_row": "Section (ii)(A)",
+            "excerpt": "to the payment on a sequential basis of the amounts referred to in paragraphs (A) through (H) (inclusive) of the Interest Priority of Payments, but onl..."
+          },
+          "condition_terms": []
+        },
+        {
+          "priority": "(B)",
+          "recipient": "interest_priority_i",
+          "description": "to the payment of the amounts referred to in paragraph (I) of the Interest Priority of Payments but only to the extent not paid in full thereunder and only to the extent necessary to cause the Class A/B Coverage Tests that are applicable on such Payment Date with respect to the Class A Notes and the Class B Notes to be satisfied if recalculated immediately following such redemption",
+          "amount_formula": "Amounts referred to in paragraph (I) of the Interest Priority of Payments",
+          "condition": "Only to the extent not paid in full thereunder and only to the extent necessary to cause the Class A/B Coverage Tests to be satisfied",
+          "is_pari_passu": false,
+          "citation": {
+            "page_or_row": "Section (ii)(B)",
+            "document": "Contego CLO XI DAC Prospectus",
+            "excerpt": "to the payment of the amounts referred to in paragraph (I) of the Interest Priority of Payments but only to the extent not paid in full thereunder and ..."
+          },
+          "condition_terms": []
+        },
+        {
+          "priority": "(C)",
+          "recipient": "interest_priority_j",
+          "description": "to the payment of the amounts referred to in paragraph (J) of the Interest Priority of Payments but only to the extent not paid in full thereunder and only to the extent that the Class C Notes are the Controlling Class",
+          "amount_formula": "Amounts referred to in paragraph (J) of the Interest Priority of Payments",
+          "condition": "Only to the extent not paid in full thereunder and only to the extent that the Class C Notes are the Controlling Class",
+          "is_pari_passu": false,
+          "citation": {
+            "excerpt": "to the payment of the amounts referred to in paragraph (J) of the Interest Priority of Payments but only to the extent not paid in full thereunder and ...",
+            "document": "Contego CLO XI DAC Prospectus",
+            "page_or_row": "Section (ii)(C)"
+          },
+          "condition_terms": []
+        },
+        {
+          "priority": "(D)",
+          "recipient": "interest_priority_k",
+          "description": "to the payment of the amounts referred to in paragraph (K) of the Interest Priority of Paym ents but only to the extent not paid in full thereunder and to the extent that the Class C Notes are the Controlling Class",
+          "amount_formula": "Amounts referred to in paragraph (K) of the Interest Priority of Payments",
+          "condition": "Only to the extent not paid in full thereunder and to the extent that the Class C Notes are the Controlling Class",
+          "is_pari_passu": false,
+          "citation": {
+            "document": "Contego CLO XI DAC Prospectus",
+            "page_or_row": "Section (ii)(D)",
+            "excerpt": "to the payment of the amounts referred to in paragraph (K) of the Interest Priority of Paym ents but only to the extent not paid in full thereunder and..."
+          },
+          "condition_terms": []
+        },
+        {
+          "priority": "(E)",
+          "recipient": "interest_priority_l",
+          "description": "to the payment of the amounts referred to in paragraph (L) of the Interest Priority of Payments but only to the extent not paid in full thereunder and only to the extent necessary to cause the Class C Coverage Tests that are applicable on such Payment Date with respect to the Class C Notes to be satisfied if recalculated immediately following such redemption",
+          "amount_formula": "Amounts referred to in paragraph (L) of the Interest Priority of Payments",
+          "condition": "Only to the extent not paid in full thereunder and only to the extent necessary to cause the Class C Coverage Tests to be satisfied",
+          "is_pari_passu": false,
+          "citation": {
+            "excerpt": "to the payment of the amounts referred to in paragraph (L) of the Interest Priority of Payments but only to the extent not paid in full thereunder and ...",
+            "page_or_row": "Section (ii)(E)",
+            "document": "Contego CLO XI DAC Prospectus"
+          },
+          "condition_terms": []
+        },
+        {
+          "priority": "(F)",
+          "recipient": "interest_priority_m",
+          "description": "to the payment of the amounts referred to in paragraph (M) of the Interest Priority of Paym ents but only to the extent not paid in full thereunder and only to the extent that the Class D Notes are the Controlling Class",
+          "amount_formula": "Amounts referred to in paragraph (M) of the Interest Priority of Payments",
+          "condition": "Only to the extent not paid in full thereunder and only to the extent that the Class D Notes are the Controlling Class",
+          "is_pari_passu": false,
+          "citation": {
+            "document": "Contego CLO XI DAC Prospectus",
+            "excerpt": "to the payment of the amounts referred to in paragraph (M) of the Interest Priority of Paym ents but only to the extent not paid in full thereunder and...",
+            "page_or_row": "Section (ii)(F)"
+          },
+          "condition_terms": []
+        },
+        {
+          "priority": "(G)",
+          "recipient": "interest_priority_n",
+          "description": "to the payment of the amounts referred to in paragraph (N) of the Interest Priority of Paym ents but only to the extent not paid in full thereunder and to the extent that the Class D Notes are the Controlling Class",
+          "amount_formula": "Amounts referred to in paragraph (N) of the Interest Priority of Payments",
+          "condition": "Only to the extent not paid in full thereunder and to the extent that the Class D Notes are the Controlling Class",
+          "is_pari_passu": false,
+          "citation": {
+            "page_or_row": "Section (ii)(G)",
+            "excerpt": "to the payment of the amounts referred to in paragraph (N) of the Interest Priority of Paym ents but only to the extent not paid in full thereunder and...",
+            "document": "Contego CLO XI DAC Prospectus"
+          },
+          "condition_terms": []
+        },
+        {
+          "priority": "(H)",
+          "recipient": "interest_priority_o",
+          "description": "to the payment of the amounts referred to in paragraph (O) of the Interest Priority of Paym ents but only to the extent not paid in full thereunder and only to the extent necessary to cause the Class D Coverage Tests that are applicable on such Payment Date with respect to the Class D Notes to be satisfied if recalculated immediately following such redemption",
+          "amount_formula": "Amounts referred to in paragraph (O) of the Interest Priority of Payments",
+          "condition": "Only to the extent not paid in full thereunder and only to the extent necessary to cause the Class D Coverage Tests to be satisfied",
+          "is_pari_passu": false,
+          "citation": {
+            "excerpt": "to the payment of the amounts referred to in paragraph (O) of the Interest Priority of Paym ents but only to the extent not paid in full thereunder and...",
+            "page_or_row": "Section (ii)(H)",
+            "document": "Contego CLO XI DAC Prospectus"
+          },
+          "condition_terms": []
+        },
+        {
+          "priority": "(I)",
+          "recipient": "interest_priority_p",
+          "description": "to the payment of the amounts referred to in paragraph (P) of the Interest Priority of Payments but only to the extent not paid in full thereunder and only to the extent that the Class E Notes are the Controlling Class",
+          "amount_formula": "Amounts referred to in paragraph (P) of the Interest Priority of Payments",
+          "condition": "Only to the extent not paid in full thereunder and only to the extent that the Class E Notes are the Controlling Class",
+          "is_pari_passu": false,
+          "citation": {
+            "document": "Contego CLO XI DAC Prospectus",
+            "excerpt": "to the payment of the amounts referred to in paragraph (P) of the Interest Priority of Payments but only to the extent not paid in full thereunder and ...",
+            "page_or_row": "Section (ii)(I)"
+          },
+          "condition_terms": []
+        },
+        {
+          "priority": "(J)",
+          "recipient": "interest_priority_q",
+          "description": "to the payment of the amounts referred to in paragraph (Q) of the Interest Priority of Paym ents but only to the extent not paid in full thereunder and to the extent that the Class E Notes are the Controlling Class",
+          "amount_formula": "Amounts referred to in paragraph (Q) of the Interest Priority of Payments",
+          "condition": "Only to the extent not paid in full thereunder and to the extent that the Class E Notes are the Controlling Class",
+          "is_pari_passu": false,
+          "citation": {
+            "excerpt": "to the payment of the amounts referred to in paragraph (Q) of the Interest Priority of Paym ents but only to the extent not paid in full thereunder and...",
+            "page_or_row": "Section (ii)(J)",
+            "document": "Contego CLO XI DAC Prospectus"
+          },
+          "condition_terms": []
+        },
+        {
+          "priority": "(K)",
+          "recipient": "interest_priority_r",
+          "description": "to the payment of the amounts referred to in paragraph (R) of the Interest Priority of Paym ents but only to the extent not paid in full thereunder and only to the extent necessary to cause the Class E Coverage Tests that are applicable on such Payment Date with respect to the Class E Notes to be satisfied if recalculated immediately following such redemption",
+          "amount_formula": "Amounts referred to in paragraph (R) of the Interest Priority of Payments",
+          "condition": "Only to the extent not paid in full thereunder and only to the extent necessary to cause the Class E Coverage Tests to be satisfied",
+          "is_pari_passu": false,
+          "citation": {
+            "document": "Contego CLO XI DAC Prospectus",
+            "excerpt": "to the payment of the amounts referred to in paragraph (R) of the Interest Priority of Paym ents but only to the extent not paid in full thereunder and...",
+            "page_or_row": "Section (ii)(K)"
+          },
+          "condition_terms": []
+        },
+        {
+          "priority": "(L)",
+          "recipient": "interest_priority_s",
+          "description": "to the payment of the amounts referred to in paragraph (S) of the Interest Priority of Payments but only to the extent not paid in full thereunder and only to the extent that the Class F Notes are the Controlling Class",
+          "amount_formula": "Amounts referred to in paragraph (S) of the Interest Priority of Payments",
+          "condition": "Only to the extent not paid in full thereunder and only to the extent that the Class F Notes are the Controlling Class",
+          "is_pari_passu": false,
+          "citation": {
+            "document": "Contego CLO XI DAC Prospectus",
+            "excerpt": "to the payment of the amounts referred to in paragraph (S) of the Interest Priority of Payments but only to the extent not paid in full thereunder and ...",
+            "page_or_row": "Section (ii)(L)"
+          },
+          "condition_terms": []
+        },
+        {
+          "priority": "(M)",
+          "recipient": "interest_priority_t",
+          "description": "to the payment of the amounts referred to in paragraph (T) of the Interest Priority of Payments but only to the extent not paid in full thereunder and to the extent that the Class F Notes are the Controlling Class",
+          "amount_formula": "Amounts referred to in paragraph (T) of the Interest Priority of Payments",
+          "condition": "Only to the extent not paid in full thereunder and to the extent that the Class F Notes are the Controlling Class",
+          "is_pari_passu": false,
+          "citation": {
+            "document": "Contego CLO XI DAC Prospectus",
+            "excerpt": "to the payment of the amounts referred to in paragraph (T) of the Interest Priority of Payments but only to the extent not paid in full thereunder and ...",
+            "page_or_row": "Section (ii)(M)"
+          },
+          "condition_terms": []
+        },
+        {
+          "priority": "(N)",
+          "recipient": "interest_priority_u",
+          "description": "to the payment of the amounts referred to in paragraph (U) of the Interest Priority of Paym ents, but only to the extent not paid in full thereunder",
+          "amount_formula": "Amounts referred to in paragraph (U) of the Interest Priority of Payments",
+          "condition": "But only to the extent not paid in full thereunder",
+          "is_pari_passu": false,
+          "citation": {
+            "document": "Contego CLO XI DAC Prospectus",
+            "excerpt": "to the payment of the amounts referred to in paragraph (U) of the Interest Priority of Paym ents, but only to the extent not paid in full thereunder;",
+            "page_or_row": "Section (ii)(N)"
+          },
+          "condition_terms": []
+        },
+        {
+          "priority": "(O)",
+          "recipient": "redeem_notes_and_refinancing_costs",
+          "description": "if such Payment Date is a Redemption Date in respect of which the Notes are being redeem ed in full (other than a Special Redemption Date or after the Reinvestment Period has ended), to redeem the Notes in accordance with the Note Payment Sequence and, if applicable, in paym ent of any Refinancing Costs",
+          "amount_formula": "In accordance with the Note Payment Sequence and, if applicable, any Refinancing Costs",
+          "condition": "If such Payment Date is a Redemption Date in respect of which the Notes are being redeemed in full (other than a Special Redemption Date or after the Reinvestment Period has ended)",
+          "is_pari_passu": false,
+          "citation": {
+            "excerpt": "if such Payment Date is a Redemption Date in respect of which the Notes are being redeem ed in full (other than a Special Redemption Date or after the ...",
+            "document": "Contego CLO XI DAC Prospectus",
+            "page_or_row": "Section (ii)(O)"
+          },
+          "condition_terms": []
+        },
+        {
+          "priority": "(P)",
+          "recipient": "special_redemption_amount",
+          "description": "if such Payment Date is a Special Redemption Date, at the election of the Collateral Manager to make payments in an amount equal to the Special Redemption Amount (if any) applicable to such Payment Date in accordance with the Note Payment Sequence",
+          "amount_formula": "Special Redemption Amount (if any) applicable to such Payment Date in accordance with the Note Payment Sequence",
+          "condition": "If such Payment Date is a Special Redemption Date, at the election of the Collateral Manager",
+          "is_pari_passu": false,
+          "citation": {
+            "page_or_row": "Section (ii)(P)",
+            "document": "Contego CLO XI DAC Prospectus",
+            "excerpt": "if such Payment Date is a Special Redemption Date, at the election of the Collateral Manager to make payments in an amount equal to the Special Redempt..."
+          },
+          "condition_terms": []
+        },
+        {
+          "priority": "(Q)",
+          "recipient": "purchase_substitute_collateral_obligations",
+          "description": "(i) during the Reinvestment Period, at the discretion of the Collateral Manager, either to the purchase of Substitute Collateral Obligations or to the Principal Account pending reinvestm ent in Substitute Collateral Obligations at a later date in each case in accordance with the Collateral Management and Administration Agreement (provided that and to the extent that such purchase and/or deposit would not cause a Retention Deficiency); and (ii) after the Reinvestment Period in the case of Principal Proceeds representing Unscheduled Principal Proceeds and Sale Proceeds from the sale of Credit Risk Obligations at the discretion of the Collateral Manager, either to the purchase of Substitute Collateral Obligations or to the Principal Account pending reinvestment in Substitute Collateral Obligations at a later date in each case in accordance with the Collateral Management and Administration Agreem ent (provided that and to the extent that such purchase and/or deposit would not cause a Retention Deficiency)",
+          "amount_formula": "Principal Proceeds",
+          "condition": "At the discretion of the Collateral Manager",
+          "is_pari_passu": false,
+          "citation": {
+            "excerpt": "(i) during the Reinvestment Period, at the discretion of the Collateral Manager, either to the purchase of Substitute Collateral Obligations or to the ...",
+            "document": "Contego CLO XI DAC Prospectus",
+            "page_or_row": "Section (ii)(Q)"
+          },
+          "condition_terms": []
+        },
+        {
+          "priority": "(R)",
+          "recipient": "redeem_notes_post_reinvestment",
+          "description": "after the Reinvestment Period, to redeem the Notes in accordance with the Note Paym ent Sequence",
+          "amount_formula": "In accordance with the Note Payment Sequence",
+          "condition": "After the Reinvestment Period",
+          "is_pari_passu": false,
+          "citation": {
+            "page_or_row": "Section (ii)(R)",
+            "document": "Contego CLO XI DAC Prospectus",
+            "excerpt": "after the Reinvestment Period, to redeem the Notes in accordance with the Note Paym ent Sequence;"
+          },
+          "condition_terms": []
+        },
+        {
+          "priority": "(S)",
+          "recipient": "interest_priority_bb_to_dd",
+          "description": "after the Reinvestment Period, to the payment on a sequential basis of the amounts referred to in paragraphs (BB) through DD) (inclusive) of the Interest Priority of Payments, but only to the extent not paid in full thereunder",
+          "amount_formula": "Amounts referred to in paragraphs (BB) through (DD) (inclusive) of the Interest Priority of Payments",
+          "condition": "After the Reinvestment Period, but only to the extent not paid in full thereunder",
+          "is_pari_passu": false,
+          "citation": {
+            "excerpt": "after the Reinvestment Period, to the payment on a sequential basis of the amounts referred to in paragraphs (BB) through DD) (inclusive) of the Inter...",
+            "page_or_row": "Section (ii)(S)",
+            "document": "Contego CLO XI DAC Prospectus"
+          },
+          "condition_terms": []
+        },
+        {
+          "priority": "(T)",
+          "recipient": "incentive_management_fee",
+          "description": "subject to the Incentive Management Fee IRR Threshold having been reached (after taking into account all prior distributions to Subordinated Noteholders and any distributions to be made to Subordinated Noteholders on such Payment Date, including pursuant to paragraph (V) below, paragraph (DD) of the Interest Priority of Payments, paragraph (BB) of the Post-Acceleration Priority of Payments, paragraph (8) of Condition 3(k)(vi) ( Supplemental Reserve Account ) and paragraphs (A) and (B) of the Collateral Enhancement Obligation Proceeds Priority of Payments) to the payment to the Collateral Manager of 20 per cent. of any remaining Principal Proceeds (after any payment required to be made in order to satisfy the Incentive Managem ent Fee IRR Threshold) in payment of an Incentive Management Fee, provided however that the Collateral Manager may, in its sole discretion, elect to (x) irrevocably waive or (y) designate for reinvestment some or all of the amounts that would have been payable to the Collateral Manager under this paragraph (T) on any Payment Date and apply such amount to, in the case of (y), (i) be used to purchase additional Collateral Obligations (provided that such purchase would not cause a Retention Deficiency)or (ii) be deposited in the Principal Account pending reinvestment in additional Collateral Obligations (provided that such purchase and/or deposit would not cause a Retention Deficiency) or, in the case of (x), be applied to the paym ent of amounts in accordance with paragraph (V) below, subject in each case to the Collateral Manager having notified the Collateral Administrator in writing not later than one Business Day prior to the relevant Determination Date of any amounts to be so applied",
+          "amount_formula": "20 per cent. of any remaining Principal Proceeds (after any payment required to be made in order to satisfy the Incentive Management Fee IRR Threshold)",
+          "condition": "Subject to the Incentive Management Fee IRR Threshold having been reached",
+          "is_pari_passu": false,
+          "citation": {
+            "document": "Contego CLO XI DAC Prospectus",
+            "excerpt": "subject to the Incentive Management Fee IRR Threshold having been reached (after taking into account all prior distributions to Subordinated Noteholders...",
+            "page_or_row": "Section (ii)(T)"
+          },
+          "condition_terms": []
+        },
+        {
+          "priority": "(U)",
+          "recipient": "vat_on_incentive_management_fee",
+          "description": "to the payment of any VAT in respect of the Incentive Management Fee under paragraph (T) above (whether payable to the Collateral Manager or directly to the relevant taxing authority)",
+          "amount_formula": "Any VAT in respect of the Incentive Management Fee under paragraph (T) above",
+          "condition": null,
+          "is_pari_passu": false,
+          "citation": {
+            "document": "Contego CLO XI DAC Prospectus",
+            "page_or_row": "Section (ii)(U)",
+            "excerpt": "to the payment of any VAT in respect of the Incentive Management Fee under paragraph (T) above (whether payable to the Collateral Manager or directly ..."
+          },
+          "condition_terms": []
+        },
+        {
+          "priority": "(V)",
+          "recipient": "subordinated_notes_principal_and_interest",
+          "description": "any remaining Principal Proceeds to the payment of principal on the Subordinated Notes on a pro rata basis and thereafter to the payment of interest on a pro rata basis on the Subordinated Notes (in each case determined upon redemption in full thereof by reference to the proportion that the principal amount of the Subordinated Notes held by Subordinated Noteholders bore to the Principal Amount Outstanding of the Subordinated Notes immediately prior to such redemption)",
+          "amount_formula": "Any remaining Principal Proceeds",
+          "condition": null,
+          "is_pari_passu": true,
+          "citation": {
+            "document": "Contego CLO XI DAC Prospectus",
+            "excerpt": "any remaining Principal Proceeds to the payment of principal on the Subordinated Notes on a pro rata basis and thereafter to the payment of interest on...",
+            "page_or_row": "Section (ii)(V)"
+          },
+          "condition_terms": []
+        },
+        {
+          "priority": "(A)",
+          "recipient": "subordinated_notes_interest",
+          "description": "to the payment of interest on the Subordinated Notes until the Incentive Management Fee IRR Threshold has been reached",
+          "amount_formula": "Until the Incentive Management Fee IRR Threshold has been reached",
+          "condition": null,
+          "is_pari_passu": false,
+          "citation": {
+            "document": "Contego CLO XI DAC Prospectus",
+            "page_or_row": "Section (iii)(A)",
+            "excerpt": "to the payment of interest on the Subordinated Notes until the Incentive Management Fee IRR Threshold has been reached; and"
+          },
+          "condition_terms": []
+        },
+        {
+          "priority": "(B)(1)",
+          "recipient": "incentive_management_fee",
+          "description": "if the Incentive Management Fee IRR Threshold has been reached: (1) to the payment to the Collateral Manager of 20 per cent. of any remaining Collateral Enhancement Obligation Proceeds (after any payment required to be made in order to satisfy the Incentive Management Fee IRR Threshold) in payment of an Incentive Management Fee, provided however that the Collateral Manager may, in its sole discreti on, elect to (x) irrevocably waive or(y) designate for reinvestment some or all of the amounts that would have been payable to the Collateral Manager under this paragraph (1) on any Payment Date and apply such amount to, in the case of (y), (i) be used to purchase additional Collateral Obligations (provided that such purchase would not cause a Retention Deficiency) or (ii) be deposited in the Principal Account pending reinvestment in additional Collateral Obligations (provided that such purchase and/or deposit would not cause a Retention Deficiency) or, in the case of (x), be applied to the payment of amounts in accordance with paragraph (3) below, subject in each case to the Collateral Manager having notified the Collateral Administrator in writing not later than one Business Day prior to the relevant Determination Date of any amounts to be so applied",
+          "amount_formula": "20 per cent. of any remaining Collateral Enhancement Obligation Proceeds (after any payment required to be made in order to satisfy the Incentive Management Fee IRR Threshold)",
+          "condition": "If the Incentive Management Fee IRR Threshold has been reached",
+          "is_pari_passu": false,
+          "citation": {
+            "excerpt": "if the Incentive Management Fee IRR Threshold has been reached:\n- (1) to the payment to the Collateral Manager of 20 per cent. of any remaining Collat...",
+            "page_or_row": "Section (iii)(B)(1)",
+            "document": "Contego CLO XI DAC Prospectus"
+          },
+          "condition_terms": []
+        },
+        {
+          "priority": "(B)(2)",
+          "recipient": "vat_on_incentive_management_fee",
+          "description": "(2) to the payment of any VAT in respect of the Incentive Management Fee under paragraph (1) above (whether payable to the Collateral Manager or directly to the relevant tax ing authority)",
+          "amount_formula": "Any VAT in respect of the Incentive Management Fee under paragraph (1) above",
+          "condition": "If the Incentive Management Fee IRR Threshold has been reached",
+          "is_pari_passu": false,
+          "citation": {
+            "excerpt": "(2) to the payment of any VAT in respect of the Incentive Management Fee under paragraph (1) above (whether payable to the Collateral Manager or direc...",
+            "document": "Contego CLO XI DAC Prospectus",
+            "page_or_row": "Section (iii)(B)(2)"
+          },
+          "condition_terms": []
+        },
+        {
+          "priority": "(B)(3)",
+          "recipient": "subordinated_notes_principal_and_interest",
+          "description": "(3) any remaining Collateral Enhancement Obligation Proceeds to the payment of principal on the Subordinated Notes on a pro rata basis and thereafter to the payment of interest on a pro rata basis on the Subordinated Notes (in each case determined upon redemption in full thereof by reference to the proportion that the principal amount of the Subordinated Notes held by Subordinated Noteholders bore to the Principal Amount Outstanding of the Subordinated Notes immediately prior to such redemption)",
+          "amount_formula": "Any remaining Collateral Enhancement Obligation Proceeds",
+          "condition": "If the Incentive Management Fee IRR Threshold has been reached",
+          "is_pari_passu": true,
+          "citation": {
+            "excerpt": "(3) any remaining Collateral Enhancement Obligation Proceeds to the payment of principal on the Subordinated Notes on a pro rata basis and thereafter ...",
+            "document": "Contego CLO XI DAC Prospectus",
+            "page_or_row": "Section (iii)(B)(3)"
+          },
+          "condition_terms": []
+        }
+      ],
+      "source_section": "Redemption Priority of Payments",
+      "extraction_confidence": 1.0
+    }
+  },
+  "covenants": {
+    "deal_name": "CONTEGO CLO XI DESIGNATED ACTIVITY COMPANY",
+    "triggers": [
+      {
+        "name": "class_a_b_coverage_test",
+        "display_name": "Class A/B Coverage Test",
+        "description": "A coverage test for the Class A and Class B Notes. A breach may cause Principal Proceeds to be used to cure the failure.",
+        "metric": "class_a_b_coverage_ratio",
+        "threshold": null,
+        "threshold_unit": null,
+        "direction": "below",
+        "consequence": "Principal Proceeds are used to pay amounts under paragraph (I) of the Interest Priority of Payments to satisfy the tests.",
+        "section_reference": "(B) of Principal Priority of Payments",
+        "citation": {
+          "excerpt": "...only to the extent necessary to cause the Class A/B Coverage Tests that are applicable on such Payment Date... to be satisfied...",
+          "page_or_row": "(B) of Principal Priority of Payments",
+          "document": "prospectus"
+        },
+        "metric_terms": []
+      },
+      {
+        "name": "class_c_coverage_test",
+        "display_name": "Class C Coverage Test",
+        "description": "A coverage test for the Class C Notes. A breach may cause Principal Proceeds to be used to cure the failure.",
+        "metric": "class_c_coverage_ratio",
+        "threshold": null,
+        "threshold_unit": null,
+        "direction": "below",
+        "consequence": "Principal Proceeds are used to pay amounts under paragraph (L) of the Interest Priority of Payments to satisfy the tests.",
+        "section_reference": "(E) of Principal Priority of Payments",
+        "citation": {
+          "excerpt": "...only to the extent necessary to cause the Class C Coverage Tests that are applicable on such Payment Date... to be satisfied...",
+          "page_or_row": "(E) of Principal Priority of Payments",
+          "document": "prospectus"
+        },
+        "metric_terms": []
+      },
+      {
+        "name": "class_d_coverage_test",
+        "display_name": "Class D Coverage Test",
+        "description": "A coverage test for the Class D Notes. A breach may cause Principal Proceeds to be used to cure the failure.",
+        "metric": "class_d_coverage_ratio",
+        "threshold": null,
+        "threshold_unit": null,
+        "direction": "below",
+        "consequence": "Principal Proceeds are used to pay amounts under paragraph (O) of the Interest Priority of Payments to satisfy the tests.",
+        "section_reference": "(H) of Principal Priority of Payments",
+        "citation": {
+          "excerpt": "...only to the extent necessary to cause the Class D Coverage Tests that are applicable on such Payment Date... to be satisfied...",
+          "document": "prospectus",
+          "page_or_row": "(H) of Principal Priority of Payments"
+        },
+        "metric_terms": []
+      },
+      {
+        "name": "class_e_coverage_test",
+        "display_name": "Class E Coverage Test",
+        "description": "A coverage test for the Class E Notes. A breach may cause Principal Proceeds to be used to cure the failure.",
+        "metric": "class_e_coverage_ratio",
+        "threshold": null,
+        "threshold_unit": null,
+        "direction": "below",
+        "consequence": "Principal Proceeds are used to pay amounts under paragraph (R) of the Interest Priority of Payments to satisfy the tests.",
+        "section_reference": "(K) of Principal Priority of Payments",
+        "citation": {
+          "excerpt": "...only to the extent necessary to cause the Class E Coverage Tests that are applicable on such Payment Date... to be satisfied...",
+          "document": "prospectus",
+          "page_or_row": "(K) of Principal Priority of Payments"
+        },
+        "metric_terms": []
+      },
+      {
+        "name": "incentive_management_fee_irr_threshold",
+        "display_name": "Incentive Management Fee IRR Threshold",
+        "description": "An IRR-based threshold that must be reached for the Subordinated Notes before the Incentive Management Fee is paid to the Collateral Manager.",
+        "metric": "subordinated_notes_irr",
+        "threshold": null,
+        "threshold_unit": "percentage",
+        "direction": "above",
+        "consequence": "Payment of the Incentive Management Fee (20% of remaining proceeds) to the Collateral Manager.",
+        "section_reference": "(BB) of Revenue Priority of Payments",
+        "citation": {
+          "document": "prospectus",
+          "page_or_row": "(BB) of Revenue Priority of Payments",
+          "excerpt": "subject to the Incentive Management Fee IRR Threshold having been reached...to the payment to the Collateral Manager of 20 per cent. of any remaining..."
+        },
+        "metric_terms": []
+      }
+    ],
+    "issuer_covenants": [],
+    "extraction_confidence": 0.8
+  },
+  "tranche_structure": [
+    {
+      "name": "Class A",
+      "size_eur": 228700000.0,
+      "rating": null,
+      "rate": null,
+      "seniority": 0
+    },
+    {
+      "name": "Class B-1",
+      "size_eur": 25400000.0,
+      "rating": null,
+      "rate": null,
+      "seniority": 101
+    },
+    {
+      "name": "Class B-2",
+      "size_eur": 8000000.0,
+      "rating": null,
+      "rate": null,
+      "seniority": 102
+    },
+    {
+      "name": "Class C",
+      "size_eur": 21900000.0,
+      "rating": null,
+      "rate": null,
+      "seniority": 200
+    },
+    {
+      "name": "Class D",
+      "size_eur": 23600000.0,
+      "rating": null,
+      "rate": null,
+      "seniority": 300
+    },
+    {
+      "name": "Class E",
+      "size_eur": 16700000.0,
+      "rating": null,
+      "rate": null,
+      "seniority": 400
+    },
+    {
+      "name": "Class F",
+      "size_eur": 13900000.0,
+      "rating": null,
+      "rate": null,
+      "seniority": 500
+    },
+    {
+      "name": "Subordinated Notes",
+      "size_eur": 42400000.0,
+      "rating": null,
+      "rate": null,
+      "seniority": 2600
+    }
+  ],
+  "trigger_names": [
+    "class_a_b_coverage_test",
+    "class_c_coverage_test",
+    "class_d_coverage_test",
+    "class_e_coverage_test",
+    "incentive_management_fee_irr_threshold"
+  ],
+  "payment_schedule": null,
+  "note_day_counts": null
+}

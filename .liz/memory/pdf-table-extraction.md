@@ -40,3 +40,43 @@ the same pair twice, parse BOTH and require agreement: the redundancy is a free
 cross-check, not duplicated work.
 
 Refs: #480
+
+## 2026-09-09 · pitfall · #533
+
+Registering a report family supplies titles and furniture, not rows: whether a
+row survives extraction *as a line* is a separate axis, and it decides whether
+a newly registered deal parses at all. Measure it before sizing the work. U.S.
+Bank yields one asset per line, identifier first, so an anchored per-line match
+both finds the id and proves the line is a row; BNY yields one row-major line
+per page holding the whole table, beside a column-major stack of single cells
+that cannot be zipped back — one blank cell desyncs every column after it —
+with the identifier mid-row. Re-cut rows on the row's own anchored tail.
+
+Refs: #533
+
+
+## 2026-09-09 · pitfall · #555
+
+Detect row geometry per **page**, not per document, even where a family record
+declares it. Contego's Interest Accrual Detail runs seven pages: six extract as
+one row-major line and one as one row per line, so a parser reading only each
+page's longest line skips the seventh's forty rows. Rows wrap across lines
+there too, so join a non-reflowed page's lines before scanning. The declaration
+says which geometry to expect; the page says which it is, and rows it silently
+omits move a count while leaving par untouched.
+
+Refs: #555
+
+
+## 2026-09-09 · pitfall · #534
+
+A table's like-typed columns are not always two, and one may restate the
+**prior period**: BNY prints `Prior Outcome | Outcome | Requirement`, so taking
+the ratio as the first percentage grades against last month's figure — real, in
+range, right type, silently wrong. Chain across periods to find the current
+column (this report's first equals the previous report's second) before
+declaring which it is, and model the row as a grammar with **named groups**, not
+a two-valued "which comes first" order: an enum cannot name one column among
+three, and one administrator's own two headers need not agree.
+
+Refs: #534

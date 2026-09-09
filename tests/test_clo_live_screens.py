@@ -379,6 +379,10 @@ def test_the_clo_is_present_on_most_structural_rows(client: TestClient) -> None:
     [
         f"{CLO_DEAL_ID},green-lion-2024-1",
         "green-lion-2024-1,green-lion-2023-1,leone-arancio-2023-1",
+        # Both CLOs together (#535). The second deal does not change the
+        # property: a cascade row has no comparable scalar for any deal, so
+        # neither CLO's nulls can be read as a defect of the CLO support.
+        f"{CLO_DEAL_ID},contego-clo-xi",
     ],
 )
 def test_no_waterfall_row_carries_a_numeric_value_for_any_deal(

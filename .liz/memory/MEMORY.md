@@ -15,16 +15,20 @@ triage by opening the entry, not by reading the line.
   - [2026-09-09 · pitfall · #514](#2026-09-09--pitfall--514) — keywords: mirrored fold, report_adapter, reconciler, step_overrides, need vs published figure, both sides of a comparison
   - [2026-09-08 · pitfall · #496](#2026-09-08--pitfall--496) — keywords: steps_passed, tie-out gate, report-supplied, engine_computed_passed, unjoined label, sub-lettered rows, failing grade
   - [2026-09-08 · pattern · #512](#2026-09-08--pattern--512) — keywords: series provider, answer key not a fold input, pool_stats, published input, checked ground truth, applied_rate
+  - [2026-09-09 · decision · #534](#2026-09-09--decision--534) — keywords: keyed but not graded, COVENANT_PASSING_DEAL_IDS, tally assertion, unmatched_covenant_names, withheld key, not-applicable reason
   - [2026-09-09 · pitfall · #538](#2026-09-09--pitfall--538) — keywords: residual sweep, tie-out blind, offsetting deltas, fixed pot, steps_passed, equal and opposite, total_shortfall
   - [2026-09-09 · pitfall · #515](#2026-09-09--pitfall--515) — keywords: ENGINE_COMPUTED_RECIPIENTS, engine_computed_passed, allowlist bound, step_source_classifier, report-supplied, declaration not data
   - [2026-09-09 · pitfall · #525](#2026-09-09--pitfall--525) — keywords: control subject, blank cell count, StructuralCell.value, comparable scalar, defect premise, schema not deal, compare panel
+  - [2026-09-09 · pitfall · #535](#2026-09-09--pitfall--535) — keywords: verified on one deal, re-measure per subject, second specimen, premise transfer, stopping point, 422 per deal, verification issue
 - [Extraction guards & false-positive filters](extraction-guards.md)
   - [2026-09-02 · pitfall · #439](#2026-09-02--pitfall--439) — keywords: _CLASS_LETTERS, tranche, note class, Class J, Class O, false positive, guard, proxy range
   - [2026-09-05 · pitfall · #456](#2026-09-05--pitfall--456) — keywords: widening a guard, newly visible input, N/A cell, scavenged rating, Subordinated Notes, untested downstream
+  - [2026-09-09 · pitfall · #531](#2026-09-09--pitfall--531) — keywords: per-family tables, registration-time validation, fixture asymmetry, vacuous reconciliation, section title list, coverage does not transfer, new family has no fixtures
   - [2026-09-09 · pattern · #548](#2026-09-09--pattern--548) — keywords: output plausibility, glossary_coverage, implausible, max_chars, section orphaning, alphabetical cliff, cause-agnostic guard
   - [2026-09-09 · pitfall · #566](#2026-09-09--pitfall--566) — keywords: multi-limb fact, borrowed limb, span binding, retention capacity, rarest limb anchor, greedy backtracking, does not terminate
 - [Extraction: locating the right section](extraction-section-routing.md) — keywords: descendant span, heading level, section number, Docling, has_payment_list, LLM router, empty result
   - [2026-09-09 · pattern · #566](#2026-09-09--pattern--566) — keywords: Article 6(3), sub-paragraph citation, retention undertaking, generic description, surface form, threshold figure, named party
+  - [2026-09-09 · pitfall · #532](#2026-09-09--pitfall--532) — keywords: max_chars, route_sections, definitions stub, alphabetical cliff, Docling heading per term, measure the section sent, same symptom different mechanism
 - [Published figures & doc drift](published-figures.md) — keywords: stale tally, completeness_score, capability matrix, re-derive, stored metric, published figure
   - [2026-09-06 · pattern · #469](#2026-09-06--pattern--469) — keywords: reconcile to stated aggregates, self-describing report, per-bucket distribution, refuse on divergence, document contradicts itself, source defect
   - [2026-09-02 · pitfall · #441](#2026-09-02--pitfall--441) — keywords: completeness_score
@@ -32,11 +36,13 @@ triage by opening the entry, not by reading the line.
   - [2026-09-08 · pitfall · #484](#2026-09-08--pitfall--484) — keywords: balance share, count share, generated population, per-bucket draw, stratification, arrears bucket, rendered axis
   - [2026-09-02 · pitfall · #441](#2026-09-02--pitfall--441) — keywords: completeness_score
   - [2026-09-09 · pattern · #528](#2026-09-09--pattern--528) — keywords: back-solved input, read past the extractor, max_chars truncation, pypdf text layer, stated schedule, deterministic parser, cross-check against another document
+  - [2026-09-09 · pitfall · #555](#2026-09-09--pitfall--555) — keywords: stated count population, count grain, accrual record, asset grain, aggregate table, two populations, cannot fail
 - [Registering a deal (deals.json)](deal-registration.md) — keywords: deals.json, notes_cash_report_urls, routing promise, registry key, asset_class, answer key invariant
   - [2026-09-05 · pitfall · #455](#2026-09-05--pitfall--455) — keywords: notes_cash_report_urls, _reconstruct_series
   - [2026-09-08 · pitfall · #483](#2026-09-08--pitfall--483) — keywords: sha256(tape_url).json, _tape_analytics_period
   - [2026-09-08 · pitfall · #480](#2026-09-08--pitfall--480) — keywords: unobtainable, recorded limitation, wrong document, offering circular, trustee report, coverage-test threshold, glossary truncation, document set
   - [2026-09-08 · pattern · #479](#2026-09-08--pattern--479) — keywords: derive vs hand-write, reconcile against declared, projection_base, current_pool_balance, pool_balance_eur, latest tape, byte-identical output
+  - [2026-09-09 · pitfall · #532](#2026-09-09--pitfall--532) — keywords: reset, two offering documents, prospectus_url, pre-reset reports, capital structure mismatch, silently wrong, registration_note
   - [2026-09-09 · decision · #524](#2026-09-09--decision--524) — keywords: precedence vs coverage, _set_aside_tape_periods, _tapes_yield_to_reports, first_hand, derived tape outranked, narrowed series, disjoint periods
   - [2026-09-09 · pitfall · #523](#2026-09-09--pitfall--523) — keywords: _splice_periods, provenance sidecar dropped, committed fixtures, resolve_parsed_report, ParsedReport, assert at the computing seam
 - [Registering a deal (deals.json)](deal-registration.md) — keywords: deals.json, notes_cash_report_urls, routing promise, registry key, asset_class, answer key invariant
@@ -76,3 +82,6 @@ triage by opening the entry, not by reading the line.
 - [Extracting tables from PDFs](pdf-table-extraction.md)
   - [2026-09-06 · pitfall · #469](#2026-09-06--pitfall--469) — keywords: visitor_text, text matrix, tm[4], rotated table, extraction_mode layout, row boundary, continuation line, column order, pypdf
   - [2026-09-08 · pitfall · #480](#2026-09-08--pitfall--480) — keywords: column header, required level, guessed order, like-typed columns, stated twice, cross-check, coverage test, refuse unrecognised header
+  - [2026-09-09 · pitfall · #533](#2026-09-09--pitfall--533) — keywords: row geometry, reflowed row, column-major stack, per-line row, identifier position, family registration, refusal names what is missing
+  - [2026-09-09 · pitfall · #555](#2026-09-09--pitfall--555) — keywords: per-page geometry, row-major line, wrapped row, join page lines, declared geometry, skipped page
+  - [2026-09-09 · pitfall · #534](#2026-09-09--pitfall--534) — keywords: prior outcome column, three like-typed columns, cross-period chain, named groups, row grammar, ColumnOrder, coverage test
