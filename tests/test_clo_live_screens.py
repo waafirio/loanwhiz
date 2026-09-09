@@ -40,12 +40,7 @@ from __future__ import annotations
 import pytest
 from fastapi.testclient import TestClient
 
-from loanwhiz.api.main import (
-    DEAL_REGISTRY,
-    _load_cached_deal_model,
-    _reconstruct_series,
-    app,
-)
+from loanwhiz.api.main import DEAL_REGISTRY, _load_cached_deal_model, app
 from loanwhiz.primitives.report_adapter import ReportAdapter
 from loanwhiz.primitives.report_label_fold import fold_report_pop
 
@@ -69,6 +64,25 @@ ENGINE_COMPUTED_STEPS = {
 }
 
 
+def _adapter_and_published_period():
+    """The report adapter and the one period the CLO publishes a PoP for.
+
+    Resolved exactly as ``_reconstruct_series_from_reports`` resolves them, so
+    the fixtures below read the same inputs the live path folded rather than a
+    parallel reconstruction of them.
+    """
+    from loanwhiz.api.main import REPORT_EXTRACTION_CACHE_DIR
+    from loanwhiz.primitives.report_extractor import resolve_parsed_report
+
+    deal = DEAL_REGISTRY[CLO_DEAL_ID]
+    model = _load_cached_deal_model(deal)
+    report = resolve_parsed_report(
+        CLO_DEAL_ID, deal, cache_dir=REPORT_EXTRACTION_CACHE_DIR
+    ).to_notes_cash_report()
+    (period,) = [p for p in report.periods if p.reporting_date == POP_PERIOD]
+    return ReportAdapter.from_deal_model(model), period
+
+
 @pytest.fixture(scope="module")
 def client() -> TestClient:
     return TestClient(app)
@@ -90,21 +104,9 @@ def published_revenue() -> dict[str, float]:
     report path gives it: the report's rows in printed order and the extracted
     cascade's labels in cascade order.
     """
-    from loanwhiz.primitives.report_extractor import resolve_parsed_report
-
-    from loanwhiz.api.main import REPORT_EXTRACTION_CACHE_DIR
-
-    deal = DEAL_REGISTRY[CLO_DEAL_ID]
-    model = _load_cached_deal_model(deal)
-    report = resolve_parsed_report(
-        CLO_DEAL_ID, deal, cache_dir=REPORT_EXTRACTION_CACHE_DIR
-    ).to_notes_cash_report()
-    (period,) = [p for p in report.periods if p.reporting_date == POP_PERIOD]
+    adapter, period = _adapter_and_published_period()
     # The adapter's own step list is the fold's second input on the live path.
-    labels = [
-        str(step.get("priority", ""))
-        for step in ReportAdapter.from_deal_model(model).revenue_steps
-    ]
+    labels = [str(step.get("priority", "")) for step in adapter.revenue_steps]
     return dict(fold_report_pop(period.revenue_pop, labels).amounts)
 
 
@@ -115,17 +117,8 @@ def live_step_sources() -> tuple[dict[str, str], dict[str, float]]:
     This is the engine's *input* side — what the report path handed ``run_period``
     — which is what makes it evidence rather than a restatement of the output.
     """
-    from loanwhiz.primitives.report_extractor import resolve_parsed_report
-
-    from loanwhiz.api.main import REPORT_EXTRACTION_CACHE_DIR
-
-    deal = DEAL_REGISTRY[CLO_DEAL_ID]
-    model = _load_cached_deal_model(deal)
-    report = resolve_parsed_report(
-        CLO_DEAL_ID, deal, cache_dir=REPORT_EXTRACTION_CACHE_DIR
-    ).to_notes_cash_report()
-    (period,) = [p for p in report.periods if p.reporting_date == POP_PERIOD]
-    inputs = ReportAdapter.from_deal_model(model).period_inputs(period)
+    adapter, period = _adapter_and_published_period()
+    inputs = adapter.period_inputs(period)
     sources = dict(inputs.revenue_step_sources or inputs.step_sources or {})
     overrides = dict(
         getattr(inputs, "revenue_step_overrides", None) or inputs.step_overrides or {}
@@ -382,17 +375,23 @@ def test_the_clo_is_present_on_most_structural_rows(client: TestClient) -> None:
         "green-lion-2024-1,green-lion-2023-1,leone-arancio-2023-1",
     ],
 )
-def test_no_waterfall_or_trigger_row_carries_a_numeric_value_for_any_deal(
+def test_no_waterfall_row_carries_a_numeric_value_for_any_deal(
     client: TestClient, deals: str
 ) -> None:
     """A null ``value`` on a cascade row is the row's shape, not a missing figure.
 
     This is what "46 of 55 rows blank" was counting, and it is not a property of
     the CLO: ``StructuralCell.value`` is a scalar for *comparing deals*, and a
-    waterfall step or a qualitative trigger has none, so the field is null on
-    those rows for every deal — including both externally validated Dutch RMBS,
-    which is why the second parametrisation carries no CLO at all. The rows are
-    not empty; they render the step's priority letter and its basis.
+    waterfall step has none, so the field is null on every waterfall row for
+    every deal — including both externally validated Dutch RMBS, which is why
+    the second parametrisation carries no CLO at all. The rows are not empty;
+    they render the step's priority letter and its basis.
+
+    Scoped to waterfall rows on purpose. Trigger rows are **not** deal-
+    independent — a trigger stated as a number (Green Lion's PDL trigger,
+    "> 0 EUR") does carry a value where a qualitative one does not — so
+    asserting the same of them would be false. They are still swept in below
+    for the labelling check, which does hold for both.
 
     Per-period amounts are a different surface, and the waterfall screen graded
     above is where they live.
@@ -409,9 +408,6 @@ def test_no_waterfall_or_trigger_row_carries_a_numeric_value_for_any_deal(
         for c in r["cells"]
         if c.get("present") and c.get("value") is not None
     ]
-    # Quantified thresholds are the documented exception: a trigger stated as a
-    # number (Green Lion's PDL trigger, "> 0 EUR") does carry one. No waterfall
-    # step does, for any deal.
     assert not [q for q in quantified if q[0].startswith("waterfall:")]
 
     # And the rows are populated with structure even where value is null.
