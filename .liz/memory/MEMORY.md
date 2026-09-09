@@ -33,6 +33,7 @@ triage by opening the entry, not by reading the line.
   - [2026-09-08 · pitfall · #483](#2026-09-08--pitfall--483) — keywords: sha256(tape_url).json, _tape_analytics_period
   - [2026-09-08 · pitfall · #480](#2026-09-08--pitfall--480) — keywords: unobtainable, recorded limitation, wrong document, offering circular, trustee report, coverage-test threshold, glossary truncation, document set
   - [2026-09-08 · pattern · #479](#2026-09-08--pattern--479) — keywords: derive vs hand-write, reconcile against declared, projection_base, current_pool_balance, pool_balance_eur, latest tape, byte-identical output
+  - [2026-09-09 · pitfall · #532](#2026-09-09--pitfall--532) — keywords: reset, two offering documents, prospectus_url, pre-reset reports, capital structure mismatch, silently wrong, registration_note
 - [Registering a deal (deals.json)](deal-registration.md) — keywords: deals.json, notes_cash_report_urls, routing promise, registry key, asset_class, answer key invariant
   - [2026-09-08 · pitfall · #479](#2026-09-08--pitfall--479) — keywords: extracted-model path, prospectus extraction, DealModel fields, as-of-date fact, closing-date terms, config tier, projection_base
 - [Metrics computed over a capital structure](structural-metrics.md)
