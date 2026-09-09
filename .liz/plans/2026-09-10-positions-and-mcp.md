@@ -1,10 +1,10 @@
 ---
 id: 2026-09-10-positions-and-mcp
 title: "A position model, and an honest MCP catalogue page"
-status: decomposed
+status: filed
 created: 2026-09-10
 updated: 2026-09-10
-epics: []
+epics: [569, 570]
 ---
 
 # A position model, and an honest MCP catalogue page
@@ -67,7 +67,7 @@ unmistakably illustrative, and say where the real thing will live.
 
 ## Decomposition
 
-### Epic: A position model   (umbrella #<N>)
+### Epic: A position model   (umbrella #569)
 
 - **Model a position, and commit an illustrative book** — A typed holding
   (deal, tranche, size, as-of date) with a provenance qualifier marking an
@@ -82,7 +82,7 @@ unmistakably illustrative, and say where the real thing will live.
   visibly marked. Sequencing: sequential. After the child above.
   Paths: `web/**`, `docs/**`, `tests/**`.
 
-### Epic: An MCP catalogue page   (umbrella #<N>)
+### Epic: An MCP catalogue page   (umbrella #570)
 
 - **Serve the MCP catalogue truthfully** — An endpoint stating which primitives
   the MCP server actually exposes as tools versus which are library-only, read
@@ -98,4 +98,10 @@ unmistakably illustrative, and say where the real thing will live.
 
 ## Filed issues
 
-<Filled after filing.>
+- Epic "A position model" -> umbrella **#569**
+  - #571 Model a position, and commit an illustrative book - parallel
+  - #572 Serve a book view - after #571
+  - #573 Surface the book - after #572
+- Epic "An MCP catalogue page" -> umbrella **#570**
+  - #574 Serve the MCP catalogue truthfully - parallel
+  - #575 Build the MCP page, with authentication marked as illustrative - after #574
