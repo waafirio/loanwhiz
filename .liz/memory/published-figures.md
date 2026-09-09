@@ -105,3 +105,16 @@ worse than none, since par alone cannot see a dropped row worth zero (#468).
 
 Refs: #555
 
+
+## 2026-09-10 · pitfall · #550
+
+Before accepting that a figure lives only in documents your path excludes, look
+in the one your path already reads. A CLO's overcollateralisation numerator was
+filed as unreachable — stated only in trustee reports #524 routed off the live
+series — yet the Note Valuation Report that series folds prints it on its own
+Par Value Tests Detail page. A scarcity premise is a claim about the whole
+registered document set; check it against that set, not the documents the issue
+names. Then read the total the report states and tie it to the components above
+it: the adjacent aggregate is the near-miss, one line away and three points high.
+
+Refs: #550

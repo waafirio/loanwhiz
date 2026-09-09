@@ -1802,6 +1802,53 @@ class TestCoverageNumeratorMustBeCollateral:
         )
         assert value == round(1_100_000_000.0 / 800_000_000.0 * 100.0, 4)
 
+    def test_a_collateral_balance_from_another_reporting_date_is_refused(self) -> None:
+        """An asset balance is an as-of-date fact, and states pair positionally.
+
+        ``CovenantMonitor.execute`` hands period ``idx`` the state at ``idx``,
+        which is only the same reporting date while a deal's states and periods
+        come from one series. Cairn's do not — #524 set three tape periods aside
+        against a report-folded series that overlaps them on no date at all — so
+        a real numerator would otherwise be divided by another date's notes and
+        reported under that date's label.
+        """
+        from loanwhiz.primitives.covenant_monitor import _evaluate_one
+
+        state = self._state(1_100_000_000.0)  # a real numerator, not the identity
+        input = CovenantInput(
+            periods=[{"reporting_date": "2026-01-31"}], period_states=[state]
+        )
+        status = _evaluate_one(
+            _coverage_trigger("class_b_oc_ratio"),
+            {"reporting_date": "2026-01-31"},
+            input,
+            state,
+            None,
+            "2026-01-31",
+        )
+        assert status.evaluable is False
+        assert status.metric_value is None, "a wrong-dated number is still a wrong number"
+        reason = status.not_evaluable_reason or ""
+        assert "2026-04-30" in reason and "2026-01-31" in reason
+
+    def test_the_same_numerator_resolves_for_its_own_period(self) -> None:
+        """The other direction (#493): the guard is keyed on the date, not on everything."""
+        from loanwhiz.primitives.covenant_monitor import _evaluate_one
+
+        state = self._state(1_100_000_000.0)
+        input = CovenantInput(
+            periods=[{"reporting_date": "2026-04-30"}], period_states=[state]
+        )
+        status = _evaluate_one(
+            _coverage_trigger("class_b_oc_ratio"),
+            {"reporting_date": "2026-04-30"},
+            input,
+            state,
+            None,
+            "2026-04-30",
+        )
+        assert status.metric_value == round(1_100_000_000.0 / 800_000_000.0 * 100.0, 4)
+
     def test_the_identity_is_exactly_100_at_the_junior_most_point(self) -> None:
         """Why the equality is a proof and not a coincidence heuristic.
 

@@ -2419,15 +2419,27 @@ def _reconstruct_series_from_reports(deal_id: str, deal: dict) -> DealStateSerie
         raise _not_modelable_deal(deal_id, deal)
 
     try:
-        report = resolve_parsed_report(
+        parsed = resolve_parsed_report(
             deal_id, deal, cache_dir=REPORT_EXTRACTION_CACHE_DIR
-        ).to_notes_cash_report()
+        )
     except ReportUnavailable as exc:
         # No committed fixture, durable cache, or live report source resolved —
         # honest 422, not an empty cascade.
         raise _not_modelable_deal(deal_id, deal) from exc
+    report = parsed.to_notes_cash_report()
 
-    adapter = ReportAdapter.from_deal_model(model)
+    # The seed is period 0 (``ReportAdapter.to_inputs``), and periods are held
+    # oldest-first, so the seed's own reporting date is the one whose stated
+    # collateral numerator belongs on it. Taking any other period's would put a
+    # real figure against the wrong date, which is the failure this is meant to
+    # avoid, not a lesser version of it. ``None`` when the report states none —
+    # the adapter then seeds the liability proxy and the coverage tests refuse.
+    seed_collateral = (
+        parsed.periods[0].adjusted_collateral_principal_amount if parsed.periods else None
+    )
+    adapter = ReportAdapter.from_deal_model(
+        model, collateral_principal_amount=seed_collateral
+    )
     series = fold_report_series(model, report, adapter)
     _RECONSTRUCTION_MEMO[memo_key] = series
     return series

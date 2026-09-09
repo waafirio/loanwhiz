@@ -308,6 +308,7 @@ def _resolve_coverage(
     input: "CovenantInput",
     letter: str,
     kind: str,
+    period_date: str | None = None,
 ) -> tuple[float | None, str | None]:
     """Compute an OC or IC ratio at one attachment point, on the percent scale.
 
@@ -345,6 +346,33 @@ def _resolve_coverage(
         return None, reason
 
     if kind == "oc":
+        # A collateral balance is an AS-OF-DATE fact, and the state this reads
+        # it from is paired to this period *positionally* by
+        # ``CovenantMonitor.execute``. That pairing holds only while a deal's
+        # states and its periods are the same series. They need not be: a deal
+        # whose series is folded from reports can be evaluated against periods
+        # taken from tapes, and #524 set three of Cairn's tape periods aside
+        # precisely because the two sources overlap on no period at all.
+        # Dividing one date's collateral balance by another date's notes yields
+        # a number with a real figure's provenance and no period's meaning —
+        # the same defect as the liability numerator below, one layer out. So
+        # it is refused rather than rounded past.
+        #
+        # Only the OC branch needs this today: the IC branch is blocked further
+        # out on ``interest_due_by_tranche`` being empty by contract, so no IC
+        # case reaches a date comparison. Widening it there would add an
+        # unreachable branch, not a protection.
+        if (
+            period_date is not None
+            and state.reporting_date is not None
+            and period_date != state.reporting_date
+        ):
+            return None, (
+                f"the collateral balance on this deal state is stated as of "
+                f"{state.reporting_date}, but this period is {period_date} — an "
+                f"overcollateralisation numerator from a different reporting "
+                f"date is not a measurement of this one"
+            )
         # The numerator must be a COLLATERAL balance. On the report path it is
         # not: ``report_adapter.seed`` sets ``pool_balance`` to the opening
         # liability total and says so — "the Notes & Cash report states
@@ -858,7 +886,13 @@ def _extract_metric(
         # for the specific reason. With no ``DealState`` we fall through to the
         # period-dict lookup instead — a published report may carry the ratio
         # directly — and to an honest not-evaluable if it does not.
-        return _resolve_coverage(state, input, coverage.group(1), coverage.group(2))[0]
+        return _resolve_coverage(
+            state,
+            input,
+            coverage.group(1),
+            coverage.group(2),
+            period.get("reporting_date"),
+        )[0]
 
     # Generic tape metric — expected to live in the period dict directly
     # or nested under "arrears_breakdown" / "pool_stats". We look up BOTH the
@@ -898,6 +932,7 @@ def _metric_not_evaluable_reason(
     metric: str,
     input: CovenantInput,
     state: DealState | None,
+    period_date: str | None = None,
 ) -> str:
     """Why a metric could not be resolved — the specific reason where one exists.
 
@@ -911,10 +946,21 @@ def _metric_not_evaluable_reason(
     coverage = _COVERAGE_METRIC_RE.match(canonical)
     if coverage is not None and state is not None:
         _, reason = _resolve_coverage(
-            state, input, coverage.group(1), coverage.group(2)
+            state, input, coverage.group(1), coverage.group(2), period_date
         )
         if reason is not None:
             return f"metric '{metric}': {reason}"
+    if coverage is not None and state is None:
+        # A coverage ratio is computed from the deal state, so with no state for
+        # this period there is nothing to compute it from — a different fact
+        # from a state that was reconstructed and lacked an input, and worth
+        # saying, because the generic wording below sends the next reader
+        # looking for a missing figure rather than a missing period (#457).
+        return (
+            f"metric '{metric}': no deal state was reconstructed for this "
+            f"period, so neither the collateral balance nor the note balances "
+            f"it would be measured against are known for it"
+        )
     return (
         f"metric '{metric}' not resolvable from period data or structural state"
     )
@@ -954,7 +1000,7 @@ def _evaluate_one(
             direction="n/a",
             evaluable=False,
             not_evaluable_reason=_metric_not_evaluable_reason(
-                trigger.metric, input, state
+                trigger.metric, input, state, period.get("reporting_date")
             ),
         )
 
