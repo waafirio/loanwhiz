@@ -38,9 +38,15 @@ What the run says
       children — so **every published row reaches a step** and EUR 1,175,751.92
       of that gap is simply distributed. What is left of it is Class B's
       ``(H)(i)``/``(H)(ii)`` money, which now has a step and is *compared* rather
-      than ignored: the engine cannot evaluate it (#512's tranche-attachment
-      gotcha) and the line fails by its full published value. The failure moved
-      from the join to the engine, which is where it belongs.
+      than ignored: the engine cannot evaluate it and the line fails by its full
+      published value. The failure moved from the join to the engine, which is
+      where it belongs. **The refusal's cause is neither this issue's nor
+      #520's**: since #520 the deal seeds all eight classes and both Class B
+      strips carry a real balance, but the cascade's ``class_b_notes_interest``
+      resolves to a canonical ``class_b_interest`` whose need is looked up
+      against a tranche named ``class_b`` — and Cairn has ``class_b_1`` and
+      ``class_b_2``, never a ``class_b``. That is a recipient-to-tranche naming
+      seam, distinct from the fold and from the truncation #520 removed.
 
    b. **EUR 194,340.11 is the day-count gap on the two lines the engine now
       computes for itself.** Since #511 the Class A and Class C interest steps
@@ -132,10 +138,11 @@ from loanwhiz.primitives.reconciliation_answer_key import (
     load_answer_key,
     reconcile_against_answer_key,
 )
-from loanwhiz.primitives.report_adapter import ReportAdapter
+from loanwhiz.primitives.report_adapter import DEFAULT_TRANCHE_CLASSES, ReportAdapter
 from loanwhiz.primitives.report_label_fold import fold_report_pop
 from loanwhiz.primitives.step_source_classifier import ENGINE_COMPUTED_RECIPIENTS
-from loanwhiz.primitives.waterfall_interpreter import WaterfallFunds
+from loanwhiz.domain.rules import RecipientType
+from loanwhiz.primitives.waterfall_interpreter import WaterfallFunds, _canonical_recipient
 from tests.clo_answer_key_source import CLO_DEAL_ID, CLO_DEAL_NAME, clo_note_valuation_report
 
 SEED_PATH = (
@@ -202,7 +209,8 @@ DAY_COUNT_SHORTFALL = CLASS_A_DAY_COUNT_GAP + CLASS_C_DAY_COUNT_GAP
 #: #510 exists to prevent:
 #:
 #: - Class B's interest, which the engine has a step for and refuses to compute
-#:   because the report path seeds no ``class_b`` tranche (#512's gotcha);
+#:   because its recipient resolves to a canonical ``class_b`` and the deal
+#:   carries ``class_b_1``/``class_b_2`` — a naming seam, not a seeding gap;
 #: - the day-count gap on the two lines that do compute (#521's).
 REVENUE_SHORTFALL = CLASS_B_PUBLISHED_INTEREST + DAY_COUNT_SHORTFALL
 
@@ -252,10 +260,12 @@ def clo_series(clo_model: DealModel, nvr_report: NotesCashReport) -> DealStateSe
     """Fold the CLO through the shared report path — no per-deal constant.
 
     ``ReportAdapter.from_deal_model`` is used with its defaults deliberately.
-    Choosing Cairn's tranche classes and residual label is a modelling decision
-    with no published figure to check it against, and #496 is forbidden from
-    making one to reach a cell state. ``test_the_finding_survives_the_adapter_choice``
-    shows the choice cannot change this result anyway.
+    Since #520 the tranche classes are no longer one of those defaults: they are
+    read off the deal's own ``tranche_structure``, so all eight of Cairn's classes
+    are seeded and there is no modelling decision left to make here. The residual
+    label still is one — #496 is forbidden from choosing it to reach a cell state,
+    and ``test_the_finding_survives_the_adapter_choice`` shows the choice cannot
+    change this result anyway.
     """
     return fold_report_series(clo_model, nvr_report, ReportAdapter.from_deal_model(clo_model))
 
@@ -421,9 +431,10 @@ def test_the_three_engine_claimed_steps_are_exactly_the_three_that_disagree(
     here all three of them do. Two distinct causes are in play and #510's whole
     discipline is not conflating them:
 
-    - **Class B** has no figure at all: the report path seeds no ``class_b``
-      tranche, so the need is ``not_evaluable`` and the step fails by its full
-      published EUR 644,398.50 (#512's recorded gotcha);
+    - **Class B** has no figure at all: its recipient resolves to a canonical
+      ``class_b`` and the deal's strips are ``class_b_1``/``class_b_2``, so the
+      need is ``not_evaluable`` and the step fails by its full published
+      EUR 644,398.50;
     - **Classes A and C** each produce a number and are each short by the
       interpreter's 90-day default against a 95-day accrual period (#521).
 
@@ -588,7 +599,9 @@ def test_the_rows_that_joined_no_step_now_reach_their_steps(
 
 
 def test_class_b_interest_is_now_compared_and_fails(
-    recon: ReconciliationReport, nvr_report: NotesCashReport
+    recon: ReconciliationReport,
+    nvr_report: NotesCashReport,
+    clo_series: DealStateSeries,
 ) -> None:
     """The sharpest edge of the join gap, closed: a real payment now really graded.
 
@@ -600,14 +613,18 @@ def test_class_b_interest_is_now_compared_and_fails(
     ``steps_passed`` would have called it correct.
 
     The fold now gives the step its children's total, so the comparison is real
-    and the engine loses it: the report path seeds no ``class_b`` tranche, the
-    need is ``not_evaluable``, and the step fails by the whole EUR 644,398.50.
-    **The step going red is this issue working.** Nothing about the engine changed
-    here — only whether anyone was looking.
+    and the engine loses it: the need is ``not_evaluable`` and the step fails by
+    the whole EUR 644,398.50. **The step going red is this issue working.**
+    Nothing about the engine changed here — only whether anyone was looking.
 
-    **Expected to change when the Class B seeding gap closes** (#512's recorded
-    gotcha): the engine amount becomes a real coupon and the delta shrinks to
-    whatever the day count leaves, exactly as Classes A and C already show.
+    Since #520 the cause is no longer a missing tranche. Both Class B strips are
+    seeded and carry real balances; the cascade's ``class_b_notes_interest``
+    resolves to a canonical ``class_b_interest``, whose need is looked up against
+    a tranche named ``class_b``, and the deal has ``class_b_1``/``class_b_2``.
+    Asserted below rather than described, so this reds if that seam closes.
+
+    **Expected to change when it does**: the engine amount becomes a real coupon
+    and the delta shrinks to whatever the day count leaves, as A and C show.
     """
     (class_b,) = [s for s in recon.periods[0].revenue.steps if s.priority == "(H)"]
     assert class_b.recipient == "class_b_notes_interest"
@@ -615,6 +632,15 @@ def test_class_b_interest_is_now_compared_and_fails(
     assert class_b.report_amount == pytest.approx(CLASS_B_PUBLISHED_INTEREST, abs=0.01)
     assert class_b.passed is False
     assert class_b.source == "engine"
+
+    # The refusal is a naming seam, not a seeding gap: since #520 both strips are
+    # seeded with real balances, and no tranche is spelled the canonical name the
+    # recipient resolves to. Pinned so the cause cannot be misattributed again.
+    seeded = {t.name: t for t in clo_series.states[0].tranches}
+    assert {"class_b_1", "class_b_2"} <= set(seeded)
+    assert seeded["class_b_1"].balance > 0.0 and seeded["class_b_2"].balance > 0.0
+    assert "class_b" not in seeded
+    assert _canonical_recipient("class_b_notes_interest") is RecipientType.class_b_interest
 
     # Read the money off the document, so the figure the step is graded against
     # is the report's own and not one this module carries.
@@ -804,44 +830,83 @@ def test_the_principal_cascade_reconciles_on_zero_and_proves_nothing(
 def test_the_finding_survives_the_adapter_choice(
     clo_model: DealModel, nvr_report: NotesCashReport
 ) -> None:
-    """Folding all eight classes rather than the adapter's default three changes nothing.
+    """Narrowing the fold back to three classes changes nothing about the grade.
 
-    ``ReportAdapter``'s ``DEFAULT_TRANCHE_CLASSES`` is Green-Lion-shaped, so a
-    Cairn fold built on it seeds three of the deal's eight classes. That is the
-    one modelling decision #496 declined to make, and this pins why declining it
-    is safe.
+    The direction of this test inverted at #520. It used to *widen* off a
+    Green-Lion-shaped ``DEFAULT_TRANCHE_CLASSES`` default; that default is now the
+    deal's own eight classes, so the *narrowing* is what has to be pinned. The
+    property protected is unchanged.
 
-    #496's reason — "no step is engine-computed, so no tranche balance reaches
-    any amount" — stopped being true at #511, and this test red when it did,
-    exactly as its last line promised. The reason is now narrower but still
-    sound: the three engine-computed recipients (Classes A, B, C interest) are
-    precisely the three the default already seeds, and the five classes widening
-    adds (D, E, F and the two Class B strips beyond the first, plus the
-    subordinated notes) name no recipient in ``ENGINE_COMPUTED_RECIPIENTS``. So
-    the extra balances still reach no need calculator and the grade is identical
-    either way — asserted, not assumed.
+    #496's original reason — "no step is engine-computed, so no tranche balance
+    reaches any amount" — stopped being true at #511. The reason is now narrower
+    but still sound: the engine-computed recipients (Classes A, B, C interest) are
+    precisely the three the old default seeded, and the five classes the deal's
+    own list adds (D, E, F, the second Class B strip, and the subordinated notes)
+    name no recipient in ``ENGINE_COMPUTED_RECIPIENTS``. So the extra balances
+    still reach no need calculator and the grade is identical either way —
+    asserted, not assumed.
 
-    It keeps its original job: it reds again if a *further* change makes a
-    D-through-F step engine-computed without revisiting the seeding.
+    It keeps its original job: it reds if a *further* change makes a D-through-F
+    step engine-computed without revisiting the seeding.
     """
-    # Derived from the seed, not transcribed: a re-extraction that changed the
-    # capital structure would otherwise leave this widening silently partial.
+    narrowed_adapter = ReportAdapter.from_deal_model(
+        clo_model, tranche_classes=DEFAULT_TRANCHE_CLASSES
+    )
+    series = fold_report_series(clo_model, nvr_report, narrowed_adapter)
+    narrowed = reconcile_series(series, nvr_report, deal_name=CLO_DEAL_NAME, tolerance=0.01)
+
+    revenue = narrowed.periods[0].revenue
+    assert narrowed.passed is False
+    assert revenue.engine_total == pytest.approx(ENGINE_DISTRIBUTED_REVENUE, abs=0.01)
+    assert revenue.engine_computed_passed == 0
+    # The fold is a property of the report and the cascade, not of how many
+    # classes the adapter seeds, so narrowing cannot change what got placed.
+    assert revenue.unjoined_report_rows == []
+
+
+def test_every_declared_class_reaches_the_folded_state_not_just_the_name_list(
+    clo_model: DealModel, nvr_report: NotesCashReport, clo_series: DealStateSeries
+) -> None:
+    """The eight classes arrive as tranches in the folded engine state, by name.
+
+    #512's lesson, asserted where it bites: a complete, correct per-class map can
+    reach nothing with no error anywhere, because the lookup is by **tranche
+    name** and the class simply has no tranche. The derived name list and the
+    per-tranche *arrival* are two separate assertions — one passing does not imply
+    the other, and asserting only the first is how this stayed invisible.
+
+    Both layers are checked here on purpose, because #520 found the truncation
+    written twice in two different syntaxes: ``ReportAdapter`` held it as a fixed
+    tuple, and ``api.main._primitives_seed_from_report_seed`` held it again as
+    flat ``class_{a,b,c}_balance=`` constructor kwargs. Fixing the first alone
+    left this assertion red.
+
+    Expected names are derived from the committed seed rather than transcribed, so
+    a re-extraction that changed the capital structure cannot leave this test
+    quietly asserting a stale stack.
+    """
     every_class = tuple(
         re.sub(r"[^a-z0-9]+", "_", tranche["name"].lower()).strip("_")
         for tranche in clo_model.tranche_structure
     )
     assert len(every_class) == 8, every_class
-    widened_adapter = ReportAdapter.from_deal_model(clo_model, tranche_classes=every_class)
-    series = fold_report_series(clo_model, nvr_report, widened_adapter)
-    widened = reconcile_series(series, nvr_report, deal_name=CLO_DEAL_NAME, tolerance=0.01)
 
-    revenue = widened.periods[0].revenue
-    assert widened.passed is False
-    assert revenue.engine_total == pytest.approx(ENGINE_DISTRIBUTED_REVENUE, abs=0.01)
-    assert revenue.engine_computed_passed == 0
-    # The fold is a property of the report and the cascade, not of how many
-    # classes the adapter seeds, so widening cannot change what got placed.
-    assert revenue.unjoined_report_rows == []
+    # 1. The adapter names them.
+    assert ReportAdapter.from_deal_model(clo_model).tranche_classes == every_class
+
+    # 2. They survive the domain -> engine bridge and arrive on the period-0 state
+    #    the fold opens from, which is where a resolved per-class rate must land.
+    seeded = [t.name for t in clo_series.states[0].tranches]
+    assert seeded == list(every_class)
+    # The five the Green Lion triple could never reach, named so a regression to
+    # a prefix of the stack reds here rather than passing vacuously.
+    assert {"class_b_1", "class_b_2", "class_d", "class_e", "class_f"} <= set(seeded)
+    # Class B is #515's sharpest case: both strips carry a real balance, so its
+    # published EUR 644,398.50 has a tranche to attach to.
+    by_name = {t.name: t for t in clo_series.states[0].tranches}
+    assert by_name["class_b_1"].balance > 0.0
+    assert by_name["class_b_2"].balance > 0.0
+
 
 
 # ---------------------------------------------------------------------------

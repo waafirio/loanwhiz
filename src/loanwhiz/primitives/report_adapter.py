@@ -56,6 +56,7 @@ from loanwhiz.domain.inputs import PeriodInputs
 from loanwhiz.domain.provenance import FieldProvenance, ProvenanceMap
 from loanwhiz.domain.state import DealState, TrancheState
 from loanwhiz.primitives.base import Citation
+from loanwhiz.primitives.capital_structure import CapitalStructure
 from loanwhiz.primitives.notes_cash_parser import NotesCashPeriod, NotesCashReport
 from loanwhiz.primitives.report_label_fold import FoldedPoP, fold_report_pop
 from loanwhiz.primitives.step_source_classifier import build_step_specs
@@ -84,6 +85,14 @@ DEFAULT_REDEMPTION_REPORT_SUPPLIED_LABELS: frozenset[str] = frozenset(
 DEFAULT_REDEMPTION_RESIDUAL_LABEL = ""
 
 #: Canonical note-class keys, senior → junior, as the parser emits them.
+#:
+#: The **fallback only** — for a caller that supplies no capital structure at all
+#: (a hand-built adapter, a thin duck-typed model). It is *not* the shape of a
+#: deal: :meth:`ReportAdapter.from_deal_model` reads the deal's own tranche list
+#: off its ``tranche_structure`` (see :func:`tranche_classes_from_model`), so a
+#: deeper stack needs no change here. Green Lion's three vintages each state
+#: exactly these three classes, so the derived list and this constant coincide
+#: for the deal the constant was written from.
 DEFAULT_TRANCHE_CLASSES: tuple[str, ...] = ("class_a", "class_b", "class_c")
 
 #: Source-vocabulary translation: the shared classifier speaks the harness's
@@ -94,6 +103,39 @@ _CANONICAL_SOURCE: dict[str, Literal["engine", "reported", "residual"]] = {
     "report-supplied": "reported",
     "residual": "residual",
 }
+
+
+def tranche_classes_from_model(model: Any) -> tuple[str, ...]:
+    """The deal's own note classes, senior → junior, for the report-path seed.
+
+    :meth:`ReportAdapter.seed` builds one :class:`TrancheState` per name here and
+    every per-class input downstream is looked up **by tranche name**, so this
+    list decides which classes exist at all on the report path. Reading it off a
+    fixed triple is how an 8-class CLO folded as a 3-class deal with no error
+    anywhere: a complete, correct rate map simply reached nothing for the five
+    classes that had no tranche (#512, #520).
+
+    So the list comes from the deal's own ``tranche_structure``, via the one
+    sanctioned builder — :meth:`CapitalStructure.from_tranche_structure`, which
+    orders senior → junior and spells names the way
+    :meth:`DealState.seed_from_prospectus` keys on (#363, #478). Adding a deeper
+    deal needs no change here.
+
+    Two cases, and the distinction is the point:
+
+    - The model states **no** structure (no attribute, ``None``, or empty) —
+      there is nothing to read, so :data:`DEFAULT_TRANCHE_CLASSES` applies. This
+      keeps a hand-built or thin duck-typed model working unchanged.
+    - The model states a structure that **cannot be placed** — the builder's
+      :class:`UnresolvableCapitalStructure` propagates. Falling back would put
+      the Green Lion triple on a deal that is not Green Lion, which is precisely
+      the silent truncation this function exists to remove: a short stack reports
+      a smaller deal, and reads as health rather than as a bug (#452, #478).
+    """
+    rows = getattr(model, "tranche_structure", None)
+    if not rows:
+        return DEFAULT_TRANCHE_CLASSES
+    return CapitalStructure.from_tranche_structure(rows).names
 
 
 def _step_labels(steps: list[dict[str, Any]]) -> list[str]:
@@ -139,7 +181,9 @@ class ReportAdapter:
         revenue_residual_label:            Terminal revenue residual-sweep label.
         redemption_report_supplied_labels: Redemption labels forced report-supplied.
         redemption_residual_label:         Terminal redemption residual label ("" disables).
-        tranche_classes:  Canonical note-class keys, senior → junior.
+        tranche_classes:  Canonical note-class keys, senior → junior. Direct
+                          construction defaults to the Green Lion triple;
+                          :meth:`from_deal_model` derives the deal's own list.
         original_pool_balance: Pool balance at closing (factor denominator); when
                           ``None`` the seed uses the first period's outstanding
                           tranche total as the closing-par proxy.
@@ -173,7 +217,7 @@ class ReportAdapter:
             DEFAULT_REDEMPTION_REPORT_SUPPLIED_LABELS
         ),
         redemption_residual_label: str = DEFAULT_REDEMPTION_RESIDUAL_LABEL,
-        tranche_classes: tuple[str, ...] = DEFAULT_TRANCHE_CLASSES,
+        tranche_classes: tuple[str, ...] | None = None,
         original_pool_balance: float | None = None,
     ) -> "ReportAdapter":
         """Build an adapter from an extracted ``DealModel``.
@@ -183,8 +227,17 @@ class ReportAdapter:
         feeds the shared classifier). ``model`` is typed ``Any`` to avoid importing
         the API-layer ``DealModel`` into this primitive (it is duck-typed: any
         object exposing ``waterfalls["revenue"|"redemption"]["steps"]`` works).
+
+        ``tranche_classes`` defaults to the deal's **own** note classes, read off
+        ``model.tranche_structure`` by :func:`tranche_classes_from_model` — not to
+        :data:`DEFAULT_TRANCHE_CLASSES`. A model that states no structure still
+        gets the triple; an explicit argument still wins, so a caller that wants a
+        specific subset says so. ``None`` is the sentinel precisely so "passed the
+        triple deliberately" and "passed nothing" stay distinguishable.
         """
         waterfalls = model.waterfalls
+        if tranche_classes is None:
+            tranche_classes = tranche_classes_from_model(model)
         return cls(
             revenue_steps=list(waterfalls["revenue"]["steps"]),
             redemption_steps=list(waterfalls["redemption"]["steps"]),
