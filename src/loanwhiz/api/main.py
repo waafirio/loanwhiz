@@ -130,19 +130,23 @@ from loanwhiz.primitives.waterfall_runner import (  # noqa: F401  (registration 
     WaterfallRunner,
 )
 
-# Import every primitive module so its @register_primitive decorator runs and the
-# PRIMITIVE_REGISTRY is fully populated for GET /primitives. Primitives register
-# on import; the four imported above (collections_aggregator, covenant_monitor,
-# esma_tape_normaliser, waterfall_runner) are already covered, so this pulls in
-# the rest (audit_logger, report_verifier). The duplicate-engine modules
-# (cashflow_projector, waterfall_state) were deleted in #276.
-# Imported for the registration side effect only — hence the noqa.
-from loanwhiz.primitives import (  # noqa: F401  (registration side effects)
-    audit_logger,
-    report_verifier,
+# Populate PRIMITIVE_REGISTRY for GET /primitives and GET /mcp/surface by
+# importing every module that registers a primitive. Registration is an import
+# side effect, so before #574 this was a hand-maintained list of module names —
+# and the MCP catalogue kept a second, different one. Neither was complete:
+# report_extractor and tranche_analytics register primitives that appeared in
+# no catalogue because no list named them. ensure_all_registered() walks the
+# package instead, so a primitive is catalogued because it exists.
+from loanwhiz.primitives.registry import ensure_all_registered
+from loanwhiz.primitives.reachability import (
+    PRIMITIVE_REACHABILITY,
+    is_exposed_as_tool,
+    reachability_of,
 )
 from loanwhiz.primitives.audit_logger import audit_result
 from loanwhiz.primitives.base import Primitive, PrimitiveResult
+
+ensure_all_registered()
 
 app = FastAPI(
     title="LoanWhiz API",
@@ -296,29 +300,19 @@ def _audit(primitive: Primitive, primitive_input: object, result: PrimitiveResul
 
 
 # ---------------------------------------------------------------------------
-# Primitive reachability (catalogue honesty, #197)
+# Primitive reachability (catalogue honesty, #197; single-sourced in #574)
 # ---------------------------------------------------------------------------
-# Not every registered primitive is reachable in the live path. The four data
-# primitives are "live": each is called by a REST endpoint AND exposed as a
-# LangGraph agent tool (loanwhiz.agent.tools). `audit_logger` is "live" because
-# the deal endpoints now record audit entries through it (see _audit above).
-# `report_verifier` is now "live" too (#320, epic #262): reached by the
-# `GET /deal/{id}/report-verification` endpoint AND the `verify_report` agent
-# tool, both of which diff the live folded distributions against the investor
-# report. `GET /primitives` surfaces this so nothing is
-# advertised as live that a judge can't reach. Unknown / future primitives
-# default to "library-only" (the conservative, honest default). The duplicate
-# engines cashflow_projector / multi_period_waterfall_runner were deleted in #276.
-_REACHABILITY_LIVE = "live"
-_REACHABILITY_LIBRARY_ONLY = "library-only"
-_PRIMITIVE_REACHABILITY: dict[str, str] = {
-    "esma_tape_normaliser": _REACHABILITY_LIVE,
-    "collections_aggregator": _REACHABILITY_LIVE,
-    "covenant_monitor": _REACHABILITY_LIVE,
-    "waterfall_runner": _REACHABILITY_LIVE,
-    "audit_logger": _REACHABILITY_LIVE,
-    "report_verifier": _REACHABILITY_LIVE,
-}
+# The map moved to loanwhiz.primitives.reachability, which owns what "live" and
+# "library-only" mean and why an unlisted primitive is library-only. It lives
+# there rather than here so the MCP package imports the same decision instead
+# of the hand-copied mirror it used to carry: the tool list a client gets, the
+# reachability GET /primitives renders and the surface GET /mcp/surface
+# describes are now one decision, not three that have to be kept equal.
+#
+# The re-export. Kept as a module-level name because
+# mcp/tests/test_server_smoke.py imports it from here by name; the endpoints
+# below ask reachability_of() / is_exposed_as_tool() rather than reading it.
+_PRIMITIVE_REACHABILITY = PRIMITIVE_REACHABILITY
 
 
 # ---------------------------------------------------------------------------
@@ -3431,9 +3425,12 @@ def primitives() -> list[PrimitiveCatalogueEntry]:
 
     Lists every registered SF primitive with its registry metadata
     (name/version/description/author/tags/class_name) and its typed input/output
-    JSON schemas, so the UI can render the framework's primitives. All primitive
-    modules are imported at module load so the registry is complete.
+    JSON schemas, so the UI can render the framework's primitives. The registry
+    is completed by walking the primitives package (#574), so every registered
+    primitive appears here — including those no endpoint reaches, which are
+    marked ``library-only`` rather than omitted.
     """
+    ensure_all_registered()
     catalogue = PRIMITIVE_REGISTRY.describe()
     entries: list[PrimitiveCatalogueEntry] = []
     for name, meta in catalogue.items():
@@ -3452,9 +3449,7 @@ def primitives() -> list[PrimitiveCatalogueEntry]:
                 author=meta["author"],
                 tags=meta["tags"],
                 class_name=meta["class_name"],
-                reachability=_PRIMITIVE_REACHABILITY.get(
-                    meta["name"], _REACHABILITY_LIBRARY_ONLY
-                ),
+                reachability=reachability_of(meta["name"]),
                 input_schema=input_schema,
                 output_schema=output_schema,
             )
@@ -3463,6 +3458,168 @@ def primitives() -> list[PrimitiveCatalogueEntry]:
 
 
 # --- end primitive registry catalogue (#135) ---------------------------------
+
+
+# --- MCP surface (#574, epic #570) -------------------------------------------
+# What the MCP server (mcp/, packaged separately) actually exposes as callable
+# tools, stated as a first-class surface rather than left to be inferred from
+# server.py. Everything here is DERIVED:
+#
+#   * membership  — the registry, completed by ensure_all_registered();
+#   * exposure    — is_exposed_as_tool(), the same predicate the MCP server
+#                   dispatches on, so this page cannot describe a tool list the
+#                   server does not serve;
+#   * schemas     — each primitive's own Pydantic describe();
+#   * governance  — the PrimitiveResult / Citation / AuditEntry models.
+#
+# Nothing here is a roster of tool names. A hand-maintained one is a second
+# mechanism for a fact the server already decides, and mcp/README.md's table was
+# exactly that: it went stale in both directions, marking a live primitive
+# library-only and listing two primitives that had been deleted.
+#
+# The server's own identity (its stdio name and catalogue resource URI) is
+# deliberately absent: those constants live in mcp/server.py, which cannot be
+# imported here without the MCP SDK, and typing them out would reintroduce the
+# transcription this endpoint exists to remove.
+
+
+class McpGovernanceField(BaseModel):
+    """One governance field carried by every MCP tool result."""
+
+    name: str = Field(..., description="Field name on the PrimitiveResult envelope.")
+    description: str = Field(
+        ..., description="The field's own documented meaning, read from the model."
+    )
+    fields: dict[str, str] = Field(
+        default_factory=dict,
+        description=(
+            "Sub-fields, when the governance field is itself structured "
+            "(citations, audit_entry) — name to documented meaning."
+        ),
+    )
+
+
+class McpSurfaceEntry(BaseModel):
+    """One registered primitive, and whether MCP exposes it as a callable tool."""
+
+    name: str = Field(..., description="Registered primitive name; the MCP tool name when exposed.")
+    version: str = Field(..., description="Primitive version (semver).")
+    description: str = Field(..., description="Registry description of the primitive.")
+    reachability: str = Field(
+        ..., description="'live' or 'library-only' — as GET /primitives reports it."
+    )
+    exposed_as_tool: bool = Field(
+        ...,
+        description=(
+            "Whether the MCP server advertises this primitive in tools/list. Decided "
+            "by the same predicate the server dispatches on, never by a separate list."
+        ),
+    )
+    not_exposed_reason: str | None = Field(
+        default=None,
+        description="Why the primitive is not callable as a tool; null when it is.",
+    )
+    input_schema: dict[str, Any] = Field(
+        default_factory=dict,
+        description=(
+            "The tool's inputSchema: the primitive's own typed Pydantic input model, "
+            "advertised verbatim. Present for every entry, so a library-only "
+            "primitive's contract is legible even though it is not callable."
+        ),
+    )
+    result_governance: list[McpGovernanceField] = Field(
+        default_factory=list,
+        description=(
+            "The evidence a call to this tool returns alongside its output. Empty "
+            "for a primitive that is not callable, which returns nothing at all."
+        ),
+    )
+
+
+_NOT_EXPOSED_REASON = (
+    "Registered and importable as library code, but reached by no REST endpoint "
+    "and no agent tool, so a client cannot reach the primitive itself. It is "
+    "listed here with its typed contract rather than omitted, and is not "
+    "advertised as callable."
+)
+
+
+def _result_governance() -> list[McpGovernanceField]:
+    """Describe the PrimitiveResult evidence pack from the models themselves.
+
+    Governance is *everything on the envelope except* ``output`` — derived by
+    difference rather than by naming the three fields, so a fourth evidence
+    field added to PrimitiveResult appears here without an edit.
+    """
+    from loanwhiz.primitives.base import AuditEntry, Citation, PrimitiveResult
+
+    structured: dict[str, type[BaseModel]] = {
+        "citations": Citation,
+        "audit_entry": AuditEntry,
+    }
+    described: list[McpGovernanceField] = []
+    for field_name, model_field in PrimitiveResult.model_fields.items():
+        if field_name == "output":
+            continue
+        nested = structured.get(field_name)
+        described.append(
+            McpGovernanceField(
+                name=field_name,
+                description=model_field.description or "",
+                fields=(
+                    {
+                        sub_name: sub_field.description or ""
+                        for sub_name, sub_field in nested.model_fields.items()
+                    }
+                    if nested is not None
+                    else {}
+                ),
+            )
+        )
+    return described
+
+
+@app.get("/mcp/surface", response_model=list[McpSurfaceEntry])
+def mcp_surface() -> list[McpSurfaceEntry]:
+    """Return the MCP server's tool surface, derived from the server's own logic.
+
+    One entry per registered primitive, in registry order, each stating whether
+    the MCP server exposes it as a callable tool, the typed input schema that
+    tool advertises, and — for the callable ones — the governance evidence a
+    call returns with its output: a confidence score, source citations, and a
+    structured audit entry (input hash, timestamp, duration). That evidence
+    travelling with the call is the point of serving the primitives over MCP at
+    all, so it is stated per tool rather than once in a preamble.
+
+    Reading this endpoint rather than counting its rows is deliberate: the
+    tallies transcribed into prose around this repo have gone stale in silence
+    more than once (#484, #492), so this returns the rows and states no total.
+    """
+    ensure_all_registered()
+    governance = _result_governance()
+    entries: list[McpSurfaceEntry] = []
+    for name, meta in PRIMITIVE_REGISTRY.describe().items():
+        registration = PRIMITIVE_REGISTRY.get(name)
+        input_schema: dict[str, Any] = {}
+        if registration is not None:
+            input_schema = registration.primitive_class.describe().input_schema
+        exposed = is_exposed_as_tool(meta["name"])
+        entries.append(
+            McpSurfaceEntry(
+                name=meta["name"],
+                version=meta["version"],
+                description=meta["description"],
+                reachability=reachability_of(meta["name"]),
+                exposed_as_tool=exposed,
+                not_exposed_reason=None if exposed else _NOT_EXPOSED_REASON,
+                input_schema=input_schema,
+                result_governance=governance if exposed else [],
+            )
+        )
+    return entries
+
+
+# --- end MCP surface (#574) --------------------------------------------------
 
 
 # --- cross-deal capability matrix (#241, C3 / epic #236) ---------------------
