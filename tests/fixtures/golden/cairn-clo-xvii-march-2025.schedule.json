@@ -976,6 +976,7 @@
       "bucket_attribute_incomplete: the report publishes a S&P rating table but not every parsed asset carries a sp_rating, so its per-bucket distribution cannot be checked"
     ],
     "part_i_tail_unparsed": 0,
+    "section_header_not_derivable": 0,
     "section_unreadable": 0,
     "source_aggregate_inconsistent": 0,
     "unrecognised_rows": 0,

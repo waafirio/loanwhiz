@@ -523,6 +523,11 @@ class ScheduleDefects(BaseModel):
     #: that read no rows, and from one the family declares unpublished. Three
     #: different facts that an empty result renders identically (#494).
     section_unreadable: int = 0
+    #: The repeated column header could not be derived, so a description may
+    #: carry it. Non-blocking — every figure still parses — but visible, since
+    #: an issuer name that is partly a column header is wrong in a way no
+    #: reconciled total can see.
+    section_header_not_derivable: int = 0
     #: A stated market value that is not the stated par at the stated price.
     #: One of the two columns is then not the quantity its header names, which
     #: is #470 exactly, so it is counted rather than absorbed.
@@ -574,6 +579,7 @@ class ScheduleDefects(BaseModel):
             - self.descriptions_without_an_obligor
             - self.bucket_attribute_incomplete
             - self.accrual_records_without_a_balance
+            - self.section_header_not_derivable
         )
 
     def record(self, category: str, detail: str) -> None:
@@ -2047,10 +2053,24 @@ def _bny_assets(
     section keeps ``None`` in that section's fields — an honest absence, never
     a zero that reads as a fact.
     """
+    part_i_pages = _pages_for(pages, layout, SECTION_ASSET_PART_I)
+    if len([page for page in part_i_pages if _reflowed_line(page) is not None]) < 2:
+        # The column header is derived from what the section's pages repeat, so
+        # one page cannot show where header ends and data begins. Every row's
+        # figures still parse — they hang off the anchored tail — but the first
+        # description would carry the header on its front and become an issuer
+        # name that is partly a column header. Issuer names are non-blocking, so
+        # nothing downstream would have questioned it.
+        defects.record(
+            "section_header_not_derivable",
+            "Asset Information I spans fewer than two reflowed pages, so the "
+            "repeated column header cannot be derived and the first row's "
+            "obligor name may carry it",
+        )
     part_i = {
         identifier: (description, matched)
         for identifier, description, matched in _reflowed_rows(
-            _pages_for(pages, layout, SECTION_ASSET_PART_I), layout, _BNY_PART_I_TAIL
+            part_i_pages, layout, _BNY_PART_I_TAIL
         )
     }
     part_ii = {
