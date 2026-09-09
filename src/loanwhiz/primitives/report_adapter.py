@@ -230,6 +230,11 @@ class ReportAdapter:
     redemption_residual_label: str = DEFAULT_REDEMPTION_RESIDUAL_LABEL
     tranche_classes: tuple[str, ...] = DEFAULT_TRANCHE_CLASSES
     original_pool_balance: float | None = None
+    #: The seed period's Adjusted Collateral Principal Amount, when the report
+    #: states one. This is the *asset*-side figure an overcollateralisation test
+    #: divides; ``None`` leaves the seed's pool balance the liability proxy
+    #: below, which the covenant monitor refuses to build a ratio on.
+    collateral_principal_amount: float | None = None
     payment_schedule: PaymentDateSchedule | None = None
     note_day_counts: dict[str, ClassDayCount] = field(default_factory=dict)
 
@@ -250,6 +255,7 @@ class ReportAdapter:
         redemption_residual_label: str = DEFAULT_REDEMPTION_RESIDUAL_LABEL,
         tranche_classes: tuple[str, ...] | None = None,
         original_pool_balance: float | None = None,
+        collateral_principal_amount: float | None = None,
     ) -> "ReportAdapter":
         """Build an adapter from an extracted ``DealModel``.
 
@@ -280,6 +286,7 @@ class ReportAdapter:
             redemption_residual_label=redemption_residual_label,
             tranche_classes=tranche_classes,
             original_pool_balance=original_pool_balance,
+            collateral_principal_amount=collateral_principal_amount,
             payment_schedule=(
                 PaymentDateSchedule.from_dict(raw_schedule) if raw_schedule else None
             ),
@@ -348,14 +355,28 @@ class ReportAdapter:
         reserve_opening = reserve_balance + reserve_drawings
         reserve_target = first_period.reserve_target or reserve_opening
 
-        # The Notes & Cash report states liabilities, not the asset pool balance;
-        # the report-path seed therefore uses the opening liability total as the
-        # pool/original-pool proxy (spec: the report path seeds liabilities).
-        # Callers with the true closing pool balance pass it as
-        # ``original_pool_balance``.
+        # The Notes & Cash *sections* state liabilities, not the asset pool
+        # balance; the report-path seed therefore falls back to the opening
+        # liability total as the pool/original-pool proxy. Callers with the true
+        # closing pool balance pass it as ``original_pool_balance``.
         original_pool = (
             self.original_pool_balance
             if self.original_pool_balance is not None
+            else opening_total
+        )
+        # ...but the *document* may state an asset-side figure even when its
+        # Notes & Cash sections do not: a CLO trustee report prints the Adjusted
+        # Collateral Principal Amount on its Par Value Tests Detail page, and
+        # that is the numerator its overcollateralisation tests actually divide
+        # (#550). Prefer it whenever the caller resolved one; the liability
+        # total remains the fallback, and the covenant monitor refuses to build
+        # a coverage ratio on that fallback rather than report notes over notes
+        # (#549). The two must stay distinguishable, so this is a separate field
+        # from ``original_pool_balance`` — that one is the *original* pool at
+        # closing, this one the *current* collateral backing the notes today.
+        pool_balance = (
+            self.collateral_principal_amount
+            if self.collateral_principal_amount is not None
             else opening_total
         )
 
@@ -385,7 +406,7 @@ class ReportAdapter:
             tranches=tranches,
             reserve_balance=reserve_opening,
             reserve_target=reserve_target,
-            pool_balance=opening_total,
+            pool_balance=pool_balance,
             original_pool_balance=original_pool,
             cumulative_losses=cumulative_losses,
             sequential_pay_active=first_period.any_trigger_breached,
