@@ -116,6 +116,21 @@ _ENGINE_COMPUTED_CANONICAL: frozenset[RecipientType] = _canonical_view(
 )
 
 
+def is_engine_computed(recipient: str) -> bool:
+    """Does the engine derive this recipient's need from the deal model itself?
+
+    The **one** membership test over :data:`ENGINE_COMPUTED_RECIPIENTS`, resolved
+    into the canonical vocabulary first. Public because it has three callers and
+    every raw copy of it is a reader that disagrees: the classifier below
+    (the engine's input side), and ``reconciler._source_of`` (the reconciliation's
+    output label). Before #514 the reconciler kept its own raw-string copy, so a
+    CLO step whose need the fold had genuinely computed was still *reported* as
+    ``report-supplied`` and ``engine_computed_passed`` read zero — #503's "two
+    readers disagree" arriving one layer further out.
+    """
+    return _canonical_recipient(recipient) in _ENGINE_COMPUTED_CANONICAL
+
+
 def build_step_specs(
     steps: list[dict],
     *,
@@ -169,10 +184,7 @@ def build_step_specs(
         specs.append(spec)
         if residual:
             source[recipient] = "residual"
-        elif (
-            _canonical_recipient(recipient) in _ENGINE_COMPUTED_CANONICAL
-            and label not in report_supplied_labels
-        ):
+        elif is_engine_computed(recipient) and label not in report_supplied_labels:
             source[recipient] = "engine"
         else:
             source[recipient] = "report-supplied"
