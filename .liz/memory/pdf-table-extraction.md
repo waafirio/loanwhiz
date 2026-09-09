@@ -67,3 +67,16 @@ omits move a count while leaving par untouched.
 
 Refs: #555
 
+
+## 2026-09-09 · pitfall · #534
+
+A table's like-typed columns are not always two, and one may restate the
+**prior period**: BNY prints `Prior Outcome | Outcome | Requirement`, so taking
+the ratio as the first percentage grades against last month's figure — real, in
+range, right type, silently wrong. Chain across periods to find the current
+column (this report's first equals the previous report's second) before
+declaring which it is, and model the row as a grammar with **named groups**, not
+a two-valued "which comes first" order: an enum cannot name one column among
+three, and one administrator's own two headers need not agree.
+
+Refs: #534

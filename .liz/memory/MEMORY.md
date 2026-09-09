@@ -15,6 +15,7 @@ triage by opening the entry, not by reading the line.
   - [2026-09-09 · pitfall · #514](#2026-09-09--pitfall--514) — keywords: mirrored fold, report_adapter, reconciler, step_overrides, need vs published figure, both sides of a comparison
   - [2026-09-08 · pitfall · #496](#2026-09-08--pitfall--496) — keywords: steps_passed, tie-out gate, report-supplied, engine_computed_passed, unjoined label, sub-lettered rows, failing grade
   - [2026-09-08 · pattern · #512](#2026-09-08--pattern--512) — keywords: series provider, answer key not a fold input, pool_stats, published input, checked ground truth, applied_rate
+  - [2026-09-09 · decision · #534](#2026-09-09--decision--534) — keywords: keyed but not graded, COVENANT_PASSING_DEAL_IDS, tally assertion, unmatched_covenant_names, withheld key, not-applicable reason
   - [2026-09-09 · pitfall · #538](#2026-09-09--pitfall--538) — keywords: residual sweep, tie-out blind, offsetting deltas, fixed pot, steps_passed, equal and opposite, total_shortfall
   - [2026-09-09 · pitfall · #515](#2026-09-09--pitfall--515) — keywords: ENGINE_COMPUTED_RECIPIENTS, engine_computed_passed, allowlist bound, step_source_classifier, report-supplied, declaration not data
 - [Extraction guards & false-positive filters](extraction-guards.md)
@@ -74,3 +75,4 @@ triage by opening the entry, not by reading the line.
   - [2026-09-08 · pitfall · #480](#2026-09-08--pitfall--480) — keywords: column header, required level, guessed order, like-typed columns, stated twice, cross-check, coverage test, refuse unrecognised header
   - [2026-09-09 · pitfall · #533](#2026-09-09--pitfall--533) — keywords: row geometry, reflowed row, column-major stack, per-line row, identifier position, family registration, refusal names what is missing
   - [2026-09-09 · pitfall · #555](#2026-09-09--pitfall--555) — keywords: per-page geometry, row-major line, wrapped row, join page lines, declared geometry, skipped page
+  - [2026-09-09 · pitfall · #534](#2026-09-09--pitfall--534) — keywords: prior outcome column, three like-typed columns, cross-period chain, named groups, row grammar, ColumnOrder, coverage test
