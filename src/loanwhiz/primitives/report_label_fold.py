@@ -67,12 +67,26 @@ that cannot place a row must leave it unplaced and say so — which is also why
 :attr:`FoldedPoP.total` counts the unplaced rows, so a tie-out gate still sees the
 whole published distribution and still fails.
 
+Known bound: a cascade that **reuses** a label
+---------------------------------------------
+Leone Arancio's cascades run ``(i)…(x)`` twice over, so a label does not name a
+step uniquely. The walk handles it — the cursor advances to the *nearest* match
+at or after it, never the last — but the result is keyed by label, so two steps
+sharing one land on a single entry and a reader comparing per step sees the pair's
+total against each of them. That is the behaviour of the folds this replaced, not
+a regression, and no deal with a repeated label currently carries an answer key to
+grade. Fixing it properly means keying the join by step *position* rather than
+label, which reaches ``build_step_specs`` (keyed by recipient) and the
+interpreter's override lookup — a larger change than a join, and one worth making
+only when a duplicate-label deal is actually being graded.
+
 Pure and offline: labels and floats in, labels and floats out. No deal constant
 appears here — the cascade's own label list is the only per-deal input.
 """
 
 from __future__ import annotations
 
+import math
 import re
 from typing import Any, Iterable, Protocol, Sequence
 
@@ -86,12 +100,14 @@ _ROMAN_ORDINALS: dict[str, int] = {
     "vi": 6, "vii": 7, "viii": 8, "ix": 9, "x": 10,
 }
 
-#: Ceilings on the gap-splitting search. A run of orphans between two labelled
-#: rows is a handful of lines in every report we have; these stop a malformed
-#: parse turning a combinatorial split into a hang, and a refusal here is the
-#: honest answer anyway (the rows come back unplaced).
-_MAX_ORPHAN_RUN = 40
-_MAX_GAP_LABELS = 8
+#: Ceiling on the gap-splitting search, counted in **partitions** rather than in
+#: rows and labels. Cutting ``n`` rows into ``k`` runs has ``C(n-1, k-1)`` ways,
+#: which is flat for every report shape we have (Green Lion's 14-row run into one
+#: label is 1; Cairn's 7 into two is 6) and explodes off a cliff for a malformed
+#: parse — 40 rows into 8 labels is 15.4 million. Bounding ``n`` and ``k``
+#: separately cannot express that, so it either forbids real reports or admits the
+#: hang. A refusal here is the honest answer anyway: the rows come back unplaced.
+_MAX_PARTITIONS = 100_000
 
 _BRACKET_GROUP = re.compile(r"\(([^)]*)\)")
 
@@ -247,7 +263,7 @@ def _split_across_gap(
         return None
     if len(orphans) < len(gap_labels):
         return None
-    if len(orphans) > _MAX_ORPHAN_RUN or len(gap_labels) > _MAX_GAP_LABELS:
+    if math.comb(len(orphans) - 1, len(gap_labels) - 1) > _MAX_PARTITIONS:
         return None
 
     tokens = [_bracket_groups(row.priority) for row in orphans]
@@ -289,7 +305,13 @@ def fold_report_pop(
     :attr:`FoldedPoP.unplaced`, so :attr:`FoldedPoP.total` always equals the
     report's published total. Nothing is dropped and nothing is swept.
     """
-    label_index = {label: i for i, label in enumerate(cascade_labels)}
+    # label -> every index it occupies, ascending. A cascade may reuse a label:
+    # Leone Arancio's revenue and redemption cascades both run (i)…(x) twice over.
+    # Keeping only one index per label would send the cursor to the wrong step —
+    # the last occurrence — and flush everything before it into one enormous gap.
+    label_indices: dict[str, list[int]] = {}
+    for position, label in enumerate(cascade_labels):
+        label_indices.setdefault(label, []).append(position)
     amounts: dict[str, float] = {}
     unplaced: list[UnplacedReportRow] = []
     pending: list[Any] = []
@@ -326,11 +348,20 @@ def fold_report_pop(
                     amounts[label] = amounts.get(label, 0.0) + row.amount
         pending = []
 
+    def next_occurrence(key: str) -> int | None:
+        """The first step labelled ``key`` at or after the cursor, if any.
+
+        At or *after*, not strictly after: a report prints nine consecutive rows
+        under one ``(C)`` step and they all belong to it. Nearest rather than last
+        is what makes a repeated label land on the step the report has reached.
+        """
+        return next((i for i in label_indices.get(key, ()) if i >= cursor), None)
+
     for row in rows:
         label = str(row.priority)
         for key in (label, _parent_label(label)):
-            index = label_index.get(key)
-            if index is not None and index >= cursor:
+            index = next_occurrence(key)
+            if index is not None:
                 flush(index)
                 cursor = index
                 amounts[key] = amounts.get(key, 0.0) + row.amount

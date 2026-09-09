@@ -133,6 +133,7 @@ from loanwhiz.primitives.reconciliation_answer_key import (
     reconcile_against_answer_key,
 )
 from loanwhiz.primitives.report_adapter import ReportAdapter
+from loanwhiz.primitives.report_label_fold import fold_report_pop
 from loanwhiz.primitives.step_source_classifier import ENGINE_COMPUTED_RECIPIENTS
 from loanwhiz.primitives.waterfall_interpreter import WaterfallFunds
 from tests.clo_answer_key_source import CLO_DEAL_ID, CLO_DEAL_NAME, clo_note_valuation_report
@@ -962,3 +963,38 @@ def test_the_published_statements_carry_the_measured_result() -> None:
         # And it still states the result, so this cannot pass by deleting it.
         states_the_result = shortfall in prose
         assert states_the_result, (relative_path, shortfall)
+
+
+def test_both_sides_of_the_comparison_fold_the_report_the_same_way(
+    clo_model: DealModel, nvr_report: NotesCashReport, clo_series: DealStateSeries
+) -> None:
+    """The adapter and the reconciler must join the report identically (#514).
+
+    They now call one fold, which is the point of the consolidation — but they
+    reach it with **separately derived** label lists: the adapter reads the
+    extracted model's steps, the reconciler reads the labels off the execution the
+    fold produced. If those two lists ever diverge, the single shared function
+    silently becomes two different joins again, and the engine is graded against a
+    published figure it was never given. Nothing else asserts they agree.
+
+    Left as its own test rather than folded into the grade above because it must
+    keep holding for a deal whose grade nobody pins — it is a property of the
+    seam, not of Cairn's numbers.
+    """
+    adapter = ReportAdapter.from_deal_model(clo_model)
+    (period,) = nvr_report.periods
+
+    for waterfall, adapter_steps, execution in (
+        ("revenue", adapter.revenue_steps, clo_series.period_results[0].revenue_execution),
+        (
+            "redemption",
+            adapter.redemption_steps,
+            clo_series.period_results[0].redemption_execution,
+        ),
+    ):
+        from_model = [str(step.get("priority", "")) for step in adapter_steps]
+        from_execution = [step.priority for step in execution.steps]
+        assert from_model == from_execution, waterfall
+
+        rows = period.revenue_pop if waterfall == "revenue" else period.redemption_pop
+        assert fold_report_pop(rows, from_model) == fold_report_pop(rows, from_execution)

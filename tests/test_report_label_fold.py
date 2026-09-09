@@ -360,3 +360,44 @@ def test_a_prefixed_child_of_an_absent_parent_is_unplaced() -> None:
     )
     assert [r.priority for r in folded.unplaced] == ["(ZZ)(i)"]
     assert folded.total == pytest.approx(12.0)
+
+
+def test_a_repeated_cascade_label_advances_to_the_nearest_step_not_the_last() -> None:
+    """A cascade may reuse a label, and the cursor must not leap to its last use.
+
+    Leone Arancio's revenue and redemption cascades both run ``(i)…(x)`` twice, so
+    a label does not name a step uniquely. Indexing label→step with a plain dict
+    keeps the *last* occurrence, which sends the cursor past everything between
+    the two and flushes it all into one enormous gap — money either mis-placed or
+    reported unplaced, on a deal whose report is otherwise perfectly ordinary.
+
+    What this pins is the walk: the orphan between the two ``(i)`` steps belongs
+    to ``(ii)``, the label the cursor genuinely skipped, and it can only be found
+    if the first ``(i)`` row stopped at the first ``(i)`` step. (The result is
+    keyed by label, so the two ``(i)`` steps still share one entry — the bound the
+    module docstring records, and the behaviour of the folds this replaced.)
+    """
+    labels = ["(i)", "(ii)", "(iii)", "(i)", "(ii)", "(iii)"]
+    rows = [Row("(i)", 1.0), Row("(a)", 2.0), Row("(iii)", 4.0)]
+
+    folded = fold_report_pop(rows, labels)
+
+    assert folded.unplaced == []
+    assert folded.amounts == {"(i)": 1.0, "(ii)": 2.0, "(iii)": 4.0}
+
+
+def test_a_gap_too_wide_to_search_is_refused_rather_than_explored() -> None:
+    """A malformed parse must not turn the split into a combinatorial hang.
+
+    Cutting n rows into k runs has C(n-1, k-1) ways: flat for every real report
+    (Green Lion's 14 rows into one label is 1; Cairn's 7 into two is 6) and 15.4
+    million for 40 rows into 8 labels. The bound is on that count, so real shapes
+    stay searchable and a runaway one comes back unplaced instead of spinning.
+    """
+    labels = ["(A)"] + [f"({chr(ord('B') + i)})" for i in range(10)]
+    rows = [Row("(A)", 1.0)] + [Row("(a)", 0.0) for _ in range(60)]
+
+    folded = fold_report_pop(rows, labels)
+
+    assert len(folded.unplaced) == 60
+    assert folded.amounts == {"(A)": 1.0}
