@@ -419,9 +419,21 @@ class WaterfallFunds(BaseModel):
         **unknown** answer, and every caller must keep it distinct from a need of
         zero — see :func:`_make_tranche_interest_need` (#493).
         """
-        by_name = {t.name: t for t in self.tranches}
-        names = tuple(by_name)
-        return [by_name[name] for name in resolve_strips(class_name, names)]
+        selected = resolve_strips(class_name, [t.name for t in self.tranches])
+        if selected == [class_name]:
+            # Exact match. Resolved through ``self.tranche`` rather than by
+            # filtering, because this collection — unlike ``CapitalStructure``,
+            # whose builder refuses duplicates — does **not** enforce unique
+            # tranche names, and the pre-#571 code took the first bearer here.
+            exact = self.tranche(class_name)
+            return [] if exact is None else [exact]
+        # Series match. Filter the tranche list rather than indexing a
+        # ``{name: tranche}`` dict: a dict silently collapses two strips that
+        # share a name, and the need calculators SUM these, so a dropped
+        # duplicate under-states the class's need — an error that reads as
+        # health, never as a bug (#452).
+        picked = set(selected)
+        return [t for t in self.tranches if t.name in picked]
 
     @computed_field  # type: ignore[prop-decorator]
     @property

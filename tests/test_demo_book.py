@@ -80,8 +80,22 @@ class TestTheBookExercisesTheGrammar:
 class TestTheBuilderRefuses:
     def test_a_spec_naming_an_unregistered_deal_fails_the_build(self) -> None:
         """A demo book quietly missing a row is worse than one that fails to build."""
-        with pytest.raises(UnplaceablePosition, match="not in the registry"):
+        with pytest.raises(UnplaceablePosition, match="no capital structure is available"):
             demo_book.build_book(registry={})
+
+    def test_a_registered_deal_with_no_seed_is_refused_by_its_own_cause(self) -> None:
+        """Registered-but-unseeded must not be reported as unregistered (#549).
+
+        Both end up absent from the placement universe, so `place` cannot tell
+        them apart. `build_book` knows the registry and must say which it is.
+        """
+        with pytest.raises(UnplaceablePosition, match="IS registered but no committed seed"):
+            demo_book.build_book(
+                registry={
+                    e["deal_id"]: {"deal_name": "No Such Deal That Was Ever Seeded"}
+                    for e in demo_book.BOOK_SPEC
+                }
+            )
 
     def test_the_placement_universe_is_the_registry(self) -> None:
         """Every deal placed against comes from the registry, not a local list."""

@@ -232,9 +232,17 @@ class Position(BaseModel):
         structure = structures.get(deal_id)
         if structure is None:
             known = ", ".join(sorted(structures)) or "no deals"
+            # Deliberately does **not** say "not in the registry". This function
+            # sees only the placement universe it was handed, and a deal can be
+            # absent from it for more than one reason — unregistered, or
+            # registered with no resolvable capital structure. Naming the first
+            # cause for both is the #549 failure: a correct refusal reporting a
+            # cause that was not the deal's. The caller that knows the registry
+            # distinguishes them; this message states only what is observable
+            # from here.
             raise UnplaceablePosition(
-                f"deal {deal_id!r} is not in the registry, so a position in it "
-                f"cannot be placed. Registered: {known}."
+                f"no capital structure is available for deal {deal_id!r}, so a "
+                f"position in it cannot be placed. Placeable: {known}."
             )
 
         strips = [spec.name for spec in structure.strips_for(tranche)]

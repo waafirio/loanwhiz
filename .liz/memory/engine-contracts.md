@@ -188,3 +188,16 @@ arithmetically over the values in hand rather than by provenance — it needs no
 plumbing, and it is a proof rather than a heuristic.
 
 Refs: #549
+
+## 2026-09-10 · pitfall · #571
+
+Before keying a collection by a field to factor a lookup out of it, check the
+collection **guarantees that field unique**. Re-keying a tranche list as
+`{name: tranche}` collapsed two strips issued under the same name, and the need
+calculators SUM strips, so the class's need halved — `CapitalStructure` refuses
+duplicates, `WaterfallFunds` never has, so every committed deal passed green.
+Ask which direction a dropped row errs in: a smaller need pays less, which reads
+as health (#452). Filter the collection; never index a dict built from it.
+
+Refs: #571
+Refs: #492 — the same non-preservation, in the widening direction.

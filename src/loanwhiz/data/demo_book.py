@@ -43,7 +43,7 @@ from loanwhiz.config import DEAL_REGISTRY
 from loanwhiz.extraction.assembler import _slug
 from loanwhiz.primitives.capital_structure import CapitalStructure
 from loanwhiz.primitives.pool_pipeline_harness import capital_structure_from_deal_model
-from loanwhiz.domain.position import Book, Position, PositionProvenance
+from loanwhiz.domain.position import Book, Position, PositionProvenance, UnplaceablePosition
 
 __all__ = [
     "BOOK_NAME",
@@ -170,7 +170,20 @@ def build_book(
             never built partially — a demo book quietly missing a row is worse
             than one that fails to build.
     """
+    source = DEAL_REGISTRY if registry is None else registry
     structures = capital_structures(registry)
+    for entry in BOOK_SPEC:
+        deal_id = entry["deal_id"]
+        if deal_id in source and deal_id not in structures:
+            # Registered, but no committed seed resolved to a structure. Named
+            # separately so the build reports the cause that is actually the
+            # deal's, rather than letting `place` report the only one visible
+            # to it ("no capital structure available") for both (#549/#457).
+            raise UnplaceablePosition(
+                f"deal {deal_id!r} IS registered but no committed seed model "
+                "resolves to a capital structure for it, so its holdings cannot "
+                "be placed. Seed the deal rather than dropping the position."
+            )
     positions = tuple(
         Position.place(
             deal_id=entry["deal_id"],

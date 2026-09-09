@@ -87,6 +87,32 @@ class TestTheOneGrammar:
         """``class_a_r`` is a replacement, not a second strip — so ``class_a`` places nothing."""
         assert resolve_strips("class_a", ("class_a_r", "class_b")) == []
 
+    def test_two_strips_sharing_a_name_are_both_returned(self) -> None:
+        """`WaterfallFunds` permits duplicate names and the need calculators SUM
+        these, so collapsing them through a `{name: tranche}` dict would
+        under-state the class's need — an error that reads as health (#452)."""
+        from loanwhiz.primitives.waterfall_interpreter import WaterfallFunds
+
+        funds = WaterfallFunds(
+            tranches=[
+                {"name": "class_b_1", "balance": 10.0},
+                {"name": "class_b_1", "balance": 7.0},
+            ]
+        )
+        assert [t.balance for t in funds.tranche_strips("class_b")] == [10.0, 7.0]
+
+    def test_an_exact_match_takes_the_first_bearer_of_the_name(self) -> None:
+        """Pre-#571 behaviour, preserved: exact match resolved via `tranche()`."""
+        from loanwhiz.primitives.waterfall_interpreter import WaterfallFunds
+
+        funds = WaterfallFunds(
+            tranches=[
+                {"name": "class_b", "balance": 10.0},
+                {"name": "class_b", "balance": 7.0},
+            ]
+        )
+        assert [t.balance for t in funds.tranche_strips("class_b")] == [10.0]
+
     def test_a_sibling_classs_strips_are_not_swept_in(self) -> None:
         assert resolve_strips("class_b", CAIRN.names) == ["class_b_1", "class_b_2"]
         assert "class_a" not in resolve_strips("class_b", CAIRN.names)
@@ -96,8 +122,19 @@ class TestPlacementRefuses:
     """An unplaceable holding is an error, not a zero (#452/#493)."""
 
     def test_a_deal_the_registry_does_not_carry_is_refused(self) -> None:
-        with pytest.raises(UnplaceablePosition, match="not in the registry"):
+        with pytest.raises(UnplaceablePosition, match="no capital structure is available"):
             _place("no-such-deal", "class_a")
+
+    def test_the_refusal_does_not_claim_a_cause_it_cannot_observe(self) -> None:
+        """`place` sees only the universe it was handed, so it must not say "unregistered".
+
+        A deal can be missing from that mapping for more than one reason, and
+        naming the first for both is a correct refusal reporting a cause that
+        was not the deal's (#549).
+        """
+        with pytest.raises(UnplaceablePosition) as excinfo:
+            _place("no-such-deal", "class_a")
+        assert "not in the registry" not in str(excinfo.value)
 
     def test_a_class_the_structure_cannot_place_is_refused(self) -> None:
         with pytest.raises(UnplaceablePosition, match="places no class"):
