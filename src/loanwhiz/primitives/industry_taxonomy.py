@@ -156,7 +156,9 @@ def canonicalise_vocabulary(labels: Iterable[str]) -> dict[str, str]:
     for label in labels:
         key = canonical_label(label)
         if not key:
-            raise LabelCollisionError(f"label {label!r} canonicalises to nothing")
+            # Not a collision — an unusable label. Distinct condition, distinct
+            # error, so the one a caller reads names what actually happened.
+            raise ValueError(f"label {label!r} canonicalises to nothing")
         seen = canonical.get(key)
         if seen is not None and seen != label:
             raise LabelCollisionError(
@@ -169,11 +171,31 @@ def canonicalise_vocabulary(labels: Iterable[str]) -> dict[str, str]:
 
 
 class JoinedLabel(BaseModel):
-    """One canonical form both vocabularies reached, and how each spelled it."""
+    """One canonical form both vocabularies reached, and how each spelled it.
+
+    The validator below is what makes a *wrong* join unrepresentable, not only
+    a lossy one. ``TaxonomyJoin``'s partition check can prove no label was
+    dropped while still admitting an entry that claims two unrelated labels
+    joined — and a claimed join is how two exposures get pooled into one
+    bucket, which is the overstatement mirroring the understatement this whole
+    module exists to avoid. So each entry re-derives its own canonical form
+    rather than being trusted to carry the right one.
+    """
 
     canonical: str
     left: str
     right: str
+
+    @model_validator(mode="after")
+    def _canonical_is_derived_not_asserted(self) -> JoinedLabel:
+        for side, label in (("left", self.left), ("right", self.right)):
+            derived = canonical_label(label)
+            if derived != self.canonical:
+                raise ValueError(
+                    f"{side} label {label!r} canonicalises to {derived!r}, "
+                    f"not to the claimed {self.canonical!r}"
+                )
+        return self
 
     @property
     def spellings_differ(self) -> bool:

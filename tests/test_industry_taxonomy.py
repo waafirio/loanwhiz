@@ -31,6 +31,7 @@ from loanwhiz.primitives.industry_taxonomy import (
     CROSS_DEAL_TAXONOMY,
     DECLINED_CROSS_VINTAGE_PAIRS,
     IndustryTaxonomy,
+    JoinedLabel,
     LabelCollisionError,
     TaxonomyJoin,
     canonical_label,
@@ -230,6 +231,40 @@ def test_every_published_label_survives_the_join(taxonomy: IndustryTaxonomy) -> 
     for deal in (CAIRN, CONTEGO):
         for label in _vocabulary(deal, taxonomy):
             assert label in reached, f"{deal} label {label!r} vanished in the join"
+
+
+def test_a_join_that_claims_an_untrue_pairing_is_unrepresentable() -> None:
+    """A *wrong* join is refused, not only a lossy one.
+
+    The partition check proves nothing was dropped; it cannot see an entry
+    asserting that two unrelated labels are the same bucket. That direction is
+    the mirror of the error this module exists to avoid — a claimed join pools
+    two exposures and **overstates** the resulting concentration — so each
+    entry re-derives its canonical form instead of being trusted with it.
+    """
+    with pytest.raises(ValidationError) as raised:
+        JoinedLabel(canonical="cable", left="Retail", right="Utilities power")
+    assert "canonicalises to" in str(raised.value)
+
+    # The honest case still builds: two spellings of one label.
+    entry = JoinedLabel(
+        canonical=canonical_label("Technology Hardware"),
+        left="Technology Hardware",
+        right="Technology hardware",
+    )
+    assert entry.spellings_differ
+
+
+def test_a_label_that_canonicalises_to_nothing_is_named_as_such() -> None:
+    """An unusable label is a distinct condition from a collision.
+
+    Both are refusals at the same seam, but a caller reads the error class, so
+    they must not share one.
+    """
+    with pytest.raises(ValueError) as raised:
+        canonicalise_vocabulary(["---"])
+    assert not isinstance(raised.value, LabelCollisionError)
+    assert "canonicalises to nothing" in str(raised.value)
 
 
 def test_a_join_that_lost_a_label_is_unrepresentable() -> None:
