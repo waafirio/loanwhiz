@@ -162,6 +162,54 @@ class ClassDayCount:
     condition: str
     rate_type: Literal["FXR", "FLR"]
 
+    @property
+    def tranche_key(self) -> str:
+        """Canonical tranche name — ``"B-2"`` → ``"class_b_2"``.
+
+        The same spelling :func:`loanwhiz.primitives.note_valuation_parser._class_key`
+        produces, so a basis parsed from the Conditions lands on the tranche the
+        report path already built without a second naming scheme in between.
+        """
+        return "class_" + self.class_key.lower().replace("-", "_")
+
+    @property
+    def source(self) -> str:
+        """Human-readable provenance, for the seed and the data card."""
+        return f"Listing Particulars, Conditions — {self.condition}"
+
+    def to_dict(self) -> dict[str, object]:
+        """Serialise for the deal seed."""
+        return {
+            "class_key": self.class_key,
+            "basis": self.basis,
+            "unadjusted_payment_dates": self.unadjusted_payment_dates,
+            "condition": self.condition,
+            "rate_type": self.rate_type,
+            "source": self.source,
+        }
+
+    @classmethod
+    def from_dict(cls, raw: dict[str, object]) -> "ClassDayCount":
+        """Rebuild from a seed's ``note_day_counts`` entry.
+
+        ``source`` is derived rather than stored back: it is a rendering of
+        ``condition``, and reading it in would let a seed carry a provenance
+        string that disagreed with the Condition it names.
+        """
+        basis = str(raw["basis"])
+        if basis not in ("act/360", "30/360"):
+            raise UnsourcedDayCount(
+                f"seed states day-count basis {basis!r}, which is not one of the "
+                "bases Condition 6(e) states"
+            )
+        return cls(
+            class_key=str(raw["class_key"]),
+            basis=basis,  # type: ignore[arg-type]
+            unadjusted_payment_dates=bool(raw["unadjusted_payment_dates"]),
+            condition=str(raw["condition"]),
+            rate_type="FXR" if basis == "30/360" else "FLR",
+        )
+
 
 # ===========================================================================
 # Text normalisation

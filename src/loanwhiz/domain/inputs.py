@@ -90,7 +90,14 @@ class PeriodInputs(BaseModel):
 
     Attributes:
         reporting_date:     The period's reporting date (ISO string).
-        days_in_period:     Day count for interest accrual.
+        days_in_period:     Deal-wide day count for interest accrual.
+        tranche_days_in_period:
+                            ``tranche name -> day count`` for tranches whose own
+                            Conditions state a day-count basis (#539). Empty —
+                            the usual case — leaves every tranche on
+                            ``days_in_period``. A convention is a per-class fact:
+                            a deal can issue one class in a fixed and a floating
+                            strip, which a single deal-wide count cannot express.
         available_revenue:  Aggregate funds for the revenue waterfall (the common
                             denominator a report gives directly).
         available_principal: Aggregate funds for the redemption waterfall.
@@ -107,7 +114,17 @@ class PeriodInputs(BaseModel):
     """
 
     reporting_date: str = Field(..., description="Reporting date (ISO string).")
-    days_in_period: int = Field(..., description="Day count for interest accrual.")
+    days_in_period: int = Field(
+        ..., description="Deal-wide day count for interest accrual."
+    )
+    tranche_days_in_period: dict[str, int] = Field(
+        default_factory=dict,
+        description=(
+            "tranche name -> its own day count, for classes whose Conditions "
+            "state a day-count basis of their own (#539). Empty leaves every "
+            "tranche on the deal-wide days_in_period."
+        ),
+    )
     available_revenue: float = Field(
         ..., description="Aggregate funds for the revenue waterfall."
     )

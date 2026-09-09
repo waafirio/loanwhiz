@@ -245,6 +245,46 @@ def stated_next_payment_date(text: str) -> str | None:
     return f"{match['year']}-{match['month']}-{match['day']}"
 
 
+#: ``Class B-2 Senior Secured FXR Notes`` → ``("B-2", "FXR")``. The trustee spells
+#: the rate type into every class name, and :func:`_class_key` drops it along with
+#: the rest of the structure words — a designation is all a tranche key needs. It
+#: is worth reading separately because it is an **independent** statement of what
+#: :mod:`loanwhiz.extraction.day_count_parser` reads out of the Conditions: the
+#: prospectus says which classes accrue on a fixed basis, and this says which the
+#: trustee actually pays as fixed. Double spaces occur in the printed names
+#: (``Class B-1  Senior Secured  FLR``), so the gap is not a single space.
+_RATE_TYPE_RE = re.compile(
+    r"^Class\s+(?P<designation>[A-Za-z0-9-]+)\s+.*?\b(?P<rate_type>FXR|FLR)\b",
+    re.MULTILINE,
+)
+
+
+def stated_rate_types(text: str) -> dict[str, str]:
+    """Each class's rate type as the report prints it — ``"FXR"`` or ``"FLR"``.
+
+    The second half of the day-count cross-check, in the same shape as
+    :func:`stated_next_payment_date` is the second half of #528's schedule check.
+    The Conditions state which classes accrue on a fixed day-count basis; this
+    reads which classes the trustee independently marks fixed. Agreement makes
+    the parsed basis two-sourced; **disagreement is a finding to report, not
+    something to reconcile silently** — the two documents would then be saying
+    different things about the same note, and picking one is a judgment no parser
+    should make on its own.
+
+    Args:
+        text: The Note Valuation Report's text, as extracted.
+
+    Returns:
+        ``class designation -> rate type``, e.g. ``{"A": "FLR", "B-2": "FXR"}``.
+        Empty when the report marks no class, which is the ordinary case for a
+        document family that does not print the rate type at all.
+    """
+    return {
+        match["designation"]: match["rate_type"]
+        for match in _RATE_TYPE_RE.finditer(text)
+    }
+
+
 # ===========================================================================
 # Models
 # ===========================================================================

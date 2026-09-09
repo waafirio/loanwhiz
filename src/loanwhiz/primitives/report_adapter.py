@@ -49,13 +49,17 @@ waterfall steps. No network, no LLM, no engine call.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import date
 from typing import Any, Literal, Sequence
 
 from loanwhiz.domain.inputs import PeriodInputs
 from loanwhiz.domain.provenance import FieldProvenance, ProvenanceMap
 from loanwhiz.domain.state import DealState, TrancheState
+from loanwhiz.extraction.day_count_parser import (
+    ClassDayCount,
+    class_accrual_days,
+)
 from loanwhiz.extraction.payment_schedule_parser import (
     PaymentDateSchedule,
     accrual_period_days,
@@ -206,6 +210,12 @@ class ReportAdapter:
                           between the two Payment Dates that bracket it; when
                           ``None`` the day count stays
                           :data:`DEFAULT_DAYS_IN_PERIOD`.
+        note_day_counts:  ``class designation -> ClassDayCount``, each class's
+                          day-count basis as its own Condition states it (#539).
+                          Empty — every deal but Cairn — leaves all tranches on
+                          the deal-wide count, so those deals are unchanged. A
+                          basis needs the schedule to be measured on, so this is
+                          inert without ``payment_schedule``.
     """
 
     revenue_steps: list[dict[str, Any]]
@@ -221,6 +231,7 @@ class ReportAdapter:
     tranche_classes: tuple[str, ...] = DEFAULT_TRANCHE_CLASSES
     original_pool_balance: float | None = None
     payment_schedule: PaymentDateSchedule | None = None
+    note_day_counts: dict[str, ClassDayCount] = field(default_factory=dict)
 
     # -- constructors -------------------------------------------------------
 
@@ -257,6 +268,7 @@ class ReportAdapter:
         """
         waterfalls = model.waterfalls
         raw_schedule = getattr(model, "payment_schedule", None)
+        raw_day_counts = getattr(model, "note_day_counts", None) or {}
         if tranche_classes is None:
             tranche_classes = tranche_classes_from_model(model)
         return cls(
@@ -271,6 +283,10 @@ class ReportAdapter:
             payment_schedule=(
                 PaymentDateSchedule.from_dict(raw_schedule) if raw_schedule else None
             ),
+            note_day_counts={
+                key: ClassDayCount.from_dict(raw)
+                for key, raw in raw_day_counts.items()
+            },
         )
 
     # -- public surface -----------------------------------------------------
@@ -400,6 +416,36 @@ class ReportAdapter:
         payment = payment_date_on_or_after(self.payment_schedule, reporting)
         return accrual_period_days(self.payment_schedule, payment)
 
+    def _tranche_days_in_period(self, period: NotesCashPeriod) -> dict[str, int]:
+        """Per-tranche day counts for the classes stating their own basis (#539).
+
+        Each class's basis comes from its own Condition, and the two bases measure
+        between different pairs of dates: a floating class over the actual
+        (business-day adjusted) Payment Dates, a class under the *Accrual Period*
+        proviso over the scheduled ones. :func:`class_accrual_days` applies the
+        distinction; this only routes each class to it.
+
+        Returns an empty map when the deal states no per-class basis — the
+        ordinary case, which leaves every tranche on
+        :meth:`_days_in_period` and every already-graded deal byte-identical. A
+        basis with no schedule to measure on is also empty rather than guessed.
+
+        A class whose day count cannot be sourced does not silently fall back to
+        the deal-wide count: ``class_accrual_days`` raises, and the tranche is
+        left out of the map so the refusal surfaces as an unsourced convention
+        rather than as a plausible number.
+        """
+        if self.payment_schedule is None or not self.note_day_counts:
+            return {}
+        reporting = date.fromisoformat(period.reporting_date)
+        payment = payment_date_on_or_after(self.payment_schedule, reporting)
+        return {
+            day_count.tranche_key: class_accrual_days(
+                self.payment_schedule, day_count, payment
+            )
+            for day_count in self.note_day_counts.values()
+        }
+
     def period_inputs(self, period: NotesCashPeriod) -> PeriodInputs:
         """One canonical :class:`PeriodInputs` from a report period.
 
@@ -476,6 +522,7 @@ class ReportAdapter:
         return PeriodInputs(
             reporting_date=period.reporting_date,
             days_in_period=self._days_in_period(period),
+            tranche_days_in_period=self._tranche_days_in_period(period),
             available_revenue=period.available_revenue_funds or 0.0,
             available_principal=period.available_principal_funds or 0.0,
             realized_loss=0.0,

@@ -218,6 +218,17 @@ class DealModel(BaseModel):
     #: that could be read — which leaves the accrual day count at its documented
     #: approximation rather than inventing one.
     payment_schedule: dict | None = None
+    #: Each note class's day-count basis as its own Condition states it (#539),
+    #: keyed by the class designation the Conditions use (``"A"``, ``"B-2"``) and
+    #: shaped by
+    #: :meth:`~loanwhiz.extraction.day_count_parser.ClassDayCount.to_dict`.
+    #: Optional for the same reason ``payment_schedule`` is: the fraction lives in
+    #: the *Conditions*, which the truncated definitions prompt never reaches, so
+    #: it is recovered deterministically by
+    #: :mod:`loanwhiz.extraction.day_count_parser` and committed to the seed.
+    #: ``None`` means this deal states no per-class convention, which leaves every
+    #: class on the deal-wide day count rather than inventing a split.
+    note_day_counts: dict | None = None
 
 
 # ---------------------------------------------------------------------------

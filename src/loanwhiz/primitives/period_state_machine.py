@@ -415,6 +415,7 @@ def _funds_from_state(
     *,
     rates: dict[str, float],
     days_in_period: int,
+    tranche_days_in_period: dict[str, int] | None = None,
     senior_fees: float,
     swap_payment: float = 0.0,
     available_revenue: float | None = None,
@@ -449,12 +450,20 @@ def _funds_from_state(
     # resolve carries NO key here, and that absence is passed through as ``None``
     # rather than defaulted to 0: the interest need then reports it
     # ``not_evaluable`` instead of accruing nothing and servicing it for free.
+    #
+    # ``tranche_days_in_period`` carries a per-class day count for the classes
+    # whose own Conditions state a day-count basis (#539). A tranche absent from
+    # it keeps ``None`` and accrues on the deal-wide ``days_in_period``, so the
+    # map being empty — every deal but Cairn — is byte-for-byte the old
+    # behaviour.
+    tranche_days = tranche_days_in_period or {}
     tranches = [
         TrancheFunds(
             name=t.name,
             balance=t.balance,
             rate_pct=rates.get(f"{t.name}_rate_pct"),
             pdl_balance=t.pdl_balance,
+            days_in_period=tranche_days.get(t.name),
         )
         for t in state.tranches
     ]
@@ -514,6 +523,9 @@ class _NormalizedPeriod(BaseModel):
     collections: PeriodCollections
     reporting_date: str
     days_in_period: int
+    #: Per-tranche day counts for classes stating their own basis (#539); empty
+    #: for every deal that states none, which leaves the deal-wide count alone.
+    tranche_days_in_period: dict[str, int] = Field(default_factory=dict)
     revolving: bool | None
     available_revenue: float
     available_principal: float
@@ -604,6 +616,7 @@ def _normalize_period(period: "PeriodInput | CanonicalPeriodInputs") -> _Normali
         collections=collections,
         reporting_date=period.reporting_date,
         days_in_period=period.days_in_period,
+        tranche_days_in_period=dict(period.tranche_days_in_period),
         revolving=None,
         available_revenue=available_revenue,
         available_principal=available_principal,
@@ -777,6 +790,7 @@ def run_period(
         norm.collections,
         rates=rates,
         days_in_period=norm.days_in_period,
+        tranche_days_in_period=norm.tranche_days_in_period,
         senior_fees=senior_fees,
         swap_payment=swap_payment,
         available_revenue=norm.available_revenue,

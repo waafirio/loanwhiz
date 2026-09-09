@@ -35,11 +35,14 @@ asserts the parser refuses rather than silently picking a member where they don'
 
 from __future__ import annotations
 
+import json
+import re
 from datetime import date
 from pathlib import Path
 
 import pytest
 
+from loanwhiz.extraction.assembler import DealModel
 from loanwhiz.extraction.day_count_parser import (
     ClassDayCount,
     UnsourcedDayCount,
@@ -52,6 +55,14 @@ from loanwhiz.extraction.day_count_parser import (
 from loanwhiz.extraction.payment_schedule_parser import (
     PaymentDateSchedule,
     parse_payment_date_schedule,
+)
+from loanwhiz.primitives.note_valuation_parser import stated_rate_types
+from loanwhiz.primitives.notes_cash_parser import NotesCashPeriod
+from loanwhiz.primitives.report_adapter import ReportAdapter
+from loanwhiz.primitives.waterfall_interpreter import (
+    TrancheFunds,
+    WaterfallFunds,
+    _make_tranche_interest_need,
 )
 
 TESTS_DIR = Path(__file__).parent
@@ -152,9 +163,8 @@ def test_the_implied_rate_type_matches_the_basis(
 ) -> None:
     """A fixed basis implies ``FXR``, a floating one ``FLR``.
 
-    This is the value the Note Valuation Report prints independently; the
-    cross-check that compares the two lives in
-    ``tests/test_note_valuation_parser.py``.
+    This is the value the Note Valuation Report prints independently;
+    :func:`test_the_reports_rate_type_agrees_with_the_conditions` compares them.
     """
     assert {k: v.rate_type for k, v in day_counts.items()} == {
         **{k: "FLR" for k in FLOATING_CLASSES},
@@ -329,3 +339,177 @@ def test_an_unscheduled_payment_date_has_no_unadjusted_counterpart(
     """
     with pytest.raises(UnsourcedDayCount, match="Scheduled Payment Date"):
         class_accrual_days(schedule, day_counts["B-2"], date(2025, 3, 5))
+
+
+# ---------------------------------------------------------------------------
+# 5. The seed states what the parser produces
+# ---------------------------------------------------------------------------
+
+
+SEED_DIR = TESTS_DIR.parent / "src" / "loanwhiz" / "data" / "deals" / "seed"
+CAIRN_SEED = SEED_DIR / "cairn-clo-xvii-dac.json"
+
+
+def test_the_seed_carries_the_parsed_bases(
+    day_counts: dict[str, ClassDayCount],
+) -> None:
+    """The seed's ``note_day_counts`` is what the parser produces, not a copy.
+
+    Asserted through a round-trip rather than field by field, so a re-extraction
+    that changed the shape cannot leave the seed quietly stale.
+    """
+    seed = json.loads(CAIRN_SEED.read_text(encoding="utf-8"))
+    rebuilt = {
+        key: ClassDayCount.from_dict(raw)
+        for key, raw in seed["note_day_counts"].items()
+    }
+    assert rebuilt == day_counts
+
+
+def test_the_conditions_are_committed_verbatim(prospectus_text: str) -> None:
+    """The fixture states the rule, not only the parsed result.
+
+    A reviewer must be able to read the sentence the basis came from without
+    fetching a 420-page PDF, and a parser change that started agreeing with the
+    seed for the wrong reason still has to agree with *these* words.
+
+    Compared against a whitespace-collapsed copy because pypdf wraps mid-sentence:
+    the fixture is verbatim output, line breaks included, and the sentences below
+    each span one.
+    """
+    collapsed = re.sub(r"\s+", " ", prospectus_text)
+    assert "12 months of 30 days each" in collapsed
+    assert "actual number of days in the Accrual Period concerned" in collapsed
+    assert "shall not be adjusted" in collapsed
+
+
+# ---------------------------------------------------------------------------
+# 6. The adapter carries the basis to the engine
+# ---------------------------------------------------------------------------
+
+
+def test_the_report_adapter_derives_a_day_count_per_class() -> None:
+    """Cairn's tranches each get the day count their own Condition implies.
+
+    The floating classes and the deal-wide count agree here — both measure the
+    actual days between the same two adjusted Payment Dates — and B-2 does not,
+    which is the whole reason the map exists.
+    """
+    model = DealModel.model_validate_json(CAIRN_SEED.read_text(encoding="utf-8"))
+    adapter = ReportAdapter.from_deal_model(model)
+    period = NotesCashPeriod(reporting_date="2025-01-08", period_label="January 2025")
+
+    per_tranche = adapter._tranche_days_in_period(period)
+    deal_wide = adapter._days_in_period(period)
+
+    assert per_tranche["class_b_2"] != deal_wide
+    for tranche in ("class_a", "class_b_1", "class_c", "class_d", "class_e", "class_f"):
+        assert per_tranche[tranche] == deal_wide
+
+
+#: Every committed seed except the CLO, enumerated from disk rather than listed so
+#: a seed added later is covered the day it lands.
+OTHER_SEEDS: tuple[str, ...] = tuple(
+    sorted(
+        path.name for path in SEED_DIR.glob("*.json") if path.name != CAIRN_SEED.name
+    )
+)
+
+
+def test_the_byte_identity_guard_covers_every_other_committed_seed() -> None:
+    """The guard below is only worth its name if nothing escapes it."""
+    assert len(OTHER_SEEDS) == len(list(SEED_DIR.glob("*.json"))) - 1
+    assert "cairn-clo-xvii-dac.json" not in OTHER_SEEDS
+
+
+@pytest.mark.parametrize("seed_name", OTHER_SEEDS)
+def test_deals_stating_no_per_class_convention_are_untouched(seed_name: str) -> None:
+    """No stated convention, no per-class day count — the Green Lion guard.
+
+    Green Lion is validated to the cent against its own published Priorities of
+    Payments, and it states no per-class convention, so it must keep the
+    behaviour it has: an empty map leaves every tranche on the deal-wide count.
+    """
+    model = DealModel.model_validate_json(
+        (SEED_DIR / seed_name).read_text(encoding="utf-8")
+    )
+    assert ReportAdapter.from_deal_model(model).note_day_counts == {}
+
+
+# ---------------------------------------------------------------------------
+# 7. The cross-check — two documents, independently
+# ---------------------------------------------------------------------------
+
+
+def test_the_reports_rate_type_agrees_with_the_conditions(
+    day_counts: dict[str, ClassDayCount],
+) -> None:
+    """The Note Valuation Report marks fixed exactly the class the Conditions do.
+
+    Two documents produced by different parties: the prospectus states the
+    day-count basis, and the trustee's report independently prints ``FXR`` or
+    ``FLR`` per class. That B-2 is the one class both single out is what makes
+    the basis two-sourced rather than one parser's reading.
+
+    A disagreement here is a **finding**, not something for the parser to
+    reconcile — hence an equality assertion over the whole map rather than a
+    lookup that could quietly skip a class.
+    """
+    report_text = (
+        TESTS_DIR / "fixtures" / "note_valuation" / "cairn-clo-xvii-january-2025.txt"
+    ).read_text(encoding="utf-8")
+    assert stated_rate_types(report_text) == {
+        key: parsed.rate_type for key, parsed in day_counts.items()
+    }
+
+
+def test_the_cross_check_fires_when_the_report_disagrees(
+    day_counts: dict[str, ClassDayCount],
+) -> None:
+    """The ``fires-when`` for the cross-check above.
+
+    Marking B-2 ``FLR`` in the report makes the two documents disagree about the
+    one class this issue turns on; the comparison must notice rather than pass
+    because the classes happen to line up.
+    """
+    report_text = (
+        TESTS_DIR / "fixtures" / "note_valuation" / "cairn-clo-xvii-january-2025.txt"
+    ).read_text(encoding="utf-8")
+    tampered = report_text.replace("Class B-2 Senior Secured FXR", "Class B-2 Senior Secured FLR")
+    assert stated_rate_types(tampered) != {
+        key: parsed.rate_type for key, parsed in day_counts.items()
+    }
+
+
+# ---------------------------------------------------------------------------
+# 8. The engine honours a tranche's own day count
+# ---------------------------------------------------------------------------
+
+
+def test_a_tranche_accrues_on_its_own_day_count() -> None:
+    """A per-tranche count overrides the deal-wide one for that tranche alone."""
+    funds = WaterfallFunds(
+        days_in_period=95,
+        tranches=[
+            TrancheFunds(name="class_b_1", balance=1_000_000.0, rate_pct=6.0),
+            TrancheFunds(
+                name="class_b_2", balance=1_000_000.0, rate_pct=6.0, days_in_period=90
+            ),
+        ],
+    )
+    need = _make_tranche_interest_need("class_b_2")(funds)
+    assert need == pytest.approx(1_000_000.0 * 0.06 / 360 * 90)
+
+
+def test_a_tranche_without_its_own_day_count_uses_the_deal_wide_one() -> None:
+    """The ``red-when`` for the override: dropping it must move this line.
+
+    Every deal that states no per-class convention reaches here, so this is the
+    assertion that keeps them byte-identical.
+    """
+    funds = WaterfallFunds(
+        days_in_period=95,
+        tranches=[TrancheFunds(name="class_a", balance=1_000_000.0, rate_pct=6.0)],
+    )
+    need = _make_tranche_interest_need("class_a")(funds)
+    assert need == pytest.approx(1_000_000.0 * 0.06 / 360 * 95)
