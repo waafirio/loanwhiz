@@ -83,9 +83,15 @@ _HIDING_AFFORDANCES = (
 _SCORE_SHAPES = (
     "formatPct",
     "toFixed",
-    ".length /",
     "percent",
-    "aggregate",
+    "aggregate_confidence",
+    # The two ways to build a grade out of the two kinds. `.length /` is the
+    # ratio; `.length +` is the denominator of "1 of 7 verified", which this
+    # file's own review found slipping past every other ban here — a grade with
+    # no division in it. Both are banned because both produce the number a
+    # reader treats as the measurement (#549).
+    ".length /",
+    ".length +",
 )
 
 # The capability matrix's trichotomy. #567 deliberately does not share it: that
@@ -269,13 +275,21 @@ def test_the_route_is_reachable_and_sits_beside_governance() -> None:
     """A screen nobody can navigate to renders nothing, correctly."""
     nav = _NAV.read_text(encoding="utf-8")
     assert '"/due-diligence"' in nav, "the due-diligence route is not in the sidebar"
-    # In the platform group, after Governance — not in Deal Analytics beside
-    # Compliance, which answers the deal's covenant question for another reader.
-    assert nav.index('"/governance"') < nav.index('"/due-diligence"')
-    assert nav.index('"/compliance"') < nav.index('"/governance"'), (
-        "Compliance is no longer in the Deal Analytics group above; check the "
-        "two entries have not been merged into one neighbourhood"
+
+    # Asserted against the GROUP boundary, not against a neighbour's position.
+    # The first version of this compared route indices pairwise, which passes or
+    # fails on the incidental ordering of entries this test has no opinion
+    # about; the claim being made is which *group* each route sits in.
+    boundary = nav.index('label: "Platform & Governance"')
+    assert nav.index('"/compliance"') < boundary, (
+        "Compliance left the Deal Analytics group — it answers whether the DEAL "
+        "is inside its covenants, a different question for a different reader"
     )
+    assert boundary < nav.index('"/due-diligence"'), (
+        "the due-diligence route left the Platform & Governance group; it now "
+        "sits beside the covenant screen it is deliberately not part of"
+    )
+    assert nav.index('"/governance"') < nav.index('"/due-diligence"')
 
 
 def test_the_page_renders_the_record_for_the_selected_deal() -> None:
