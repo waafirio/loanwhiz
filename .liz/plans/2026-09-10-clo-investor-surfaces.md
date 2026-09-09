@@ -1,10 +1,10 @@
 ---
 id: 2026-09-10-clo-investor-surfaces
 title: "Two surfaces a CLO buyer needs: look-through concentration, and an investor due-diligence record"
-status: decomposed
+status: filed
 created: 2026-09-10
 updated: 2026-09-10
-epics: []
+epics: [560, 561]
 ---
 
 # Two surfaces a CLO buyer needs: look-through concentration, and an investor due-diligence record
@@ -94,7 +94,7 @@ form, the record says so.
 
 ## Decomposition
 
-### Epic: Look-through concentration across CLO holdings   (umbrella #<N>)
+### Epic: Look-through concentration across CLO holdings   (umbrella #560)
 
 - **Resolve obligor identity across deals** — Establish which obligors in two
   deals' schedules are the same borrower, and name the ones that cannot be
@@ -113,7 +113,7 @@ form, the record says so.
   unresolved set visible rather than netted away. Sequencing: sequential.
   After the child above. Paths: `src/loanwhiz/api/main.py`, `web/**`, `tests/**`.
 
-### Epic: Investor due-diligence record   (umbrella #<N>)
+### Epic: Investor due-diligence record   (umbrella #561)
 
 - **Extract the risk-retention statement** — Read the offering document's
   retention undertaking: who retains, by which Article 6(3) method, and at what
@@ -150,4 +150,12 @@ uses. It is not filed here because neither epic requires it to be useful.
 
 ## Filed issues
 
-<Filled after filing.>
+- Epic "Look-through concentration across CLO holdings" -> umbrella **#560**
+  - #562 Resolve obligor identity across deals - parallel
+  - #563 Reconcile the two industry taxonomies - parallel
+  - #564 Compute cross-deal overlap and aggregate exposure - after #563
+  - #565 Surface look-through concentration - after #564
+- Epic "Investor due-diligence record" -> umbrella **#561**
+  - #566 Extract the risk-retention statement - parallel
+  - #567 Assemble the per-deal due-diligence record - after #566
+  - #568 Surface the due-diligence record beside governance - after #567
