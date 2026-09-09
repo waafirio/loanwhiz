@@ -261,16 +261,30 @@ def test_every_contego_document_url_is_distinct() -> None:
 def test_contego_is_registered_but_not_modelable() -> None:
     """Registered != modelable: the engine degrades to a labelled 422.
 
-    With no tape and no report the engine can fold, ``_reconstruct_series``
-    raises rather than serving an empty cascade that would read as a real,
-    all-clear result. Offline — no network fetch is attempted.
+    ``_reconstruct_series`` raises rather than serving an empty cascade that
+    would read as a real, all-clear result. Offline — no network fetch is
+    attempted.
+
+    **Which refusal, not just that one fired (#535).** When this test was
+    written the deal had neither tape nor report, so the 422 came from
+    ``_not_modelable_deal``. #555 registered its derived tapes, so the deal now
+    takes the *tape* path and gets as far as ``_resolve_structural_config``
+    before stopping — a different refusal, ``_misconfigured_deal``, on a senior
+    coupon its extracted seed never carried. A bare ``422`` + deal-id assertion
+    is satisfied by both and so cannot tell them apart; it would have gone on
+    passing through that change without recording it. The key is named here so
+    that sourcing the coupon reds this line instead of sliding past it.
     """
     from loanwhiz.api.main import _reconstruct_series
 
     with pytest.raises(HTTPException) as exc:
         _reconstruct_series(CONTEGO_DEAL_ID, DEAL_REGISTRY[CONTEGO_DEAL_ID])
     assert exc.value.status_code == 422
-    assert CONTEGO_DEAL_ID in str(exc.value.detail)
+    detail = str(exc.value.detail)
+    assert CONTEGO_DEAL_ID in detail
+    assert "class_a_rate_pct" in detail, (
+        f"the refusal no longer names the missing senior coupon: {detail}"
+    )
 
 
 # ---------------------------------------------------------------------------

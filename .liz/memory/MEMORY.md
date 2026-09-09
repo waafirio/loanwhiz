@@ -19,6 +19,7 @@ triage by opening the entry, not by reading the line.
   - [2026-09-09 · pitfall · #538](#2026-09-09--pitfall--538) — keywords: residual sweep, tie-out blind, offsetting deltas, fixed pot, steps_passed, equal and opposite, total_shortfall
   - [2026-09-09 · pitfall · #515](#2026-09-09--pitfall--515) — keywords: ENGINE_COMPUTED_RECIPIENTS, engine_computed_passed, allowlist bound, step_source_classifier, report-supplied, declaration not data
   - [2026-09-09 · pitfall · #525](#2026-09-09--pitfall--525) — keywords: control subject, blank cell count, StructuralCell.value, comparable scalar, defect premise, schema not deal, compare panel
+  - [2026-09-09 · pitfall · #535](#2026-09-09--pitfall--535) — keywords: verified on one deal, re-measure per subject, second specimen, premise transfer, stopping point, 422 per deal, verification issue
 - [Extraction guards & false-positive filters](extraction-guards.md)
   - [2026-09-02 · pitfall · #439](#2026-09-02--pitfall--439) — keywords: _CLASS_LETTERS, tranche, note class, Class J, Class O, false positive, guard, proxy range
   - [2026-09-05 · pitfall · #456](#2026-09-05--pitfall--456) — keywords: widening a guard, newly visible input, N/A cell, scavenged rating, Subordinated Notes, untested downstream

@@ -195,3 +195,15 @@ for no deal. A count with no control subject measures the schema, not the deal.
 The control is one query, and it runs before the fix, not after it fails.
 
 Refs: #525
+
+## 2026-09-09 · pitfall · #535
+
+A capability verified on one deal is a claim about that deal, not the asset
+class — and the general form reaches you through epic body, issue and dispatch
+alike. Probe every screen per deal id before asserting against it: "the CLO
+screens now serve 200" was true of the first CLO and false of the second, which
+still 422s on an input its extraction never read. Where the second subject
+stops is the finding; a test pinning that stopping point by name beats one
+asserting the symmetry that was expected.
+
+Refs: #535

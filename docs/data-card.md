@@ -763,11 +763,11 @@ apply to whichever tapes are synthetic.
 ### Contego CLO XI DAC — what is and is not obtainable
 
 The registry's **second** CLO, added by #532 (epic #530). **The Listing
-Particulars have been extracted to a committed seed; its trustee reports have
-not been parsed, no ground truth is authored, and no capability cell is
-`validated`.** It exists to answer a
-question one specimen cannot: whether the platform's CLO capability is *general*
-or *fitted* to Cairn. It changes exactly one variable — the **collateral
+Particulars have been extracted to a committed seed, its trustee reports are now
+parsed (#533/#555) and a ground-truth answer key is committed (#534) — but the
+deal is not graded against that key and no capability cell is `validated`.** It
+exists to answer a question one specimen cannot: whether the platform's CLO
+capability is *general* or *fitted* to Cairn. It changes exactly one variable — the **collateral
 administrator**. Cairn's trustee reports are U.S. Bank; Contego's are **BNY
 Mellon**, whose documents open with a Client Service Manager block and a
 disclaimer rather than a `Global Corporate Trust www.usbank.com/clo` header.
@@ -888,16 +888,111 @@ applying #528's fix to a deal it cannot help.
 **Not obtainable.** No machine-readable loan tape exists — CLOs are private
 securitisations, so no ESMA securitisation-repository filing is published for
 this deal. Loan-level collateral detail *is* published, as PDF tables inside the
-trustee reports, but that is not an Annex tape; deriving one is #533's job
-through the existing `derived+trustee-report:` channel. `tape_urls` is therefore
-registered empty rather than absent — `api.main` subscripts the key directly, so
-an omitted key would 500 the deal-model route rather than read as "no tape".
+trustee reports, but that is not an Annex tape. #555 derived one from those
+tables through the existing `derived+trustee-report:` channel, so `tape_urls`
+now carries one URI per published period. It was registered **empty** rather
+than absent at #532, before the reports could be read — `api.main` subscripts
+the key directly, so an omitted key would 500 the deal-model route rather than
+read as "no tape".
 
-**What is NOT claimed.** The extraction has run and a seed is committed, but
-nothing about this deal is parsed from its reports, graded, or `validated`, and
-no capability cell claims otherwise. Whether its engine reconciles to its Note Valuation Report is the
+**What is NOT claimed.** The extraction has run, a seed is committed, the
+reports parse and a key is authored — but nothing about this deal is **graded**
+or `validated`, and no capability cell claims otherwise. Whether its engine reconciles to its Note Valuation Report is the
 question #510 spent an epic answering for Cairn, and it is deliberately out of
 scope here.
+
+#### What the second CLO exposed — general capability vs fitted specimen (#535)
+
+This is the question the deal was registered to answer, and the answer is
+**mixed**. Recorded here as measured; the figures behind each claim are
+re-derived at test time in `tests/test_two_clo_comparison.py`, not transcribed
+into this prose.
+
+**What was general — worked on Contego unchanged, having been built for Cairn.**
+Every one of these was written against the first CLO and read the second with no
+edit; epic #530's diff touches none of them:
+
+- **The cross-deal comparison itself** (`api/compare.py` and the `/compare`
+  handler). Both CLOs align in one panel and every seniority rank of both
+  eight-class stacks carries a real balance.
+- **Capital-stack alignment.** The tranche rows placed Contego's stack from its
+  extracted seed with no new mapping, despite different class sizes and a
+  different residual.
+- **The committed-seed route.** `_load_cached_deal_model` served Contego's model
+  from `data/deals/seed/` exactly as it serves Cairn's.
+- **The answer-key registry.** Contego's key resolved through the existing
+  constructor — `answer_keys/README.md` records that nothing in
+  `from_trustee_liability_summaries` changed to accept a second deal.
+- **The derived-tape channel.** `derived+trustee-report:` carried Contego's
+  tapes with no new scheme.
+- **The refusal machinery.** Where an input was missing the engine declined by
+  name rather than borrowing another deal's figure (below).
+
+**What was fitted — needed changing before Contego could be read at all.** All
+of it sits in the report-reading layer, and this is the honest measure of how
+much of the CLO support was a specimen:
+
+- **Both report parsers had to be generalised onto a family-detected dispatch**
+  (#531). One administrator's layout had been a module constant.
+- **Row geometry** (#533). BNY emits one row-major line per page with the
+  identifier mid-row; U.S. Bank emits one asset per line. The family had to be
+  able to declare `RowGeometry` and `IdentifierPosition`.
+- **Stated-count grain** (#555). BNY's `# of Assets` columns are computed at
+  **interest-accrual grain** while its balance columns are at **asset grain** —
+  more accrual records than assets. Par tied to the euro; the count did not, and
+  the family now declares what its stated count counts.
+- **Coverage-test row grammar** (#534). #555's row reader matched **zero** BNY
+  coverage rows, and BNY's two headers disagree about which column is the ratio:
+  the Compliance Tests table's first percentage is the *prior* period's outcome.
+  Reading it as the current one grades every test against last month's figure —
+  real, in range, right type, silently wrong.
+- **Section declarations.** A family had to be able to declare a section it does
+  not publish, and to route two tables printed under one shared title.
+
+**What Contego does that Cairn does not, and how the platform handled it.**
+
+- **A redemption ladder.** Contego's model states a principal cascade with its
+  own expense steps and a reserve replenishment; Cairn's does not. Conversely
+  Cairn carries per-class interest, deferred-interest and coverage-test-cure
+  steps and per-class OC/IC triggers that Contego's extraction did not yield.
+  The panel **aligned the rows and marked the absent cells absent** rather than
+  coercing either deal onto a sentinel — the differences run in both directions
+  and are asserted in both directions, so flattening either reds.
+- **A reset.** Euronext publishes two Listing Particulars for this issuer, and
+  every published trustee report is pre-reset, so the deal is registered against
+  the **older** document (above). Cairn posed no such choice.
+- **It stops short of the live screens.** Contego reaches the structural panel
+  but not the performance panel: it has no reconstructable series, so no
+  `latest_period`, and `/deal/contego-clo-xi/compliance` and `/waterfall` return
+  422 where Cairn's return 200. The cause is specific and worth naming — the
+  seed places every class of the stack but gives each a **null coupon**, so the
+  engine refuses on a missing `class_a_rate_pct` rather than falling back to
+  another deal's rate. The comparison keeps the deal in the set with
+  `has_performance: false` and a note saying why, so the gap reads as a refusal
+  rather than as an all-clear. Curing it needs a coupon sourced from the Listing
+  Particulars; it is not a defect in the CLO support that #522 built.
+
+**Two limits this second deal does not lift.**
+
+1. **Contego is keyed but not graded.** Its `covenants` cell is
+   `not-applicable` because no name BNY prints matches a trigger its extracted
+   seed carries — #481's taxonomy gap, met again across *every* test of the
+   deal. #534 deliberately kept "carries a committed key" and "whose cell
+   passes" as two sets rather than withholding real ground truth to protect a
+   green number, and the cell asserts its unmatched names rather than its grade.
+2. **The second key does not improve on the first's disclosure.** Every coverage
+   test Contego's key carries is `Passed` in both periods, exactly as Cairn's
+   are, so a monitor that reported nothing as breached would match all of them.
+   `answer_keys/README.md` states it plainly: two all-passing keys mean the gap
+   is **attested twice rather than closed once**. Two keys are not broader
+   coverage than one.
+
+**One thing that is not a CLO finding.** A null `value` on a waterfall or
+qualitative-trigger row is a property of the comparison schema, not of either
+CLO: `StructuralCell.value` is a cross-deal comparable scalar that a cascade
+step has for *no* deal, including both externally validated Dutch RMBS (#525).
+The control is parametrised alongside the CLO sets in
+`tests/test_clo_live_screens.py`, so the claim is checked rather than asserted.
 
 ---
 
