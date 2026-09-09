@@ -261,6 +261,9 @@ def test_the_refusal_describes_what_the_deal_actually_registers():
     assert "set aside" in detail
     for date in ("2024-12-16", "2025-02-18", "2025-03-18"):
         assert date in detail
+    # Reached from the no-extracted-model raise site too, where the report may
+    # resolve perfectly well — so this branch names no cause either.
+    assert "did not resolve" not in detail
 
 
 # ---------------------------------------------------------------------------

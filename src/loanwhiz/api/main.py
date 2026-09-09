@@ -2602,7 +2602,11 @@ def _not_modelable_deal(deal_id: str, deal: dict | None = None) -> HTTPException
             registered = (
                 f" It registers {len(deal.get('tape_urls') or [])} tape(s) covering "
                 f"{', '.join(set_aside)}, which the source-precedence rule set aside "
-                f"in favour of a published report that did not resolve; the engine "
+                # Same discipline as the branch below: this raise site is also
+                # reached when the deal has no extracted model, where the report
+                # itself may resolve perfectly well, so the effect is named and
+                # the mechanism is not.
+                f"in favour of a published report the engine could not fold; it "
                 f"folded neither."
             )
         elif deal.get("notes_cash_report_urls"):
