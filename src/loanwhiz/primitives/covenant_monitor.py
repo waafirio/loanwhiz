@@ -950,6 +950,17 @@ def _metric_not_evaluable_reason(
         )
         if reason is not None:
             return f"metric '{metric}': {reason}"
+    if coverage is not None and state is None:
+        # A coverage ratio is computed from the deal state, so with no state for
+        # this period there is nothing to compute it from — a different fact
+        # from a state that was reconstructed and lacked an input, and worth
+        # saying, because the generic wording below sends the next reader
+        # looking for a missing figure rather than a missing period (#457).
+        return (
+            f"metric '{metric}': no deal state was reconstructed for this "
+            f"period, so neither the collateral balance nor the note balances "
+            f"it would be measured against are known for it"
+        )
     return (
         f"metric '{metric}' not resolvable from period data or structural state"
     )

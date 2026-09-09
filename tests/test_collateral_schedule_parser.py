@@ -30,6 +30,7 @@ from loanwhiz.primitives.collateral_schedule_parser import (
     ScheduleReconciliationError,
     liability_provenance,
     parse_liability_summary_text,
+    parse_par_value_numerator_text,
     parse_liability_summary_text_result,
     parse_schedule_text,
     parse_schedule_text_result,
@@ -912,3 +913,179 @@ def test_cairn_carries_none_of_the_fields_added_for_the_second_family() -> None:
             )
     assert schedule.count_grain is CountGrain.ASSET
     assert schedule.aggregates.accrual_record_count is None
+
+
+# ---------------------------------------------------------------------------
+# The par value tests' numerator (#550)
+# ---------------------------------------------------------------------------
+
+NOTE_VALUATION_DIR = Path(__file__).parent / "fixtures" / "note_valuation"
+
+#: The numerator each U.S. Bank document states, and the note-class labels each
+#: par value test divides it by (cumulative, senior-most first). These are the
+#: report's own figures, read off its own Par Value Tests Detail page — not this
+#: parser's output, which is the whole point of checking against them.
+_NUMERATORS: list[tuple[str, Path, str]] = [
+    ("December 2024", FIXTURE_DIR / "cairn-clo-xvii-december-2024.txt", "400334133.76"),
+    ("February 2025", FIXTURE_DIR / "cairn-clo-xvii-february-2025.txt", "401005051.90"),
+    ("March 2025", FIXTURE_DIR / "cairn-clo-xvii-march-2025.txt", "401013723.08"),
+    (
+        "January 2025",
+        NOTE_VALUATION_DIR / "cairn-clo-xvii-january-2025.txt",
+        "399984890.74",
+    ),
+]
+
+#: Which classes each par value test's denominator runs through, in the order
+#: the Executive Summary prints them.
+_DENOMINATORS: dict[str, tuple[str, ...]] = {
+    "Class A/B Par Value Test": ("A", "B-1", "B-2"),
+    "Class C Par Value Test": ("A", "B-1", "B-2", "C"),
+    "Class D Par Value Test": ("A", "B-1", "B-2", "C", "D"),
+    "Class E Par Value Test": ("A", "B-1", "B-2", "C", "D", "E"),
+    "Class F Par Value Test": ("A", "B-1", "B-2", "C", "D", "E", "F"),
+}
+
+
+@pytest.mark.parametrize(("period", "path", "expected"), _NUMERATORS)
+def test_the_stated_numerator_ties_to_the_components_printed_above_it(
+    period: str, path: Path, expected: str
+) -> None:
+    """The block prints its parts and their total; a parse must satisfy both.
+
+    Reading only the total would accept a misread digit, and reading only the
+    parts would accept a dropped line. Requiring the two to agree is what makes
+    a partial read a refusal rather than an understatement — and the components
+    include negatives, so a sign dropped anywhere breaks the tie.
+    """
+    numerator = parse_par_value_numerator_text(path.read_text(encoding="utf-8"))
+    assert numerator is not None, f"{period} states a numerator block"
+    assert numerator.stated_total == Decimal(expected)
+    assert numerator.components_total == numerator.stated_total
+    assert any(c < 0 for c in numerator.components), (
+        "principal proceeds are subtracted — a parse reading only magnitudes "
+        "would still tie out only if this deal happened to subtract nothing"
+    )
+
+
+@pytest.mark.parametrize(("period", "path", "expected"), _NUMERATORS)
+def test_the_numerator_reproduces_every_ratio_the_report_states(
+    period: str, path: Path, expected: str
+) -> None:
+    """The acceptance oracle: the ratio the engine would compute is published.
+
+    Each par value test states its own ratio beside its required level. Dividing
+    the numerator read here by the note balances read from the same document has
+    to land on that figure, to the cent it is printed at, for every test on the
+    page. Nothing here is back-solved: numerator, denominators and the ratio are
+    three separate readings of the report, and only their agreement is checked.
+    """
+    text = path.read_text(encoding="utf-8")
+    numerator = parse_par_value_numerator_text(text)
+    assert numerator is not None
+    summary = parse_liability_summary_text(text, period_label=period)
+    balances = {c.note_class: c.principal_balance for c in summary.note_classes}
+
+    checked = 0
+    for test in summary.coverage_tests:
+        classes = _DENOMINATORS.get(test.name)
+        if classes is None:
+            continue
+        denominator = sum((balances[label] for label in classes), Decimal("0"))
+        computed = (numerator.stated_total / denominator * 100).quantize(Decimal("0.01"))
+        assert computed == test.current_pct, (
+            f"{period} · {test.name}: computed {computed}, report states "
+            f"{test.current_pct}"
+        )
+        checked += 1
+    assert checked == len(_DENOMINATORS), "every par value test on the page was checked"
+
+
+def test_the_numerator_is_not_the_aggregate_principal_balance() -> None:
+    """The near-miss this exists to refuse, made explicit.
+
+    ``aggregate_principal_balance`` is on the same document, is asset-side, and
+    is the obvious thing to reach for. It is the numerator's *first component*,
+    before principal proceeds and the defaulted / discount adjustments — so
+    substituting it does not fail loudly, it reports a healthier deal than the
+    report does.
+    """
+    text = (NOTE_VALUATION_DIR / "cairn-clo-xvii-january-2025.txt").read_text(
+        encoding="utf-8"
+    )
+    numerator = parse_par_value_numerator_text(text)
+    summary = parse_liability_summary_text(text, period_label="January 2025")
+    assert numerator is not None
+    aggregate = parse_schedule_text(
+        text, period_label="January 2025", strict=False
+    ).aggregates.aggregate_principal_balance
+    assert aggregate is not None
+    assert aggregate != numerator.stated_total
+
+    senior = sum(
+        (
+            c.principal_balance
+            for c in summary.note_classes
+            if c.note_class in _DENOMINATORS["Class A/B Par Value Test"]
+        ),
+        Decimal("0"),
+    )
+    published = summary.coverage_test("class_a_b_par_value_test")
+    assert published is not None
+    assert (numerator.stated_total / senior * 100).quantize(Decimal("0.01")) == published.current_pct
+    assert (aggregate / senior * 100).quantize(Decimal("0.01")) != published.current_pct
+
+
+def test_a_family_that_states_no_numerator_block_is_refused_not_guessed() -> None:
+    """BNY Mellon prints no such block, so the answer is None, never a guess.
+
+    The refusal is the contract: an unavailable numerator has to reach the
+    monitor as absent, because the alternative — reading some other figure into
+    its place — is the defect the whole seam exists to prevent.
+    """
+    text = (FIXTURE_DIR / "contego-clo-xi-august-2024.txt").read_text(encoding="utf-8")
+    assert parse_par_value_numerator_text(text) is None
+
+
+def test_the_interest_coverage_blocks_numerator_is_not_read_as_the_collateral_one() -> None:
+    """The same document states a second ``NUMERATOR``, over interest proceeds.
+
+    It would tie out against its own components too, so the components check
+    cannot catch a section slip — only scoping the search to the Par Value Tests
+    Detail pages can. Pin that the figure read is the par value one.
+    """
+    text = (NOTE_VALUATION_DIR / "cairn-clo-xvii-january-2025.txt").read_text(
+        encoding="utf-8"
+    )
+    numerator = parse_par_value_numerator_text(text)
+    assert numerator is not None
+    # The interest block's total is smaller than the collateral one by orders of
+    # magnitude; reading it would be silent, not an error.
+    assert numerator.stated_total > Decimal("100000000")
+
+
+def test_the_summary_carries_the_numerator_and_reconciles_it() -> None:
+    """A strict parse of a report stating the block returns it, already tied out."""
+    summary = parse_liability_summary_text(
+        _text("cairn-clo-xvii-february-2025.txt"), period_label="February 2025"
+    )
+    assert summary.reconciled is True
+    assert summary.par_value_numerator is not None
+    assert summary.par_value_numerator.stated_total == Decimal("401005051.90")
+
+
+def test_a_numerator_whose_components_disagree_with_its_total_is_refused() -> None:
+    """The reconciliation must be able to fail, or it proves nothing (#493)."""
+    summary = parse_liability_summary_text(
+        _text("cairn-clo-xvii-february-2025.txt"),
+        period_label="February 2025",
+        strict=False,
+    )
+    assert summary.par_value_numerator is not None
+    summary.par_value_numerator.stated_total += Decimal("0.01")
+    reconciliation = reconcile_liability_summary(summary)
+    assert reconciliation.ok is False
+    assert any(
+        "par value numerator" in check.name and not check.ok
+        for check in reconciliation.checks
+    )

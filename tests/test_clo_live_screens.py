@@ -287,8 +287,14 @@ def test_compliance_screen_serves_but_evaluates_no_trigger(client: TestClient) -
     Every trigger it carries is ``evaluable: false`` with a stated cause, and no
     metric or threshold is rendered at all. That is the honest shape — a screen
     reporting ratios it could not compute would be the failure — but it means
-    the 200 conveys no compliance information for this deal. The cause is
-    #549's to resolve and is deliberately not touched here.
+    the 200 conveys no compliance information for this deal.
+
+    The *cause* has moved. It was the numerator: the seed's pool balance was the
+    note total, so every ratio was notes over notes (#549 refused the value as
+    well as the verdict). The numerator is now real — the report states it, and
+    the seed carries it (#550) — and what blocks the screen is that these
+    periods come from the trustee-report tapes while the state comes from the
+    January report, so no period has a state of its own date. Pinned below.
     """
     body = client.get(f"/deal/{CLO_DEAL_ID}/compliance").json()
     statuses = body["trigger_statuses"]
@@ -428,3 +434,95 @@ def test_no_waterfall_row_carries_a_numeric_value_for_any_deal(
         if c.get("present") and c.get("label")
     ]
     assert labelled, "cascade rows rendered no labels either — genuinely blank"
+
+
+# ---------------------------------------------------------------------------
+# The numerator is real; what still blocks the screen is the period split (#550)
+# ---------------------------------------------------------------------------
+
+
+def test_the_seed_carries_the_collateral_numerator_the_report_states() -> None:
+    """End to end: the figure on the report's own page reaches the deal state.
+
+    ``399,984,890.74`` is the total the January 2025 Note Valuation Report
+    prints under its Par Value Tests Detail numerator — the same document the
+    live series folds, which is why sourcing it moved no period and left #524's
+    precedence decision untouched. The pool balance must be that figure and not
+    the note total, which is what made the ratio an identity before.
+    """
+    from loanwhiz.api.main import DEAL_REGISTRY, _reconstruct_series
+
+    series = _reconstruct_series(CLO_DEAL_ID, DEAL_REGISTRY[CLO_DEAL_ID])
+    seed = series.states[0]
+    note_total = sum(t.balance for t in seed.tranches)
+
+    assert seed.reporting_date == "2025-01-08"
+    assert seed.pool_balance == pytest.approx(399_984_890.74)
+    assert seed.pool_balance != pytest.approx(note_total)
+
+
+def test_the_seed_numerator_reproduces_the_published_par_value_ratios() -> None:
+    """What the numerator is worth: the report's own five ratios, to the cent.
+
+    Computed off the seed's own tranche balances, so this exercises the same
+    numerator and denominators a coverage test would — the arithmetic the screen
+    would render if its periods had states of their own date.
+    """
+    from decimal import Decimal
+
+    from loanwhiz.api.main import DEAL_REGISTRY, _reconstruct_series
+
+    seed = _reconstruct_series(CLO_DEAL_ID, DEAL_REGISTRY[CLO_DEAL_ID]).states[0]
+    balances = {t.name: t.balance for t in seed.tranches}
+    published = {
+        ("class_a", "class_b_1", "class_b_2"): "139.08",
+        ("class_a", "class_b_1", "class_b_2", "class_c"): "128.74",
+        ("class_a", "class_b_1", "class_b_2", "class_c", "class_d"): "118.62",
+        ("class_a", "class_b_1", "class_b_2", "class_c", "class_d", "class_e"): "112.86",
+        (
+            "class_a",
+            "class_b_1",
+            "class_b_2",
+            "class_c",
+            "class_d",
+            "class_e",
+            "class_f",
+        ): "108.40",
+    }
+    for classes, expected in published.items():
+        denominator = sum(balances[name] for name in classes)
+        ratio = (
+            Decimal(str(seed.pool_balance)) / Decimal(str(denominator)) * 100
+        ).quantize(Decimal("0.01"))
+        assert str(ratio) == expected, f"{classes} computed {ratio}, report states {expected}"
+
+
+def test_the_compliance_refusal_names_the_date_it_could_not_match(
+    client: TestClient,
+) -> None:
+    """The refusal must name its real cause, or it misdirects the next reader.
+
+    Twice now this screen has refused for a reason that was not the deal's
+    (#457, #549). The par value tests no longer lack a numerator — they lack a
+    state of the period being evaluated — and the reason has to say so, naming
+    both dates, rather than repeating the numerator wording it inherited.
+    """
+    statuses = client.get(f"/deal/{CLO_DEAL_ID}/compliance").json()["trigger_statuses"]
+    par_value = [s for s in statuses if "par_value" in s["trigger_name"]]
+    assert par_value, "the deal's par value tests are on the screen"
+
+    dated = 0
+    for status in par_value:
+        reason = status["not_evaluable_reason"] or ""
+        assert status["metric_value"] is None
+        # The numerator wording no longer applies — the numerator is real — so
+        # inheriting it here would be the false cause all over again.
+        assert "#550" not in reason and "notes over notes" not in reason
+        if "2025-01-08" in reason:
+            assert status["period"] in reason, "both dates, or the reason is half a fact"
+            dated += 1
+        else:
+            # The periods past the reconstructed series have no state at all,
+            # which is a different cause and has to read as one.
+            assert "no deal state was reconstructed" in reason
+    assert dated, "at least one period was refused for the as-of-date mismatch"
