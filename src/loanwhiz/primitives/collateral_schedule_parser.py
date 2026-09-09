@@ -83,8 +83,30 @@ from enum import Enum
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Final
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, PrivateAttr
 
+from loanwhiz.domain.trustee_report_families import (
+    FAMILY_REGISTRY,
+    ColumnOrder,
+    DocumentKind,
+    DocumentLayout,
+    FurnitureOrder,
+    UnknownReportFamilyError,
+)
+from loanwhiz.domain.trustee_report_registry import (
+    SECTION_ASSET_PART_I,
+    SECTION_ASSET_PART_II,
+    SECTION_ASSET_PART_III,
+    SECTION_CCC,
+    SECTION_COUNTRY,
+    SECTION_EXEC_SUMMARY,
+    SECTION_FITCH_INDUSTRY,
+    SECTION_IC_DETAIL,
+    SECTION_PAR_VALUE_DETAIL,
+    SECTION_PROFILE_TESTS,
+    SECTION_SP_INDUSTRY,
+    SECTION_SP_RATING,
+)
 from loanwhiz.primitives.base import (
     AuditEntry,
     BaseInput,
@@ -103,44 +125,86 @@ _DETERMINISTIC_CONFIDENCE = 1.0
 # Section vocabulary — the report's own page titles
 # ===========================================================================
 
-#: The per-asset detail sections, longest title first so ``Part III`` is never
-#: matched as ``Part I``. Deal-agnostic: these are US Bank trustee-report
-#: section titles, not Cairn's.
-SECTION_ASSET_PART_III = "Current Asset Characteristics - Part III"
-SECTION_ASSET_PART_II = "Current Asset Characteristics - Part II"
-SECTION_ASSET_PART_I = "Current Asset Characteristics - Part I"
-SECTION_CCC = "S&P CCC Obligations"
+# ``SECTION_*`` are LoanWhiz's section *roles*, re-exported above from the
+# family registry. Which title a report prints for each role is a property of
+# the collateral administrator rather than of this parser, so it lives on the
+# detected family's
+# :class:`~loanwhiz.domain.trustee_report_registry.DocumentLayout` — see
+# :func:`_resolve_layout`.
+#
+# The roles split three ways. The per-asset detail sections (Parts I–III and the
+# CCC bucket) carry the rows; the summary sections supply the vocabularies and
+# the acceptance oracle; and the **liability-side** sections state, about the
+# notes the collateral funds, the figures a prospectus can only express as a
+# formula — each class's *resolved* current coupon and each coverage test's
+# *required level*. They are read through the seam below rather than by a second
+# reader, because it is one document.
+#
+# Titles are matched longest-first (``DocumentLayout.titles``) so ``Part III``
+# is never matched as ``Part I``.
 
-#: The summary sections that supply the vocabularies and the acceptance oracle.
-SECTION_COUNTRY = "Country Concentration"
-SECTION_SP_INDUSTRY = "S&P Industry Concentration"
-SECTION_FITCH_INDUSTRY = "Fitch Industry Concentration"
-SECTION_SP_RATING = "S&P Rating Stratification"
-SECTION_PROFILE_TESTS = "Portfolio Profile Tests"
+#: How much of the report is read to identify its family: the first
+#: ``_HEADER_LINES`` lines of each of the first ``_HEADER_PAGES`` pages. The
+#: administrator's banner sits on the title page above the table of contents,
+#: but a document can carry a cover page ahead of it, so the window spans the
+#: leading pages rather than page 1 alone. It stays a window rather than the
+#: whole document because a signature phrase quoted in a report's body is not
+#: evidence about who published it.
+_HEADER_LINES = 12
+_HEADER_PAGES = 3
 
-#: The **liability-side** sections. The same document that details the
-#: collateral also states, about the notes that collateral funds, the figures a
-#: prospectus can only express as a formula: each class's *resolved* current
-#: coupon, and each coverage test's *required level*. They are read through the
-#: seam below rather than by a second reader, because it is one document.
-SECTION_EXEC_SUMMARY = "Executive Summary"
-SECTION_PAR_VALUE_DETAIL = "Par Value Tests Detail"
-SECTION_IC_DETAIL = "Interest Coverage Tests Detail"
 
-_SECTION_TITLES: tuple[str, ...] = (
-    SECTION_ASSET_PART_III,
-    SECTION_ASSET_PART_II,
-    SECTION_ASSET_PART_I,
-    SECTION_CCC,
-    SECTION_COUNTRY,
-    SECTION_SP_INDUSTRY,
-    SECTION_FITCH_INDUSTRY,
-    SECTION_SP_RATING,
-    SECTION_PROFILE_TESTS,
-    SECTION_EXEC_SUMMARY,
-    SECTION_PAR_VALUE_DETAIL,
-    SECTION_IC_DETAIL,
-)
+def _resolve_layout(pages: list[list[str]]) -> DocumentLayout:
+    """The layout this report is parsed with, from the report's own header.
+
+    Refuses rather than defaulting when no registered family matches (#494).
+    A trustee report parsed under the wrong family's section titles routes every
+    section to no pages and parses nothing, which reconciliation cannot
+    distinguish from a document that genuinely says nothing — so refusal is the
+    only safe answer, and it is not a degraded one.
+    """
+    header = "\n".join(
+        line for page in pages[:_HEADER_PAGES] for line in page[:_HEADER_LINES]
+    )
+    family = FAMILY_REGISTRY.detect(header)
+    if family is None:
+        known = ", ".join(f.label for f in FAMILY_REGISTRY.all()) or "none"
+        raise UnknownReportFamilyError(
+            "trustee report matches no registered report family "
+            f"(registered: {known}). The first {_HEADER_PAGES} pages carry none "
+            "of their header signatures, so the section titles, page furniture "
+            "and coverage-test column orders to parse it with are unknown. "
+            "Register the administrator's family rather than parsing it as "
+            "another's."
+        )
+    layout = family.layout(DocumentKind.MONTHLY_REPORT)
+    _assert_furniture_order(layout, family.label)
+    return layout
+
+
+#: The furniture ordering this parser implements. ``_data_rows`` filters
+#: furniture *before* testing a line for data, which is safe only because every
+#: data row here opens with an asset identifier no furniture prefix can produce.
+_IMPLEMENTED_FURNITURE_ORDER = FurnitureOrder.FURNITURE_FIRST
+
+
+def _assert_furniture_order(layout: DocumentLayout, family_label: str) -> None:
+    """Refuse a family whose declared furniture ordering this parser does not implement.
+
+    The ordering is declared on the family so it is reviewable, but a
+    declaration nothing reads drifts from the code it describes. Checking it
+    here makes registering a family that needs the other order a loud failure
+    rather than a silent re-run of the defect the ordering exists to prevent.
+    """
+    if layout.furniture_order is not _IMPLEMENTED_FURNITURE_ORDER:
+        raise UnknownReportFamilyError(
+            f"{family_label} declares furniture_order="
+            f"{layout.furniture_order.value!r} for its monthly report, but this "
+            f"parser implements {_IMPLEMENTED_FURNITURE_ORDER.value!r}: it drops "
+            "page furniture before testing a line for data, which is safe only "
+            "where every data row opens with an asset identifier. Parsing this "
+            "family would eat rows whose text begins like a banner (#494)."
+        )
 
 #: The eight Part III flags, in the column order the section header prints them:
 #: ``Cov-Lite Loan | DIP Loan | PIK Security | Deferring Security |
@@ -269,16 +333,6 @@ _LINE_BREAKS = re.compile(r"[\r\n\v\f\x1c-\x1e\x85\u2028\u2029]+")
 _REPORTING_DATE_RE = re.compile(r"As of\s*:\s*(\d{2}/\d{2}/\d{4})")
 _PAGE_MARKER_RE = re.compile(r"^--- page (\d+) ---$")
 
-#: Non-data furniture that appears on every page. Listing the date header here
-#: as well as the banners means it can never be absorbed as a row continuation,
-#: whichever rendering a report uses.
-_FURNITURE_PREFIXES: tuple[str, ...] = (
-    "www.",
-    "U.S. Bank",
-    "Page ",
-    "As of",
-    "Next Payment",
-)
 
 
 # ===========================================================================
@@ -568,7 +622,7 @@ def _split_pages(text: str) -> list[list[str]]:
     return pages
 
 
-def _page_section(lines: list[str]) -> str | None:
+def _page_section(lines: list[str], layout: DocumentLayout) -> str | None:
     """Return the section title a page belongs to, located by header text.
 
     Deliberately header-driven: page numbers move between reports (they are
@@ -579,15 +633,18 @@ def _page_section(lines: list[str]) -> str | None:
     # dot-leadered, so excluding those lines keeps it from being classified as
     # whichever section it happens to list first.
     head = " ".join(line for line in lines[:12] if ". . ." not in line)
-    for title in _SECTION_TITLES:
+    for title in layout.titles:
         if title in head:
             return title
     return None
 
 
-def _pages_for(pages: list[list[str]], section: str) -> list[list[str]]:
-    """Every page belonging to one section, in document order."""
-    return [lines for lines in pages if _page_section(lines) == section]
+def _pages_for(
+    pages: list[list[str]], layout: DocumentLayout, section_key: str
+) -> list[list[str]]:
+    """Every page belonging to one section role, in document order."""
+    title = layout.title(section_key)
+    return [lines for lines in pages if _page_section(lines, layout) == title]
 
 
 def _report_header(pages: list[list[str]]) -> tuple[str | None, str | None]:
@@ -614,14 +671,23 @@ def _report_document_name(deal_name: str | None, period_label: str) -> str:
     )
 
 
-def _is_furniture(line: str) -> bool:
-    """True for repeated page furniture (footers, banners, headers)."""
-    if line.startswith(_FURNITURE_PREFIXES):
+def _is_furniture(line: str, layout: DocumentLayout) -> bool:
+    """True for repeated page furniture (footers, banners, headers).
+
+    Safe to ask *before* the data-row question only because every data row in
+    this document opens with an asset identifier, which no furniture prefix can
+    produce — the family states that as
+    :attr:`~loanwhiz.domain.trustee_report_registry.FurnitureOrder.FURNITURE_FIRST`
+    rather than leaving it an unwritten assumption. Where a row's opening text
+    *can* look like furniture, the order must invert (#494); the Note Valuation
+    Report is that case.
+    """
+    if line.startswith(layout.furniture_prefixes):
         return True
-    return any(title in line for title in _SECTION_TITLES)
+    return any(title in line for title in layout.titles)
 
 
-def _data_rows(pages: list[list[str]]) -> list[list[str]]:
+def _data_rows(pages: list[list[str]], layout: DocumentLayout) -> list[list[str]]:
     """Group a section's lines into rows: an identifier line plus continuations.
 
     A line starting with an asset identifier opens a row; any following line
@@ -634,7 +700,7 @@ def _data_rows(pages: list[list[str]]) -> list[list[str]]:
     for lines in pages:
         current: list[str] | None = None
         for line in lines:
-            if _is_furniture(line):
+            if _is_furniture(line, layout):
                 continue
             if IDENTIFIER_RE.match(line):
                 current = [line]
@@ -650,14 +716,16 @@ def _data_rows(pages: list[list[str]]) -> list[list[str]]:
 # ===========================================================================
 
 
-def _parse_aggregate_table(pages: list[list[str]]) -> tuple[list[AggregateBucket], Decimal | None, int | None]:
+def _parse_aggregate_table(
+    pages: list[list[str]], layout: DocumentLayout
+) -> tuple[list[AggregateBucket], Decimal | None, int | None]:
     """Parse a concentration/stratification table into buckets plus its total."""
     buckets: list[AggregateBucket] = []
     total_balance: Decimal | None = None
     total_count: int | None = None
     for lines in pages:
         for line in lines:
-            if _is_furniture(line):
+            if _is_furniture(line, layout):
                 continue
             if line.startswith("Aggregate "):
                 match = _MONEY_RE.search(line)
@@ -682,7 +750,7 @@ def _parse_aggregate_table(pages: list[list[str]]) -> tuple[list[AggregateBucket
     return buckets, total_balance, total_count
 
 
-def _parse_profile_tests(pages: list[list[str]]) -> list[ProfileTest]:
+def _parse_profile_tests(pages: list[list[str]], layout: DocumentLayout) -> list[ProfileTest]:
     """Parse the Portfolio Profile Tests page into stated numerator/denominator.
 
     Each test prints ``<name><result%><numerator><denominator><Min|Max><trigger%>``
@@ -697,7 +765,7 @@ def _parse_profile_tests(pages: list[list[str]]) -> list[ProfileTest]:
     )
     for lines in pages:
         for line in lines:
-            if _is_furniture(line):
+            if _is_furniture(line, layout):
                 continue
             match = pattern.match(line)
             if not match:
@@ -715,21 +783,25 @@ def _parse_profile_tests(pages: list[list[str]]) -> list[ProfileTest]:
     return tests
 
 
-def _parse_aggregates(pages: list[list[str]]) -> ReportAggregates:
+def _parse_aggregates(pages: list[list[str]], layout: DocumentLayout) -> ReportAggregates:
     """Read every summary table the report publishes about itself."""
     aggregates = ReportAggregates()
 
-    country, total, count = _parse_aggregate_table(_pages_for(pages, SECTION_COUNTRY))
+    country, total, count = _parse_aggregate_table(
+        _pages_for(pages, layout, SECTION_COUNTRY), layout
+    )
     aggregates.country = country
     aggregates.aggregate_principal_balance = total
     aggregates.asset_count = count
 
-    aggregates.sp_industry, _, _ = _parse_aggregate_table(_pages_for(pages, SECTION_SP_INDUSTRY))
+    aggregates.sp_industry, _, _ = _parse_aggregate_table(
+        _pages_for(pages, layout, SECTION_SP_INDUSTRY), layout
+    )
     aggregates.fitch_industry, _, _ = _parse_aggregate_table(
-        _pages_for(pages, SECTION_FITCH_INDUSTRY)
+        _pages_for(pages, layout, SECTION_FITCH_INDUSTRY), layout
     )
     rating, rating_total, rating_count = _parse_aggregate_table(
-        _pages_for(pages, SECTION_SP_RATING)
+        _pages_for(pages, layout, SECTION_SP_RATING), layout
     )
     aggregates.sp_rating = rating
     if aggregates.aggregate_principal_balance is None:
@@ -737,7 +809,9 @@ def _parse_aggregates(pages: list[list[str]]) -> ReportAggregates:
     if aggregates.asset_count is None:
         aggregates.asset_count = rating_count
 
-    aggregates.profile_tests = _parse_profile_tests(_pages_for(pages, SECTION_PROFILE_TESTS))
+    aggregates.profile_tests = _parse_profile_tests(
+        _pages_for(pages, layout, SECTION_PROFILE_TESTS), layout
+    )
 
     # A table whose rows do not sum to the aggregate balance printed on its own
     # page cannot be a balance oracle. This is checkable from the document alone,
@@ -891,7 +965,9 @@ def _consume_any(
     return None
 
 
-def _parse_part_iii(pages: list[list[str]], defects: ScheduleDefects) -> dict[str, dict[str, Any]]:
+def _parse_part_iii(
+    pages: list[list[str]], layout: DocumentLayout, defects: ScheduleDefects
+) -> dict[str, dict[str, Any]]:
     """Part III → the authoritative facility name plus the eight boolean flags.
 
     Part III is parsed first because it is the only section whose free-text
@@ -901,7 +977,7 @@ def _parse_part_iii(pages: list[list[str]], defects: ScheduleDefects) -> dict[st
     the name recovered here.
     """
     out: dict[str, dict[str, Any]] = {}
-    for row in _data_rows(pages):
+    for row in _data_rows(pages, layout):
         identifier = IDENTIFIER_RE.match(row[0]).group(1)  # type: ignore[union-attr]
         segments = [row[0][len(identifier) :], *row[1:]]
         located = None
@@ -933,6 +1009,7 @@ def _parse_part_iii(pages: list[list[str]], defects: ScheduleDefects) -> dict[st
 
 def _parse_part_ii(
     pages: list[list[str]],
+    layout: DocumentLayout,
     names: dict[str, dict[str, Any]],
     aggregates: ReportAggregates,
     defects: ScheduleDefects,
@@ -948,7 +1025,7 @@ def _parse_part_ii(
     country_vocabulary = aggregates.vocabulary("country")
 
     out: dict[str, dict[str, Any]] = {}
-    for row in _data_rows(pages):
+    for row in _data_rows(pages, layout):
         identifier, head, cont = _row_text(row)
         known = names.get(identifier)
 
@@ -1044,13 +1121,14 @@ def _split_issuer_and_name(
 
 def _parse_part_i(
     pages: list[list[str]],
+    layout: DocumentLayout,
     names: dict[str, dict[str, Any]],
     part_ii: dict[str, dict[str, Any]],
     defects: ScheduleDefects,
 ) -> dict[str, dict[str, Any]]:
     """Part I → issuer name and the asset's economics."""
     out: dict[str, dict[str, Any]] = {}
-    for row in _data_rows(pages):
+    for row in _data_rows(pages, layout):
         identifier, line, cont = _row_text(row)
         anchor = re.search(rf"(?:Loan|Bond){_S}(?:Floating|Fixed)", line)
         if not anchor:
@@ -1113,6 +1191,7 @@ def _parse_part_i(
 
 def _parse_ccc(
     pages: list[list[str]],
+    layout: DocumentLayout,
     names: dict[str, dict[str, Any]],
     defects: ScheduleDefects,
 ) -> tuple[dict[str, dict[str, Any]], Decimal | None]:
@@ -1127,12 +1206,12 @@ def _parse_ccc(
     )
     for lines in pages:
         for line in lines:
-            if _is_furniture(line) or IDENTIFIER_RE.match(line):
+            if _is_furniture(line, layout) or IDENTIFIER_RE.match(line):
                 continue
             stripped = line.strip()
             if _MONEY_RE.fullmatch(stripped):
                 total = Decimal(stripped.replace(",", ""))
-    for row in _data_rows(pages):
+    for row in _data_rows(pages, layout):
         identifier, head, cont = _row_text(row)
         match = pattern.search(head + cont)
         if not match:
@@ -1173,25 +1252,26 @@ def parse_schedule_text(
     if not pages:
         raise ValueError("no pages found — text is not extracted trustee-report output")
 
+    layout = _resolve_layout(pages)
     deal_name, reporting_date = _report_header(pages)
 
     defects = ScheduleDefects()
-    aggregates = _parse_aggregates(pages)
+    aggregates = _parse_aggregates(pages, layout)
 
-    part_iii_pages = _pages_for(pages, SECTION_ASSET_PART_III)
-    part_ii_pages = _pages_for(pages, SECTION_ASSET_PART_II)
-    part_i_pages = _pages_for(pages, SECTION_ASSET_PART_I)
-    ccc_pages = _pages_for(pages, SECTION_CCC)
+    part_iii_pages = _pages_for(pages, layout, SECTION_ASSET_PART_III)
+    part_ii_pages = _pages_for(pages, layout, SECTION_ASSET_PART_II)
+    part_i_pages = _pages_for(pages, layout, SECTION_ASSET_PART_I)
+    ccc_pages = _pages_for(pages, layout, SECTION_CCC)
     if not (part_i_pages and part_ii_pages and part_iii_pages):
         raise ValueError(
             "report is missing at least one Current Asset Characteristics section "
             "(located by header, not page number)"
         )
 
-    names = _parse_part_iii(part_iii_pages, defects)
-    part_ii = _parse_part_ii(part_ii_pages, names, aggregates, defects)
-    part_i = _parse_part_i(part_i_pages, names, part_ii, defects)
-    ccc, ccc_total = _parse_ccc(ccc_pages, names, defects)
+    names = _parse_part_iii(part_iii_pages, layout, defects)
+    part_ii = _parse_part_ii(part_ii_pages, layout, names, aggregates, defects)
+    part_i = _parse_part_i(part_i_pages, layout, names, part_ii, defects)
+    ccc, ccc_total = _parse_ccc(ccc_pages, layout, names, defects)
     aggregates.ccc_total = ccc_total
 
     assets: list[CollateralAsset] = []
@@ -1352,6 +1432,9 @@ def parse_schedule_text_result(
     schedule = parse_schedule_text(text, period_label=period_label)
     duration_ms = (time.perf_counter() - started) * 1000.0
 
+    # Citations name each section as *this report* prints it, so the locator
+    # stays checkable against the document a reader opens.
+    layout = _resolve_layout(_split_pages(text))
     document = _report_document_name(schedule.deal_name, period_label)
     citations = [
         Citation(
@@ -1364,10 +1447,10 @@ def parse_schedule_text_result(
             ),
         )
         for section in (
-            SECTION_ASSET_PART_I,
-            SECTION_ASSET_PART_II,
-            SECTION_ASSET_PART_III,
-            SECTION_CCC,
+            layout.title(SECTION_ASSET_PART_I),
+            layout.title(SECTION_ASSET_PART_II),
+            layout.title(SECTION_ASSET_PART_III),
+            layout.title(SECTION_CCC),
         )
     ]
     audit = AuditEntry.now(
@@ -1440,23 +1523,11 @@ class CoverageTestOutcome(str, Enum):
     NOT_APPLICABLE = "N/A"
 
 
-class _ColumnOrder(str, Enum):
-    """Which of a coverage-test table's two percentage columns comes first."""
-
-    #: ``Test Description | Threshold | Current | Result`` — the Executive Summary.
-    REQUIRED_FIRST = "required-first"
-
-    #: ``… TEST | RATIO | REQUIRED LEVEL | CALCULATION | RESULT`` — detail pages.
-    RATIO_FIRST = "ratio-first"
-
-
-#: Header fingerprints, whitespace-stripped and upper-cased so one entry covers
-#: both renderings. The lookup is exhaustive by construction: a section whose
-#: header matches neither is refused rather than read in a guessed order.
-_ORDER_MARKERS: dict[str, _ColumnOrder] = {
-    "TESTDESCRIPTIONTHRESHOLDCURRENTRESULT": _ColumnOrder.REQUIRED_FIRST,
-    "TESTRATIOREQUIREDLEVELCALCULATIONRESULT": _ColumnOrder.RATIO_FIRST,
-}
+# ``ColumnOrder`` and the header fingerprints that select it now live with the
+# family: which of a coverage-test table's two percentage columns comes first is
+# a property of the administrator's layout, and the fingerprint table is
+# exhaustive by construction so a header matching none of a family's entries is
+# refused rather than read in a guessed order (#480).
 
 #: The provenance source every figure this seam emits carries — a **constant,
 #: exposed through no parameter**. A coupon or a required level taken from a
@@ -1520,6 +1591,15 @@ class CoverageTestResult(BaseModel):
 
 class ReportLiabilitySummary(BaseModel):
     """One reporting date's liability-side figures, plus its acceptance oracle."""
+
+    #: The printed section titles this summary was parsed under — the detected
+    #: family's, never a default. **Private on purpose**: :func:`liability_provenance`
+    #: needs them to cite each figure's section as the document prints it, but a
+    #: serialised field would change the bytes of every consumer of this model,
+    #: and this parse's byte-for-byte stability is the contract the report-family
+    #: generalisation was held to (#531). A private attribute is carried on the
+    #: instance and excluded from ``model_dump``.
+    _section_titles: dict[str, str] = PrivateAttr(default_factory=dict)
 
     deal_name: str | None = None
     period_label: str
@@ -1592,7 +1672,9 @@ class LiabilitySummaryReconciliationError(ValueError):
         )
 
 
-def _column_order(pages: list[list[str]], section: str) -> _ColumnOrder:
+def _column_order(
+    pages: list[list[str]], layout: DocumentLayout, section: str
+) -> ColumnOrder:
     """Read a coverage-test table's column order off its own header.
 
     Never inferred from position or from which section it is: the Executive
@@ -1601,11 +1683,11 @@ def _column_order(pages: list[list[str]], section: str) -> _ColumnOrder:
     level it must clear. An unrecognised header is refused, because reading two
     percentages in an unknown order is not a degraded answer — it is a wrong one.
     """
-    found: set[_ColumnOrder] = set()
+    found: set[ColumnOrder] = set()
     for lines in pages:
         for line in lines:
             squashed = _squash(line).upper()
-            for marker, order in _ORDER_MARKERS.items():
+            for marker, order in layout.column_order_markers.items():
                 if marker in squashed:
                     found.add(order)
     if len(found) == 1:
@@ -1613,7 +1695,7 @@ def _column_order(pages: list[list[str]], section: str) -> _ColumnOrder:
     if not found:
         raise ValueError(
             f"{section}: no recognised coverage-test column header. Expected one "
-            f"of {sorted(_ORDER_MARKERS)}; refusing to read two percentage "
+            f"of {sorted(layout.column_order_markers)}; refusing to read two percentage "
             "columns in a guessed order."
         )
     raise ValueError(
@@ -1622,7 +1704,7 @@ def _column_order(pages: list[list[str]], section: str) -> _ColumnOrder:
     )
 
 
-def _parse_note_classes(pages: list[list[str]]) -> list[NoteClassFigures]:
+def _parse_note_classes(pages: list[list[str]], layout: DocumentLayout) -> list[NoteClassFigures]:
     """Every ``Class <label> Notes`` row the Executive Summary states.
 
     Deliberately does **not** de-duplicate. A class appearing twice would make
@@ -1648,17 +1730,17 @@ def _parse_note_classes(pages: list[list[str]]) -> list[NoteClassFigures]:
 
 
 def _parse_coverage_tests(
-    pages: list[list[str]], section: str
+    pages: list[list[str]], layout: DocumentLayout, section: str
 ) -> list[CoverageTestResult]:
     """Every coverage test one section states, read in that section's own order."""
-    order = _column_order(pages, section)
+    order = _column_order(pages, layout, section)
     results: list[CoverageTestResult] = []
     for lines in pages:
         for line in lines:
             for match in _COVERAGE_TEST_RE.finditer(line):
                 first = _decimal(match.group("first"))
                 second = _decimal(match.group("second"))
-                if order is _ColumnOrder.REQUIRED_FIRST:
+                if order is ColumnOrder.REQUIRED_FIRST:
                     required, current = first, second
                 else:
                     current, required = first, second
@@ -1674,7 +1756,9 @@ def _parse_coverage_tests(
     return results
 
 
-def _parse_stated_totals(pages: list[list[str]]) -> tuple[Decimal | None, Decimal | None]:
+def _parse_stated_totals(
+    pages: list[list[str]], layout: DocumentLayout
+) -> tuple[Decimal | None, Decimal | None]:
     """The aggregate balance and periodic interest the Executive Summary states.
 
     Two distinct candidate lines mean the section states its totals twice and
@@ -1726,11 +1810,13 @@ def parse_liability_summary_text(
     if not pages:
         raise ValueError("no pages found — text is not extracted trustee-report output")
 
+    layout = _resolve_layout(pages)
+
     deal_name, reporting_date = _report_header(pages)
 
-    exec_pages = _pages_for(pages, SECTION_EXEC_SUMMARY)
-    par_value_pages = _pages_for(pages, SECTION_PAR_VALUE_DETAIL)
-    ic_pages = _pages_for(pages, SECTION_IC_DETAIL)
+    exec_pages = _pages_for(pages, layout, SECTION_EXEC_SUMMARY)
+    par_value_pages = _pages_for(pages, layout, SECTION_PAR_VALUE_DETAIL)
+    ic_pages = _pages_for(pages, layout, SECTION_IC_DETAIL)
     if not exec_pages:
         raise ValueError(
             "report has no Executive Summary section (located by header, not page "
@@ -1742,23 +1828,28 @@ def parse_liability_summary_text(
             "page number) — the required levels are stated there"
         )
 
-    stated_balance, stated_interest = _parse_stated_totals(exec_pages)
+    stated_balance, stated_interest = _parse_stated_totals(exec_pages, layout)
     detail_tests: list[CoverageTestResult] = []
     if par_value_pages:
-        detail_tests += _parse_coverage_tests(par_value_pages, SECTION_PAR_VALUE_DETAIL)
+        detail_tests += _parse_coverage_tests(
+            par_value_pages, layout, layout.title(SECTION_PAR_VALUE_DETAIL)
+        )
     if ic_pages:
-        detail_tests += _parse_coverage_tests(ic_pages, SECTION_IC_DETAIL)
+        detail_tests += _parse_coverage_tests(ic_pages, layout, layout.title(SECTION_IC_DETAIL))
 
     summary = ReportLiabilitySummary(
         deal_name=deal_name,
         period_label=period_label,
         reporting_date=reporting_date,
-        note_classes=_parse_note_classes(exec_pages),
+        note_classes=_parse_note_classes(exec_pages, layout),
         coverage_tests=detail_tests,
-        summary_coverage_tests=_parse_coverage_tests(exec_pages, SECTION_EXEC_SUMMARY),
+        summary_coverage_tests=_parse_coverage_tests(
+            exec_pages, layout, layout.title(SECTION_EXEC_SUMMARY)
+        ),
         stated_total_balance=stated_balance,
         stated_total_periodic_interest=stated_interest,
     )
+    summary._section_titles = dict(layout.section_titles)
     if strict:
         reconciliation = reconcile_liability_summary(summary)
         if not reconciliation.ok:
@@ -1857,23 +1948,29 @@ def liability_provenance(summary: ReportLiabilitySummary) -> ProvenanceMap:
             reconciled=summary.reconciled,
         )
 
+    # The section as the report prints it, carried on the summary by the parser
+    # that detected the family. A summary not produced by that parser has no
+    # document behind it, so the role key stands in — it is a locator, never a
+    # figure, and every caller of this function parses first.
+    exec_section = summary._section_titles.get(SECTION_EXEC_SUMMARY, SECTION_EXEC_SUMMARY)
+
     provenance: ProvenanceMap = {}
     for note in summary.note_classes:
         base = f"tranches.{note.class_key}"
         provenance[f"{base}.principal_balance"] = entry(
-            SECTION_EXEC_SUMMARY,
+            exec_section,
             f"Class {note.note_class} principal balance stated by the trustee.",
         )
         if note.coupon_pct is not None:
             provenance[f"{base}.coupon_pct"] = entry(
-                SECTION_EXEC_SUMMARY,
+                exec_section,
                 f"Class {note.note_class} current coupon as resolved and stated by "
                 "the trustee for this period — a report-derived rate, not the "
                 "prospectus's index-plus-margin term.",
             )
         if note.periodic_interest is not None:
             provenance[f"{base}.periodic_interest"] = entry(
-                SECTION_EXEC_SUMMARY,
+                exec_section,
                 f"Class {note.note_class} interest for the period, stated by the trustee.",
             )
 
@@ -1907,6 +2004,7 @@ def parse_liability_summary_text_result(
     parse_input = LiabilitySummaryParseInput(period_label=period_label, text=text)
     summary = parse_liability_summary_text(text, period_label=period_label)
     duration_ms = (time.perf_counter() - started) * 1000.0
+    layout = _resolve_layout(_split_pages(text))
 
     document = _report_document_name(summary.deal_name, period_label)
     citations = [
@@ -1920,9 +2018,9 @@ def parse_liability_summary_text_result(
             ),
         )
         for section in (
-            SECTION_EXEC_SUMMARY,
-            SECTION_PAR_VALUE_DETAIL,
-            SECTION_IC_DETAIL,
+            layout.title(SECTION_EXEC_SUMMARY),
+            layout.title(SECTION_PAR_VALUE_DETAIL),
+            layout.title(SECTION_IC_DETAIL),
         )
     ]
     audit = AuditEntry.now(
