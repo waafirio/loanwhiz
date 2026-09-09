@@ -189,3 +189,16 @@ arithmetically over the values in hand rather than by provenance — it needs no
 plumbing, and it is a proof rather than a heuristic.
 
 Refs: #549
+
+## 2026-09-10 · decision · #563
+
+Joining two sources on one of several candidate vocabularies, choose the axis by
+**measuring the unjoined share on each**, never by which has the better
+acceptance oracle — two CLOs tie out S&P *and* Fitch per bucket, so the oracle
+discriminated nothing while the joins differed threefold. Classify the residue:
+**vintage drift** (GICS 2023 renamed `Food & Staples Retailing`) means the axis
+is wrong, genuine absence means it is right. Fold orthography only, and prove it
+injective over each **published table**, not your examples — Cairn's December
+Fitch table prints `Building and materials` beside `Buildings and materials`.
+
+Refs: #563
