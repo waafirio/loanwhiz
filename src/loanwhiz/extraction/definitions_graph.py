@@ -349,12 +349,19 @@ def extract_definitions(
         Optional pre-resolved Definitions :class:`Section` (e.g. from the
         assembler's language-agnostic
         :func:`~loanwhiz.extraction.section_router.resolve_sections`). When
-        supplied it is used directly instead of the English keyword lookup
+        supplied it replaces the English keyword lookup
         ``section_map.find("definitions", "9.1")`` — this is what lets a
         non-English (IT/ES) prospectus, whose definitions heading the English
         keywords don't match, still extract instead of raising ``ValueError``.
-        When ``None`` (the default) the keyword lookup runs unchanged, so the
-        English path is byte-identical.
+        When ``None`` (the default) the keyword lookup runs unchanged.
+
+        Either way the located section is then passed through
+        :func:`~loanwhiz.extraction.section_router.widen_to_definitions`, so a
+        glossary Docling shattered into sibling headings is recovered before
+        the budget is applied (#548). That widening is a strict no-op on a
+        section already carrying a real glossary and is idempotent, so a
+        section pre-widened by ``resolve_sections`` arrives unchanged and the
+        Green Lion / Cairn paths are byte-identical.
 
     Raises
     ------

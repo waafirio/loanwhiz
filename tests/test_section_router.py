@@ -24,6 +24,7 @@ from unittest.mock import patch
 import pytest
 
 from loanwhiz.extraction import section_router
+from loanwhiz.extraction.section_router import _definition_marker_count
 from loanwhiz.extraction.section_router import (
     _LOAD_BEARING_ROLES,
     _has_payment_list,
@@ -1397,6 +1398,60 @@ class TestWidenToDefinitions:
         assert definitions is not None
         assert "Term 059" in definitions.text
 
+
+    def test_no_op_when_the_crossed_headings_are_not_glossary_entries(self) -> None:
+        """The self-review regression: a small real glossary beside ordinary prose.
+
+        Widening on "the wider span contains many defined terms" alone fired
+        here — a legitimate 20-term section followed by ``## Risk Factors``
+        prose using "means" conversationally widened 780 -> 3,738 chars and put
+        the risk factors into the definitions prompt. Density does not separate
+        those two populations; the *shape of the crossed headings* does, which
+        is the mechanism this rescue exists for.
+        """
+        glossary = "\n\n".join(
+            f"' Term {i:02d} ' means the stated amount." for i in range(20)
+        )
+        prose = " ".join(
+            "This means the transaction proceeds accordingly." for _ in range(60)
+        )
+        md = (
+            f"## 9.1 Definitions\n\n{glossary}\n\n"
+            f"## Risk Factors\n\n{prose}\n\n"
+            "## 9.2 Interpretation\n\nEnd.\n"
+        )
+        sm = route_sections(md)
+        narrow = sm.find("definitions", "9.1")
+        assert narrow is not None
+        assert _definition_marker_count(narrow.text) < 25  # under the dense-text guard
+
+        assert section_router.widen_to_definitions(sm, narrow) is narrow
+
+    def test_widens_when_a_majority_of_crossed_headings_are_entries(self) -> None:
+        """Contego's real shape: mostly entry headings, some continuation stubs.
+
+        On the real document 13 of the 17 crossed headings match, the rest being
+        ``provided that:`` fragments — themselves glossary content. The rule is a
+        majority, so a run of entries carrying a few such stubs still widens.
+        """
+        entries = "".join(
+            _entry(f"Term {i:03d}") + "\n## provided that:\n\nfurther clause.\n\n"
+            if i % 5 == 0
+            else _entry(f"Term {i:03d}")
+            for i in range(40)
+        )
+        md = (
+            "## 1. Definitions\n\nstub.\n\n"
+            f"{entries}\n"
+            "## 2. Form and Denomination\n\nRegistered form.\n"
+        )
+        sm = route_sections(md)
+        narrow = sm.find("definitions", "9.1")
+        assert narrow is not None
+
+        widened = section_router.widen_to_definitions(sm, narrow)
+        assert len(widened.text) > len(narrow.text)
+        assert "Term 039" in widened.text
 
 class TestNumberedSiblingSpan:
     def test_stops_at_the_next_numbered_non_descendant(self) -> None:

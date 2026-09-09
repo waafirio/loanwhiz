@@ -616,7 +616,7 @@ class TestAssessGlossary:
 
 
 class TestGraphCarriesTheRecords:
-    def test_round_trip_through_the_cache(self) -> None:
+    def test_truncation_round_trip(self) -> None:
         from loanwhiz.extraction.definitions_graph import (
             GlossaryCoverage,
             _graph_from_json,

@@ -1084,7 +1084,7 @@ class TestWaterfallTruncationRecord:
 
 
 class TestWaterfallCacheCompatibility:
-    def test_a_cache_written_before_548_loads_with_no_record(self) -> None:
+    def test_legacy_cache(self) -> None:
         reloaded = _waterfall_from_dict(
             {
                 "deal_name": "cairn",

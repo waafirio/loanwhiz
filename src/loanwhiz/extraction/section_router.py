@@ -790,10 +790,35 @@ _DEFINITION_MARKER_RE = re.compile(
 # Contego's routed stub scores 4 and its true span scores 445.
 _DEFINITION_MIN_MARKERS = 25
 
+# How many of the headings a widening would cross must themselves look like
+# glossary entries before we believe the converter promoted entries to headings.
+# On the real Contego document 13 of the 17 crossed headings match; the rest are
+# ``provided that:`` continuation fragments, which are glossary content too.
+_MIN_PROMOTED_ENTRY_HEADINGS = 3
+
 
 def _definition_marker_count(text: str) -> int:
     """How many defined-term entries ``text`` plausibly contains."""
     return len(_DEFINITION_MARKER_RE.findall(text))
+
+
+def _promoted_entry_headings(
+    section_map: SectionMap, section: Section, end_char: int
+) -> tuple[int, int]:
+    """``(definition-shaped, total)`` headings strictly inside a widened span.
+
+    The evidence that Docling promoted glossary *entries* to headings is that
+    the headings being crossed are themselves entries — ``' Payment Date '
+    means:``. Counting them tests the mechanism directly, where "the wider span
+    contains many defined terms" only tests a proxy that ordinary prose can
+    satisfy.
+    """
+    crossed = [
+        s for s in section_map.sections
+        if section.start_char < s.start_char < end_char
+    ]
+    shaped = [s for s in crossed if _DEFINITION_MARKER_RE.search(s.title)]
+    return len(shaped), len(crossed)
 
 
 def widen_to_definitions(section_map: SectionMap, section: Section) -> Section:
@@ -815,16 +840,32 @@ def widen_to_definitions(section_map: SectionMap, section: Section) -> Section:
       they return unchanged and their extractions do not move. Cairn's output
       feeds a committed seed and a graded reconciliation; this guard is what
       keeps it byte-identical.
-    - **Only widen when widening actually recovers one.** If the wider span is
-      no more glossary-like than the narrow one, widening would pull unrelated
-      text into the prompt for no gain, so the section is returned unchanged.
+    - **Only widen when the crossed headings are themselves glossary entries.**
+      This is the mechanism, not a proxy for it. Without it the guard fires on a
+      small-but-legitimate glossary followed by ordinary prose that happens to
+      use "means" — a 20-term section followed by ``## Risk Factors`` widened
+      and put the risk factors into the definitions prompt. Density does not
+      separate those two populations; the shape of the crossed headings does.
+    - **Only widen when widening actually recovers a glossary.** If the wider
+      span is no more glossary-like than the narrow one, widening would pull in
+      unrelated text for no gain, so the section is returned unchanged.
     - **Idempotent.** An already-widened section is dense by construction and
       returns unchanged, so applying this at both the ``resolve_sections``
       chokepoint and inside ``extract_definitions`` cannot double-widen.
     """
     if _definition_marker_count(section.text) >= _DEFINITION_MIN_MARKERS:
         return section
+
     widened = section_map.with_numbered_sibling_text(section)
+    if widened.end_char <= section.end_char:
+        return section
+
+    shaped, crossed = _promoted_entry_headings(section_map, section, widened.end_char)
+    # A majority, not merely a few: one stray ``' X ' means:`` heading in a run
+    # of ordinary sub-sections is not a shattered glossary.
+    if shaped < _MIN_PROMOTED_ENTRY_HEADINGS or shaped * 2 < crossed:
+        return section
+
     if _definition_marker_count(widened.text) >= _DEFINITION_MIN_MARKERS:
         return widened
     return section
