@@ -59,6 +59,7 @@ def test_every_source_kind_declares_its_facts() -> None:
         assert isinstance(kind.is_regulatory_filing, bool)
         assert isinstance(kind.rts_coded_values, bool)
         assert isinstance(kind.describes_real_assets, bool)
+        assert isinstance(kind.first_hand, bool)
         assert isinstance(kind.channel, TapeChannel)
         assert len(kind.disclosure) >= 40
 
@@ -222,6 +223,48 @@ def test_describes_real_assets_separates_synthetic_from_derived() -> None:
     synthetic = TapeSourceKind.SYNTHETIC_GENERATED
     assert derived.is_regulatory_filing == synthetic.is_regulatory_filing
     assert derived.describes_real_assets is not synthetic.describes_real_assets
+
+
+def test_first_hand_separates_a_document_from_our_reading_of_it() -> None:
+    """The third predicate, and the only one a precedence rule can use (#524).
+
+    A filed tape is the originator's own statement; a derived tape is LoanWhiz's
+    rendering of a document the deal already publishes. Both describe real
+    assets, so ``describes_real_assets`` cannot tell them apart — which is
+    exactly why #484's rule had no rank for a derived tape against the report it
+    was derived from.
+    """
+    filed = TapeSourceKind.FILED_ARTICLE_7_1_A
+    derived = TapeSourceKind.DERIVED_FROM_INVESTOR_REPORT
+    synthetic = TapeSourceKind.SYNTHETIC_GENERATED
+
+    assert filed.describes_real_assets == derived.describes_real_assets
+    assert filed.first_hand is True
+    assert derived.first_hand is False
+    assert synthetic.first_hand is False
+
+
+def test_a_facts_entry_omitting_first_hand_is_refused() -> None:
+    """A kind added later must not rank against a report by omission.
+
+    The same impossibility contract the channel carries: there is no
+    ``.get(..., default)`` in the module, so a member whose entry states no
+    ``first_hand`` cannot silently inherit a filed tape's seniority — the table
+    refuses to construct at import.
+    """
+    from loanwhiz.domain.tape_provenance import _SourceKindFacts
+
+    with pytest.raises(ValidationError):
+        _SourceKindFacts(
+            is_regulatory_filing=False,
+            rts_coded_values=False,
+            describes_real_assets=True,
+            channel=TapeChannel.DERIVED,
+            disclosure=(
+                "A kind whose facts entry omits whether it is a first-hand "
+                "account of the pool, which must not be constructible."
+            ),
+        )
 
 
 def test_the_synthetic_disclosure_says_it_is_not_evidence() -> None:

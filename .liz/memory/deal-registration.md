@@ -42,3 +42,16 @@ report. Read `DealModel`'s fields before promising an "extracted-model path": a
 never have helped.
 
 Refs: #479
+
+## 2026-09-09 · decision · #524
+
+Ranking two sources for one deal answers *precedence*, never *coverage* — and
+the second is the one that bites. Registered sources need not cover the same
+periods (Cairn's derived tapes and its Note Valuation Report overlap on **no**
+period), so preferring one can silently shorten a deal's series, and a short
+series reads as data where a blank screen reads as a gap. Compare what each
+source covers before writing the rule, then return the displaced periods from
+the rule itself. `_set_aside_tape_periods` is the shape: empty when nothing was
+displaced, so "folds everything" and "narrowed" stay distinguishable.
+
+Refs: #524
