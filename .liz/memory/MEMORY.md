@@ -30,6 +30,7 @@ triage by opening the entry, not by reading the line.
   - [2026-09-08 · pitfall · #484](#2026-09-08--pitfall--484) — keywords: balance share, count share, generated population, per-bucket draw, stratification, arrears bucket, rendered axis
   - [2026-09-02 · pitfall · #441](#2026-09-02--pitfall--441) — keywords: completeness_score
   - [2026-09-09 · pattern · #528](#2026-09-09--pattern--528) — keywords: back-solved input, read past the extractor, max_chars truncation, pypdf text layer, stated schedule, deterministic parser, cross-check against another document
+  - [2026-09-09 · pitfall · #555](#2026-09-09--pitfall--555) — keywords: stated count population, count grain, accrual record, asset grain, aggregate table, two populations, cannot fail
 - [Registering a deal (deals.json)](deal-registration.md) — keywords: deals.json, notes_cash_report_urls, routing promise, registry key, asset_class, answer key invariant
   - [2026-09-05 · pitfall · #455](#2026-09-05--pitfall--455) — keywords: notes_cash_report_urls, _reconstruct_series
   - [2026-09-08 · pitfall · #483](#2026-09-08--pitfall--483) — keywords: sha256(tape_url).json, _tape_analytics_period
@@ -72,3 +73,4 @@ triage by opening the entry, not by reading the line.
   - [2026-09-06 · pitfall · #469](#2026-09-06--pitfall--469) — keywords: visitor_text, text matrix, tm[4], rotated table, extraction_mode layout, row boundary, continuation line, column order, pypdf
   - [2026-09-08 · pitfall · #480](#2026-09-08--pitfall--480) — keywords: column header, required level, guessed order, like-typed columns, stated twice, cross-check, coverage test, refuse unrecognised header
   - [2026-09-09 · pitfall · #533](#2026-09-09--pitfall--533) — keywords: row geometry, reflowed row, column-major stack, per-line row, identifier position, family registration, refusal names what is missing
+  - [2026-09-09 · pitfall · #555](#2026-09-09--pitfall--555) — keywords: per-page geometry, row-major line, wrapped row, join page lines, declared geometry, skipped page

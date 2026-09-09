@@ -21,6 +21,7 @@ from pathlib import Path
 import pytest
 
 from loanwhiz.primitives.base import PrimitiveResult
+from loanwhiz.domain.trustee_report_registry import CountGrain
 from loanwhiz.primitives.collateral_schedule_parser import (
     PART_III_FLAGS,
     CollateralSchedule,
@@ -878,3 +879,36 @@ def test_the_liability_sections_are_located_by_header_not_page_number() -> None:
     assert len(summary.note_classes) == 8
     assert len(summary.coverage_tests) == 9
     assert summary.coverage_test("class_e_par_value_test").required_pct == Decimal("107.87")
+
+
+def test_cairn_carries_none_of_the_fields_added_for_the_second_family() -> None:
+    """The generalisation added columns; it must not have added *values* here.
+
+    #555 gave ``CollateralAsset`` four fields the BNY parse populates — a
+    quoted price, a purchase-lot count, an accrual-record count and a Fitch
+    rating. Adding them moved the Cairn goldens' bytes, because each asset's
+    golden digest covers every field of the row, so the goldens were
+    regenerated. That is the one thing a golden cannot then prove about
+    itself, and this is the assertion that closes the gap: on U.S. Bank's
+    documents every one of those fields must still be absent.
+
+    A future change that started populating one of them for Cairn — by
+    defaulting a price to zero, say, or by folding the two families' column
+    logic together — would move real numbers into a deal whose parse was
+    supposed to be untouched, and the regenerated goldens would silently agree
+    with it. This test does not.
+    """
+    schedule = parse_schedule_text(
+        (FIXTURE_DIR / "cairn-clo-xvii-december-2024.txt").read_text(),
+        period_label="December 2024",
+    )
+
+    added_for_bny = ("market_price_pct", "purchase_lots", "accrual_records", "fitch_rating")
+    for asset in schedule.assets:
+        for field in added_for_bny:
+            assert getattr(asset, field) is None, (
+                f"{asset.identifier} carries {field}={getattr(asset, field)!r}; "
+                "this field is populated only by the BNY parse path"
+            )
+    assert schedule.count_grain is CountGrain.ASSET
+    assert schedule.aggregates.accrual_record_count is None

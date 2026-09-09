@@ -31,12 +31,18 @@ import pytest
 from loanwhiz.domain.trustee_report_families import BNY_MELLON, FAMILY_REGISTRY, US_BANK
 from loanwhiz.domain.trustee_report_registry import (
     DocumentKind,
+    DocumentLayout,
+    FurnitureOrder,
+    RowGeometry,
     SECTION_COUNTRY,
     SECTION_FITCH_INDUSTRY,
     SECTION_SP_INDUSTRY,
     UnknownReportFamilyError,
 )
-from loanwhiz.primitives.collateral_schedule_parser import parse_schedule_text
+from loanwhiz.primitives.collateral_schedule_parser import (
+    _assert_furniture_order,
+    parse_schedule_text,
+)
 from loanwhiz.primitives.note_valuation_parser import parse_note_valuation_text
 
 FIXTURE_DIR = Path(__file__).parent / "fixtures" / "trustee_family"
@@ -68,21 +74,49 @@ def test_a_real_bny_report_does_not_match_us_bank(fixture: Path) -> None:
     assert not US_BANK.matches(_header(fixture))
 
 
-def test_parsing_a_bny_monthly_report_refuses_naming_the_furniture_order() -> None:
-    """The #531 guard is what stands between registration and a partial parse.
+def test_a_truncated_bny_monthly_report_still_refuses_rather_than_parsing_empty() -> None:
+    """#533's property, kept after the refusal it originally caught was satisfied.
 
-    ``collateral_schedule_parser`` filters furniture before testing a line for
-    data, which is only safe where every row opens with an asset identifier.
-    BNY's rows open with the obligor description, so that order would eat rows;
-    the family declares ``data-first`` and the parser refuses rather than
-    quietly dropping whatever it happens to match.
+    #533 pinned this on the furniture-order guard, because that is what the
+    monthly parser refused BNY with before it could read BNY's rows. #555
+    satisfied that guard honestly — the reflowed path genuinely implements the
+    data-first ordering the family declares — so the *guard* no longer fires
+    here. The property it was protecting is unchanged and is what this now
+    asserts directly: a BNY document the parser cannot read must refuse
+    loudly, naming what is missing, and must never return a schedule of no
+    assets that reconciles vacuously against the nothing it found (#494).
+
+    The fixture is a header excerpt: two pages, no asset sections at all. That
+    is the case where an empty answer would look most plausible.
     """
-    with pytest.raises(UnknownReportFamilyError) as excinfo:
+    with pytest.raises(ValueError) as excinfo:
         parse_schedule_text(COMPLIANCE.read_text(), period_label="August 2024")
 
     message = str(excinfo.value)
-    assert "BNY Mellon" in message, "the refusal must name the family it refused"
-    assert "data-first" in message and "furniture-first" in message
+    assert "missing" in message.lower(), "the refusal must name what is absent"
+    assert "section" in message.lower()
+
+
+def test_the_furniture_order_guard_still_fires_when_declarations_disagree() -> None:
+    """Satisfying the guard for BNY did not retire it.
+
+    The ordering and the geometry describe one behaviour: a family taking the
+    per-line path must declare ``furniture-first``, and one taking the reflowed
+    path must declare ``data-first``. A layout claiming the other combination
+    is refused, so the declaration cannot drift away from the code it
+    describes — which is the whole reason it is declared rather than assumed.
+    """
+    disagreeing = DocumentLayout(
+        section_titles=BNY_MELLON.layout(DocumentKind.MONTHLY_REPORT).section_titles,
+        furniture_order=FurnitureOrder.FURNITURE_FIRST,
+        row_geometry=RowGeometry.REFLOWED_ROWS,
+    )
+
+    with pytest.raises(UnknownReportFamilyError) as excinfo:
+        _assert_furniture_order(disagreeing, "Test Family")
+
+    message = str(excinfo.value)
+    assert "furniture-first" in message and "reflowed-rows" in message
     assert "#494" in message
 
 

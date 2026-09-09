@@ -32,7 +32,9 @@ What is deliberately absent
   reads its presence as an assertion that a PoP-bearing answer key exists. Setting
   it before #534 authors that key would assert a promise this deal cannot keep —
   exactly the #455 discipline Cairn's registration followed.
-* ``tape_urls`` — empty until #533 parses the BNY reports and derives the tape.
+* ``tape_urls`` — one ``derived+trustee-report:`` URI per period since #555
+  parsed the BNY reports; empty on registration, because #532 registered the
+  deal before the reports could be read.
 * Structural config — a registration is not licence to invent a capital structure.
 
 The tests load the *real shipped* ``deals.json`` (via ``DEALS_DATA_FILE``), not a
@@ -216,16 +218,25 @@ def test_contego_withholds_notes_cash_report_urls_until_the_promise_can_be_kept(
     assert WITHHELD_NVR_URL not in _every_registered_url()
 
 
-def test_contego_registers_no_tape_yet() -> None:
-    """No tape until #533 derives one from the BNY reports.
+def test_contego_registers_its_derived_tape_over_the_existing_channel() -> None:
+    """#532 registered the deal with an empty tape; #555 filled it.
 
-    The key is present but empty rather than absent: ``api.main`` subscripts
-    ``deal["tape_urls"]`` directly, so omitting it would 500 the deal-model route
-    rather than reading as "no tape".
+    This test pinned ``tape_urls == []`` while the BNY column work was
+    outstanding — the key present but empty, because ``api.main`` subscripts it
+    directly and omitting it would 500 the deal-model route rather than reading
+    as "no tape". Now that the reports parse, the same slot carries one derived
+    URI per period, and what is worth pinning is that they went through the
+    **existing** channel: #471's ``derived+trustee-report:`` scheme, resolved at
+    read time, with no second scheme invented for a second administrator.
     """
     deal = DEAL_REGISTRY[CONTEGO_DEAL_ID]
+
     assert "tape_urls" in deal
-    assert deal["tape_urls"] == []
+    tapes = deal["tape_urls"]
+    assert [entry["date"] for entry in tapes] == ["2024-08-30", "2024-09-30"]
+    assert all(
+        entry["url"].startswith("derived+trustee-report:") for entry in tapes
+    ), "a second family must not bring a second provenance scheme"
 
 
 @pytest.mark.parametrize("key", STRUCTURAL_KEYS)
@@ -394,7 +405,7 @@ def test_deal_model_route_serves_contego_from_its_committed_seed() -> None:
     body = resp.json()
     assert body["deal_name"] == CONTEGO_DEAL_NAME
     assert body["prospectus_url"] == PRE_RESET_LP_URL
-    assert body["tape_urls"] == []
+    assert [entry["date"] for entry in body["tape_urls"]] == ["2024-08-30", "2024-09-30"]
     assert [e["period"] for e in body["investor_report_urls"]] == EXPECTED_REPORT_PERIODS
     # Served from the committed seed, and it is the 2023 stack.
     assert body["deal_model"] is not None

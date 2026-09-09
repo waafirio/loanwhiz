@@ -31,6 +31,7 @@ from loanwhiz.domain.trustee_family_us_bank import US_BANK
 from loanwhiz.domain.trustee_report_registry import (
     FAMILY_REGISTRY,
     ColumnOrder,
+    CountGrain,
     DocumentKind,
     DocumentLayout,
     FurnitureOrder,
@@ -46,6 +47,7 @@ __all__ = [
     "FAMILY_REGISTRY",
     "US_BANK",
     "ColumnOrder",
+    "CountGrain",
     "DocumentKind",
     "DocumentLayout",
     "FurnitureOrder",
