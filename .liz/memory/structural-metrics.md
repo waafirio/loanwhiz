@@ -41,6 +41,7 @@ a counterfactual, never a deal figure.
 
 Refs: #457
 Refs: #493 — same rule, re-learned when a test would have asserted the refusal.
+Refs: #523 — the documented missing threshold was the second refusal, not the first.
 
 ## 2026-09-08 · pitfall · #478
 

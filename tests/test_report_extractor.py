@@ -40,6 +40,13 @@ GL_FIXTURE = (
 SEED_MODEL = (
     _REPO_ROOT / "src" / "loanwhiz" / "data" / "deals" / "seed" / "green-lion-2024-1-bv.json"
 )
+CLO_FIXTURE = (
+    _REPO_ROOT
+    / "tests"
+    / "fixtures"
+    / "note_valuation"
+    / "cairn-clo-xvii-january-2025.txt"
+)
 
 
 # ---------------------------------------------------------------------------
@@ -50,6 +57,11 @@ SEED_MODEL = (
 @pytest.fixture()
 def gl_text() -> str:
     return GL_FIXTURE.read_text(encoding="utf-8")
+
+
+@pytest.fixture()
+def clo_text() -> str:
+    return CLO_FIXTURE.read_text(encoding="utf-8")
 
 
 @pytest.fixture()
@@ -361,3 +373,92 @@ def test_to_notes_cash_report_round_trips_into_report_adapter(gl_text: str, deal
     class_a = next(t for t in seed.tranches if t.name == "class_a")
     assert class_a.balance > 0
     assert seed.reserve_balance > 0
+
+
+# ---------------------------------------------------------------------------
+# The CLO's carrier (#523): a committed Note Valuation Report on the live path
+# ---------------------------------------------------------------------------
+
+
+def test_cairn_note_valuation_is_a_registered_deterministic_format(clo_text: str) -> None:
+    fmt = rx.match_format(clo_text)
+    assert fmt is not None and fmt.name == "cairn_note_valuation"
+
+
+def test_the_two_recognizers_do_not_claim_each_others_text(
+    gl_text: str, clo_text: str
+) -> None:
+    """Neither layout may be parsed by the other's format.
+
+    The half that matters is Green Lion's: a Cairn recognizer loose enough to
+    accept a Notes & Cash report would silently re-route GL's validated,
+    byte-identical parse onto a different parser.
+    """
+    assert rx._matches_gl_notes_cash(gl_text) is True
+    assert rx._matches_cairn_note_valuation(gl_text) is False
+    assert rx._matches_cairn_note_valuation(clo_text) is True
+    assert rx._matches_gl_notes_cash(clo_text) is False
+
+
+def test_published_rate_survives_the_bridge_in_both_directions(clo_text: str) -> None:
+    """The rate the report publishes reaches ``NotesCashPeriod`` unchanged.
+
+    This is the whole point of the field: ``_report_period_rates`` reads
+    ``NoteClassBalance.interest_rate_applied``, so a rate dropped anywhere on
+    the report path leaves every Cairn class with a floating margin it cannot
+    coerce and no coupon to accrue.
+    """
+    parsed = extract_report(
+        ReportExtractInput(deal_name="Cairn CLO XVII DAC", text=clo_text)
+    ).output
+    on_parsed = {
+        b.note_class: b.interest_rate_applied for b in parsed.periods[0].note_balances
+    }
+    assert on_parsed["class_a"] == pytest.approx(5.008)
+    assert on_parsed["class_f"] == pytest.approx(12.848)
+    # The Subordinated Notes publish no rate; that stays absent rather than
+    # becoming a zero, which would accrue as a real (and wrong) coupon.
+    assert on_parsed["class_subordinated"] is None
+
+    bridged = {
+        b.note_class: b.interest_rate_applied
+        for b in parsed.to_notes_cash_report().periods[0].note_balances
+    }
+    assert bridged == on_parsed
+
+
+def test_green_lion_publishes_no_rate_so_the_field_stays_none(gl_text: str) -> None:
+    """The new field is inert for Green Lion — its layout prints no rate column."""
+    parsed = extract_report(
+        ReportExtractInput(deal_name="Green Lion 2024-1 B.V.", text=gl_text)
+    ).output
+    assert all(
+        b.interest_rate_applied is None for b in parsed.periods[0].note_balances
+    )
+
+
+def test_deterministic_provenance_covers_the_published_rate(clo_text: str) -> None:
+    res = extract_report(
+        ReportExtractInput(deal_name="Cairn CLO XVII DAC", text=clo_text)
+    )
+    keys = [k for k in res.output.provenance if k.endswith(".interest_rate_applied")]
+    assert keys, "a published rate is an extracted field and must be provenanced"
+    assert all(res.output.provenance[k].confidence == 1.0 for k in keys)
+
+
+def test_clo_report_resolves_offline_from_committed_fixtures() -> None:
+    """``resolve_parsed_report`` serves the CLO with no network and no LLM.
+
+    The carrier this issue exists for: before it, the deal reached step 3 of the
+    resolution order and raised ``ReportUnavailable`` on every request.
+    """
+    from loanwhiz.config import _load_deal_registry
+
+    deal = _load_deal_registry()["cairn-clo-xvii"]
+    fake = _FakeLlmClient(responses=[])  # empty: any LLM call would IndexError
+    report = rx.resolve_parsed_report("cairn-clo-xvii", deal, client=fake)
+
+    assert report.extraction_method == "deterministic"
+    assert report.reporting_dates == ["2025-01-08"]
+    assert fake.calls == []
+    assert report.periods[0].note_balance("class_a").interest_rate_applied is not None

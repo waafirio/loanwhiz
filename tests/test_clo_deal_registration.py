@@ -35,9 +35,11 @@ What the sourcing established, and what these tests pin
   #481 committed a key by the *other* route — published coverage-test results, no
   Priority of Payments — which is why that invariant distinguishes the two. #494
   then parsed the report and #495 committed the PoP section, so the promise can
-  now be kept and the URL is registered. What the registration does **not** claim
-  is asserted just as hard: the deal still has no offline engine series, so
-  nothing has yet reconciled an engine cascade against that ground truth.
+  now be kept and the URL is registered. Since #523 the report also has a
+  committed carrier, so the *request path* folds it and the deal's screens serve.
+  What the registration still does **not** claim is asserted just as hard: the
+  quality harness's offline series map has no entry for this deal, so nothing has
+  yet reconciled an engine cascade against that ground truth (#525).
 * **No machine-readable loan tape exists**, so ``tape_urls`` is empty by design.
   Loan-level collateral detail *is* published — as PDF tables inside the trustee
   reports — but that is not an ESMA Annex tape and the normaliser cannot read it.
@@ -52,7 +54,6 @@ import json
 from pathlib import Path
 
 import pytest
-from fastapi import HTTPException
 
 from loanwhiz.config import (
     ANSWER_KEY_DATA_DIR,
@@ -595,19 +596,63 @@ def test_clo_cannot_reach_validated_and_the_reason_is_the_missing_series() -> No
     assert cell.reason != _NO_POP_SECTION
 
 
-def test_clo_is_registered_but_not_modelable() -> None:
-    """Registered ≠ modelable: the engine degrades to a labelled 422.
+def test_clo_is_modelable_from_its_published_report() -> None:
+    """The inversion of #455's refusal, and #523 is what earned it.
 
-    The CLO has neither a loan tape nor a report the engine can fold, so
-    ``_reconstruct_series`` raises rather than serving an empty cascade that would
-    read as a real, all-clear result. Offline — no network fetch is attempted.
+    This asserted a labelled 422 for as long as it was true: the CLO had no
+    report the engine could fold, so serving anything would have been an empty
+    cascade reading as a real, all-clear result. #523 gave the parsed Note
+    Valuation Report a committed carrier, so the fold now has a source and the
+    refusal would be the dishonest answer. Still offline — no network fetch.
     """
     from loanwhiz.api.main import _reconstruct_series
 
-    with pytest.raises(HTTPException) as exc:
-        _reconstruct_series(CLO_DEAL_ID, DEAL_REGISTRY[CLO_DEAL_ID])
-    assert exc.value.status_code == 422
-    assert CLO_DEAL_ID in str(exc.value.detail)
+    series = _reconstruct_series(CLO_DEAL_ID, DEAL_REGISTRY[CLO_DEAL_ID])
+    assert series.states, "the CLO folded to an empty series"
+    # One published period, so the report's own as-of date is the latest state.
+    assert series.states[-1].reporting_date == "2025-01-08"
+
+
+def test_clo_screens_serve_from_the_published_report() -> None:
+    """Compliance and waterfall serve real figures instead of the 422.
+
+    The user-visible half of #523: the carrier exists so these two screens and
+    the comparison panel stop degrading. What each *figure* is worth is graded
+    against the published report separately (#525); this pins that they serve.
+    """
+    from fastapi.testclient import TestClient
+
+    from loanwhiz.api.main import app
+
+    client = TestClient(app)
+    assert client.get(f"/deal/{CLO_DEAL_ID}/compliance").status_code == 200
+
+    waterfall = client.get(f"/deal/{CLO_DEAL_ID}/waterfall")
+    assert waterfall.status_code == 200
+    assert waterfall.json()["reporting_period"] == "2025-01-08"
+
+
+def test_compare_carries_the_clo_with_a_real_latest_period() -> None:
+    """``/compare`` reports the CLO instead of excusing it.
+
+    The note is the load-bearing half: "No reconstructable series" is what the
+    panel said for this deal, and a deal that merely vanished from the notes
+    without appearing in the series would be a worse outcome, not a better one.
+    """
+    from fastapi.testclient import TestClient
+
+    from loanwhiz.api.main import app
+
+    client = TestClient(app)
+    body = client.get("/compare", params={"deals": ",".join(DEAL_REGISTRY)}).json()
+
+    series = {s["deal_id"]: s for s in body["performance_series"]}
+    assert CLO_DEAL_ID in series
+    assert series[CLO_DEAL_ID]["points"]
+
+    (risk,) = [r for r in body["risk_summary"] if r["deal_id"] == CLO_DEAL_ID]
+    assert risk["latest_period"] == "2025-01-08"
+    assert not [n for n in body["notes"] if n.startswith(f"{CLO_DEAL_ID}:")]
 
 
 # ---------------------------------------------------------------------------
