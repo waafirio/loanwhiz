@@ -50,11 +50,17 @@ waterfall steps. No network, no LLM, no engine call.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import date
 from typing import Any, Literal, Sequence
 
 from loanwhiz.domain.inputs import PeriodInputs
 from loanwhiz.domain.provenance import FieldProvenance, ProvenanceMap
 from loanwhiz.domain.state import DealState, TrancheState
+from loanwhiz.extraction.payment_schedule_parser import (
+    PaymentDateSchedule,
+    accrual_period_days,
+    payment_date_on_or_after,
+)
 from loanwhiz.primitives.base import Citation
 from loanwhiz.primitives.capital_structure import CapitalStructure
 from loanwhiz.primitives.notes_cash_parser import NotesCashPeriod, NotesCashReport
@@ -94,6 +100,14 @@ DEFAULT_REDEMPTION_RESIDUAL_LABEL = ""
 #: exactly these three classes, so the derived list and this constant coincide
 #: for the deal the constant was written from.
 DEFAULT_TRANCHE_CLASSES: tuple[str, ...] = ("class_a", "class_b", "class_c")
+
+#: Act/360 day count used when a deal states no Payment Date schedule this
+#: adapter can read — the quarterly approximation the report path has always
+#: asserted. It stays the default on purpose (#528): it is a legitimate
+#: approximation where nothing better exists, and every deal without a
+#: committed schedule keeps the exact numbers it had. A deal that *does*
+#: state one no longer uses it.
+DEFAULT_DAYS_IN_PERIOD = 90
 
 #: Source-vocabulary translation: the shared classifier speaks the harness's
 #: ``"report-supplied"``; the canonical ``PeriodInputs.step_sources`` spelling is
@@ -187,6 +201,11 @@ class ReportAdapter:
         original_pool_balance: Pool balance at closing (factor denominator); when
                           ``None`` the seed uses the first period's outstanding
                           tranche total as the closing-par proxy.
+        payment_schedule: The deal's stated Payment Date schedule (#528). When
+                          present, each period's Act/360 day count is the distance
+                          between the two Payment Dates that bracket it; when
+                          ``None`` the day count stays
+                          :data:`DEFAULT_DAYS_IN_PERIOD`.
     """
 
     revenue_steps: list[dict[str, Any]]
@@ -201,6 +220,7 @@ class ReportAdapter:
     redemption_residual_label: str = DEFAULT_REDEMPTION_RESIDUAL_LABEL
     tranche_classes: tuple[str, ...] = DEFAULT_TRANCHE_CLASSES
     original_pool_balance: float | None = None
+    payment_schedule: PaymentDateSchedule | None = None
 
     # -- constructors -------------------------------------------------------
 
@@ -236,6 +256,7 @@ class ReportAdapter:
         triple deliberately" and "passed nothing" stay distinguishable.
         """
         waterfalls = model.waterfalls
+        raw_schedule = getattr(model, "payment_schedule", None)
         if tranche_classes is None:
             tranche_classes = tranche_classes_from_model(model)
         return cls(
@@ -247,6 +268,9 @@ class ReportAdapter:
             redemption_residual_label=redemption_residual_label,
             tranche_classes=tranche_classes,
             original_pool_balance=original_pool_balance,
+            payment_schedule=(
+                PaymentDateSchedule.from_dict(raw_schedule) if raw_schedule else None
+            ),
         )
 
     # -- public surface -----------------------------------------------------
@@ -352,6 +376,30 @@ class ReportAdapter:
             provenance=provenance,
         )
 
+    def _days_in_period(self, period: NotesCashPeriod) -> int:
+        """Act/360 day count for ``period`` — from stated dates where they exist.
+
+        The deal's *Accrual Period* is defined payment-date to payment-date, so
+        with a stated Payment Date schedule the day count is simply the distance
+        between the Payment Date this period pays on and the one before it. Both
+        are dates the prospectus names; no published amount is read, which is the
+        whole point (#528, superseding #521).
+
+        Without a schedule the count stays :data:`DEFAULT_DAYS_IN_PERIOD`. That
+        branch is what keeps every already-graded deal byte-identical: Green Lion
+        states no schedule in its seed, so it takes the same 90 it always did.
+
+        A schedule that *is* present but whose dates fall outside the committed
+        business-day calendar raises rather than silently reverting to 90 — a
+        deal we claim to model on stated dates must not quietly fall back to the
+        approximation those dates were meant to replace.
+        """
+        if self.payment_schedule is None:
+            return DEFAULT_DAYS_IN_PERIOD
+        reporting = date.fromisoformat(period.reporting_date)
+        payment = payment_date_on_or_after(self.payment_schedule, reporting)
+        return accrual_period_days(self.payment_schedule, payment)
+
     def period_inputs(self, period: NotesCashPeriod) -> PeriodInputs:
         """One canonical :class:`PeriodInputs` from a report period.
 
@@ -427,7 +475,7 @@ class ReportAdapter:
 
         return PeriodInputs(
             reporting_date=period.reporting_date,
-            days_in_period=90,
+            days_in_period=self._days_in_period(period),
             available_revenue=period.available_revenue_funds or 0.0,
             available_principal=period.available_principal_funds or 0.0,
             realized_loss=0.0,
