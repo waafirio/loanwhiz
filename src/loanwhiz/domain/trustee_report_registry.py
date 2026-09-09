@@ -98,6 +98,7 @@ SECTION_PROFILE_TESTS = "portfolio_profile_tests"
 SECTION_EXEC_SUMMARY = "executive_summary"
 SECTION_PAR_VALUE_DETAIL = "par_value_tests_detail"
 SECTION_IC_DETAIL = "interest_coverage_tests_detail"
+SECTION_ACCRUAL_DETAIL = "interest_accrual_detail"
 
 # Section keys for DocumentKind.NOTE_VALUATION_REPORT.
 SECTION_NV_EXECUTIVE = "executive_summary"
@@ -126,6 +127,7 @@ REQUIRED_SECTION_KEYS: Mapping[DocumentKind, frozenset[str]] = MappingProxyType(
                 SECTION_EXEC_SUMMARY,
                 SECTION_PAR_VALUE_DETAIL,
                 SECTION_IC_DETAIL,
+                SECTION_ACCRUAL_DETAIL,
             }
         ),
         DocumentKind.NOTE_VALUATION_REPORT: frozenset(
@@ -146,6 +148,33 @@ REQUIRED_SECTION_KEYS: Mapping[DocumentKind, frozenset[str]] = MappingProxyType(
 #: declares only one of them would fail with a bare ``KeyError`` deep inside the
 #: parse instead of at the boundary, naming nothing.
 REQUIRED_WATERFALL_FIELDS: frozenset[str] = frozenset({"revenue", "redemption"})
+
+
+class CountGrain(str, Enum):
+    """What an aggregate table's ``# of Assets`` column actually counts.
+
+    A concentration table states a count beside a balance, and the obvious
+    reading — that both describe the same population — is an assumption, not a
+    fact about the document. Contego CLO XI's five aggregate tables state
+    ``212`` against ``373,537,007.35`` while its three asset sections each
+    carry 177 identifiers at that identical balance: the balance column is at
+    asset grain and the count column is not. The 212 is the report's
+    ``Interest Accrual Detail`` row count — one record per asset per rate
+    contract, so an asset accruing under two contracts is two rows.
+
+    Reading 212 as an asset count is how #468 happens quietly: par alone cannot
+    see a missed row, because a row you drop can be worth zero, so the count is
+    the half of the oracle that catches it — and a count compared against the
+    wrong population catches nothing while looking like it does.
+
+    ``ASSET`` is U.S. Bank's shape and the default. ``ACCRUAL_RECORD`` is BNY
+    Mellon's; a family declaring it must publish
+    :data:`SECTION_ACCRUAL_DETAIL`, since that is the population its stated
+    count has to be reconciled against.
+    """
+
+    ASSET = "asset"
+    ACCRUAL_RECORD = "accrual-record"
 
 
 class ColumnOrder(str, Enum):
@@ -285,6 +314,12 @@ class DocumentLayout:
         identifier_position:
             Whether a row opens with its asset identifier. See
             :class:`IdentifierPosition`.
+        count_grain:
+            What this family's aggregate tables count beside the balance they
+            state. See :class:`CountGrain`; the balance is always at asset
+            grain, so a family whose count is not tells the reconciliation to
+            compare it against a different population rather than against the
+            asset count.
     """
 
     section_titles: Mapping[str, str]
@@ -302,6 +337,7 @@ class DocumentLayout:
     )
     row_geometry: RowGeometry = RowGeometry.ROW_PER_LINE
     identifier_position: IdentifierPosition = IdentifierPosition.LINE_START
+    count_grain: CountGrain = CountGrain.ASSET
 
     def publishes(self, section_key: str) -> bool:
         """Whether this family's document publishes *section_key* at all.
@@ -503,6 +539,23 @@ class TrusteeReportFamilyRegistry:
                     "Give every required section its printed title, or declare it "
                     "in unpublished_sections with the reason this administrator "
                     "does not print it."
+                )
+
+            # A family whose stated counts are not asset counts must publish
+            # the population they *are*, or its count oracle is unsatisfiable
+            # and the reconciliation silently degrades to a balance-only check
+            # — the #468 failure, since a dropped row can be worth zero and
+            # only the count would have caught it.
+            if (
+                layout.count_grain is CountGrain.ACCRUAL_RECORD
+                and SECTION_ACCRUAL_DETAIL not in layout.section_titles
+            ):
+                raise ValueError(
+                    f"{family.family_id}/{kind.value}: count_grain is "
+                    "accrual-record but no title is given for "
+                    f"{SECTION_ACCRUAL_DETAIL!r} — the stated count would have "
+                    "no population to reconcile against, leaving par as the "
+                    "only check and a zero-balance row free to go missing"
                 )
 
             contradictory = sorted(declared_absent & set(layout.section_titles))

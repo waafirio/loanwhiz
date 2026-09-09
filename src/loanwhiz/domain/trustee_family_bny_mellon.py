@@ -41,6 +41,7 @@ from types import MappingProxyType
 
 from loanwhiz.domain.trustee_report_registry import (
     ColumnOrder,
+    CountGrain,
     DocumentKind,
     DocumentLayout,
     FurnitureOrder,
@@ -48,6 +49,7 @@ from loanwhiz.domain.trustee_report_registry import (
     RowGeometry,
     SECTION_ASSET_PART_I,
     SECTION_ASSET_PART_II,
+    SECTION_ACCRUAL_DETAIL,
     SECTION_ASSET_PART_III,
     SECTION_CCC,
     SECTION_COUNTRY,
@@ -113,6 +115,7 @@ _MONTHLY = DocumentLayout(
             SECTION_ASSET_PART_I: "Asset Information I",
             SECTION_ASSET_PART_II: "Asset Information II",
             SECTION_ASSET_PART_III: "Asset Information III",
+            SECTION_ACCRUAL_DETAIL: "Interest Accrual Detail",
             SECTION_CCC: "CCC Obligations",
             SECTION_SP_INDUSTRY: "Industry Concentrations",
             SECTION_FITCH_INDUSTRY: "Industry Concentrations",
@@ -140,6 +143,7 @@ _MONTHLY = DocumentLayout(
     column_order_markers=_MONTHLY_ORDER_MARKERS,
     row_geometry=RowGeometry.REFLOWED_ROWS,
     identifier_position=IdentifierPosition.EMBEDDED,
+    count_grain=CountGrain.ACCRUAL_RECORD,
 )
 
 _NOTE_VALUATION = DocumentLayout(
