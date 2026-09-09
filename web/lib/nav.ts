@@ -7,6 +7,7 @@ import {
   Boxes,
   BadgeCheck,
   Scale,
+  FileSearch,
   Grid3x3,
   GitCompareArrows,
   type LucideIcon,
@@ -64,6 +65,13 @@ export const NAV_GROUPS: NavGroup[] = [
       // Governance — the FINOS evidence-pack / audit-trail / confidence /
       // model-risk + data-provenance (deeploans vs direct) surface (#239).
       { title: "Governance", href: "/governance", icon: Scale },
+      // Due diligence — the per-deal UK-SR risk-retention record: what was
+      // verified from which document, and what was not (#568, epic #561).
+      // Beside Governance on purpose. "Compliance", in the Deal Analytics
+      // group above, answers whether the DEAL is inside its covenants; this
+      // answers whether the HOLDER's verification is documented. Two questions,
+      // two readers — the separation is the point, so do not merge the entries.
+      { title: "Due Diligence", href: "/due-diligence", icon: FileSearch },
     ],
   },
 ];
