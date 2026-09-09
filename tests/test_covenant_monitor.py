@@ -1753,6 +1753,68 @@ class TestNamedResidualPlacement:
             assert bare == padded, f"{metric} moved when the residual was added"
 
 
+class TestCoverageNumeratorMustBeCollateral:
+    """The OC numerator is a collateral balance, or there is no ratio.
+
+    On the report path ``report_adapter.seed`` sets ``pool_balance`` to the
+    opening *liability* total — the Notes & Cash report states liabilities, not
+    the asset pool — so the ratio would be notes over notes and the junior-most
+    attachment point reads exactly 100.00% by construction. The monitor refuses
+    the **value** as well as the verdict: a figure rendered beside "not
+    evaluable" is read as the ratio, and a wrong number is worse than no number.
+    #550 gives the numerator a real collateral balance.
+    """
+
+    @staticmethod
+    def _state(pool: float) -> DealState:
+        return DealState(
+            reporting_date="2026-04-30",
+            tranches=[
+                {"name": "class_a", "balance": 600_000_000.0, "pdl_balance": 0.0},
+                {"name": "class_b", "balance": 200_000_000.0, "pdl_balance": 0.0},
+                {"name": "subordinated_notes", "balance": 200_000_000.0, "pdl_balance": 0.0},
+            ],
+            pool_balance=pool,
+            original_pool_balance=pool,
+        )
+
+    def test_a_numerator_equal_to_the_note_total_is_refused(self) -> None:
+        """The identity case: notes over notes is not overcollateralisation."""
+        state = self._state(1_000_000_000.0)  # == 600 + 200 + 200
+        status = _status("class_b_oc_ratio", state, CovenantInput(periods=[{}], period_states=[state]))
+        assert status.evaluable is False
+        assert status.metric_value is None, "a wrong number is worse than no number"
+        assert status.proximity_pct is None
+        reason = status.not_evaluable_reason or ""
+        assert "collateral balance" in reason
+        assert "#550" in reason
+
+    def test_changing_only_the_numerator_makes_it_evaluable_again(self) -> None:
+        """The other direction (#493) — or the refusal above proves nothing.
+
+        Same stack, same attachment point; only the pool balance moves off the
+        note total. The metric must resolve, so the guard is shown to be keyed
+        on the numerator and not quietly refusing everything.
+        """
+        state = self._state(1_100_000_000.0)
+        value = _extract_metric(
+            {}, "class_b_oc_ratio", CovenantInput(periods=[{}], period_states=[state]), state
+        )
+        assert value == round(1_100_000_000.0 / 800_000_000.0 * 100.0, 4)
+
+    def test_the_identity_is_exactly_100_at_the_junior_most_point(self) -> None:
+        """Why the equality is a proof and not a coincidence heuristic.
+
+        If the numerator is the note total, the junior-most attachment point is
+        the note total over itself. A deal whose collateral genuinely equalled
+        its notes to the cent would have zero overcollateralisation and read
+        100.00% too, so refusing is the honest answer under both readings.
+        """
+        state = self._state(1_000_000_000.0)
+        covered = sum(t.balance for t in state.tranches)
+        assert state.pool_balance / covered * 100.0 == 100.0
+
+
 class TestCoverageThresholdScale:
     """A coverage ratio can never be misread against a percent (the #372 guard)."""
 

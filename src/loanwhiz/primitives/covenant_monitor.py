@@ -15,6 +15,7 @@ Green Lion 2026-1 known triggers (from prospectus):
 
 from __future__ import annotations
 
+import math
 import re
 import time
 from typing import Any
@@ -344,6 +345,41 @@ def _resolve_coverage(
         return None, reason
 
     if kind == "oc":
+        # The numerator must be a COLLATERAL balance. On the report path it is
+        # not: ``report_adapter.seed`` sets ``pool_balance`` to the opening
+        # liability total and says so — "the Notes & Cash report states
+        # liabilities, not the asset pool balance". Feeding that in makes this
+        # notes-over-notes, a subordination ratio wearing an overcollateralisation
+        # name, and the junior-most attachment point reads exactly 100.00% by
+        # construction rather than by measurement.
+        #
+        # Detected arithmetically rather than by provenance, so the claim is
+        # about the numbers in hand and needs no new plumbing: if the numerator
+        # equals the deal's own total note balance, the ratio is an identity.
+        # A deal whose collateral genuinely equals its notes to the cent has
+        # zero overcollateralisation, so its junior-most test is 100.00% either
+        # way — refusing is the honest answer under both readings.
+        #
+        # Refusing the VALUE, not just the verdict (#549 self-review, operator
+        # call): a figure rendered beside "not evaluable" is read as the ratio,
+        # and a wrong number is worse than no number. #550 gives the numerator a
+        # real collateral balance; until then there is nothing honest to show.
+        # ``isclose`` rather than ``==``: the identity is exact by construction
+        # today (both sides are the same ``opening_total``), but a numerator
+        # summed in a different order would differ in the last bits and slip
+        # past an equality test — and this guard's failure direction is to
+        # surface the wrong number, so it must not be brittle. The tolerance is
+        # float noise, not an economic cushion: 1e-9 relative on this deal's
+        # 369m is EUR 0.37, and a deal overcollateralised by 37 cents has no
+        # overcollateralisation to report either.
+        note_total = sum(t.balance for t in state.tranches)
+        if math.isclose(float(state.pool_balance), float(note_total), rel_tol=1e-9):
+            return None, (
+                "the pool balance on this deal state is exactly the total of its "
+                "own note balances, so it is the liability total and not a "
+                "collateral balance — the overcollateralisation numerator is "
+                "unavailable and the ratio would be notes over notes (#550)"
+            )
         covered = set(names)
         denominator = sum(t.balance for t in state.tranches if t.name in covered)
         if denominator <= 0.0:
