@@ -40,3 +40,16 @@ the same pair twice, parse BOTH and require agreement: the redundancy is a free
 cross-check, not duplicated work.
 
 Refs: #480
+
+## 2026-09-09 · pitfall · #533
+
+Registering a report family supplies titles and furniture, not rows: whether a
+row survives extraction *as a line* is a separate axis, and it decides whether
+a newly registered deal parses at all. Measure it before sizing the work. U.S.
+Bank yields one asset per line, identifier first, so an anchored per-line match
+both finds the id and proves the line is a row; BNY yields one row-major line
+per page holding the whole table, beside a column-major stack of single cells
+that cannot be zipped back — one blank cell desyncs every column after it —
+with the identifier mid-row. Re-cut rows on the row's own anchored tail.
+
+Refs: #533

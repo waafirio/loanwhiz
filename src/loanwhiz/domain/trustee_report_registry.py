@@ -190,6 +190,47 @@ class FurnitureOrder(str, Enum):
     FURNITURE_FIRST = "furniture-first"
 
 
+class RowGeometry(str, Enum):
+    """How a section's data rows survive text extraction.
+
+    Not a stylistic difference: it decides whether a per-row line exists to be
+    matched at all. ``extract_report_lines`` rebuilds lines from text-run
+    coordinates, and what that yields depends on how the administrator's PDF
+    lays the table out.
+
+    ``ROW_PER_LINE`` is U.S. Bank's shape — one asset per line, so a row is a
+    line and the parser iterates lines directly.
+
+    ``REFLOWED_ROWS`` is BNY Mellon's — the page's whole table arrives as one
+    long line, row-major, alongside a column-major stack of the same cells that
+    is *not* safely zippable (a blank cell desyncs every column after it). The
+    parser must therefore re-cut rows out of that line before any per-row test
+    applies. Recorded on the family rather than sniffed, so a document whose
+    geometry changes is a data change here, not a silently empty parse.
+    """
+
+    ROW_PER_LINE = "row-per-line"
+    REFLOWED_ROWS = "reflowed-rows"
+
+
+class IdentifierPosition(str, Enum):
+    """Where a data row carries its asset identifier.
+
+    U.S. Bank opens each row with the identifier (``LX189634 BVI Medical …``),
+    so an anchored match both finds the id and proves the line is a row. BNY
+    Mellon opens with the obligor description and prints the identifier mid-row
+    (``Aenova Holding GmbH - Facility B Loan LX237502 Term Loan …``), so an
+    anchored pattern matches nothing and the section parses as empty — the #494
+    vacuous-reconciliation failure, reached by a different route.
+
+    ``LINE_START`` keeps the anchored match, which stays the stronger test where
+    it holds; ``EMBEDDED`` searches the row instead.
+    """
+
+    LINE_START = "line-start"
+    EMBEDDED = "embedded"
+
+
 # ---------------------------------------------------------------------------
 # Layout record
 # ---------------------------------------------------------------------------
@@ -223,6 +264,27 @@ class DocumentLayout:
         waterfalls:
             ``(section key, NotesCashPeriod field)`` pairs, in the order the
             report prints them. Empty for kinds that publish no waterfall.
+        unpublished_sections:
+            Section key → why this administrator's document does not carry it.
+            The declared-absence channel: a required section may be *stated
+            absent with a reason* instead of given a title, but never simply
+            omitted. BNY Mellon publishes no country stratification at all (its
+            country limits are compliance-test rows, a different datum), where
+            U.S. Bank prints one. Registration refuses an undeclared omission
+            exactly as before, so this widens what a family may *say*, not what
+            it may leave unsaid.
+        section_table_markers:
+            Section key → a fingerprint of the table's own sub-header, for the
+            sections whose printed title they share. BNY Mellon prints both the
+            S&P and the Fitch industry table under one ``Industry
+            Concentrations`` heading, so the title alone cannot route them and
+            the pair (title, marker) is what must be unique.
+        row_geometry:
+            Whether a data row survives extraction as its own line. See
+            :class:`RowGeometry`.
+        identifier_position:
+            Whether a row opens with its asset identifier. See
+            :class:`IdentifierPosition`.
     """
 
     section_titles: Mapping[str, str]
@@ -232,6 +294,42 @@ class DocumentLayout:
         default_factory=lambda: MappingProxyType({})
     )
     waterfalls: tuple[tuple[str, str], ...] = ()
+    unpublished_sections: Mapping[str, str] = field(
+        default_factory=lambda: MappingProxyType({})
+    )
+    section_table_markers: Mapping[str, str] = field(
+        default_factory=lambda: MappingProxyType({})
+    )
+    row_geometry: RowGeometry = RowGeometry.ROW_PER_LINE
+    identifier_position: IdentifierPosition = IdentifierPosition.LINE_START
+
+    def publishes(self, section_key: str) -> bool:
+        """Whether this family's document publishes *section_key* at all.
+
+        The question a consumer must ask before reading zero rows as zero. A
+        section declared in :attr:`unpublished_sections` is absent from the
+        document by fact, not empty in it — the distinction #451 drew for tape
+        columns (``AbsentColumn``) and #494 for whole sections.
+        """
+        return section_key in self.section_titles
+
+    def unpublished_reason(self, section_key: str) -> str:
+        """Why this family does not publish *section_key*.
+
+        Raises:
+            KeyError: when the section is not declared unpublished — asking for
+                a reason that does not exist is a bug in the caller, not an
+                empty string to render.
+        """
+        return self.unpublished_sections[section_key]
+
+    def table_marker(self, section_key: str) -> str | None:
+        """The table fingerprint distinguishing *section_key* within its title.
+
+        ``None`` when the section's printed title already identifies it
+        uniquely, which is the common case. See :attr:`section_table_markers`.
+        """
+        return self.section_table_markers.get(section_key)
 
     def title(self, section_key: str) -> str:
         """The printed title this family uses for *section_key*.
@@ -242,6 +340,12 @@ class DocumentLayout:
                 parser read a section nobody declared — a bug worth an exception
                 rather than a ``None`` that routes to no pages.
         """
+        if section_key in self.unpublished_sections:
+            raise KeyError(
+                f"{section_key!r} is declared unpublished by this family "
+                f"({self.unpublished_sections[section_key]}); ask publishes() "
+                "before routing, so an absent section is never read as an empty one"
+            )
         return self.section_titles[section_key]
 
     @property
@@ -252,7 +356,9 @@ class DocumentLayout:
         shadow it — ``Current Asset Characteristics - Part I`` must not claim
         the ``… - Part III`` pages.
         """
-        return tuple(sorted(self.section_titles.values(), key=len, reverse=True))
+        return tuple(
+            sorted(set(self.section_titles.values()), key=len, reverse=True)
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -381,13 +487,52 @@ class TrusteeReportFamilyRegistry:
             # nothing it found. The existing family is shielded by its fixtures;
             # a new one has none, so this is the only thing standing between an
             # omitted title and a quietly partial parse.
-            missing = sorted(required - set(layout.section_titles))
+            # Declared absence is the one sanctioned alternative to a title
+            # (#494): an administrator that genuinely does not publish a section
+            # says so with a reason, and consumers read that as "absent" rather
+            # than as zero rows. Silence is still refused — the whole point is
+            # that "I do not publish this" and "I forgot this" stop looking
+            # alike.
+            declared_absent = set(layout.unpublished_sections)
+            missing = sorted(required - set(layout.section_titles) - declared_absent)
             if missing:
                 raise ValueError(
                     f"{family.family_id}/{kind.value}: section_titles is missing "
                     f"{missing} — the section would route to no pages, parse no "
                     "rows, and reconcile vacuously against its own empty result. "
-                    "Give every required section its printed title."
+                    "Give every required section its printed title, or declare it "
+                    "in unpublished_sections with the reason this administrator "
+                    "does not print it."
+                )
+
+            contradictory = sorted(declared_absent & set(layout.section_titles))
+            if contradictory:
+                raise ValueError(
+                    f"{family.family_id}/{kind.value}: section(s) {contradictory} "
+                    "are both given a printed title and declared unpublished — "
+                    "the document either carries the section or it does not, and "
+                    "which reading won would depend on the consumer"
+                )
+
+            unknown_absent = sorted(declared_absent - required)
+            if unknown_absent:
+                raise ValueError(
+                    f"{family.family_id}/{kind.value}: unpublished_sections "
+                    f"declares {unknown_absent}, which no parser reads for this "
+                    "kind — an absence nobody asks about states nothing, and is "
+                    "usually a typo for a key that is required"
+                )
+
+            thin = sorted(
+                key
+                for key, reason in layout.unpublished_sections.items()
+                if len(reason.strip()) < 20
+            )
+            if thin:
+                raise ValueError(
+                    f"{family.family_id}/{kind.value}: unpublished_sections "
+                    f"{thin} give no usable reason — say what the document "
+                    "carries instead, never merely that the datum is missing"
                 )
 
             blank = sorted(k for k, v in layout.section_titles.items() if not v.strip())
@@ -401,19 +546,53 @@ class TrusteeReportFamilyRegistry:
             # would claim the same pages, and which won would depend on dict
             # order. That is the ambiguity this registry exists to make
             # impossible, so it is refused rather than resolved by convention.
-            seen: dict[str, str] = {}
+            # Two sections may share a printed title only when each names the
+            # table that tells them apart, so what must be unique is the pair.
+            # BNY Mellon prints the S&P and Fitch industry tables under one
+            # heading; without a marker both would claim the same pages and
+            # which won would depend on dict order.
+            seen: dict[tuple[str, str | None], str] = {}
             for key, title in sorted(layout.section_titles.items()):
-                if title in seen:
+                location = (title, layout.section_table_markers.get(key))
+                if location in seen:
+                    marker = location[1]
+                    detail = (
+                        f"both print as {title!r} with no table marker to tell "
+                        "them apart — give each the fingerprint of its own "
+                        "table's sub-header in section_table_markers"
+                        if marker is None
+                        else f"both print as {title!r} under the same table "
+                        f"marker {marker!r}"
+                    )
                     raise ValueError(
-                        f"{family.family_id}/{kind.value}: sections {seen[title]!r} "
-                        f"and {key!r} both print as {title!r} — page routing "
+                        f"{family.family_id}/{kind.value}: sections "
+                        f"{seen[location]!r} and {key!r} {detail} — page routing "
                         "would be ambiguous"
                     )
-                seen[title] = key
+                seen[location] = key
+
+            stray_markers = sorted(
+                set(layout.section_table_markers) - set(layout.section_titles)
+            )
+            if stray_markers:
+                raise ValueError(
+                    f"{family.family_id}/{kind.value}: section_table_markers "
+                    f"names {stray_markers}, which this family gives no printed "
+                    "title — a marker selects a table within a title it must have"
+                )
 
             undeclared = sorted(
                 key for key, _ in layout.waterfalls if key not in layout.section_titles
             )
+            absent_waterfall = sorted(
+                key for key, _ in layout.waterfalls if key in layout.unpublished_sections
+            )
+            if absent_waterfall:
+                raise ValueError(
+                    f"{family.family_id}/{kind.value}: waterfall section(s) "
+                    f"{absent_waterfall} are declared unpublished — a waterfall "
+                    "the parser must fill cannot be a section the document omits"
+                )
             if undeclared:
                 raise ValueError(
                     f"{family.family_id}/{kind.value}: waterfall section(s) "
