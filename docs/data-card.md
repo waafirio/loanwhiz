@@ -1068,6 +1068,67 @@ a silent fallback to S&P.
 
 ---
 
+### There is no cross-deal rating axis, and why one is still offered (#564)
+
+**Read this before quoting a cross-deal rating concentration.** #563 chose the
+industry axis by measuring which vocabulary actually joined. Measured the same
+way, **neither rating agency joins across the two committed deals** — so unlike
+`CROSS_DEAL_TAXONOMY` there is deliberately no `CROSS_DEAL_RATING_AGENCY`
+constant to reach for.
+
+The cause is coverage, not spelling. `sp_rating` and `fitch_rating` are
+populated only where a report publishes them, and Cairn's collateral schedule
+publishes no Fitch rating at all; its S&P ratings appear only for assets in the
+S&P CCC bucket, which is the one detail section that carries them. Contego
+publishes both far more widely. A combined rating figure is therefore one deal's
+rating distribution with the other deal's whole book sitting outside it.
+
+**A rating axis is still offered, and reports that hole at full size.**
+`cross_deal_exposure.rating_axis(agency)` builds the figure, and the balance it
+cannot place is returned in `UnattributedExposure` — a *different record kind*
+from `ExposureBucket`, so no loop over `buckets` can pick it up as though it
+were a holding. Inventing an `NR` or `Other` bucket to cover it would turn a
+coverage hole into a small, ignorable slice; a bucket label that reads as a
+residual is refused at construction. Percentages are taken over the **whole**
+book rather than over what was placed, because dividing by the attributed
+balance rescales every concentration upward in exact proportion to how much the
+report failed to publish.
+
+**Each axis folds its own labels, and a wrong fold raises rather than merging.**
+`industry_taxonomy.canonical_label` drops punctuation — which is what makes
+`Aerospace & Defense` and `Aerospace and defence` one bucket, and what would
+make `B`, `B+` and `B-` one bucket too, merging three notches into one and
+making the book read better than it is. So a rating axis folds case and
+whitespace only, and every fold is then proved injective over each deal's own
+published vocabulary before anything is summed. Contego publishes `B` and `B+`
+in one report, so the industry fold applied to its ratings raises instead of
+merging.
+
+**Currencies are never summed across.** Cairn prints `EUR` and Contego prints
+`Euro` — one currency, two spellings, and no orthographic rule turns one into
+the other. A small named alias table folds the spellings this repo has seen;
+anything unseen compares as published, so a genuine second currency and an
+unrecognised spelling both **raise**. That is the recoverable direction: a
+refusal is fixed by adding a line, whereas two currencies quietly added produce
+a number in no currency at all and nothing downstream can tell.
+
+**Regenerating this, rather than trusting the prose.** The coverage figures, the
+notch behaviour and the currency spellings are re-derived from the committed
+report fixtures by `tests/test_cross_deal_exposure.py` — deliberately not
+transcribed here as counts or percentages, because a number in prose goes stale
+in silence (#441):
+
+```bash
+python -m pytest tests/test_cross_deal_exposure.py
+```
+
+**What a third deal changes.** A deal publishing ratings across its whole book
+does not by itself make a cross-deal rating figure meaningful — what matters is
+the *intersection* of coverage. Re-run the suite and read the unattributed share
+before quoting one.
+
+---
+
 ## IMPORTANT: Synthetic vs Real Data
 
 > **The loan-level data (loan tapes) in this dataset is SYNTHETIC.**
