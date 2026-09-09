@@ -705,9 +705,12 @@ class CovenantInput(BaseInput):
 
         ``periods`` (the ESMA-tape dicts) is optional — when omitted, a minimal
         period dict carrying the ``reporting_date`` and ``pool_balance_eur`` is
-        synthesised from each ``DealState`` so tape-sourced metrics
-        (``default_pct``) and the clean-up-call pool metric still resolve. The
-        ``original_pool_balance`` denominator is taken from the first state.
+        synthesised per DISTINCT state date so tape-sourced metrics
+        (``default_pct``) and the clean-up-call pool metric still resolve. One
+        period per date, not one per state: the period-0 seed shares its date
+        with the first closing state, and both would put that date on the screen
+        twice. The ``original_pool_balance`` denominator is taken from the first
+        state, which is that seed.
         """
         if not deal_states:
             return cls(periods=periods or [], triggers=triggers or [])
