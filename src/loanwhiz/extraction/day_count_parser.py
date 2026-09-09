@@ -95,6 +95,7 @@ from typing import Literal
 
 from loanwhiz.extraction.payment_schedule_parser import (
     PaymentDateSchedule,
+    UnresolvableBusinessDay,
     payment_date_for,
     previous_payment_date,
     scheduled_dates_in_year,
@@ -276,9 +277,17 @@ _THIRTY_360 = re.compile(
 )
 
 #: A Class named in a Condition: ``Class A``, ``Class B-1``, ``Class B-2``. The
-#: trailing boundary stops ``"Class of Notes"`` and ``"Class Subordinated"`` from
-#: matching, and the strip suffix is optional because most classes have none.
-_CLASS = re.compile(r"\bClass\s+([A-F](?:-\d)?)\b")
+#: strip suffix is optional because most classes carry none.
+#:
+#: The designation is **not** bounded to ``A-F``. A hand-kept letter range is how
+#: #397's ``A-G`` cap silently under-reached, and the lesson recorded from #453 is
+#: to never carry one: a deal with a Class G would simply not appear in the parsed
+#: map, and — because an absent tranche falls back to the deal-wide count rather
+#: than refusing — would accrue on the wrong convention with nothing to say so.
+#: A single capital letter followed by a word boundary already excludes
+#: ``"Class of Notes"`` and ``"Class Subordinated"``, which is what the range was
+#: really doing.
+_CLASS = re.compile(r"\bClass\s+([A-Z](?:-\d+)?)\b")
 
 #: The *Accrual Period* proviso naming the Condition limb whose Payment Dates are
 #: not business-day adjusted. The limb is captured rather than assumed.
@@ -472,7 +481,15 @@ def _scheduled_date_for(schedule: PaymentDateSchedule, payment: date) -> date:
     """
     for year in (payment.year - 1, payment.year, payment.year + 1):
         for scheduled in scheduled_dates_in_year(schedule, year):
-            if payment_date_for(schedule, scheduled) == payment:
+            try:
+                resolved = payment_date_for(schedule, scheduled)
+            except UnresolvableBusinessDay:
+                # A neighbouring year outside the committed calendar cannot be
+                # resolved, but that is not this function's finding to report: it
+                # only means the match is not there. Falling through reaches the
+                # refusal below, which names the real problem.
+                continue
+            if resolved == payment:
                 return scheduled
     raise UnsourcedDayCount(
         f"{payment.isoformat()} is not a Scheduled Payment Date in the stated "

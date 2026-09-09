@@ -513,3 +513,22 @@ def test_a_tranche_without_its_own_day_count_uses_the_deal_wide_one() -> None:
     )
     need = _make_tranche_interest_need("class_a")(funds)
     assert need == pytest.approx(1_000_000.0 * 0.06 / 360 * 95)
+
+
+def test_a_class_beyond_this_deals_alphabet_is_not_dropped() -> None:
+    """The designation pattern carries no hand-kept letter range.
+
+    #397 capped a note-class alphabet at ``A-G`` and silently under-reached; the
+    lesson recorded from #453 is that a family bounded by a hand-written range
+    stops covering the deal that outgrows it. It bites hardest here because an
+    absent class does not refuse — it falls back to the deal-wide count, so a
+    dropped class accrues on the wrong convention with nothing to say so.
+    """
+    deeper = FIXED_LIMB.replace("Class B-2", "Class G-3")
+    assert set(parse_interest_day_counts(deeper)) == {"G-3"}
+
+
+def test_the_designation_pattern_still_excludes_prose_classes() -> None:
+    """Widening the range must not start matching ``"Class of Notes"``."""
+    assert set(parse_interest_day_counts(FIXED_LIMB)) == {"B-2"}
+    assert "of" not in parse_interest_day_counts(FIXED_LIMB)

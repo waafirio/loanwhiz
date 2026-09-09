@@ -430,10 +430,12 @@ class ReportAdapter:
         :meth:`_days_in_period` and every already-graded deal byte-identical. A
         basis with no schedule to measure on is also empty rather than guessed.
 
-        A class whose day count cannot be sourced does not silently fall back to
-        the deal-wide count: ``class_accrual_days`` raises, and the tranche is
-        left out of the map so the refusal surfaces as an unsourced convention
-        rather than as a plausible number.
+        A class whose day count cannot be sourced **raises** rather than falling
+        back to the deal-wide count, which is the same stance
+        :meth:`_days_in_period` takes on a schedule it cannot resolve. Omitting
+        the tranche instead would be the worse failure: an absent entry means
+        "no per-class convention", so the class would quietly accrue on the
+        floating count — the exact silent-wrong-convention this issue removes.
         """
         if self.payment_schedule is None or not self.note_day_counts:
             return {}
