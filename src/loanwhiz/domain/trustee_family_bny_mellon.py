@@ -37,15 +37,19 @@ anchored tail — which is the #494 ordering doing the work a prefix list cannot
 
 from __future__ import annotations
 
+import re
 from types import MappingProxyType
 
 from loanwhiz.domain.trustee_report_registry import (
-    ColumnOrder,
+    COVERAGE_OUTCOME,
     CountGrain,
+    CoverageTestRow,
     DocumentKind,
     DocumentLayout,
     FurnitureOrder,
     IdentifierPosition,
+    MONEY,
+    ReportHeader,
     RowGeometry,
     SECTION_ASSET_PART_I,
     SECTION_ASSET_PART_II,
@@ -81,20 +85,80 @@ _FURNITURE: tuple[str, ...] = (
     "Collateral Manager",
 )
 
-#: Coverage-test header fingerprints → the order their two like-typed
-#: percentage columns appear in. Both of BNY's state the computed figure before
-#: the required one, but they are listed rather than assumed: #480's swap
-#: reported a breaching test as passing, and either order read the other way
-#: does it silently.
-_MONTHLY_ORDER_MARKERS: MappingProxyType = MappingProxyType(
+#: How BNY's monthly report names its deal and its date. Page 1's first line is
+#: ``LEI :``, so the deal name is taken from the banner this administrator
+#: repeats in every page footer — ``Contego CLO XI DAC as of 30-Aug-2024`` —
+#: anchored to the whole line, so the copies reflowed into the tail of a data row
+#: cannot match — those lines end in a page number, not in the date. The date is
+#: stated once on page 1, in its own format.
+_MONTHLY_HEADER = ReportHeader(
+    deal_name=re.compile(
+        r"\A(?P<deal_name>\S.*?)\s+as of\s+\d{2}-[A-Za-z]{3}-\d{4}\s*\Z"
+    ),
+    reporting_date=re.compile(r"\AAs of\s+(?P<as_of>\d{2}-[A-Za-z]{3}-\d{4})\s*\Z"),
+    date_format="%d-%b-%Y",
+)
+
+#: The coverage tests BNY states in **both** renderings, and only those. The
+#: Compliance Tests table also carries collateral-quality and portfolio-profile
+#: rows the detail sections do not restate; matching them would put tests in one
+#: rendering and not the other, which the cross-rendering check refuses. This
+#: administrator names the reinvestment covenant ``Reinvestment Par Value Test``
+#: where U.S. Bank names it ``Reinvestment Overcollateralisation Test``.
+_TEST_NAME = (
+    r"(?P<name>(?:Class\s*[A-Z](?:/[A-Z])?\s*(?:Par\s*Value|Interest\s*Coverage)"
+    r"|Reinvestment\s*Par\s*Value)\s*Test)"
+)
+
+#: What BNY prints between a test's name and its percentages, which U.S. Bank
+#: prints nowhere: the ratio's numerator and denominator, as money.
+_NUMERATOR_DENOMINATOR = rf"\s*{MONEY}\s*{MONEY}"
+
+#: The required level, printed as its comparison operator and then the figure.
+#: The operator is matched and discarded rather than skipped over: a row whose
+#: direction this pattern cannot read is one whose required level it should not
+#: claim to have read either.
+_REQUIREMENT = r"\s*[<>]=?\s*(?P<required>\d+\.\d{2})%"
+
+#: Coverage-test header fingerprints, whitespace-stripped and upper-cased →
+#: the grammar each denotes. Exhaustive by construction (#480): a table whose
+#: header matches neither is refused rather than read in a guessed order.
+#:
+#: **The two headers do not agree on where the ratio sits, and that is the
+#: whole reason this is a grammar rather than an order.** Each prints three
+#: like-typed percentage columns. On the detail pages the computed ratio comes
+#: first and the third column is the level it must clear. In the Compliance
+#: Tests table the first column is the *prior* period's outcome — August's
+#: 26.19% is September's prior — so reading the ratio as the first percentage
+#: would grade every test against last month's figure, and silently: the value
+#: is real, in range, and of the right type.
+_MONTHLY_ROW_MARKERS: MappingProxyType = MappingProxyType(
     {
-        # Par Value Tests and Interest Coverage Tests: "… Actual Cushion Target …"
-        "TESTDESCRIPTIONNUMERATORDENOMINATORACTUALCUSHIONTARGETRESULT": (
-            ColumnOrder.RATIO_FIRST
+        # Par Value Tests and Interest Coverage Tests:
+        # "… Numerator Denominator | Actual | Cushion | Target | Result"
+        "TESTDESCRIPTIONNUMERATORDENOMINATORACTUALCUSHIONTARGETRESULT": CoverageTestRow(
+            pattern=re.compile(
+                _TEST_NAME
+                + _NUMERATOR_DENOMINATOR
+                + r"\s*(?P<actual>\d+\.\d{2})%\s*(?P<cushion>\d+\.\d{2})%"
+                + _REQUIREMENT
+                + rf"\s*(?P<result>{COVERAGE_OUTCOME})"
+            ),
+            ratio_group="actual",
+            required_group="required",
         ),
-        # Compliance Tests: "… Prior Outcome Outcome Requirement Result"
-        "TESTNAMENUMERATORDENOMINATORPRIOROUTCOMEOUTCOMEREQUIREMENTRESULT": (
-            ColumnOrder.RATIO_FIRST
+        # Compliance Tests:
+        # "… Numerator Denominator | Prior Outcome | Outcome | Requirement | Result"
+        "TESTNAMENUMERATORDENOMINATORPRIOROUTCOMEOUTCOMEREQUIREMENTRESULT": CoverageTestRow(
+            pattern=re.compile(
+                _TEST_NAME
+                + _NUMERATOR_DENOMINATOR
+                + r"\s*(?P<prior>\d+\.\d{2})%\s*(?P<outcome>\d+\.\d{2})%"
+                + _REQUIREMENT
+                + rf"\s*(?P<result>{COVERAGE_OUTCOME})"
+            ),
+            ratio_group="outcome",
+            required_group="required",
         ),
     }
 )
@@ -142,7 +206,9 @@ _MONTHLY = DocumentLayout(
     ),
     furniture_prefixes=_FURNITURE,
     furniture_order=FurnitureOrder.DATA_FIRST,
-    column_order_markers=_MONTHLY_ORDER_MARKERS,
+    coverage_row_markers=_MONTHLY_ROW_MARKERS,
+    report_header=_MONTHLY_HEADER,
+    coverage_summary_section=SECTION_PROFILE_TESTS,
     row_geometry=RowGeometry.REFLOWED_ROWS,
     identifier_position=IdentifierPosition.EMBEDDED,
     count_grain=CountGrain.ACCRUAL_RECORD,

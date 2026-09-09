@@ -60,10 +60,11 @@ Adding an administrator is a **table, not a code change**: write a module with a
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 from enum import Enum
 from types import MappingProxyType
-from typing import Mapping
+from typing import ClassVar, Mapping
 
 # ---------------------------------------------------------------------------
 # Document kinds and section keys
@@ -179,21 +180,79 @@ class CountGrain(str, Enum):
     ACCRUAL_RECORD = "accrual-record"
 
 
-class ColumnOrder(str, Enum):
-    """Which of a coverage-test table's two percentage columns comes first.
+#: A money figure as every registered administrator prints it: thousands
+#: separated by commas, always two decimals. A lexical fact about the documents
+#: rather than about either parser, so it lives here where a family's own row
+#: grammar can reach it — a family module cannot import the parser, which
+#: imports the families to register them.
+MONEY = r"\d{1,3}(?:,\d{3})*\.\d{2}"
 
-    The report states each coverage test's required level and computed ratio
-    twice, in opposite column orders, and the two are like-typed: either order,
-    assumed, swaps them in one place and reports a breaching test as passing
-    (#480). The order is therefore read off the table's own header, never off
-    which section it sits in.
+
+#: The outcomes a coverage test may state, as a regex alternation. It lives
+#: here, beside the row grammar, because every family's row pattern needs it and
+#: a family spelling its own would be free to omit one: a row whose outcome the
+#: pattern cannot name simply does not match, so the cross-rendering check would
+#: report the *test* missing from one rendering rather than its *outcome* being
+#: unreadable — a true statement pointing at the wrong thing.
+#: ``test_the_outcome_alternation_names_every_outcome`` pins it against
+#: :class:`~loanwhiz.primitives.collateral_schedule_parser.CoverageTestOutcome`.
+COVERAGE_OUTCOME = "Passed|Failed|N/A"
+
+
+@dataclass(frozen=True)
+class CoverageTestRow:
+    """How one family's coverage-test table prints a single row.
+
+    The generalisation of the old ``ColumnOrder`` enum, and for the same reason
+    it existed. #480's rule is unchanged: a table's columns are read off its own
+    **header**, never off which section it sits in, because a report states each
+    coverage test's computed ratio and its required level more than once and the
+    columns are like-typed — either reading, assumed, swaps them somewhere and
+    reports a breaching test as passing.
+
+    What changed is that two orders are not enough to say it. ``ColumnOrder``
+    could only answer "which of *two* percentage columns comes first", which is
+    true of U.S. Bank and false of BNY Mellon: BNY interposes the numerator and
+    denominator between the name and the percentages, prints a **third**
+    like-typed column (``Cushion`` on the detail pages, ``Prior Outcome`` on the
+    Compliance Tests table), and separates the required level from its
+    comparison operator. A two-valued enum cannot name the ratio among three
+    columns, and the two BNY headers do not even agree on its position.
+
+    So a family declares the row **grammar** instead: a pattern with named
+    groups, and which of those groups holds the ratio and which the required
+    level. That subsumes the enum — U.S. Bank's two renderings are now one
+    pattern read under two grammars — rather than adding a second mechanism
+    beside it.
+
+    Attributes:
+        pattern:
+            The compiled row pattern. Must carry a ``name`` group, a ``result``
+            group, and the two groups named below. Registration checks this:
+            a pattern missing one would raise :class:`IndexError` per row, at
+            parse time, on a document no test may hold.
+        ratio_group:
+            The group holding the test's **computed** ratio, in percent.
+        required_group:
+            The group holding the level the test **requires**, in percent.
     """
 
-    #: ``Test Description | Threshold | Current | Result`` — the Executive Summary.
-    REQUIRED_FIRST = "required-first"
+    pattern: re.Pattern[str]
+    ratio_group: str
+    required_group: str
 
-    #: ``… TEST | RATIO | REQUIRED LEVEL | CALCULATION | RESULT`` — detail pages.
-    RATIO_FIRST = "ratio-first"
+    #: The groups every row pattern must carry, whatever the family.
+    REQUIRED_GROUPS: ClassVar[tuple[str, ...]] = ("name", "result")
+
+    def missing_groups(self) -> list[str]:
+        """The named groups this grammar promises but its pattern does not define.
+
+        Returned rather than raised so :meth:`TrusteeReportFamilyRegistry.register`
+        can name the family and the document kind in one message.
+        """
+        defined = set(self.pattern.groupindex)
+        promised = (*self.REQUIRED_GROUPS, self.ratio_group, self.required_group)
+        return sorted({group for group in promised if group not in defined})
 
 
 class FurnitureOrder(str, Enum):
@@ -267,6 +326,57 @@ class IdentifierPosition(str, Enum):
 # ---------------------------------------------------------------------------
 
 
+#: The one rendering of a reporting date every consumer of a parsed report
+#: reads. Families state the date in their own formats — U.S. Bank as
+#: ``16/12/2024``, BNY Mellon as ``30-Aug-2024`` — and a parse re-renders into
+#: this one, so a downstream reader never has to know which administrator it
+#: came from. Normalising is not a liberty taken with a published figure: the
+#: date is a key, and a key that renders differently per family matches nothing
+#: in one of them, which surfaces as a grading verdict rather than as a bug.
+CANONICAL_DATE_FORMAT = "%d/%m/%Y"
+
+
+@dataclass(frozen=True)
+class ReportHeader:
+    """How a family's report states which deal and which date it is about.
+
+    Both registered administrators open page 1 with the same three lines — the
+    deal name, the document's title, then ``As of <date>`` — but nothing else
+    about them agrees: U.S. Bank restates the date lower down as
+    ``As of : 16/12/2024`` where BNY prints ``As of 30-Aug-2024`` once and then
+    repeats ``<deal> as of 30-Aug-2024`` in every page footer, and BNY's page-1
+    first line is ``LEI :`` rather than the deal name.
+
+    Read off declared patterns rather than off fixed line positions for the
+    reason the rest of this record exists: taking the deal name from page 1's
+    first line is true of one family and silently wrong for the next, and a
+    report parsed under the wrong deal name still reconciles — every internal
+    oracle in the parser is about the document agreeing with *itself*.
+
+    Attributes:
+        deal_name:
+            Searched over page 1; must define a ``deal_name`` group.
+        reporting_date:
+            Searched over the opening pages; must define an ``as_of`` group.
+        date_format:
+            :func:`~datetime.datetime.strptime` format for the ``as_of`` group,
+            which the parse re-renders into :data:`CANONICAL_DATE_FORMAT`.
+    """
+
+    deal_name: re.Pattern[str]
+    reporting_date: re.Pattern[str]
+    date_format: str
+
+    def missing_groups(self) -> list[str]:
+        """The named groups this header promises but its patterns do not define."""
+        missing = []
+        if "deal_name" not in self.deal_name.groupindex:
+            missing.append("deal_name")
+        if "as_of" not in self.reporting_date.groupindex:
+            missing.append("as_of")
+        return missing
+
+
 @dataclass(frozen=True)
 class DocumentLayout:
     """How one family's one document kind is laid out on the page.
@@ -287,11 +397,24 @@ class DocumentLayout:
         furniture_order:
             Whether furniture is filtered before or after the data-row test.
             See :class:`FurnitureOrder`; ``DATA_FIRST`` is the #494 ordering.
-        column_order_markers:
-            Whitespace-stripped, upper-cased header fingerprint → the column
-            order it denotes. Exhaustive by construction: a coverage-test table
-            whose header matches no entry is refused rather than read in a
-            guessed order.
+        coverage_row_markers:
+            Whitespace-stripped, upper-cased header fingerprint → the
+            :class:`CoverageTestRow` grammar that header denotes. Exhaustive by
+            construction: a coverage-test table whose header matches no entry is
+            refused rather than read in a guessed order.
+        report_header:
+            How this family's report states its deal name and reporting date.
+            See :class:`ReportHeader`; required for the monthly report, whose
+            parse keys every period on that date.
+        coverage_summary_section:
+            The section carrying the report's **second** rendering of its
+            coverage tests, which the parse is cross-checked against. It is a
+            family property, not a constant: U.S. Bank restates the tests in its
+            Executive Summary, where BNY Mellon's Compliance Summary states only
+            the note classes and the restatement lives in its Compliance Tests
+            table. Naming the wrong section here does not degrade the
+            cross-check, it removes it — the section states no coverage tests,
+            so the two renderings agree about the empty set.
         waterfalls:
             ``(section key, NotesCashPeriod field)`` pairs, in the order the
             report prints them. Empty for kinds that publish no waterfall.
@@ -327,9 +450,11 @@ class DocumentLayout:
     section_titles: Mapping[str, str]
     furniture_prefixes: tuple[str, ...] = ()
     furniture_order: FurnitureOrder = FurnitureOrder.DATA_FIRST
-    column_order_markers: Mapping[str, ColumnOrder] = field(
+    coverage_row_markers: Mapping[str, CoverageTestRow] = field(
         default_factory=lambda: MappingProxyType({})
     )
+    coverage_summary_section: str = SECTION_EXEC_SUMMARY
+    report_header: ReportHeader | None = None
     waterfalls: tuple[tuple[str, str], ...] = ()
     unpublished_sections: Mapping[str, str] = field(
         default_factory=lambda: MappingProxyType({})
@@ -559,6 +684,57 @@ class TrusteeReportFamilyRegistry:
                     "no population to reconcile against, leaving par as the "
                     "only check and a zero-balance row free to go missing"
                 )
+
+            # The #531 lesson, applied to the coverage-test row grammar. A
+            # family that declares no grammar does not fail loudly: every row
+            # pattern lookup finds nothing, so the section parses zero tests,
+            # and the cross-rendering check then agrees that both renderings
+            # name the same empty set. The existing families are shielded by
+            # their fixtures; a newly registered one has none, so registration
+            # is the only point that can see this for a document no test holds.
+            if kind is DocumentKind.MONTHLY_REPORT:
+                if not layout.coverage_row_markers:
+                    raise ValueError(
+                        f"{family.family_id}/{kind.value}: coverage_row_markers "
+                        "is empty — every coverage-test table would match no "
+                        "header, parse no rows, and reconcile vacuously against "
+                        "its own empty result. Declare the grammar each of this "
+                        "administrator's coverage-test headers denotes."
+                    )
+                for marker, grammar in sorted(layout.coverage_row_markers.items()):
+                    missing_groups = grammar.missing_groups()
+                    if missing_groups:
+                        raise ValueError(
+                            f"{family.family_id}/{kind.value}: the row grammar "
+                            f"for header {marker!r} names group(s) "
+                            f"{missing_groups} its pattern does not define — "
+                            "the parse would raise per row, at run time, on a "
+                            "document no fixture holds"
+                        )
+                if layout.report_header is None:
+                    raise ValueError(
+                        f"{family.family_id}/{kind.value}: no report_header — "
+                        "the parse would key every period on a date it never "
+                        "read, and an answer key authored from it would refuse "
+                        "the period rather than say why"
+                    )
+                header_missing = layout.report_header.missing_groups()
+                if header_missing:
+                    raise ValueError(
+                        f"{family.family_id}/{kind.value}: report_header "
+                        f"pattern(s) define no {header_missing} group — the "
+                        "parse would raise on the first report it read"
+                    )
+                summary_section = layout.coverage_summary_section
+                if summary_section not in layout.section_titles:
+                    raise ValueError(
+                        f"{family.family_id}/{kind.value}: "
+                        f"coverage_summary_section is {summary_section!r}, which "
+                        "this layout gives no printed title — the second "
+                        "rendering would route to no pages, and the "
+                        "cross-rendering check would pass on the empty set it "
+                        "then compares against itself"
+                    )
 
             contradictory = sorted(declared_absent & set(layout.section_titles))
             if contradictory:

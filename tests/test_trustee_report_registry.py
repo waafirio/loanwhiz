@@ -34,6 +34,8 @@ import loanwhiz.primitives.base  # noqa: F401  (import-order guard, see above)
 import dataclasses
 from pathlib import Path
 
+import re
+
 import pytest
 
 from loanwhiz.domain.trustee_report_families import BNY_MELLON, US_BANK
@@ -46,7 +48,8 @@ from loanwhiz.domain.trustee_report_registry import (
     SECTION_NV_INTEREST_POP,
     SECTION_NV_PRINCIPAL_POP,
     SECTION_SP_INDUSTRY,
-    ColumnOrder,
+    COVERAGE_OUTCOME,
+    CoverageTestRow,
     DocumentKind,
     DocumentLayout,
     FurnitureOrder,
@@ -59,6 +62,17 @@ from loanwhiz.primitives.note_valuation_parser import parse_note_valuation_text
 
 FIXTURE_DIR = Path(__file__).parent / "fixtures"
 MONTHLY_FIXTURE = FIXTURE_DIR / "collateral_schedule" / "cairn-clo-xvii-march-2025.txt"
+
+#: A row grammar for the hand-built layouts below. Its pattern is never matched
+#: against a document — these tests drive registration and refusal paths — so it
+#: only has to be well-formed: a name, a ratio, a required level, an outcome.
+_ROW_GRAMMAR = CoverageTestRow(
+    pattern=re.compile(
+        r"(?P<name>\w+)\s+(?P<ratio>\d+\.\d{2})%\s+(?P<required>\d+\.\d{2})%\s+(?P<result>\w+)"
+    ),
+    ratio_group="ratio",
+    required_group="required",
+)
 NOTE_VALUATION_FIXTURE = FIXTURE_DIR / "note_valuation" / "cairn-clo-xvii-january-2025.txt"
 
 
@@ -81,7 +95,10 @@ def _complete_family(**overrides) -> TrusteeReportFamily:
                 },
                 furniture_prefixes=("Page ",),
                 furniture_order=FurnitureOrder.FURNITURE_FIRST,
-                column_order_markers={"TESTHEADER": ColumnOrder.RATIO_FIRST},
+                coverage_row_markers={"TESTHEADER": _ROW_GRAMMAR},
+                report_header=US_BANK.layout(
+                    DocumentKind.MONTHLY_REPORT
+                ).report_header,
             ),
             DocumentKind.NOTE_VALUATION_REPORT: DocumentLayout(
                 section_titles={
@@ -135,6 +152,116 @@ def test_a_family_missing_a_required_section_is_refused_at_registration() -> Non
     assert SECTION_CCC in message, "the refusal must name the missing section"
     assert "vacuously" in message
     assert registry.all() == (), "a refused family must not be half-registered"
+
+
+def test_the_outcome_alternation_names_every_outcome() -> None:
+    """``COVERAGE_OUTCOME`` and ``CoverageTestOutcome`` cannot drift apart.
+
+    Every family's row pattern names the outcomes through the one alternation,
+    and the parser turns what it captured into the enum. An outcome in the enum
+    but missing from the alternation is the dangerous direction: the row matches
+    nothing, so it is absent from one rendering and present in the other, and the
+    cross-rendering check then reports the *test* missing rather than its outcome
+    being unreadable — a true statement pointing at the wrong thing.
+    """
+    from loanwhiz.primitives.collateral_schedule_parser import (  # noqa: PLC0415
+        CoverageTestOutcome,
+    )
+
+    assert set(COVERAGE_OUTCOME.split("|")) == {o.value for o in CoverageTestOutcome}
+
+
+def _replace_monthly(family: TrusteeReportFamily, **changes) -> TrusteeReportFamily:
+    """*family* with its monthly layout altered — the shape these guards break."""
+    documents = dict(family.documents)
+    documents[DocumentKind.MONTHLY_REPORT] = dataclasses.replace(
+        documents[DocumentKind.MONTHLY_REPORT], **changes
+    )
+    return dataclasses.replace(family, documents=documents)
+
+
+def test_a_family_declaring_no_coverage_test_row_grammar_is_refused() -> None:
+    """#531's rule on the axis #534 found still un-generalised.
+
+    A family with no row grammar does not fail loudly: every coverage-test table
+    matches no header, parses no rows, and the cross-rendering check then agrees
+    that both renderings name the same empty set. The registered families are
+    shielded by their fixtures, so registration is the only point that can see
+    this for a document no test will ever hold.
+    """
+    registry = TrusteeReportFamilyRegistry()
+
+    with pytest.raises(ValueError) as excinfo:
+        registry.register(_replace_monthly(_complete_family(), coverage_row_markers={}))
+
+    message = str(excinfo.value)
+    assert "coverage_row_markers" in message
+    assert "vacuously" in message
+    assert registry.all() == (), "a refused family must not be half-registered"
+
+
+def test_a_row_grammar_naming_a_group_its_pattern_lacks_is_refused() -> None:
+    """The promise and the pattern are checked against each other, not assumed.
+
+    ``ratio_group`` names a group by string, so a typo is invisible until a real
+    row matches and the lookup raises — at parse time, on a document no fixture
+    holds. Registration is where the two halves can be compared for free.
+    """
+    registry = TrusteeReportFamilyRegistry()
+    typo = dataclasses.replace(_ROW_GRAMMAR, ratio_group="rat1o")
+
+    with pytest.raises(ValueError, match="rat1o"):
+        registry.register(
+            _replace_monthly(_complete_family(), coverage_row_markers={"H": typo})
+        )
+    assert registry.all() == ()
+
+
+def test_a_coverage_summary_section_with_no_printed_title_is_refused() -> None:
+    """Naming the wrong section removes the cross-check rather than breaking it.
+
+    The second rendering is what the coverage-test parse is checked against. A
+    section this family gives no title routes to no pages and states no tests,
+    so the check would compare the detail pages against an empty set and agree.
+    """
+    registry = TrusteeReportFamilyRegistry()
+
+    with pytest.raises(ValueError, match="coverage_summary_section"):
+        registry.register(
+            _replace_monthly(_complete_family(), coverage_summary_section="not_a_section")
+        )
+    assert registry.all() == ()
+
+
+def test_a_family_declaring_no_report_header_is_refused() -> None:
+    """A report parsed under the wrong deal name still reconciles.
+
+    Every oracle in the schedule parser asks whether the document agrees with
+    *itself*, so nothing downstream notices a header read by the wrong rule —
+    which is why the header patterns are declared and their absence refused.
+    """
+    registry = TrusteeReportFamilyRegistry()
+
+    with pytest.raises(ValueError, match="report_header"):
+        registry.register(_replace_monthly(_complete_family(), report_header=None))
+    assert registry.all() == ()
+
+
+def test_every_registered_family_declares_a_row_grammar_for_every_header() -> None:
+    """The live families satisfy the guard, over the real registry.
+
+    The refusals above drive hand-built families; this asserts the shipped ones
+    are not exempt, so a family added later without a grammar cannot pass by
+    never reaching a test that builds one.
+    """
+    for family in FAMILY_REGISTRY.all():
+        monthly = family.layout(DocumentKind.MONTHLY_REPORT)
+        assert monthly.coverage_row_markers, family.family_id
+        for marker, grammar in monthly.coverage_row_markers.items():
+            assert grammar.missing_groups() == [], f"{family.family_id}/{marker}"
+        assert monthly.coverage_summary_section in monthly.section_titles
+        assert monthly.report_header is not None
+        assert monthly.report_header.missing_groups() == []
 
 
 def test_every_required_section_is_individually_guarded() -> None:
@@ -417,7 +544,7 @@ def test_a_family_declaring_an_unimplemented_furniture_order_is_refused() -> Non
         module._assert_furniture_order(inverted, US_BANK.label)
 
 
-def test_the_coverage_test_column_order_comes_from_the_family() -> None:
+def test_the_coverage_test_row_grammar_comes_from_the_family() -> None:
     """Swap the family's markers and the parse refuses — so the table is the source.
 
     The existing coverage-test-header regression corrupts the *document*, which a
@@ -433,7 +560,7 @@ def test_the_coverage_test_column_order_comes_from_the_family() -> None:
     monthly = US_BANK.layout(DocumentKind.MONTHLY_REPORT)
     unmatched = dataclasses.replace(
         monthly,
-        column_order_markers={"AHEADERTHISREPORTNEVERPRINTS": ColumnOrder.RATIO_FIRST},
+        coverage_row_markers={"AHEADERTHISREPORTNEVERPRINTS": _ROW_GRAMMAR},
     )
     monkeypatched = pytest.MonkeyPatch()
     monkeypatched.setattr(module, "_resolve_layout", lambda pages: unmatched)

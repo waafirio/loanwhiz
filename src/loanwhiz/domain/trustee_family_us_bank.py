@@ -17,6 +17,7 @@ byte-identical either side of it.
 
 from __future__ import annotations
 
+import re
 from types import MappingProxyType
 
 from loanwhiz.domain.trustee_report_registry import (
@@ -38,10 +39,12 @@ from loanwhiz.domain.trustee_report_registry import (
     SECTION_PROFILE_TESTS,
     SECTION_SP_INDUSTRY,
     SECTION_SP_RATING,
-    ColumnOrder,
+    COVERAGE_OUTCOME,
+    CoverageTestRow,
     DocumentKind,
     DocumentLayout,
     FurnitureOrder,
+    ReportHeader,
     TrusteeReportFamily,
     register_family,
 )
@@ -75,13 +78,46 @@ _NOTE_VALUATION_FURNITURE: tuple[str, ...] = (
     "Closing Balance Accrued Total Interest",
 )
 
-#: Coverage-test header fingerprints, whitespace-stripped and upper-cased so one
-#: entry covers both renderings. Exhaustive by construction: a table whose
-#: header matches neither is refused rather than read in a guessed order (#480).
-_MONTHLY_ORDER_MARKERS = MappingProxyType(
+#: How U.S. Bank's monthly report names its deal and its date. The deal name is
+#: page 1's opening line; the date is restated lower down in a delimited form
+#: (``As of : 16/12/2024``) which is preferred over page 1's prose rendering
+#: (``As of 16 December, 2024``) because it is unambiguous about day and month.
+_MONTHLY_HEADER = ReportHeader(
+    deal_name=re.compile(r"\A(?P<deal_name>\S.*?)\s*\Z"),
+    reporting_date=re.compile(r"As of\s*:\s*(?P<as_of>\d{2}/\d{2}/\d{4})"),
+    date_format="%d/%m/%Y",
+)
+
+#: One coverage-test row, as U.S. Bank prints it in both renderings: the test's
+#: name, two like-typed percentage columns, an optional calculation label, and
+#: the stated outcome. The name alternation is this administrator's own — it
+#: prints ``Reinvestment Overcollateralisation Test`` where BNY Mellon prints
+#: ``Reinvestment Par Value Test`` for the same covenant — which is why the
+#: pattern belongs to the family rather than to the parser.
+_MONTHLY_ROW = re.compile(
+    r"(?P<name>(?:Class\s*[A-Z](?:/[A-Z])?\s*(?:Par\s*Value|Interest\s*Coverage)"
+    r"|Reinvestment\s*Overcollateralisation)\s*Test)\s*"
+    r"(?P<first>\d+\.\d{2})%\s*(?P<second>\d+\.\d{2})%\s*"
+    r"(?:(?P<calculation>[A-Z]/[A-Z])\s*)?"
+    rf"(?P<result>{COVERAGE_OUTCOME})"
+)
+
+#: Coverage-test header fingerprints, whitespace-stripped and upper-cased.
+#: Exhaustive by construction: a table whose header matches neither is refused
+#: rather than read in a guessed order (#480). Both renderings share one row
+#: pattern and differ only in which of its two percentage columns is the ratio —
+#: which is precisely what the old two-valued ``ColumnOrder`` said, now said as
+#: a group name so a third like-typed column cannot break it.
+_MONTHLY_ROW_MARKERS = MappingProxyType(
     {
-        "TESTDESCRIPTIONTHRESHOLDCURRENTRESULT": ColumnOrder.REQUIRED_FIRST,
-        "TESTRATIOREQUIREDLEVELCALCULATIONRESULT": ColumnOrder.RATIO_FIRST,
+        # Executive Summary: "Test Description | Threshold | Current | Result".
+        "TESTDESCRIPTIONTHRESHOLDCURRENTRESULT": CoverageTestRow(
+            pattern=_MONTHLY_ROW, ratio_group="second", required_group="first"
+        ),
+        # Detail pages: "… TEST | RATIO | REQUIRED LEVEL | CALCULATION | RESULT".
+        "TESTRATIOREQUIREDLEVELCALCULATIONRESULT": CoverageTestRow(
+            pattern=_MONTHLY_ROW, ratio_group="first", required_group="second"
+        ),
     }
 )
 
@@ -149,7 +185,8 @@ US_BANK: TrusteeReportFamily = register_family(
                     # Safe here only because every data row opens with an asset
                     # identifier, which no furniture prefix can produce.
                     furniture_order=FurnitureOrder.FURNITURE_FIRST,
-                    column_order_markers=_MONTHLY_ORDER_MARKERS,
+                    coverage_row_markers=_MONTHLY_ROW_MARKERS,
+                    report_header=_MONTHLY_HEADER,
                 ),
                 DocumentKind.NOTE_VALUATION_REPORT: DocumentLayout(
                     section_titles=MappingProxyType(

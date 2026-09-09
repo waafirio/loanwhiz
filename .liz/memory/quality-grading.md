@@ -169,3 +169,17 @@ publishing the count, check what the *un*counted members lack; if the answer is
 "nothing" say so beside the figure, and never widen the set to raise it.
 
 Refs: #515
+
+
+## 2026-09-09 · decision · #534
+
+Keep "carries a committed answer key" and "whose graded cell passes" as two
+sets, never one. Committing genuine ground truth for a deal the engine cannot
+yet grade reds any tally asserting key-count == pass-count, and the cheap fix is
+to withhold the key — suppressing real ground truth to protect a green number.
+Split the sets, and assert the *reason* the unmatched deal is not-applicable —
+its unmatched names, not its grade — so the cell says why it did not grade and a
+later fix reds the line instead of passing quietly.
+
+Refs: #534
+
