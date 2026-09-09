@@ -90,3 +90,16 @@ Then check the result against a value another document states independently.
 
 Refs: #528
 Refs: #539 — same route, one Condition further out: the day-count fraction.
+
+## 2026-09-10 · pattern · #571
+
+When a static guard forbids serialising a record without its provenance, expect
+it to flag that record's own **declaration** too: a spec entry naming the same
+fields is indistinguishable from a serialisation of them, and it is the input
+side that reads as the false positive. Make the declaration carry the qualifier
+rather than narrowing the guard's signature — a declared row that does not say
+what it is relies on something downstream to say it for them, which is the exact
+habit the guard exists to break. Narrowing buys silence and re-opens the hole one
+level upstream, where nothing is watching.
+
+Refs: #571

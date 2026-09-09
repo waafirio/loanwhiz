@@ -30,6 +30,7 @@ triage by opening the entry, not by reading the line.
   - [2026-09-08 · pitfall · #484](#2026-09-08--pitfall--484) — keywords: balance share, count share, generated population, per-bucket draw, stratification, arrears bucket, rendered axis
   - [2026-09-02 · pitfall · #441](#2026-09-02--pitfall--441) — keywords: completeness_score
   - [2026-09-09 · pattern · #528](#2026-09-09--pattern--528) — keywords: back-solved input, read past the extractor, max_chars truncation, pypdf text layer, stated schedule, deterministic parser, cross-check against another document
+  - [2026-09-10 · pattern · #571](#2026-09-10--pattern--571) — keywords: provenance guard, declaration side, spec entry, false positive, narrowing the signature, self-describing input, qualifier on the record
 - [Registering a deal (deals.json)](deal-registration.md) — keywords: deals.json, notes_cash_report_urls, routing promise, registry key, asset_class, answer key invariant
   - [2026-09-05 · pitfall · #455](#2026-09-05--pitfall--455) — keywords: notes_cash_report_urls, _reconstruct_series
   - [2026-09-08 · pitfall · #483](#2026-09-08--pitfall--483) — keywords: sha256(tape_url).json, _tape_analytics_period
