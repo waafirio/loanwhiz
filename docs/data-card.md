@@ -125,10 +125,73 @@ into the deal's answer key and registers the document:
 https://ise-prodnr-eu-west-1-data-integration.s3-eu-west-1.amazonaws.com/202502/12423666-a060-4e34-b3e8-f5510297ac6f.pdf
 ```
 
-Registering it changes no routing for this deal — `_reconstruct_series` matches
-`tape_urls` first and the derived tapes have been registered since #471 — so the
-key is a *claim about published ground truth*, which is all it was ever meant to
-be.
+Registering it changed no routing at the time — `_reconstruct_series` matched
+`tape_urls` first and the derived tapes had been registered since #471 — so the
+key was a *claim about published ground truth*, which is all it was meant to be.
+**#524 changed that**: this report is now the source the deal's live series
+folds. The rule, and what it does to the three periods it does not cover, is
+below.
+
+#### Which source a deal's live series folds (the precedence contract, #484/#524)
+
+**Read this before registering a second source against a deal.** A deal may
+register both `tape_urls` and `notes_cash_report_urls`, and `_reconstruct_series`
+folds exactly one of them into the ledger `/waterfall`, `/compliance` and
+`/reconciliation` read. Which one is a stated rule, not dispatch order. The ranks,
+senior first:
+
+1. a **first-hand** tape — the originator's own loan-level statement, filed under
+   Article 7(1)(a). Nothing published stands closer to the pool, so it keeps the
+   tape path. **An undeclared tape identifier counts as first-hand**: it names a
+   published file and this repo holds no evidence it is anything less, so
+   registering an ordinary tape URL never silently demotes a deal.
+2. the deal's **published report** — the document itself.
+3. a **derived** or **synthetic** tape — LoanWhiz's rendering of a document the
+   deal already publishes, or rows that describe nobody.
+
+A deal yields to its reports when no registered tape is first-hand **and** a
+report is registered to yield to. A deal whose only pool data is generated and
+which publishes no report (Green Lion 2026-1) keeps its tape path: yielding there
+would leave it not-modelable, which is a regression rather than honesty.
+
+Rank 2-over-3 is #484's, written to stop a synthetic Annex 2 pool displacing the
+Notes & Cash reports the Green Lion vintages' answer keys grade against. Rank
+1-over-2-over-3 is #524's, and it is what moves *this* deal: the reading of a
+document does not outrank the document. Cairn's report is its only
+Priority-of-Payments-bearing source, the only one a `validated` cell can be
+earned on, and the only path already fitted to its eight-class split-B stack —
+`ReportAdapter` takes the tranche list from the deal (#527), while the tape
+path's `_collections_tranche_args` is still shaped for `class_a`/`class_b`/
+`class_c` and refuses this stack outright.
+
+**What happens to the periods the preferred source does not cover.** They are
+**set aside, and named** — never dropped in silence. `_set_aside_tape_periods`
+returns the reporting date of every tape a yield displaced, and the deal's 422
+quotes them. This matters most here, because Cairn's two sources overlap on **no
+period at all**: the derived tapes are reconstructed from the December 2024,
+February 2025 and March 2025 trustee reports, while the Note Valuation Report is
+a January 2025 cut. A rule that narrowed the series to one period without saying
+so would trade a blank screen for a misleadingly short one, which is worse —
+a short series looks like data.
+
+Set aside is not lost, and not unpublished. Those three periods remain the source
+of the deal's collateral time series — the pool analytics read the tapes
+directly, not the folded series — and of the committed answer key's covenant
+rows, which `quality_harness._grade_covenants` grades from `key.periods` with no
+series at all. What they stop being is the *ledger* the waterfall and compliance
+screens fold.
+
+**A defect this rule exposes rather than causes, recorded here because it bites
+the next registrant too.** `/compliance` builds its period list from
+`deal["tape_urls"]` unconditionally and then pairs it positionally against the
+folded series' states. For a deal that has yielded, those are different sources:
+Green Lion 2024-1 today labels its compliance screen with its synthetic tape's
+`2026-04-30` while the states it evaluates are the report's `2025-10-23` →
+`2026-04-23`, and reports "across 1 reporting period" for a four-state ledger.
+#524 did not fix it — the naive fix (drop the tape periods) strips the pool
+analytics the tape-sourced triggers need, turning evaluable triggers unevaluable,
+so getting per-period pool analytics onto a report-driven deal is real work with
+its own issue. It is named here so it is not rediscovered as a surprise.
 
 **The absence it used to record was a *not-yet*, not a *never*, and that
 distinction outlives it.** Leone Arancio and Sol-Lion II still carry no
@@ -602,9 +665,11 @@ through it is parameterisation. `tests/test_clo_engine_execution.py` pins this.
 
 Two things that proof deliberately does **not** claim. It exercises the engine
 *kernel*, not the ingestion path: the production `/deal/{id}` reconstruction
-still refuses this deal with a labelled 422, because it has neither an ESMA tape
-nor a registered Notes & Cash report, and giving it one would mean a third
-ingestion adapter. And it validates nothing — no cell reads `validated`, because
+still refuses this deal with a labelled 422. **The reason has changed and the
+old one is no longer true** — the deal registers both a derived tape (#471) and a
+Notes & Cash report (#495), and since #524 it routes to the report path, where it
+refuses because that report resolves offline for no committed fixture and no
+durable cache. Supplying that carrier is what remains. And it validates nothing — no cell reads `validated`, because
 no validation builder is committed. #481's answer key does not change either
 statement: the graded `covenants` row is reached through `/quality-matrix`, not
 through the deal's reconstruction, which still 422s on `class_a_rate_pct`.
