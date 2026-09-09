@@ -34,6 +34,8 @@ import loanwhiz.primitives.base  # noqa: F401  (import-order guard, see above)
 import dataclasses
 from pathlib import Path
 
+import re
+
 import pytest
 
 from loanwhiz.domain.trustee_report_families import BNY_MELLON, US_BANK
@@ -46,7 +48,7 @@ from loanwhiz.domain.trustee_report_registry import (
     SECTION_NV_INTEREST_POP,
     SECTION_NV_PRINCIPAL_POP,
     SECTION_SP_INDUSTRY,
-    ColumnOrder,
+    CoverageTestRow,
     DocumentKind,
     DocumentLayout,
     FurnitureOrder,
@@ -59,6 +61,17 @@ from loanwhiz.primitives.note_valuation_parser import parse_note_valuation_text
 
 FIXTURE_DIR = Path(__file__).parent / "fixtures"
 MONTHLY_FIXTURE = FIXTURE_DIR / "collateral_schedule" / "cairn-clo-xvii-march-2025.txt"
+
+#: A row grammar for the hand-built layouts below. Its pattern is never matched
+#: against a document — these tests drive registration and refusal paths — so it
+#: only has to be well-formed: a name, a ratio, a required level, an outcome.
+_ROW_GRAMMAR = CoverageTestRow(
+    pattern=re.compile(
+        r"(?P<name>\w+)\s+(?P<ratio>\d+\.\d{2})%\s+(?P<required>\d+\.\d{2})%\s+(?P<result>\w+)"
+    ),
+    ratio_group="ratio",
+    required_group="required",
+)
 NOTE_VALUATION_FIXTURE = FIXTURE_DIR / "note_valuation" / "cairn-clo-xvii-january-2025.txt"
 
 
@@ -81,7 +94,10 @@ def _complete_family(**overrides) -> TrusteeReportFamily:
                 },
                 furniture_prefixes=("Page ",),
                 furniture_order=FurnitureOrder.FURNITURE_FIRST,
-                column_order_markers={"TESTHEADER": ColumnOrder.RATIO_FIRST},
+                coverage_row_markers={"TESTHEADER": _ROW_GRAMMAR},
+                report_header=US_BANK.layout(
+                    DocumentKind.MONTHLY_REPORT
+                ).report_header,
             ),
             DocumentKind.NOTE_VALUATION_REPORT: DocumentLayout(
                 section_titles={
@@ -417,7 +433,7 @@ def test_a_family_declaring_an_unimplemented_furniture_order_is_refused() -> Non
         module._assert_furniture_order(inverted, US_BANK.label)
 
 
-def test_the_coverage_test_column_order_comes_from_the_family() -> None:
+def test_the_coverage_test_row_grammar_comes_from_the_family() -> None:
     """Swap the family's markers and the parse refuses — so the table is the source.
 
     The existing coverage-test-header regression corrupts the *document*, which a
@@ -433,7 +449,7 @@ def test_the_coverage_test_column_order_comes_from_the_family() -> None:
     monthly = US_BANK.layout(DocumentKind.MONTHLY_REPORT)
     unmatched = dataclasses.replace(
         monthly,
-        column_order_markers={"AHEADERTHISREPORTNEVERPRINTS": ColumnOrder.RATIO_FIRST},
+        coverage_row_markers={"AHEADERTHISREPORTNEVERPRINTS": _ROW_GRAMMAR},
     )
     monkeypatched = pytest.MonkeyPatch()
     monkeypatched.setattr(module, "_resolve_layout", lambda pages: unmatched)

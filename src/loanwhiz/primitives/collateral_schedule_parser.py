@@ -77,6 +77,7 @@ from __future__ import annotations
 
 import os
 import re
+from datetime import datetime
 import time
 import urllib.request
 from decimal import Decimal
@@ -89,8 +90,10 @@ from typing import TYPE_CHECKING, Any, Final
 from pydantic import BaseModel, Field, PrivateAttr
 
 from loanwhiz.domain.trustee_report_families import (
+    CANONICAL_DATE_FORMAT,
     FAMILY_REGISTRY,
-    ColumnOrder,
+    MONEY,
+    CoverageTestRow,
     DocumentKind,
     CountGrain,
     DocumentLayout,
@@ -275,7 +278,8 @@ IDENTIFIER_RE = re.compile(rf"^({_IDENTIFIER})(?=\D|$)")
 _EMBEDDED_IDENTIFIER_RE = re.compile(rf"(?<![A-Z0-9])({_IDENTIFIER})(?=\D|$)")
 
 #: A comma-grouped money amount with exactly two decimals.
-MONEY = r"\d{1,3}(?:,\d{3})*\.\d{2}"
+# ``MONEY`` now lives on the registry, where a family's own row grammar can
+# reach it; re-exported here because this module's callers import it from here.
 _MONEY_RE = re.compile(MONEY)
 
 #: The two renderings. The same trustee produces these reports two ways: some
@@ -354,13 +358,9 @@ _NOTE_CLASS_ROW_RE = re.compile(
 #: ``CALCULATION`` (``A/B``, ``A/G``) appears only on the detail pages, so it is
 #: optional here \u2014 the one regex reads both sections, and which figure is the
 #: required level is decided by the header, never by this pattern.
-_COVERAGE_TEST_RE = re.compile(
-    rf"(?P<name>(?:Class{_S}[A-Z](?:/[A-Z])?{_S}(?:Par{_S}Value|Interest{_S}Coverage)"
-    rf"|Reinvestment{_S}Overcollateralisation){_S}Test){_S}"
-    rf"(?P<first>\d+\.\d{{2}})%{_S}(?P<second>\d+\.\d{{2}})%{_S}"
-    rf"(?:(?P<calculation>[A-Z]/[A-Z]){_S})?"
-    rf"(?P<result>Passed|Failed|N/A)"
-)
+# The coverage-test row pattern now lives on each family's ``CoverageTestRow``
+# grammar: which columns a row prints, and which of them is the ratio, is a
+# property of the administrator's layout and not of this parser.
 
 #: The stated totals line under the Executive Summary's note table: aggregate
 #: principal balance and aggregate periodic interest, in that order and nothing
@@ -370,7 +370,13 @@ _STATED_TOTALS_RE = re.compile(rf"^(?P<balance>{MONEY}){_S}(?P<interest>{MONEY})
 #: Every character Python's ``str.splitlines()`` treats as a line break.
 _LINE_BREAKS = re.compile(r"[\r\n\v\f\x1c-\x1e\x85\u2028\u2029]+")
 
-_REPORTING_DATE_RE = re.compile(r"As of\s*:\s*(\d{2}/\d{2}/\d{4})")
+#: How much of the report is read for its self-stated deal name and date. Both
+#: administrators print them in the opening pages; BNY's deal name arrives on
+#: the first page footer rather than page 1, whose opening line is ``LEI :``.
+_HEADER_PAGES = 5
+
+# The reporting-date pattern now lives on each family's ``ReportHeader``:
+# U.S. Bank prints ``As of : 16/12/2024``, BNY Mellon ``As of 30-Aug-2024``.
 _PAGE_MARKER_RE = re.compile(r"^--- page (\d+) ---$")
 
 
@@ -796,20 +802,58 @@ def _published_pages(
     return _pages_for(pages, layout, section_key)
 
 
-def _report_header(pages: list[list[str]]) -> tuple[str | None, str | None]:
+def _report_header(
+    pages: list[list[str]], layout: DocumentLayout
+) -> tuple[str | None, str | None]:
     """The deal name and reporting date a report states about itself.
 
     One implementation for both sides of the document — the collateral schedule
     and the liability summary describe the same report, so a divergence between
     two copies of this would be a report whose two halves disagree about which
     period they are.
+
+    Both facts are read off the family's declared
+    :class:`~loanwhiz.domain.trustee_report_registry.ReportHeader` patterns
+    rather than off fixed line positions. Taking the deal name from page 1's
+    first line is true of U.S. Bank and gives ``'LEI :'`` for BNY Mellon, and a
+    report parsed under the wrong deal name still reconciles — every oracle in
+    this module asks whether the document agrees with *itself*. The date is
+    re-rendered into
+    :data:`~loanwhiz.domain.trustee_report_registry.CANONICAL_DATE_FORMAT` so a
+    consumer never has to know which administrator stated it.
     """
-    deal_name = pages[0][0] if pages and pages[0] else None
-    for lines in pages[:5]:
+    header = layout.report_header
+    if header is None:
+        raise ValueError(
+            "the detected family declares no report_header, so this report's "
+            "deal name and reporting date cannot be read — register the "
+            "administrator's header patterns rather than guessing line positions"
+        )
+
+    deal_name: str | None = None
+    for lines in pages[:_HEADER_PAGES]:
         for line in lines:
-            match = _REPORTING_DATE_RE.search(line)
+            match = header.deal_name.search(line)
             if match:
-                return deal_name, match.group(1)
+                deal_name = match.group("deal_name").strip()
+                break
+        if deal_name is not None:
+            break
+
+    for lines in pages[:_HEADER_PAGES]:
+        for line in lines:
+            match = header.reporting_date.search(line)
+            if match:
+                stated = match.group("as_of").strip()
+                try:
+                    parsed = datetime.strptime(stated, header.date_format)
+                except ValueError as exc:
+                    raise ValueError(
+                        f"reporting date {stated!r} does not match the format "
+                        f"{header.date_format!r} this family declares — refusing "
+                        "to key a period on a date read under the wrong format"
+                    ) from exc
+                return deal_name, parsed.strftime(CANONICAL_DATE_FORMAT)
     return deal_name, None
 def _report_document_name(deal_name: str | None, period_label: str) -> str:
     """The citation document string for one report."""
@@ -1933,7 +1977,7 @@ def parse_schedule_text(
         raise ValueError("no pages found — text is not extracted trustee-report output")
 
     layout = _resolve_layout(pages)
-    deal_name, reporting_date = _report_header(pages)
+    deal_name, reporting_date = _report_header(pages, layout)
 
     defects = ScheduleDefects()
     aggregates = _parse_aggregates(pages, layout)
@@ -2543,11 +2587,14 @@ def parse_schedule_text_result(
 class CoverageTestOutcome(str, Enum):
     """The result a trustee report states for a coverage test.
 
-    Closed on purpose. A row whose outcome is none of these does not match
-    :data:`_COVERAGE_TEST_RE` at all, so it is absent from one rendering and
-    present in the other — which the cross-rendering check in
-    :func:`reconcile_liability_summary` refuses. An unknown outcome therefore
-    surfaces as a refusal rather than as a row quietly dropped.
+    Closed on purpose. A row whose outcome is none of these matches no family's
+    :class:`~loanwhiz.domain.trustee_report_registry.CoverageTestRow` pattern at
+    all, so it is absent from one rendering and present in the other — which the
+    cross-rendering check in :func:`reconcile_liability_summary` refuses. An
+    unknown outcome therefore surfaces as a refusal rather than as a row quietly
+    dropped. Every family's pattern names these outcomes through the one
+    :data:`~loanwhiz.domain.trustee_report_registry.COVERAGE_OUTCOME`
+    alternation, so the enum and the patterns cannot drift apart.
     """
 
     PASSED = "Passed"
@@ -2555,11 +2602,11 @@ class CoverageTestOutcome(str, Enum):
     NOT_APPLICABLE = "N/A"
 
 
-# ``ColumnOrder`` and the header fingerprints that select it now live with the
-# family: which of a coverage-test table's two percentage columns comes first is
-# a property of the administrator's layout, and the fingerprint table is
-# exhaustive by construction so a header matching none of a family's entries is
-# refused rather than read in a guessed order (#480).
+# The coverage-test row grammar and the header fingerprints that select it live
+# with the family: which columns a table prints, and which of them holds the
+# computed ratio, is a property of the administrator's layout. The fingerprint
+# table is exhaustive by construction, so a header matching none of a family's
+# entries is refused rather than read in a guessed order (#480).
 
 #: The provenance source every figure this seam emits carries — a **constant,
 #: exposed through no parameter**. A coupon or a required level taken from a
@@ -2704,35 +2751,39 @@ class LiabilitySummaryReconciliationError(ValueError):
         )
 
 
-def _column_order(
+def _row_grammar(
     pages: list[list[str]], layout: DocumentLayout, section: str
-) -> ColumnOrder:
-    """Read a coverage-test table's column order off its own header.
+) -> CoverageTestRow:
+    """Read a coverage-test table's row grammar off its own header.
 
-    Never inferred from position or from which section it is: the Executive
-    Summary and the detail pages state the same pairs in opposite orders, so a
-    parser that assumed either would silently swap a computed ratio with the
-    level it must clear. An unrecognised header is refused, because reading two
-    percentages in an unknown order is not a degraded answer — it is a wrong one.
+    Never inferred from position or from which section it is. A report states
+    each coverage test more than once, and the renderings disagree about where
+    the computed ratio sits among the like-typed percentage columns beside it —
+    U.S. Bank swaps the pair between its two sections, BNY Mellon prints three
+    columns whose middle one is the ratio in one table and the *prior* period's
+    outcome in the other. A parser that assumed any of those would silently swap
+    a computed ratio with the level it must clear (#480). An unrecognised header
+    is refused, because reading like-typed columns in a guessed order is not a
+    degraded answer — it is a wrong one.
     """
-    found: set[ColumnOrder] = set()
+    found: set[CoverageTestRow] = set()
     for lines in pages:
         for line in lines:
             squashed = _squash(line).upper()
-            for marker, order in layout.column_order_markers.items():
+            for marker, grammar in layout.coverage_row_markers.items():
                 if marker in squashed:
-                    found.add(order)
+                    found.add(grammar)
     if len(found) == 1:
         return found.pop()
     if not found:
         raise ValueError(
             f"{section}: no recognised coverage-test column header. Expected one "
-            f"of {sorted(layout.column_order_markers)}; refusing to read two percentage "
-            "columns in a guessed order."
+            f"of {sorted(layout.coverage_row_markers)}; refusing to read "
+            "like-typed columns in a guessed order."
         )
     raise ValueError(
-        f"{section}: the section states two different column orders "
-        f"({sorted(o.value for o in found)}); refusing rather than picking one."
+        f"{section}: the section states two different coverage-test column "
+        "layouts; refusing rather than picking one."
     )
 
 
@@ -2765,17 +2816,13 @@ def _parse_coverage_tests(
     pages: list[list[str]], layout: DocumentLayout, section: str
 ) -> list[CoverageTestResult]:
     """Every coverage test one section states, read in that section's own order."""
-    order = _column_order(pages, layout, section)
+    grammar = _row_grammar(pages, layout, section)
     results: list[CoverageTestResult] = []
     for lines in pages:
         for line in lines:
-            for match in _COVERAGE_TEST_RE.finditer(line):
-                first = _decimal(match.group("first"))
-                second = _decimal(match.group("second"))
-                if order is ColumnOrder.REQUIRED_FIRST:
-                    required, current = first, second
-                else:
-                    current, required = first, second
+            for match in grammar.pattern.finditer(line):
+                current = _decimal(match.group(grammar.ratio_group))
+                required = _decimal(match.group(grammar.required_group))
                 results.append(
                     CoverageTestResult(
                         name=" ".join(match.group("name").split()),
@@ -2844,7 +2891,7 @@ def parse_liability_summary_text(
 
     layout = _resolve_layout(pages)
 
-    deal_name, reporting_date = _report_header(pages)
+    deal_name, reporting_date = _report_header(pages, layout)
 
     exec_pages = _pages_for(pages, layout, SECTION_EXEC_SUMMARY)
     par_value_pages = _pages_for(pages, layout, SECTION_PAR_VALUE_DETAIL)
@@ -2858,6 +2905,22 @@ def parse_liability_summary_text(
         raise ValueError(
             "report has no coverage-test detail section (located by header, not "
             "page number) — the required levels are stated there"
+        )
+
+    # The report's *second* rendering of the coverage tests, which the parse is
+    # cross-checked against. Which section carries it is the family's to say:
+    # U.S. Bank restates the tests in the Executive Summary the note classes
+    # come from, BNY Mellon in a separate Compliance Tests table. Reading the
+    # wrong one would not fail — it would find no tests, and the cross-check
+    # would then agree that both renderings name the same empty set.
+    summary_pages = _pages_for(pages, layout, layout.coverage_summary_section)
+    if not summary_pages:
+        raise ValueError(
+            f"report has no {layout.title(layout.coverage_summary_section)!r} "
+            "section (located by header, not page number) — it carries the "
+            "second rendering of the coverage tests that the first is checked "
+            "against, and without it the check would compare the detail pages "
+            "with nothing"
         )
 
     stated_balance, stated_interest = _parse_stated_totals(exec_pages, layout)
@@ -2876,7 +2939,7 @@ def parse_liability_summary_text(
         note_classes=_parse_note_classes(exec_pages, layout),
         coverage_tests=detail_tests,
         summary_coverage_tests=_parse_coverage_tests(
-            exec_pages, layout, layout.title(SECTION_EXEC_SUMMARY)
+            summary_pages, layout, layout.title(layout.coverage_summary_section)
         ),
         stated_total_balance=stated_balance,
         stated_total_periodic_interest=stated_interest,
