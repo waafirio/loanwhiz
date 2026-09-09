@@ -553,8 +553,10 @@ class ScheduleDefects(BaseModel):
         Excludes the categories that leave every reconciled quantity correct:
         an issuer name the source itself mangled, a summary table the source
         contradicts, a description the source printed without its
-        ``obligor - facility`` separator, and a distribution the tape cannot be
-        grouped by. Those are surfaced, not fatal.
+        ``obligor - facility`` separator, an accrual record the source printed
+        with no balance cell, and a distribution the tape cannot be grouped by.
+        Those are surfaced, not fatal: each is a fact about the document, or a
+        check that could not run, rather than a row this parser lost.
 
         The last one is the #494 shape handled deliberately rather than by
         silence: U.S. Bank publishes a rating stratification while only its CCC
@@ -571,6 +573,7 @@ class ScheduleDefects(BaseModel):
             - self.source_aggregate_inconsistent
             - self.descriptions_without_an_obligor
             - self.bucket_attribute_incomplete
+            - self.accrual_records_without_a_balance
         )
 
     def record(self, category: str, detail: str) -> None:
@@ -1869,6 +1872,7 @@ def _reflowed_schedule(
             pages, layout, section_key
         )
 
+    _record_uncheckable_buckets(aggregates, assets, defects)
     schedule = CollateralSchedule(
         deal_name=deal_name,
         period_label=period_label,
@@ -1985,6 +1989,7 @@ def parse_schedule_text(
             "from the oracle and its counts are still checked",
         )
 
+    _record_uncheckable_buckets(aggregates, assets, defects)
     schedule = CollateralSchedule(
         deal_name=deal_name,
         period_label=period_label,
@@ -2073,7 +2078,7 @@ def _bny_assets(
         }
 
     lots = _bny_lots(pages, layout)
-    accruals = _bny_accrual_records(pages, layout)
+    accruals = _bny_accrual_records(pages, layout, defects)
     market_values = _bny_ccc_market_values(pages, layout, defects)
 
     assets: list[CollateralAsset] = []
@@ -2162,7 +2167,9 @@ def _bny_lots(
     return lots
 
 
-def _bny_accrual_records(pages: list[list[str]], layout: DocumentLayout) -> dict[str, int]:
+def _bny_accrual_records(
+    pages: list[list[str]], layout: DocumentLayout, defects: ScheduleDefects
+) -> dict[str, int]:
     """How many accrual records each asset carries.
 
     This is the population BNY's aggregate tables count. Held per asset rather
@@ -2173,8 +2180,16 @@ def _bny_accrual_records(pages: list[list[str]], layout: DocumentLayout) -> dict
     section = _pages_for(pages, layout, SECTION_ACCRUAL_DETAIL)
     tail = _bny_accrual_tail(section, layout)
     records: dict[str, int] = {}
-    for identifier, _, _ in _reflowed_rows(section, layout, tail):
+    for identifier, _, matched in _reflowed_rows(section, layout, tail):
         records[identifier] = records.get(identifier, 0) + 1
+        if matched.groupdict().get("principal_balance") is None:
+            defects.record(
+                "accrual_records_without_a_balance",
+                f"{identifier}: the report prints this accrual record with a "
+                "payment period and no balance cell. It is counted, because it "
+                "is one of the records the aggregate tables count, and its "
+                "balance is left absent rather than completed with a zero",
+            )
     return records
 
 
@@ -2220,6 +2235,51 @@ _MARKET_VALUE_TOLERANCE = Decimal("0.02")
 # ===========================================================================
 # The contract — reconcile the tape to the report's own stated totals
 # ===========================================================================
+
+
+#: The aggregate tables :func:`reconcile_schedule` checks per bucket, paired
+#: with the asset attribute each groups the tape by and the label it reports
+#: under. One list, read by the reconciliation and by the parse-time record of
+#: which of them could not be checked — two readers of one fact, so they cannot
+#: disagree about which tables were skipped.
+_BUCKET_TABLES: tuple[tuple[str, str], ...] = (
+    ("country", "country"),
+    ("sp_industry", "S&P industry"),
+    ("fitch_industry", "Fitch industry"),
+    ("sp_rating", "S&P rating"),
+)
+
+
+def _bucket_attribute_incomplete(assets: list[CollateralAsset], table: str) -> bool:
+    """Whether the tape can be grouped by *table*'s attribute at all.
+
+    An asset missing the attribute would fall out of every bucket, so a
+    comparison would under-count each one and report a divergence that is a gap
+    in the tape rather than a disagreement with the document.
+    """
+    return any(getattr(asset, table) is None for asset in assets)
+
+
+def _record_uncheckable_buckets(
+    aggregates: ReportAggregates, assets: list[CollateralAsset], defects: ScheduleDefects
+) -> None:
+    """Record each published distribution the tape cannot be checked against.
+
+    Called once per parse, from the parse — not from the reconciliation, which
+    must stay free of side effects so that asking the same schedule twice
+    cannot answer differently the second time. "This check did not run" has to
+    be visible, or it is indistinguishable from "this check passed" (#494).
+    """
+    for table, label in _BUCKET_TABLES:
+        if not getattr(aggregates, table):
+            continue
+        if _bucket_attribute_incomplete(assets, table):
+            defects.record(
+                "bucket_attribute_incomplete",
+                f"the report publishes a {label} table but not every parsed "
+                f"asset carries a {table}, so its per-bucket distribution "
+                "cannot be checked",
+            )
 
 
 def _check(name: str, expected: Any, actual: Any) -> ReconciliationCheck:
@@ -2280,7 +2340,6 @@ def reconcile_schedule(schedule: CollateralSchedule) -> ScheduleReconciliation:
     """
     aggregates = schedule.aggregates
     assets = schedule.assets
-    defects = schedule.defects
     checks: list[ReconciliationCheck] = []
 
     grain = schedule.count_grain
@@ -2317,26 +2376,16 @@ def reconcile_schedule(schedule: CollateralSchedule) -> ScheduleReconciliation:
             )
         )
 
-    for table, label in (
-        ("country", "country"),
-        ("sp_industry", "S&P industry"),
-        ("fitch_industry", "Fitch industry"),
-        ("sp_rating", "S&P rating"),
-    ):
+    for table, label in _BUCKET_TABLES:
         buckets: list[AggregateBucket] = getattr(aggregates, table)
         if not buckets:
             continue
-        if any(getattr(asset, table) is None for asset in assets):
+        if _bucket_attribute_incomplete(assets, table):
             # The table exists but the tape cannot populate its attribute for
             # every asset, so a per-bucket comparison would under-count every
             # bucket and read as a divergence in the parse rather than as the
-            # gap it is. Recorded, never silently skipped (#494).
-            defects.record(
-                "bucket_attribute_incomplete",
-                f"the report publishes a {label} table but not every parsed "
-                f"asset carries a {table}, so its per-bucket distribution "
-                "cannot be checked",
-            )
+            # gap it is. The parse records it as a defect exactly once; this
+            # function only reads, so calling it twice cannot inflate a count.
             continue
         grouped = _group_by(assets, table, grain)
         trustworthy = table not in aggregates.inconsistent_tables

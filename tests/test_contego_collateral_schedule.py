@@ -294,3 +294,79 @@ def test_the_registry_points_contego_at_the_derived_channel() -> None:
             "the tape must be derived from the very report the deal registers, "
             "not from a similarly named document"
         )
+
+
+def test_an_accrual_record_with_no_balance_cell_is_counted_and_recorded() -> None:
+    """September prints one accrual record with a period and no balance.
+
+    It is one of the 215 the aggregate tables count, so dropping it would put
+    the count one short of a figure the report states — par untouched, which is
+    the failure this whole oracle exists to catch. It is therefore admitted and
+    counted, its balance left absent rather than completed with a zero, and the
+    absence recorded so the schedule does not look complete when it is not.
+    """
+    schedule = parse_schedule_text(_text("september"), period_label="September 2024", strict=True)
+
+    assert schedule.aggregates.accrual_record_count == 215
+    assert schedule.defects.accrual_records_without_a_balance == 1
+    assert any(
+        "accrual_records_without_a_balance" in note and "LX246193" in note
+        for note in schedule.defects.notes
+    )
+    # A fact about the document, not a row this parser lost, so it must not
+    # refuse a schedule whose every reconciled figure ties.
+    assert schedule.defects.blocking == 0
+
+
+@pytest.mark.parametrize(("period", "label"), [(p[0], p[1]) for p in PERIODS], ids=PERIOD_IDS)
+def test_reconciling_the_same_schedule_twice_answers_the_same_way(
+    period: str, label: str
+) -> None:
+    """``reconcile_schedule`` reads; it must not write.
+
+    It records nothing, so asking a schedule the same question twice cannot
+    answer differently the second time. This was a real defect: the "this
+    distribution could not be checked" record was written from inside the
+    reconciliation, so every extra call inflated the count — and the number a
+    consumer saw depended on how many times someone had asked.
+    """
+    schedule = parse_schedule_text(_text(period), period_label=label, strict=True)
+    before = schedule.defects.model_dump()
+
+    first = reconcile_schedule(schedule)
+    second = reconcile_schedule(schedule)
+
+    assert schedule.defects.model_dump() == before
+    assert [(c.name, c.ok) for c in first.checks] == [(c.name, c.ok) for c in second.checks]
+
+
+def test_a_row_lost_without_moving_par_is_caught_by_the_count() -> None:
+    """#468's property, demonstrated rather than asserted about.
+
+    The correction #468 made was that par alone is not enough, because a row
+    you drop can be worth nothing. Here the tape loses a whole asset while its
+    balance is folded into another, so **par still ties to the euro** — and the
+    schedule must still be refused, because the accrual-record count no longer
+    matches the figure the report states.
+
+    This is what makes the count half of the oracle load-bearing rather than
+    decorative, and it is why the count had to be reconciled against the right
+    population: against the asset count it would have been comparing 212 to 177
+    and failing on a correct parse instead of on this one.
+    """
+    schedule = parse_schedule_text(_text("august"), period_label="August 2024", strict=True)
+    assert reconcile_schedule(schedule).ok
+
+    dropped = schedule.assets.pop()
+    schedule.assets[0].principal_balance += dropped.principal_balance
+
+    assert schedule.total_principal_balance == Decimal("373537007.35"), (
+        "the point of this test is that par is untouched by the loss"
+    )
+    reconciliation = reconcile_schedule(schedule)
+    assert not reconciliation.ok
+    failed = {check.name for check in reconciliation.failures}
+    assert "accrual record count" in failed
+    assert "aggregate principal balance" not in failed, (
+        "par cannot see this, which is the whole reason the count is checked"
+    )
