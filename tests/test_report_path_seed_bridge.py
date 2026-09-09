@@ -308,3 +308,26 @@ def test_the_published_rates_reach_the_classes_that_now_have_tranches(
     # five of the seven rates reached nothing. This is what actually changed.
     collapsed = {t.name for t in _collapsed_the_old_way(cairn_seed).tranches}
     assert {n for n in attached if n in collapsed} == {"class_a", "class_c"}
+
+
+def test_the_relay_copies_rather_than_shares_tranche_objects(
+    green_lion_seed: DomainDealState,
+) -> None:
+    """The engine state's tranches are independent of the adapter seed's.
+
+    ``TrancheState`` is not frozen and pydantic does not re-validate a model
+    instance passed into a typed field, so relaying the objects themselves would
+    leave the two states sharing them — an aliasing hazard the old flat-kwarg
+    construction did not have, because it always built fresh instances. Nothing in
+    the engine mutates a tranche in place today, so this pins a property rather
+    than fixing a live bug; it reds if the copy is dropped.
+    """
+    relayed = _primitives_seed_from_report_seed(green_lion_seed)
+
+    assert [t.name for t in relayed.tranches] == [t.name for t in green_lion_seed.tranches]
+    assert all(
+        a is not b for a, b in zip(relayed.tranches, green_lion_seed.tranches)
+    ), "the bridge must not hand the engine the adapter seed's own objects"
+
+    relayed.tranches[0].balance = -1.0
+    assert green_lion_seed.tranches[0].balance != -1.0

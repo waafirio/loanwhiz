@@ -2236,10 +2236,18 @@ def _primitives_seed_from_report_seed(seed: DomainDealState) -> PrimitivesDealSt
     ``class_c``, and the legacy ``class_{a,b,c}_balance`` accessors read the same
     values off the relayed list as the kwargs used to write into it — pinned by
     ``tests/test_report_path_seed_bridge.py``.
+
+    Each ``TrancheState`` is **copied** rather than shared. It is not frozen, and
+    pydantic does not re-validate (so does not copy) a model instance passed into
+    a typed field, so relaying the objects themselves would alias the engine state
+    onto the adapter's seed — where the old flat kwargs always built fresh ones.
+    Nothing in the engine mutates a tranche in place today
+    (``DealState.with_tranche_updates`` is a ``model_copy``), so this closes a
+    hazard this bridge would otherwise introduce rather than an existing bug.
     """
     return PrimitivesDealState(
         reporting_date=seed.reporting_date,
-        tranches=list(seed.tranches),
+        tranches=[t.model_copy() for t in seed.tranches],
         reserve_balance=seed.reserve_balance,
         reserve_target=seed.reserve_target,
         cumulative_losses=seed.cumulative_losses,
