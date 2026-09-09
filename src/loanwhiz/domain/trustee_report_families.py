@@ -26,6 +26,7 @@ that :mod:`loanwhiz.extraction.taxonomy` documents.
 
 from __future__ import annotations
 
+from loanwhiz.domain.trustee_family_bny_mellon import BNY_MELLON
 from loanwhiz.domain.trustee_family_us_bank import US_BANK
 from loanwhiz.domain.trustee_report_registry import (
     FAMILY_REGISTRY,
@@ -33,18 +34,23 @@ from loanwhiz.domain.trustee_report_registry import (
     DocumentKind,
     DocumentLayout,
     FurnitureOrder,
+    IdentifierPosition,
+    RowGeometry,
     TrusteeReportFamily,
     TrusteeReportFamilyRegistry,
     UnknownReportFamilyError,
 )
 
 __all__ = [
+    "BNY_MELLON",
     "FAMILY_REGISTRY",
     "US_BANK",
     "ColumnOrder",
     "DocumentKind",
     "DocumentLayout",
     "FurnitureOrder",
+    "IdentifierPosition",
+    "RowGeometry",
     "TrusteeReportFamily",
     "TrusteeReportFamilyRegistry",
     "UnknownReportFamilyError",

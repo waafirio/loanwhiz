@@ -36,13 +36,16 @@ from pathlib import Path
 
 import pytest
 
-from loanwhiz.domain.trustee_report_families import US_BANK
+from loanwhiz.domain.trustee_report_families import BNY_MELLON, US_BANK
 from loanwhiz.domain.trustee_report_registry import (
     FAMILY_REGISTRY,
     REQUIRED_SECTION_KEYS,
     SECTION_CCC,
+    SECTION_COUNTRY,
+    SECTION_FITCH_INDUSTRY,
     SECTION_NV_INTEREST_POP,
     SECTION_NV_PRINCIPAL_POP,
+    SECTION_SP_INDUSTRY,
     ColumnOrder,
     DocumentKind,
     DocumentLayout,
@@ -464,12 +467,18 @@ def test_the_real_registry_holds_exactly_the_imported_families() -> None:
     which would make detection order depend on what happened to be imported.
     """
     assert US_BANK in FAMILY_REGISTRY.all()
-    assert [f.family_id for f in FAMILY_REGISTRY.all()] == ["us_bank"]
+    assert BNY_MELLON in FAMILY_REGISTRY.all()
+    assert [f.family_id for f in FAMILY_REGISTRY.all()] == ["bny_mellon", "us_bank"]
 
 
 def test_getting_an_unregistered_family_returns_none() -> None:
-    assert FAMILY_REGISTRY.get("bny_mellon") is None
+    # Deutsche Bank administers CVC Cordatus and publishes a third report shape;
+    # it is named here precisely because nothing registers it, so this assertion
+    # keeps meaning "absent" rather than quietly becoming a second lookup of a
+    # family that has since landed.
+    assert FAMILY_REGISTRY.get("deutsche_bank") is None
     assert FAMILY_REGISTRY.get("us_bank") is US_BANK
+    assert FAMILY_REGISTRY.get("bny_mellon") is BNY_MELLON
 
 
 def test_a_declared_section_key_the_layout_lacks_raises_rather_than_routing_nowhere() -> None:
@@ -486,3 +495,248 @@ def test_a_declared_section_key_the_layout_lacks_raises_rather_than_routing_nowh
     with pytest.raises(KeyError):
         US_BANK.layout(DocumentKind.NOTE_VALUATION_REPORT).title(SECTION_CCC)
     assert US_BANK.layout(DocumentKind.NOTE_VALUATION_REPORT).title(SECTION_NV_PRINCIPAL_POP)
+
+
+# ---------------------------------------------------------------------------
+# Declared absence — a section an administrator does not publish at all (#533)
+# ---------------------------------------------------------------------------
+
+
+def _with_monthly(family: TrusteeReportFamily, **layout_overrides) -> TrusteeReportFamily:
+    """The same family with its monthly layout replaced field-wise."""
+    monthly = family.documents[DocumentKind.MONTHLY_REPORT]
+    return dataclasses.replace(
+        family,
+        documents={
+            **family.documents,
+            DocumentKind.MONTHLY_REPORT: dataclasses.replace(
+                monthly, **layout_overrides
+            ),
+        },
+    )
+
+
+_REASON = (
+    "This administrator prints no such table; the exposure appears only as "
+    "compliance-test rows against a rating floor, which is a different datum."
+)
+
+
+def test_a_section_declared_unpublished_registers_and_reads_as_absent() -> None:
+    """The sanctioned alternative to a title, for a section that does not exist.
+
+    An administrator who genuinely does not publish a section had, before this,
+    only two options: invent a title that routes to no pages, or be refused. The
+    first is the #494 failure — zero rows reconciling vacuously — so the family
+    must be able to say "absent, and here is why" and have consumers read that
+    as a fact rather than as an empty table.
+    """
+    registry = TrusteeReportFamilyRegistry()
+    family = _with_monthly(
+        _drop_monthly_section(_complete_family(), SECTION_COUNTRY),
+        unpublished_sections={SECTION_COUNTRY: _REASON},
+    )
+
+    registry.register(family)
+
+    monthly = family.documents[DocumentKind.MONTHLY_REPORT]
+    assert monthly.publishes(SECTION_COUNTRY) is False
+    assert monthly.publishes(SECTION_CCC) is True
+    assert monthly.unpublished_reason(SECTION_COUNTRY) == _REASON
+
+
+def test_an_undeclared_missing_section_is_still_refused() -> None:
+    """Declared absence widens what a family may say, not what it may omit.
+
+    The whole value of the channel is that "I do not publish this" stops looking
+    like "I forgot this". If silence still registered, it would have removed the
+    #480 guard rather than given it a second answer.
+    """
+    registry = TrusteeReportFamilyRegistry()
+
+    with pytest.raises(ValueError) as excinfo:
+        registry.register(_drop_monthly_section(_complete_family(), SECTION_COUNTRY))
+
+    assert SECTION_COUNTRY in str(excinfo.value)
+    assert "unpublished_sections" in str(excinfo.value), (
+        "the refusal must name the channel that would make this legal"
+    )
+
+
+def test_a_section_both_titled_and_declared_unpublished_is_refused() -> None:
+    """The document either carries the section or it does not."""
+    registry = TrusteeReportFamilyRegistry()
+
+    with pytest.raises(ValueError) as excinfo:
+        registry.register(
+            _with_monthly(
+                _complete_family(), unpublished_sections={SECTION_CCC: _REASON}
+            )
+        )
+
+    assert SECTION_CCC in str(excinfo.value)
+    assert "both" in str(excinfo.value)
+
+
+def test_declaring_absence_of_a_section_no_parser_reads_is_refused() -> None:
+    """An absence nobody asks about states nothing, and is usually a typo."""
+    registry = TrusteeReportFamilyRegistry()
+
+    with pytest.raises(ValueError) as excinfo:
+        registry.register(
+            _with_monthly(
+                _complete_family(),
+                unpublished_sections={"contry_concentration": _REASON},
+            )
+        )
+
+    assert "contry_concentration" in str(excinfo.value)
+
+
+def test_an_unpublished_section_with_no_usable_reason_is_refused() -> None:
+    """The reason is the deliverable — a reader judges whether it answers them."""
+    registry = TrusteeReportFamilyRegistry()
+
+    with pytest.raises(ValueError) as excinfo:
+        registry.register(
+            _with_monthly(
+                _drop_monthly_section(_complete_family(), SECTION_COUNTRY),
+                unpublished_sections={SECTION_COUNTRY: "n/a"},
+            )
+        )
+
+    assert SECTION_COUNTRY in str(excinfo.value)
+
+
+def test_title_refuses_an_unpublished_section_naming_the_reason() -> None:
+    """Routing must not silently receive a title for a section that is absent."""
+    monthly = _with_monthly(
+        _drop_monthly_section(_complete_family(), SECTION_COUNTRY),
+        unpublished_sections={SECTION_COUNTRY: _REASON},
+    ).documents[DocumentKind.MONTHLY_REPORT]
+
+    with pytest.raises(KeyError) as excinfo:
+        monthly.title(SECTION_COUNTRY)
+
+    assert "publishes()" in str(excinfo.value)
+
+
+def test_a_waterfall_section_cannot_be_declared_unpublished() -> None:
+    """A waterfall the parser must fill cannot be a section the document omits."""
+    registry = TrusteeReportFamilyRegistry()
+    family = _complete_family()
+    nv = family.documents[DocumentKind.NOTE_VALUATION_REPORT]
+    broken = dataclasses.replace(
+        nv,
+        section_titles={
+            k: v for k, v in nv.section_titles.items() if k != SECTION_NV_INTEREST_POP
+        },
+        unpublished_sections={SECTION_NV_INTEREST_POP: _REASON},
+    )
+
+    with pytest.raises(ValueError) as excinfo:
+        registry.register(
+            dataclasses.replace(
+                family,
+                documents={
+                    **family.documents,
+                    DocumentKind.NOTE_VALUATION_REPORT: broken,
+                },
+            )
+        )
+
+    assert SECTION_NV_INTEREST_POP in str(excinfo.value)
+
+
+# ---------------------------------------------------------------------------
+# Two tables under one printed title (#533)
+# ---------------------------------------------------------------------------
+
+
+def test_two_sections_sharing_a_title_with_no_marker_are_refused() -> None:
+    """Unchanged from #531 — a bare shared title is still ambiguous routing."""
+    registry = TrusteeReportFamilyRegistry()
+    monthly = _complete_family().documents[DocumentKind.MONTHLY_REPORT]
+    shared = {
+        **monthly.section_titles,
+        SECTION_SP_INDUSTRY: "Industry Concentrations",
+        SECTION_FITCH_INDUSTRY: "Industry Concentrations",
+    }
+
+    with pytest.raises(ValueError) as excinfo:
+        registry.register(_with_monthly(_complete_family(), section_titles=shared))
+
+    message = str(excinfo.value)
+    assert "Industry Concentrations" in message
+    assert "table marker" in message, "the refusal must name the way to resolve it"
+
+
+def test_two_sections_sharing_a_title_register_when_each_names_its_table() -> None:
+    """One heading, two tables — the pair (title, marker) is what must be unique.
+
+    BNY prints the S&P and Fitch industry tables under a single ``Industry
+    Concentrations`` heading. Refusing that would have forced a per-deal
+    conditional in the parser, which is the fork the registry exists to prevent.
+    """
+    registry = TrusteeReportFamilyRegistry()
+    monthly = _complete_family().documents[DocumentKind.MONTHLY_REPORT]
+    family = _with_monthly(
+        _complete_family(),
+        section_titles={
+            **monthly.section_titles,
+            SECTION_SP_INDUSTRY: "Industry Concentrations",
+            SECTION_FITCH_INDUSTRY: "Industry Concentrations",
+        },
+        section_table_markers={
+            SECTION_SP_INDUSTRY: "S&PINDUSTRY",
+            SECTION_FITCH_INDUSTRY: "FITCHINDUSTRY",
+        },
+    )
+
+    registry.register(family)
+
+    layout = family.documents[DocumentKind.MONTHLY_REPORT]
+    assert layout.table_marker(SECTION_SP_INDUSTRY) == "S&PINDUSTRY"
+    assert layout.table_marker(SECTION_FITCH_INDUSTRY) == "FITCHINDUSTRY"
+    assert layout.table_marker(SECTION_CCC) is None
+    assert layout.titles.count("Industry Concentrations") == 1, (
+        "a shared title must be offered to routing once, not once per section"
+    )
+
+
+def test_two_sections_sharing_a_title_and_a_marker_are_refused() -> None:
+    """A marker that does not distinguish resolves nothing."""
+    registry = TrusteeReportFamilyRegistry()
+    monthly = _complete_family().documents[DocumentKind.MONTHLY_REPORT]
+
+    with pytest.raises(ValueError) as excinfo:
+        registry.register(
+            _with_monthly(
+                _complete_family(),
+                section_titles={
+                    **monthly.section_titles,
+                    SECTION_SP_INDUSTRY: "Industry Concentrations",
+                    SECTION_FITCH_INDUSTRY: "Industry Concentrations",
+                },
+                section_table_markers={
+                    SECTION_SP_INDUSTRY: "SAME",
+                    SECTION_FITCH_INDUSTRY: "SAME",
+                },
+            )
+        )
+
+    assert "same table marker" in str(excinfo.value)
+
+
+def test_a_table_marker_for_an_untitled_section_is_refused() -> None:
+    """A marker selects a table within a title the family must actually have."""
+    registry = TrusteeReportFamilyRegistry()
+
+    with pytest.raises(ValueError) as excinfo:
+        registry.register(
+            _with_monthly(
+                _complete_family(), section_table_markers={"not_a_section": "X"}
+            )
+        )
+
+    assert "not_a_section" in str(excinfo.value)
