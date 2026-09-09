@@ -32,6 +32,12 @@ authentication" would trip a naive ban on "authentication". Structural markup
 carries no such ambiguity: an ``<input>`` or an ``onSubmit`` in this section is
 the thing that makes a drawing look operable, whoever wrote it and however they
 worded the caption around it.
+
+**A ban list is only as good as the affordances it names.** It is blind to an
+operable control reached through a component alias it does not enumerate — a
+future ``<CredentialField/>`` wrapper would pass. That is a real limit, not a
+disclaimed one: the list below grew once already, when self-review found that a
+button-styled ``<a href>`` slipped through every assertion here.
 """
 
 from __future__ import annotations
@@ -43,10 +49,10 @@ _REPO_ROOT = Path(__file__).resolve().parents[1]
 _SKETCH = _REPO_ROOT / "web" / "components" / "mcp-auth-sketch.tsx"
 _PAGE = _REPO_ROOT / "web" / "app" / "(routes)" / "mcp" / "page.tsx"
 
-# Markup that would make a drawn flow look operable. None of these can be
-# tripped by a caption disclaiming the flow — they are elements and handlers,
-# not words about them.
-_OPERABLE_MARKUP = (
+# Markup that would constitute a credential form. None of these can be tripped
+# by a caption disclaiming the flow — they are elements and handlers, not words
+# about them.
+_CREDENTIAL_MARKUP = (
     "<input",
     "<form",
     "<textarea",
@@ -55,7 +61,34 @@ _OPERABLE_MARKUP = (
     "onClick",
     "action=",
     "fetch(",
+)
+
+# Everything above, plus every other way to put an operable-looking control on
+# screen. The sketch must be inert *in full*, so its ban is a superset.
+#
+# Anchors and buttons are here because leaving them out was a real hole, found
+# by this file's own review rather than by reasoning: an
+# `<a href="/settings/tokens">Generate access token</a>` styled as a button is
+# a focusable, clickable control that reads exactly like a working credential
+# flow, and it passed every assertion here until this list grew. A ban list is
+# only as good as the affordances it enumerates — see the blind spot in the
+# module docstring.
+_SKETCH_INERT = _CREDENTIAL_MARKUP + (
     "useState",
+    "<a ",
+    "href=",
+    "<button",
+    "<Button",
+    "<select",
+    "<Select",
+    "<label",
+    "<Label",
+    "<option",
+    "<details",
+    "<summary",
+    "tabIndex",
+    'role="button"',
+    "contentEditable",
 )
 
 
@@ -136,7 +169,7 @@ def test_the_auth_sketch_is_inert() -> None:
     while its caption still calls it an illustration.
     """
     sketch = _code_only(_sketch())
-    for markup in _OPERABLE_MARKUP:
+    for markup in _SKETCH_INERT:
         assert markup not in sketch, (
             f"{markup!r} appears in the authentication sketch — it must stay "
             "inert; a drawn flow that can be interacted with is no longer a drawing"
@@ -148,11 +181,14 @@ def test_the_mcp_page_draws_no_credential_form_of_its_own() -> None:
 
     The sketch is the one place the future flow is drawn, and it is marked. A
     credential form added directly to the page would inherit none of that.
+
+    The page is held to the credential-form subset rather than to the sketch's
+    full inertness: the page legitimately holds fetched state and renders a
+    `<details>` disclosure for each tool's schema, and it may one day carry an
+    ordinary link. What it must never grow is a place to type a credential.
     """
     page = _code_only(_page())
-    for markup in _OPERABLE_MARKUP:
-        if markup == "useState":
-            continue  # the page legitimately holds fetched surface data
+    for markup in _CREDENTIAL_MARKUP:
         assert markup not in page, (
             f"{markup!r} appears on the MCP page outside the marked sketch"
         )
