@@ -1379,10 +1379,14 @@ def test_the_cards_state_the_split_as_a_figure_this_run_re_derives(
     assert revenue_engine and revenue_reported
     assert len(all_engine) + len(all_reported) == len(every_step)
 
-    split = (
-        f"{len(revenue_engine)} of th",
-        f"{len(revenue.steps)} lines are engine-computed "
-        f"and {len(revenue_reported)} are report-supplied",
+    # One whole sentence, not two loose fragments: a short fragment like
+    # "3 of th" matches almost any prose and would let a card drop the count
+    # while still passing. The cards differ only in "the"/"those", so both
+    # readings are accepted and nothing weaker is.
+    split = tuple(
+        f"{len(revenue_engine)} of {article} {len(revenue.steps)} lines are "
+        f"engine-computed and {len(revenue_reported)} are report-supplied"
+        for article in ("the", "those")
     )
     for relative_path in CARDS_STATING_THE_SPLIT:
         prose = _collapsed(
@@ -1390,8 +1394,7 @@ def test_the_cards_state_the_split_as_a_figure_this_run_re_derives(
                 encoding="utf-8"
             )
         )
-        missing = [fragment for fragment in split if fragment not in prose]
-        assert missing == [], (relative_path, missing)
+        assert any(fragment in prose for fragment in split), (relative_path, split)
 
     # The data card carries the cross-cascade form and the money behind it,
     # because that is where a reader meets what `validated` would mean here.
