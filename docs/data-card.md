@@ -562,6 +562,37 @@ are independently computed (#511/#512/#528/#538/#539). The cell would not have
 turned green either way: it is earned by an offline engine series, which this
 deal still does not have.
 
+**And if it did, `validated` would mean something narrower here than it means
+for Green Lion — so read the count, not the word.** Across the two cascades this
+deal publishes, 52 steps are compared and **3 are engine-computed; 49 are
+report-supplied**. Every one of the 3 is a note-interest line — Class A, Class B
+and Class C — derived from the seed's tranche balance, the report's published
+applied rate and a day count read off the prospectus Payment Date schedule and
+Conditions 6(e)(ii)/(iii). The remaining 49 have their amount taken from the
+report and compared to itself, so they demonstrate that this repo *routes* a
+published figure to the right step in the right order, never that it *computes*
+the figure. That split is not a defect to be engineered away: a CLO waterfall
+carries steps no deal model can derive — management fees, capped administrative
+expenses, coverage-test and par-value-test cures, hedge and swap payments —
+whose amounts come from the manager's and trustee's own books rather than from
+any formula in the Listing Particulars. On this period 26 of the 49 sit in the
+Interest cascade and 23 in the Principal one; 40 of the 52 compare EUR 0.00 with
+EUR 0.00 and could not have distinguished a correct engine from a silent one.
+So the reconciliation's whole independent signal is 3 lines carrying EUR
+4,336,860.61 of the Interest cascade's EUR 7,255,062.35 pot.
+
+**Why 3 and not 7 is a fact about this repo, not about the document.** The
+engine computes a note-interest need only for recipients named in
+`primitives/step_source_classifier.ENGINE_COMPUTED_RECIPIENTS`, which stops at
+`class_c_interest` — a set authored for a three-tranche RMBS stack. Cairn's
+Classes D, E and F reach the fold with everything those three have: a seeded
+balance, an applied rate in the same published `Rate Current` column, and a
+day-count basis parsed from Condition 6(e)(ii). Each reproduces its published
+interest exactly — EUR 594,969.17, EUR 484,208.67 and EUR 495,004.89 — so the
+figure 3 bounds a declaration this repo authored, not the data the deal
+publishes. Widening it is a change to the engine and was deliberately not made
+while measuring the engine.
+
 **The engine executes this deal (#457).** The committed seed folds through the
 existing `run_period` kernel — the same one the RMBS deals use — over the full
 eight-class stack, running the deal's own Interest and Principal cascades rather
