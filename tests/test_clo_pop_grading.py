@@ -22,12 +22,17 @@ What the run says
    Payments, so a fold built from the one PoP-bearing document supplies one
    period result against the key's four.
 
-2. **Reconciled against that one document directly, the Interest cascade leaves
-   EUR 644,398.50 undistributed** — 9% of the period's available revenue. It was
-   the sum of two separately-named mechanisms; #528 closed the second and #514
-   closed the first, and what remains is a single step the engine cannot compute.
-   The pot is the report's own stated figure and no step is starved
-   (``total_shortfall`` is EUR 0.00).
+2. **Reconciled against that one document directly, the Interest cascade now
+   distributes every published cent — and is still wrong.** The undistributed
+   remainder was EUR 644,398.50; #528, #514 and finally #538 took it to EUR 0.00,
+   the last of them by resolving Class B onto the two strips it was issued in so
+   its step could compute at all. What the aggregate no longer shows is that two
+   steps are wrong by equal and opposite amounts: Class B over-accrues its
+   fixed-rate strip by EUR 14,312.50 on the floating day count, and the ``(CC)``
+   residual sweep beneath it is starved by exactly that (``total_shortfall``, EUR
+   0.00 until now, is that figure). **The remainder is #539's**, and the tie-out
+   gate is structurally unable to see it — the pot is fixed, so the sweep absorbs
+   any senior step's error. ``steps_passed`` is the surviving signal.
 
    a. **The join is closed; what is left of it is Class B's.** The report prints
       62 rows and the extracted cascade carries 29 top-level labels, so 20 report
@@ -36,21 +41,31 @@ What the run says
       re-letters bare ``(a)``) accounted for EUR 1,820,150.42 to the cent.
       ``report_label_fold`` now joins the report's hierarchy — prefixed children,
       amountless headers, re-lettered children — so **every published row reaches
-      a step** and EUR 1,175,751.92 of that is distributed. The remainder is
-      Class B's ``(H)(i)``/``(H)(ii)`` money, which now has a step and is
-      *compared* rather than ignored: the engine cannot evaluate it, so the line
-      fails by its full published value. The failure moved from the join to the
-      engine, which is where it belongs. **Its cause is neither #514's nor
-      #520's**: since #520 both Class B strips are seeded with real balances, but
+      a step**. Class B's ``(H)(i)``/``(H)(ii)`` money is the share that then had
+      a step but no figure: the engine could not evaluate it, so the line failed
+      by its full published value. The failure moved from the join to the engine,
+      which is where it belonged. **Its cause was neither #514's nor #520's**:
+      since #520 both Class B strips are seeded with real balances, but
       ``class_b_notes_interest`` resolves to a canonical ``class_b_interest``
-      whose need is looked up against a tranche named ``class_b``, and Cairn has
-      ``class_b_1`` and ``class_b_2`` — a recipient-to-tranche naming seam.
+      whose need was looked up against a tranche named ``class_b``, and Cairn has
+      ``class_b_1`` and ``class_b_2`` — a recipient-to-tranche naming seam, and
+      **#538 closed it** by resolving a class recipient onto every strip the class
+      was issued in and summing their accruals.
 
    b. **The EUR 194,340.11 day-count gap is closed.** Since #511 the Class A and
       Class C interest steps are engine-computed rather than handed the report's
       figure; #512 supplied the published applied rates so both resolve a coupon;
       and **#528** supplied the accrual period, which was the single factor both
       were short by. See item 3.
+
+   c. **One day-count gap remains, and it is a different one.** Class B-2 is the
+      deal's only fixed-rate strip — the report prints it ``FXR`` where every
+      other class is ``FLR`` — and its published balance, rate and interest
+      reconcile only on a 90-day 30/360 fraction, not the 95-day Act/360 of item
+      b. #538 stopped there rather than choosing a convention: the fraction is
+      stated in a prospectus Condition the seed does not carry, and picking
+      30/360 *because* it reproduces the published figure is the back-solving
+      #511 and #528 removed. **#539** sources it.
 
 3. **Two lines of the cascade are genuinely engine-computed, and both now tie —
    with every input sourced from a document rather than from the answer.**
@@ -172,14 +187,16 @@ PUBLISHED_AVAILABLE_REVENUE = 7_255_062.35
 UNJOINED_REVENUE_ROWS_TOTAL = 1_820_150.42
 
 #: Class B's published interest, split across the two sub-lettered rows the
-#: cascade's single ``(H)`` step claims since #514. It is the whole of what the
-#: engine still fails to place: the step compares against this figure and cannot
-#: produce one, so the comparison fails by the entire amount.
+#: cascade's single ``(H)`` step claims since #514 — one row per strip, ``(H)(i)``
+#: for B-1 and ``(H)(ii)`` for B-2. Since #538 the step computes a figure of its
+#: own to compare against this one, so the comparison fails by the difference
+#: rather than by the whole amount.
 CLASS_B_PUBLISHED_INTEREST = 386_773.50 + 257_625.00
 
 #: The money #514's fold moved onto its parent steps — the rows above, less Class
-#: B's share, which has a step but no figure. Derived from the pair either side of
-#: it so a change to either reds rather than silently re-balancing.
+#: B's share, which #538 moved onto the engine's side of the ledger. Derived from
+#: the pair either side of it so a change to either reds rather than silently
+#: re-balancing.
 PLACED_BY_THE_FOLD = UNJOINED_REVENUE_ROWS_TOTAL - CLASS_B_PUBLISHED_INTEREST
 
 #: What the report publishes for the two lines the engine computes for itself.
@@ -191,6 +208,13 @@ PUBLISHED_CLASS_C_INTEREST = 415_004.33
 #: makes the lines independent, and their agreement below meaningful.
 CLASS_A_SIZE_EUR, CLASS_A_APPLIED_RATE_PCT = 248_000_000.00, 5.008
 CLASS_C_SIZE_EUR, CLASS_C_APPLIED_RATE_PCT = 23_100_000.00, 6.808
+
+#: Class B's two strips, the same two inputs each. Cairn sells Class B as B-1
+#: floating and B-2 fixed, and the report publishes an applied rate for each; the
+#: class's need is the sum over both (#538). ``class_b`` names no tranche at all,
+#: which is the seam that issue closed.
+CLASS_B_1_SIZE_EUR, CLASS_B_1_APPLIED_RATE_PCT = 24_600_000.00, 5.958
+CLASS_B_2_SIZE_EUR, CLASS_B_2_APPLIED_RATE_PCT = 15_000_000.00, 6.87
 
 #: ``WaterfallFunds.days_in_period`` still defaults to 90 — the quarterly Act/360
 #: approximation — and #528 deliberately left it there: it is legitimate where a
@@ -226,25 +250,53 @@ ENGINE_COMPUTED_CLASS_C_INTEREST = (
     CLASS_C_SIZE_EUR * CLASS_C_APPLIED_RATE_PCT / 100 / 360 * CAIRN_ACCRUAL_DAYS
 )
 
-#: Derived, never transcribed: a regression in either mechanism moves these.
-#: Both day-count gaps are **zero** since #528 — that is the finding, and writing
-#: them as differences rather than as ``0.0`` is what keeps them able to reopen.
+#: Class B's engine need since #538: both strips, each at its own published rate,
+#: over the one accrual period the deal states. Derived like its siblings.
+ENGINE_COMPUTED_CLASS_B_INTEREST = (
+    CLASS_B_1_SIZE_EUR * CLASS_B_1_APPLIED_RATE_PCT / 100 / 360 * CAIRN_ACCRUAL_DAYS
+    + CLASS_B_2_SIZE_EUR * CLASS_B_2_APPLIED_RATE_PCT / 100 / 360 * CAIRN_ACCRUAL_DAYS
+)
+
+#: Derived, never transcribed: a regression in any mechanism moves these.
+#: A's and C's day-count gaps are **zero** since #528 — that is the finding, and
+#: writing them as differences rather than as ``0.0`` is what keeps them able to
+#: reopen.
 CLASS_A_DAY_COUNT_GAP = PUBLISHED_CLASS_A_INTEREST - ENGINE_COMPUTED_CLASS_A_INTEREST
 CLASS_C_DAY_COUNT_GAP = PUBLISHED_CLASS_C_INTEREST - ENGINE_COMPUTED_CLASS_C_INTEREST
 DAY_COUNT_SHORTFALL = CLASS_A_DAY_COUNT_GAP + CLASS_C_DAY_COUNT_GAP
 
-#: What the cascade still fails to place, and since #514 it has **one** mechanism
-#: rather than two. The unjoined rows are joined now, so the only published money
-#: the engine does not distribute is Class B's — its step exists, its comparison
-#: is real, and it produces no figure. The day-count term stays in the sum rather
-#: than being dropped: it is zero since #528, and writing it as a term is what
-#: lets it reopen if that regresses instead of silently re-balancing this total.
-REVENUE_SHORTFALL = CLASS_B_PUBLISHED_INTEREST + DAY_COUNT_SHORTFALL
+#: **Class B's is not zero, and it is #539's, not #538's.** B-1 (floating) ties to
+#: the cent on the Act/360 period above; B-2 is the deal's one fixed-rate strip —
+#: the report prints it ``FXR`` where every other class is ``FLR`` — and its
+#: published balance, rate and interest reconcile only on a 90-day 30/360
+#: fraction, not the 95-day Act/360 the engine applies to every strip. So the
+#: engine over-accrues B-2 and this gap is negative. #538 deliberately did not
+#: close it: sourcing a per-strip day-count fraction means re-extracting a
+#: prospectus Condition, and picking 30/360 *because* it makes the figure tie is
+#: the back-solving #511 and #528 removed.
+CLASS_B_DAY_COUNT_GAP = CLASS_B_PUBLISHED_INTEREST - ENGINE_COMPUTED_CLASS_B_INTEREST
 
-#: What the fold actually distributes through the 29-step Interest cascade —
-#: stated as the published pot less what is still unplaced, so it moves with the
-#: mechanisms above instead of standing as a number someone must maintain.
-ENGINE_DISTRIBUTED_REVENUE = PUBLISHED_AVAILABLE_REVENUE - REVENUE_SHORTFALL
+#: The residual sweep's side of that same error. The cascade's pot is fixed, so
+#: every cent Class B over-claims is one the ``(CC)`` sweep beneath it is denied:
+#: the two are equal and opposite **by construction**, which is exactly why the
+#: aggregate below cannot see either.
+RESIDUAL_SWEEP_SHORTFALL = -CLASS_B_DAY_COUNT_GAP
+
+#: What the fold distributes through the 29-step Interest cascade. Since #538
+#: every step evaluates, so the cascade pays out the published pot exactly.
+ENGINE_DISTRIBUTED_REVENUE = PUBLISHED_AVAILABLE_REVENUE
+
+#: What the cascade fails to place across the whole Interest waterfall: **zero**,
+#: and this module's sharpest point is that **the zero is not the grade.**
+#:
+#: Before #538 this aggregate was the headline — EUR 644,398.50 of published
+#: revenue the engine never placed. Now every published cent reaches a step and
+#: is distributed, so it reads perfectly while two steps are wrong by equal and
+#: opposite amounts. A grade reporting only this total would call the cascade
+#: correct; ``steps_passed`` and the per-step deltas are the only surviving
+#: signal, and the tests below assert the aggregate's zero **together with** the
+#: two non-zero deltas so the cancellation can never pass for success.
+REVENUE_SHORTFALL = PUBLISHED_AVAILABLE_REVENUE - ENGINE_DISTRIBUTED_REVENUE
 
 #: The money-carrying Interest rows that joined no engine label before #514, and
 #: what each pays. The report re-letters two management-fee rows bare ``(a)``, so
@@ -422,16 +474,21 @@ def test_the_keys_pop_period_is_the_report_the_grade_uses(
 
 
 def test_the_interest_cascade_does_not_reconcile(recon: ReconciliationReport) -> None:
-    """The headline: EUR 644,398.50 of published revenue the engine never places.
+    """The headline, and the trap: the total ties to the cent and the grade fails.
 
     ``WaterfallReconciliation.passed`` requires both that every joined step agrees
     and that the distributed total ties to available funds. #511 broke **both**
-    gates; #528 restored the step-level one by supplying the accrual period, and
-    #514 closed the join. What is left is a single step-level failure — Class B's
-    — and it is the tie-out gap too, because that step distributes nothing.
+    gates; #528 restored the step-level one for Classes A and C, #514 closed the
+    join, and #538 gave Class B a computable need — which closed the *tie-out*
+    gate as well, because every published cent now reaches a step and is paid.
 
-    One named mechanism, and for the first time the two gates fail for the *same*
-    reason rather than for two that happened to add up.
+    **So the aggregate is perfect and the cascade is still wrong.** The pot is
+    fixed and the ``(CC)`` residual sweep absorbs whatever the steps above it
+    leave, so a step that over-claims is funded by starving the sweep and the
+    total never moves. That makes the tie-out gate structurally blind to a
+    step-level error, and it is asserted here beside the step-level failure on
+    purpose: a grade reading only ``report_total - engine_total`` would call this
+    cascade reconciled.
     """
     assert recon.passed is False
     assert recon.periods_passed == 0
@@ -443,9 +500,16 @@ def test_the_interest_cascade_does_not_reconcile(recon: ReconciliationReport) ->
     assert revenue.report_total == pytest.approx(PUBLISHED_AVAILABLE_REVENUE, abs=0.01)
     assert revenue.engine_total == pytest.approx(ENGINE_DISTRIBUTED_REVENUE, abs=0.01)
     assert revenue.unapplied_rounding == 0.0
+
+    # The aggregate ties — and this pair of assertions is the point. The zero is
+    # real, and it coexists with two steps that are wrong. Asserted together so
+    # neither can be read without the other.
     assert revenue.report_total - revenue.engine_total == pytest.approx(
         REVENUE_SHORTFALL, abs=0.01
     )
+    assert REVENUE_SHORTFALL == pytest.approx(0.0, abs=0.01)
+    assert revenue.steps_passed < len(revenue.steps)
+
     # No published row is missing from the comparison — the gap is a statement
     # about the engine alone. A regression in the fold would refill this list and
     # quietly re-inflate the figure above (#514).
@@ -455,19 +519,26 @@ def test_the_interest_cascade_does_not_reconcile(recon: ReconciliationReport) ->
 def test_every_step_agrees_and_the_gap_is_only_the_unjoined_rows(
     recon: ReconciliationReport,
 ) -> None:
-    """28 of 29 steps match, and the one that does not is the one still owed.
+    """27 of 29 steps match, and the two that do not are one mechanism, twice.
 
     Stated as its own assertion because several distinct failures were in play
     and #510's whole discipline is not conflating them:
 
     - **the join** — EUR 1,820,150.42 of published rows matched no step (#514).
-      **Closed**: every row now reaches one, and EUR 1,175,751.92 of that is
-      distributed. What remains of it is Class B's share, which the step compares
-      against and cannot pay;
+      **Closed**: every row now reaches one;
     - **two step-level deltas** — Class A and Class C interest, which #511 made
       engine-computed and #512 gave resolvable published coupons. Both were short
       by the interpreter's 90-day default against the deal's real accrual period.
-      **#528 closed those**, and this test is where that shows.
+      **#528 closed those**, and this test is where that shows;
+    - **Class B's refusal** — the recipient named a class the deal issued in two
+      strips and the lookup wanted one tranche of that name. **#538 closed that**:
+      the class resolves to both strips and the step computes.
+
+    What is left is **#539's**, and it shows up twice because the cascade shares
+    one pot. Class B over-accrues its fixed-rate B-2 strip on the floating
+    Act/360 day count, and the ``(CC)`` residual sweep below it is short by
+    exactly that. Both deltas are asserted, and asserted as equal and opposite,
+    so neither can be closed alone without this reddening.
 
     **This agreement is not the circular one #511 deleted.** The tie it asserted
     before #511 was the report echoing itself: with no published rate wired, the
@@ -477,17 +548,33 @@ def test_every_step_agrees_and_the_gap_is_only_the_unjoined_rows(
     the prospectus states — against the report's published figure. Each half can
     move without the other, so the agreement is a result rather than an identity.
 
-    ``steps_passed`` reaches 28 rather than 29, and the missing one is not a
-    regression: #514 turned Class B's vacuous 0.00-vs-0.00 pass into a real
-    comparison, which the engine loses. A step that *can* fail is worth more than
-    one that passed by never being compared.
+    ``steps_passed`` reaches 27 rather than 29, and neither miss is a regression:
+    #514 turned Class B's vacuous 0.00-vs-0.00 pass into a real comparison, and
+    #538 turned its refusal into a real figure. A step that *can* fail is worth
+    more than one that passed by never being compared — and the second red is the
+    first one's shadow on a shared pot, not a new fault.
     """
     revenue = recon.periods[0].revenue
     assert len(revenue.steps) == 29
-    assert revenue.steps_passed == 28
+    assert revenue.steps_passed == 27
     assert [(s.priority, s.recipient) for s in revenue.steps if abs(s.delta) > 0.01] == [
         ("(H)", "class_b_notes_interest"),
+        ("(CC)", "subordinated_notes_interest_and_incentive_fee"),
     ]
+    # One mechanism, so one magnitude: the sweep is denied precisely what Class B
+    # over-claims. If these ever stop cancelling, a second fault has appeared and
+    # attributing the whole residual to #539 would be wrong.
+    by_priority = {s.priority: s for s in revenue.steps}
+    assert by_priority["(H)"].delta == pytest.approx(-CLASS_B_DAY_COUNT_GAP, abs=0.01)
+    assert by_priority["(CC)"].delta == pytest.approx(
+        -RESIDUAL_SWEEP_SHORTFALL, abs=0.01
+    )
+    assert by_priority["(H)"].delta + by_priority["(CC)"].delta == pytest.approx(
+        0.0, abs=0.01
+    )
+    # And it is a real overshoot, not a rounding artefact — the sign matters, and
+    # a day-count fix must move it toward zero from above.
+    assert CLASS_B_DAY_COUNT_GAP < -1.0
 
     # The two engine-computed lines specifically, named rather than left to the
     # aggregate: a step that agreed because it stopped computing (a EUR 0.00
@@ -508,37 +595,41 @@ def test_every_step_agrees_and_the_gap_is_only_the_unjoined_rows(
     assert class_c.engine_amount > 0.0
     assert abs(DAY_COUNT_SHORTFALL) < 0.01
 
-    # The waterfall still fails, and now for one reason rather than three.
+    # The waterfall still fails — and no longer says so in its total. That is the
+    # whole reason ``steps_passed`` is asserted above rather than the tie-out.
     assert revenue.passed is False
-    assert revenue.report_total - revenue.engine_total == pytest.approx(
-        CLASS_B_PUBLISHED_INTEREST, abs=0.01
-    )
+    assert revenue.report_total - revenue.engine_total == pytest.approx(0.0, abs=0.01)
 
 
 def test_the_money_is_undistributed_not_underfunded(
     clo_series: DealStateSeries, recon: ReconciliationReport
 ) -> None:
-    """The pot is right; the cascade is not short of funds — it is short of answers.
+    """The failure changed shape: nothing is unanswered now, one step is misfed.
 
     Read off the fold directly rather than through the reconciliation, because
     the two readings answer different questions and only this one distinguishes
     the failure modes. The first step sees the report's full stated available
-    revenue, nothing is gated, and ``total_shortfall`` is EUR 0.00 — so no step
-    that asked for money was denied it.
+    revenue and nothing is gated.
 
-    That distinction is what stops the obvious wrong fix. A cascade whose steps
-    were each short would be an amount problem, and sweeping the remainder into
-    a residual step would look like a repair; here the remainder belongs to named
-    recipients — some the cascade has no line for, one whose line refuses to
-    guess — so a residual sweep would pay it to the wrong party and turn a
-    visible failure into a silent one. #496 named that fix and rejected it.
+    **Before #538 the remainder was undistributed; now it is misallocated.**
+    ``remaining`` was EUR 644,398.50 — money the cascade could not place because
+    Class B's step refused — and it is EUR 0.00, because that step now computes.
+    In its place ``total_shortfall`` has become non-zero for the first time: the
+    ``(CC)`` residual sweep asked for its published figure and was denied part of
+    it, because Class B drew more from the shared pot than it was owed.
 
-    Since #528 the remainder has one source again: the unjoined rows. The
-    day-count gap #511 exposed on the two engine-computed lines is closed, so
-    nothing here is an arithmetic shortfall. A single step still refuses
-    outright — Class B, whose
-    tranche the report path never attaches (#512's recorded gotcha) — and that
-    refusal must stay visible here: #493's layered refusal reaching the CLO.
+    That distinction still stops the obvious wrong fix, and now points at the
+    right one. An unanswered need wanted a *resolution* (#538, done); a step
+    denied money because a senior step over-drew wants the senior step's
+    arithmetic corrected (#539's day count), never a bigger pot or a re-swept
+    residual. #496 named the residual-sweep fix and rejected it; the shortfall
+    below is what keeps the misallocation visible instead of letting the cascade
+    quietly balance itself.
+
+    ``not_evaluable`` is now empty, and that is #538's result stated at the layer
+    it happened: every recipient in this cascade has an answer. It is asserted as
+    a whole list rather than as Class B's absence so a *new* refusal cannot slip
+    in unnoticed (#493's layered refusal, one level up).
     """
     execution = clo_series.period_results[0].revenue_execution
 
@@ -547,20 +638,21 @@ def test_the_money_is_undistributed_not_underfunded(
     )
     assert execution.total_distributed == pytest.approx(ENGINE_DISTRIBUTED_REVENUE, abs=0.01)
     assert execution.remaining == pytest.approx(REVENUE_SHORTFALL, abs=0.01)
-    # Nothing was starved and nothing was suppressed — the two other ways a
-    # cascade under-pays, each of which would want a different fix.
-    assert execution.total_shortfall == 0.0
     assert not [step for step in execution.steps if step.gated]
 
-    # Only Class B still refuses. Classes A and C — the other two engine-claimed
-    # steps — are absent from this list because they computed, which is #511's
-    # result plus #512's rates in one assertion. Their disagreement shows up as a
-    # delta (asserted above), not as an absence.
-    assert [step.recipient for step in execution.steps if step.not_evaluable] == [
-        "class_b_notes_interest",
-    ]
-    # And the reconciliation's shortfall is that same remainder, not a second
-    # number that happens to be close.
+    # The failure the cascade now has, named and attributed. It is #539's, and it
+    # is the same EUR 14,312.50 the ``(H)`` step over-claims.
+    assert execution.total_shortfall == pytest.approx(
+        RESIDUAL_SWEEP_SHORTFALL, abs=0.01
+    )
+    assert RESIDUAL_SWEEP_SHORTFALL > 1.0
+
+    # Every step answers. Class B was the last refusal in this cascade and #538
+    # resolved it onto the two strips the class was issued in.
+    assert [step.recipient for step in execution.steps if step.not_evaluable] == []
+
+    # And the reconciliation agrees the pot tied out — the aggregate that no
+    # longer detects the misallocation above.
     revenue = recon.periods[0].revenue
     assert revenue.report_total - revenue.engine_total == pytest.approx(
         execution.remaining, abs=0.01
@@ -581,7 +673,7 @@ def test_the_rows_that_joined_no_step_now_reach_their_steps(
     Both halves are asserted deliberately. The first re-derives the old finding
     from the document, so this cannot pass by the report being re-parsed into
     friendlier labels; the second says the fold placed exactly that money, less
-    Class B's share, which the engine has a step for but no figure for.
+    Class B's share, which the engine now computes for itself.
     """
     revenue = recon.periods[0].revenue
     engine_labels = {step.priority for step in revenue.steps}
@@ -610,53 +702,84 @@ def test_the_rows_that_joined_no_step_now_reach_their_steps(
 
     # And the money actually moved: the four report-supplied parents of those rows
     # now distribute it. Class B's ``(H)`` is the fifth parent and is absent here
-    # on purpose — it is engine-claimed and pays nothing, which is why
+    # on purpose — it is engine-claimed and computes its own figure, which is why
     # PLACED_BY_THE_FOLD is the recovered total less its share.
+    #
+    # One of those four parents is the ``(CC)`` residual sweep, so since #538 this
+    # total carries the sweep's starvation too: it is short by exactly what Class
+    # B over-claims. The term is written into the expectation rather than folded
+    # into a new constant, so closing #539 reds this line instead of silently
+    # re-balancing it — #514's rule, applied to its own assertion.
     recovered = sum(
         step.engine_amount
         for step in revenue.steps
         if step.priority in {"(A)", "(E)", "(X)", "(CC)"}
     )
-    assert recovered == pytest.approx(PLACED_BY_THE_FOLD, abs=0.01)
+    assert recovered == pytest.approx(
+        PLACED_BY_THE_FOLD - RESIDUAL_SWEEP_SHORTFALL, abs=0.01
+    )
 
 
-def test_class_b_interest_is_now_compared_and_fails(
+def test_class_b_interest_is_computed_from_both_strips_and_misses_on_day_count(
     recon: ReconciliationReport,
     nvr_report: NotesCashReport,
     clo_series: DealStateSeries,
 ) -> None:
-    """The sharpest edge of the join gap, closed: a real payment now really graded.
+    """The last refusal, resolved — and what it uncovered underneath.
 
-    Before #514 this was a *passing* step and the pass meant nothing. The report
-    pays Class B EUR 644,398.50 across ``(H)(i)`` and ``(H)(ii)``; the cascade's
+    Before #514 this was a *passing* step and the pass meant nothing: the cascade's
     single ``(H)`` step found no ``(H)`` row, took EUR 0.00 and was compared
-    against a folded EUR 0.00 — a green cell asserting nothing about the largest
-    single figure the engine failed to place, and a grade reporting only
-    ``steps_passed`` would have called it correct.
+    against a folded EUR 0.00. #514 gave it its children's total, which made the
+    comparison real and the engine lose it by the full EUR 644,398.50.
 
-    The fold now gives the step its children's total, so the comparison is real
-    and the engine loses it. **The step going red is this issue working.** Nothing
-    about the engine changed here — only whether anyone was looking.
+    **#538 is why it now computes.** The cause was never a seeding gap — since
+    #520 both strips carry real balances — but a naming seam: ``class_b_interest``
+    looked its need up against a tranche named ``class_b``, and Cairn issued the
+    class as ``class_b_1`` and ``class_b_2``. A class recipient now resolves onto
+    every strip the class was issued in and sums their accruals, so the step
+    produces a figure derived from the seed's two tranche sizes, #512's two
+    published applied rates, and #528's accrual period.
 
-    The refusal's cause is neither #514's nor #520's. Since #520 the deal seeds
-    all eight classes and both Class B strips carry a real balance, so it is no
-    longer a missing tranche: the cascade's ``class_b_notes_interest`` resolves to
-    a canonical ``class_b_interest`` whose need is looked up against a tranche
-    named ``class_b``, and Cairn has ``class_b_1`` and ``class_b_2``. That
-    recipient-to-tranche naming seam is asserted below rather than described, so
-    this reds when it closes — at which point the engine amount becomes a real
-    coupon and this deal's Interest cascade has nothing left unplaced.
+    **It still fails, by EUR 14,312.50, and that remainder is #539's.** B-1 ties
+    to the cent. B-2 is the deal's one fixed-rate strip — printed ``FXR`` where
+    every other class is ``FLR`` — and accrues 30/360, so the engine's Act/360 day
+    count over-states it. #538 stopped short of that on purpose: the day-count
+    fraction is stated in a prospectus Condition the seed does not carry, and
+    choosing 30/360 because it makes the figure tie is the back-solving #511 and
+    #528 removed.
+
+    The strip resolution is asserted below rather than described — both halves,
+    the tranche names the deal really seeds and the engine figure they produce —
+    so a regression to a single-tranche lookup reds here rather than quietly
+    halving the need.
     """
     (class_b,) = [s for s in recon.periods[0].revenue.steps if s.priority == "(H)"]
     assert class_b.recipient == "class_b_notes_interest"
-    assert class_b.engine_amount == 0.0
     assert class_b.report_amount == pytest.approx(CLASS_B_PUBLISHED_INTEREST, abs=0.01)
-    assert class_b.passed is False
     assert class_b.source == "engine"
 
+    # The step computes, and computes the SUM of the strips. Both bounds are
+    # asserted: either strip alone is roughly half the need and would tie to
+    # nothing, so a resolution that picked one would land between them.
+    assert class_b.engine_amount == pytest.approx(
+        ENGINE_COMPUTED_CLASS_B_INTEREST, abs=0.01
+    )
+    b1_alone = CLASS_B_1_SIZE_EUR * CLASS_B_1_APPLIED_RATE_PCT / 100 / 360 * CAIRN_ACCRUAL_DAYS
+    b2_alone = CLASS_B_2_SIZE_EUR * CLASS_B_2_APPLIED_RATE_PCT / 100 / 360 * CAIRN_ACCRUAL_DAYS
+    assert class_b.engine_amount > b1_alone
+    assert class_b.engine_amount > b2_alone
+
+    # And it still misses, by the fixed-rate strip's day count and nothing else.
+    assert class_b.passed is False
+    assert class_b.delta == pytest.approx(-CLASS_B_DAY_COUNT_GAP, abs=0.01)
+    # B-1 is exact, so the whole miss is B-2's. Stated as the pair rather than the
+    # total, so #539 closing B-2 cannot be confused with B-1 drifting.
+    assert b1_alone == pytest.approx(386_773.50, abs=0.01)
+    assert b2_alone - 257_625.00 == pytest.approx(-CLASS_B_DAY_COUNT_GAP, abs=0.01)
+
     # A naming seam, not a seeding gap: both strips are seeded with real balances
-    # and no tranche is spelled the canonical name the recipient resolves to.
-    # Pinned so the cause cannot be misattributed to #520's truncation again.
+    # and no tranche is spelled the canonical name the recipient resolves to. The
+    # class resolves onto them anyway — which is the whole of #538.
     seeded = {t.name: t for t in clo_series.states[0].tranches}
     assert {"class_b_1", "class_b_2"} <= set(seeded)
     assert seeded["class_b_1"].balance > 0.0 and seeded["class_b_2"].balance > 0.0
@@ -867,24 +990,32 @@ def test_the_principal_cascade_reconciles_on_zero_and_proves_nothing(
 def test_the_finding_survives_the_adapter_choice(
     clo_model: DealModel, nvr_report: NotesCashReport
 ) -> None:
-    """Narrowing the fold back to three classes changes nothing about the grade.
+    """Narrowing the fold back to three classes now DOES change the grade — and why.
 
-    The direction of this test inverted at #520. It used to *widen* off a
-    Green-Lion-shaped ``DEFAULT_TRANCHE_CLASSES`` default; that default is now the
-    deal's own eight classes, so the *narrowing* is what has to be pinned. The
-    property protected is unchanged.
+    This test has inverted twice, and each inversion is a real result rather than
+    a maintenance edit. #496 wrote it to show the adapter choice could not reach
+    the finding ("no step is engine-computed, so no tranche balance reaches any
+    amount"); #511 made three steps engine-computed and #520 made the deal's own
+    eight classes the default, so it became a pin on *narrowing* instead.
 
-    #496's original reason — "no step is engine-computed, so no tranche balance
-    reaches any amount" — stopped being true at #511. The reason is now narrower
-    but still sound: the engine-computed recipients (Classes A, B, C interest) are
-    precisely the three the old default seeded, and the five classes the deal's
-    own list adds (D, E, F, the second Class B strip, and the subordinated notes)
-    name no recipient in ``ENGINE_COMPUTED_RECIPIENTS``. So the extra balances
-    still reach no need calculator and the grade is identical either way —
-    asserted, not assumed.
+    **#538 breaks the equivalence, and that is the point.** A class recipient now
+    resolves onto the strips the class was issued in, so Class B's need depends on
+    ``class_b_1`` and ``class_b_2`` **existing as tranches** — which they do only
+    because #520 seeds the deal's own class list. Narrowed back to the
+    Green-Lion-shaped ``class_a/b/c`` triple, the deal's Class B strips are never
+    seeded at all: the name ``class_b`` is seeded instead, the report publishes no
+    balance or rate under that name, and the step refuses exactly as it did before
+    #538 for exactly the reason #493 requires.
 
-    It keeps its original job: it reds if a *further* change makes a D-through-F
-    step engine-computed without revisiting the seeding.
+    So the two issues are coupled, and this asserts the coupling rather than
+    describing it: **#538's resolution is only reachable on a deal whose own
+    classes are seeded.** A regression in either — a resolution that stopped
+    matching strips, or a seeding that truncated back to three classes — lands the
+    engine on the pre-#538 total below, and the equality of *that* number with the
+    old headline is the tell.
+
+    It keeps its original job too: it reds if a further change makes a
+    D-through-F step engine-computed without revisiting the seeding.
     """
     narrowed_adapter = ReportAdapter.from_deal_model(
         clo_model, tranche_classes=DEFAULT_TRANCHE_CLASSES
@@ -894,10 +1025,27 @@ def test_the_finding_survives_the_adapter_choice(
 
     revenue = narrowed.periods[0].revenue
     assert narrowed.passed is False
-    assert revenue.engine_total == pytest.approx(ENGINE_DISTRIBUTED_REVENUE, abs=0.01)
+
+    # Narrowed, the strips are gone and Class B refuses again — the pre-#538
+    # state, reached by removing #520's seeding rather than by reverting #538.
+    seeded = [t.name for t in series.states[0].tranches]
+    assert seeded == list(DEFAULT_TRANCHE_CLASSES)
+    assert "class_b_1" not in seeded and "class_b_2" not in seeded
+    execution = series.period_results[0].revenue_execution
+    assert [s.recipient for s in execution.steps if s.not_evaluable] == [
+        "class_b_notes_interest",
+    ]
+
+    # And the grade falls back by exactly Class B's published figure: the whole
+    # class goes unplaced again, rather than the EUR 14,312.50 #539 still owes.
+    assert revenue.engine_total == pytest.approx(
+        ENGINE_DISTRIBUTED_REVENUE - CLASS_B_PUBLISHED_INTEREST, abs=0.01
+    )
+    assert revenue.engine_total < ENGINE_DISTRIBUTED_REVENUE
+
+    # Unchanged either way: the fold is a property of the report and the cascade,
+    # not of how many classes the adapter seeds.
     assert revenue.engine_computed_passed == 2
-    # The fold is a property of the report and the cascade, not of how many
-    # classes the adapter seeds, so narrowing cannot change what got placed.
     assert revenue.unjoined_report_rows == []
 
 
@@ -1036,16 +1184,19 @@ def test_the_published_statements_carry_the_measured_result() -> None:
     rather than transcribed — it is the same constant the reconciliation above
     asserts, so a card quoting a stale number reds here.
 
-    **The figure checked is the fold gap, and since #528 it is the total again.**
-    The cards were written when the two were the same number. #511 split them: the
-    engine began computing two interest lines for itself and fell short on both,
-    so the remainder became ``UNJOINED_REVENUE_ROWS_TOTAL + DAY_COUNT_SHORTFALL``
-    while the cards stated only the first. #528 supplied the accrual period those
-    lines were short by, ``DAY_COUNT_SHORTFALL`` went to zero, and the two
-    quantities coincide once more — so the cards' figure is the whole gap rather
-    than an understatement of it. ``REVENUE_SHORTFALL`` is still written as the
-    sum, not collapsed, because that is what lets the day-count mechanism reopen
-    visibly if it ever regresses.
+    **The figure checked is the fold gap, and it is no longer the total.**
+    The cards were written when the two were one number. #511 split them, #528
+    rejoined them, and **#538 has parted them for good**: every published cent now
+    reaches a step and is distributed, so ``REVENUE_SHORTFALL`` is zero while
+    ``UNJOINED_REVENUE_ROWS_TOTAL`` — what the *join* had to recover, a property of
+    the report and the cascade — is unchanged and is what the cards state.
+
+    That is deliberate and it is why this test still checks the join figure rather
+    than the total. Pointing the cards at the total would now have them publish
+    ``0.00`` for a cascade with two wrong steps in it, which is precisely the
+    false green ``REVENUE_SHORTFALL``'s own comment warns about. Restating the
+    cards is #515's — ``docs/**`` is outside this issue's scope, and editing the
+    constant instead of the cards would hide drift rather than report it.
     """
     repo_root = Path(__file__).resolve().parents[1]
     shortfall = f"{UNJOINED_REVENUE_ROWS_TOTAL:,.2f}"

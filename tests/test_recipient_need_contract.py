@@ -387,6 +387,203 @@ class TestDeeperStackNeeds:
 
 
 # ---------------------------------------------------------------------------
+# 4b. A recipient names a CLASS; an issuer sells it in STRIPS (#538).
+# ---------------------------------------------------------------------------
+
+
+class TestClassResolvesOntoItsStrips:
+    """A class recipient's need is the sum over the strips it was issued in.
+
+    Split classes are ordinary — A-1/A-2, B-1/B-2, a refinanced A-R — and the
+    engine's tranche names are slugs of the document's own labels, so a class sold
+    in two strips has no tranche named after the class. Before #538 the lookup
+    wanted exactly that name and refused; Cairn's Class B, sold as B-1 floating
+    and B-2 fixed against a single published ``(H)`` step, is the live instance.
+
+    The refusals #493 established are unchanged and are re-asserted here at the
+    class level, because that is where a resolution layer could quietly weaken
+    them: summing only the strips that happen to resolve would turn an honest
+    refusal into a confidently wrong number, and nothing downstream could tell a
+    partial sum from a whole one.
+    """
+
+    def test_a_class_sold_in_two_strips_accrues_the_sum_of_both(self) -> None:
+        funds = _funds(
+            tranches=[
+                _tranche("class_b_1", balance=24_600_000.0, rate_pct=5.958),
+                _tranche("class_b_2", balance=15_000_000.0, rate_pct=6.87),
+            ]
+        )
+        need, evaluable = compute_need("class_b_interest", funds)
+        assert evaluable
+        expected = (
+            24_600_000.0 * 0.05958 / 360.0 * 90 + 15_000_000.0 * 0.0687 / 360.0 * 90
+        )
+        assert math.isclose(need, expected, rel_tol=1e-9)
+
+    def test_neither_strip_alone_is_the_answer(self) -> None:
+        """The bound that makes an alias-onto-one-strip fix impossible to mistake.
+
+        Aliasing the class onto either strip computes roughly half the need and
+        ties to nothing; picking the larger is a guess. Asserted as a strict
+        inequality against both, so a resolution that silently narrowed to one
+        strip reds here rather than landing a plausible-looking figure.
+        """
+        funds = _funds(
+            tranches=[
+                _tranche("class_b_1", balance=24_600_000.0, rate_pct=5.958),
+                _tranche("class_b_2", balance=15_000_000.0, rate_pct=6.87),
+            ]
+        )
+        need, _ = compute_need("class_b_interest", funds)
+        assert need > 24_600_000.0 * 0.05958 / 360.0 * 90
+        assert need > 15_000_000.0 * 0.0687 / 360.0 * 90
+
+    def test_a_class_sold_whole_is_one_strip_and_is_unchanged(self) -> None:
+        """Every single-strip deal keeps the number it had — Green Lion's case."""
+        funds = _funds(
+            tranches=[_tranche("class_b", balance=40_000_000.0, rate_pct=6.0)]
+        )
+        need, evaluable = compute_need("class_b_interest", funds)
+        assert evaluable
+        assert math.isclose(need, 40_000_000.0 * 0.06 / 360.0 * 90, rel_tol=1e-9)
+
+    def test_the_joined_series_spelling_resolves_too(self) -> None:
+        """``Class A1`` slugs to ``class_a1``, ``Class B-1`` to ``class_b_1``.
+
+        Both spellings are in the committed corpus — the joined form is the
+        Italian and Spanish convention, the hyphenated one the CLO and US
+        convention (#456) — and matching only one would drop a real deal's stack
+        with no error anywhere.
+        """
+        funds = _funds(
+            tranches=[
+                _tranche("class_a1", balance=10_000_000.0, rate_pct=3.0),
+                _tranche("class_a2", balance=5_000_000.0, rate_pct=3.0),
+            ]
+        )
+        need, evaluable = compute_need("class_a_interest", funds)
+        assert evaluable
+        assert math.isclose(need, 15_000_000.0 * 0.03 / 360.0 * 90, rel_tol=1e-9)
+
+    def test_a_class_with_no_strips_still_refuses(self) -> None:
+        """#493's rule, one level up: unknown is not zero.
+
+        The resolution must not turn "this deal issued no Class D" into a need of
+        0.00 by summing an empty set — the silent-zero direction, reached through
+        a sum instead of a lookup.
+        """
+        funds = _funds(
+            tranches=[
+                _tranche("class_b_1", balance=24_600_000.0, rate_pct=5.958),
+                _tranche("class_b_2", balance=15_000_000.0, rate_pct=6.87),
+            ]
+        )
+        assert compute_need("class_d_interest", funds) == (0.0, False)
+
+    def test_one_unresolved_strip_makes_the_whole_class_unevaluable(self) -> None:
+        """The load-bearing refusal: never sum the strips that happen to resolve.
+
+        B-1 floating has no resolvable coupon here and B-2 fixed does. Answering
+        with B-2's accrual alone would be a confidently wrong number where a
+        refusal belongs, and it would look exactly like a correct one.
+        """
+        funds = _funds(
+            tranches=[
+                _tranche("class_b_1", balance=24_600_000.0),
+                _tranche("class_b_2", balance=15_000_000.0, rate_pct=6.87),
+            ]
+        )
+        assert compute_need("class_b_interest", funds) == (0.0, False)
+
+    def test_a_zero_balance_strip_does_not_make_the_class_refuse(self) -> None:
+        """A fully amortised strip is a real answer and still contributes 0."""
+        funds = _funds(
+            tranches=[
+                _tranche("class_b_1", balance=0.0, rate_pct=5.958),
+                _tranche("class_b_2", balance=15_000_000.0, rate_pct=6.87),
+            ]
+        )
+        need, evaluable = compute_need("class_b_interest", funds)
+        assert evaluable
+        assert math.isclose(need, 15_000_000.0 * 0.0687 / 360.0 * 90, rel_tol=1e-9)
+
+    def test_a_sibling_classs_strips_are_not_swept_in(self) -> None:
+        """``class_b`` must not reach ``class_c_1``.
+
+        The grammar is a class letter plus an optional series number, so the
+        resolution is bounded by the class it was asked for. A bare prefix match
+        would make one class swallow anything spelled with those characters.
+        """
+        funds = _funds(
+            tranches=[
+                _tranche("class_b_1", balance=10_000_000.0, rate_pct=6.0),
+                _tranche("class_c_1", balance=99_000_000.0, rate_pct=9.0),
+            ]
+        )
+        need, evaluable = compute_need("class_b_interest", funds)
+        assert evaluable
+        assert math.isclose(need, 10_000_000.0 * 0.06 / 360.0 * 90, rel_tol=1e-9)
+
+    def test_a_refinanced_strip_is_not_summed_with_the_class_it_replaces(self) -> None:
+        """``class_a_r`` is a replacement for Class A, not a second strip of it.
+
+        A lettered suffix is not a series number: a refinanced ``Class A-R``
+        conventionally *replaces* the notes it refinances, so summing it with
+        ``class_a`` would pay one class's coupon twice. A bare prefix match would
+        do exactly that, which is what this pins.
+
+        The deal carrying **only** ``class_a_r`` is the other half, and it refuses
+        rather than guessing. That is the #493-shaped answer while "replacement or
+        addition" is an open modelling question — a wrong sum here would look like
+        a correct one.
+        """
+        both = _funds(
+            tranches=[
+                _tranche("class_a", balance=100_000_000.0, rate_pct=4.0),
+                _tranche("class_a_r", balance=60_000_000.0, rate_pct=3.0),
+            ]
+        )
+        need, evaluable = compute_need("class_a_interest", both)
+        assert evaluable
+        assert math.isclose(need, 100_000_000.0 * 0.04 / 360.0 * 90, rel_tol=1e-9)
+
+        refinanced_only = _funds(
+            tranches=[_tranche("class_a_r", balance=60_000_000.0, rate_pct=3.0)]
+        )
+        assert compute_need("class_a_interest", refinanced_only) == (0.0, False)
+
+    def test_the_pdl_cure_sums_its_strips_too(self) -> None:
+        """One ledger per strip; a step curing "the Class B PDL" cures all of it."""
+        funds = _funds(
+            tranches=[
+                _tranche("class_b_1", pdl_balance=300_000.0),
+                _tranche("class_b_2", pdl_balance=450_000.0),
+            ]
+        )
+        need, evaluable = compute_need("class_b_pdl_cure", funds)
+        assert evaluable
+        assert math.isclose(need, 750_000.0, rel_tol=1e-9)
+
+    def test_the_deferred_interest_need_sums_its_strips_too(self) -> None:
+        funds = _funds(
+            tranches=[
+                _tranche("class_c_1", deferred_interest_balance=120_000.0),
+                _tranche("class_c_2", deferred_interest_balance=80_000.0),
+            ]
+        )
+        need, evaluable = compute_need("class_c_deferred_interest", funds)
+        assert evaluable
+        assert math.isclose(need, 200_000.0, rel_tol=1e-9)
+
+    def test_a_class_with_no_strips_refuses_in_the_balance_families_too(self) -> None:
+        """The empty sum is a refusal for every family, not just interest."""
+        funds = _funds(tranches=[_tranche("class_a", pdl_balance=1_000.0)])
+        assert compute_need("class_b_pdl_cure", funds) == (0.0, False)
+        assert compute_need("class_c_deferred_interest", funds) == (0.0, False)
+
+
+# ---------------------------------------------------------------------------
 # 5. The CLO management fees.
 # ---------------------------------------------------------------------------
 
