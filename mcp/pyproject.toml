@@ -12,7 +12,14 @@ dependencies = [
     # The primitives themselves — wrapped, never rewritten. Installed from the
     # repo root (`pip install -e ..`) or made importable via PYTHONPATH=../src.
     "loanwhiz",
-    "mcp>=1.0",
+    # Pinned below 2.0 deliberately. server.py calls the SDK's decorator API
+    # directly -- Server.list_tools() / call_tool() / read_resource() -- and those
+    # names moved in the 2.x line. An unbounded ">=1.0" resolved to 2.2.0, where
+    # build_server() raises "AttributeError: 'Server' object has no attribute
+    # 'list_tools'"; the whole MCP surface was unbuildable from a fresh install.
+    # tests/test_mcp_dependency_pin.py guards the bound; raise it only alongside
+    # the server.py rewrite that the 2.x API requires.
+    "mcp>=1.0,<2",
     "pydantic>=2.7",
 ]
 

@@ -6,25 +6,45 @@ typed input schemas, a tool call returns the full PrimitiveResult including
 governance evidence, the catalogue resource is honest about reachability, and
 the local reachability map cannot silently drift from the host API's.
 
-Run from the repo root with:
+Since #577 a bare ``pytest`` from the repo root collects these (root
+``testpaths`` lists ``mcp/tests``). They skip themselves when the MCP SDK is
+absent; to actually run them, install it:
 
-    PYTHONPATH=src python3 -m pytest mcp/tests -m "not slow and not integration" -q
+    pip install -e mcp && PYTHONPATH=src python3 -m pytest mcp/tests -q
 """
 
 from __future__ import annotations
 
 import json
 
-import mcp.types as types
 import pytest
 
-from loanwhiz_primitives_mcp.catalogue import build_catalogue, live_tool_names
-from loanwhiz_primitives_mcp.reachability import (
+# The MCP SDK is an optional install: ``mcp/`` is a separate package with its own
+# pyproject, and the repo-root environment does not necessarily have it. Since
+# #577 this module is collected by a bare ``pytest`` (root ``testpaths``), so a
+# hard ImportError here would red the default suite for everyone who has not run
+# ``pip install -e mcp``. Skip loudly instead.
+#
+# Skipping does NOT leave the SDK unguarded: ``tests/test_mcp_dependency_pin.py``
+# asserts the declared version bound unconditionally, with no SDK required. What
+# skips here is the part that genuinely cannot run without the SDK.
+pytest.importorskip(
+    "mcp.types",
+    reason="MCP SDK not installed in this environment (pip install -e mcp)",
+)
+
+import mcp.types as types  # noqa: E402
+
+from loanwhiz_primitives_mcp.catalogue import (  # noqa: E402
+    build_catalogue,
+    live_tool_names,
+)
+from loanwhiz_primitives_mcp.reachability import (  # noqa: E402
     LIBRARY_ONLY,
     LIVE,
     PRIMITIVE_REACHABILITY,
 )
-from loanwhiz_primitives_mcp.server import CATALOGUE_URI, build_server
+from loanwhiz_primitives_mcp.server import CATALOGUE_URI, build_server  # noqa: E402
 
 # The primitives expected to be exposed as callable MCP tools — the ``live``
 # ones, mirroring the host app's GET /primitives reachability.
