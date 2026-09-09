@@ -140,6 +140,7 @@ delivered three. Assert arrival where the value is *read*: the list and the
 arrival are two assertions, and only the second failed.
 
 Refs: #520
+Refs: #539 — the carrier is also what a plan must scope, not just the two ends.
 ## 2026-09-09 · pitfall · #511
 
 A reconciliation that **ties** proves nothing until you know where the engine's
