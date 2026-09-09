@@ -15,6 +15,7 @@ triage by opening the entry, not by reading the line.
   - [2026-09-09 · pitfall · #514](#2026-09-09--pitfall--514) — keywords: mirrored fold, report_adapter, reconciler, step_overrides, need vs published figure, both sides of a comparison
   - [2026-09-08 · pitfall · #496](#2026-09-08--pitfall--496) — keywords: steps_passed, tie-out gate, report-supplied, engine_computed_passed, unjoined label, sub-lettered rows, failing grade
   - [2026-09-08 · pattern · #512](#2026-09-08--pattern--512) — keywords: series provider, answer key not a fold input, pool_stats, published input, checked ground truth, applied_rate
+  - [2026-09-09 · pitfall · #538](#2026-09-09--pitfall--538) — keywords: residual sweep, tie-out blind, offsetting deltas, fixed pot, steps_passed, equal and opposite, total_shortfall
 - [Extraction guards & false-positive filters](extraction-guards.md)
   - [2026-09-02 · pitfall · #439](#2026-09-02--pitfall--439) — keywords: _CLASS_LETTERS, tranche, note class, Class J, Class O, false positive, guard, proxy range
   - [2026-09-05 · pitfall · #456](#2026-09-05--pitfall--456) — keywords: widening a guard, newly visible input, N/A cell, scavenged rating, Subordinated Notes, untested downstream
