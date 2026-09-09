@@ -1,10 +1,10 @@
 ---
 id: 2026-09-09-contego-onboarding
 title: "Onboard Contego CLO XI: a second CLO, and a second trustee-report family"
-status: decomposed
+status: filed
 created: 2026-09-09
 updated: 2026-09-09
-epics: []
+epics: [530]
 ---
 
 # Onboard Contego CLO XI: a second CLO, and a second trustee-report family
@@ -112,7 +112,7 @@ the first rather than forked from it.
 
 ## Decomposition
 
-### Epic: Onboard Contego CLO XI   (umbrella #<N>)
+### Epic: Onboard Contego CLO XI   (umbrella #530)
 
 - **Dispatch the trustee-report parsers on report family** — Generalise
   `collateral_schedule_parser` and `note_valuation_parser` off their U.S. Bank
@@ -141,4 +141,9 @@ the first rather than forked from it.
 
 ## Filed issues
 
-<Filled after filing.>
+- Epic "Onboard Contego CLO XI" → umbrella **#530**
+  - #531 Dispatch the trustee-report parsers on report family — parallel, `liz:priority:1`
+  - #532 Register Contego CLO XI against its pre-reset Listing Particulars — parallel, `liz:priority:1`
+  - #533 Parse Contego's BNY reports and derive its Annex 4 tape — sequential, after #532 (needs #531 in branch)
+  - #534 Author Contego's answer key from its published coverage tests — sequential, after #533
+  - #535 Verify two CLOs compare — sequential, after #534 **and after epic #522**
