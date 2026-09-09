@@ -69,6 +69,7 @@ from loanwhiz.domain.rules import (
     need_source_for,
     recipients_needing_calculator,
 )
+from loanwhiz.primitives.capital_structure import resolve_strips
 from loanwhiz.primitives.deal_state import TranchePayment, WaterfallResult
 
 # Small tolerance for floating-point comparisons (EUR amounts).
@@ -418,11 +419,9 @@ class WaterfallFunds(BaseModel):
         **unknown** answer, and every caller must keep it distinct from a need of
         zero — see :func:`_make_tranche_interest_need` (#493).
         """
-        exact = self.tranche(class_name)
-        if exact is not None:
-            return [exact]
-        pattern = re.compile(rf"^{re.escape(class_name)}_?\d+$")
-        return [t for t in self.tranches if pattern.match(t.name)]
+        by_name = {t.name: t for t in self.tranches}
+        names = tuple(by_name)
+        return [by_name[name] for name in resolve_strips(class_name, names)]
 
     @computed_field  # type: ignore[prop-decorator]
     @property
