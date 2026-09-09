@@ -842,6 +842,35 @@ path exists, so registering these pools did not move either deal off the ground
 truth it is graded on. Green Lion 2024-1's engine reconciliation remains the
 repo's only `validated` cell.
 
+### The illustrative demo book (#571)
+
+The pools above say what a deal's collateral is. The **demo book** says who
+holds part of one — and nobody does. `src/loanwhiz/data/books/demo-book.json`
+is a set of positions committed **beside the builder that produced it**
+(`src/loanwhiz/data/demo_book.py`), the same arrangement the fit specs have
+with their generator, and for the same reason: a book of holdings with no
+visible construction is indistinguishable from a claim that someone holds them.
+
+**The deals and the tranches are real; the holdings are not.** Each position
+names a registered deal and resolves its class against that deal's actual
+capital structure — so a position in Cairn's `class_b` resolves to the two
+strips Cairn really sold it in, `class_b_1` and `class_b_2`, and a class the
+deal does not carry is **refused rather than sized at zero**. What is invented
+is only the size, and the fact that anybody holds it at all.
+
+**Every row says so itself.** Each position carries
+`PositionProvenance.ILLUSTRATIVE` and that kind's own disclosure sentence, in
+the record, so a consumer inherits the claim instead of remembering to add it.
+This is deliberately not a flag on the book: the lesson from the synthetic
+pools directly above is that a qualifier a surface has to *remember* is one it
+can forget — those pools are correctly labelled in the data and the Pool and
+Waterfall pages still render no badge. Rendering it is tracked separately;
+what the data guarantees is that the qualifier cannot arrive missing.
+
+Regenerate with `python -m loanwhiz.data.demo_book --write`; the suite asserts
+the committed file is byte-identical to a fresh build, so it cannot drift from
+the code that claims to produce it.
+
 **Consequence:** The loan tapes do not represent real borrower behaviour, real loan performance, or real default history. Any analysis of loan-level metrics (arrears rates, default rates, prepayment rates, LTV distributions) reflects the synthetic generation process, not observed market behaviour. These metrics must not be used to draw conclusions about Dutch RMBS performance, ING Bank's mortgage book, or the Green Lion 2026-1 deal's actual credit performance.
 
 ---
