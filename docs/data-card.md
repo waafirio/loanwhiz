@@ -273,9 +273,11 @@ Value Ratio is at least equal to 130.08 per cent") but they live in the
 definitions glossary, which runs past the extractor's 40,000-character budget.
 A glossary is alphabetical, so truncation loses a *range*, not a sample: the
 extraction captured 25 terms spanning "Acceleration Notice" to "Bankruptcy
-Exchange Test", and every coverage test is defined under C–F. The truncation now
-logs a warning naming the last term it saw, so the shortfall is visible rather
-than inferred from a healthy-looking term count. Downstream this degrades
+Exchange Test", and every coverage test is defined under C–F. Since #548 the
+truncation is a **structural fact the extraction result carries** — how much was
+discarded and the last line seen — reaching a caller through
+`metadata.truncations` rather than only a log line, so the shortfall is visible
+rather than inferred from a healthy-looking term count. Downstream this degrades
 honestly — a coverage test with no quantified threshold is reported
 `not_evaluable` with that reason, never as a passing test. Capturing the levels
 is the obvious next increment and is **not** done here.
@@ -319,6 +321,49 @@ residual on the two interest lines it computes for itself.
 
 The remedy is #480's, applied to a different lost fact: a deterministic parser
 over the document's own text rather than a wider LLM budget.
+
+**#548: the same fact was lost again on a second deal, by a different
+mechanism — which is why the check is on the output, not the cause.** Contego
+CLO XI's glossary never reached the 40,000-character budget at all: its
+definitions section arrived at **3,255 characters**, so nothing was truncated
+and the extraction succeeded quietly on four terms. The cause sits one stage
+earlier, in `route_sections`. Docling renders many of this prospectus's defined
+terms as markdown *headings* — `' Payment Date ' means:`, `' Measurement Date '
+means:` — and a section ends at the next heading, so `1. Definitions` stopped at
+the first of them and the rest of the glossary became sibling sections nobody
+sent. The contiguous span from `1. Definitions` to `2. Form and Denomination`
+measures **246,245 characters carrying 445 defined-term entries**; 1.3% of it
+was extracted.
+
+So the same fact — `"Payment Date"` — was lost on Cairn by truncation and on
+Contego by orphaning. Widening the budget would have fixed neither this document
+nor the next one. Three things follow, and they are what #548 built:
+
+- **Truncation is structural at both sites.** `waterfall_extractor` was the more
+  dangerous one: it had no warning at all, so a Priority of Payments section over
+  its 20,000-character budget was cut *mid-cascade* in silence, and a truncated
+  cascade does not look broken — it looks like a shorter deal.
+- **The definitions stage judges its own output.** `metadata.glossary_coverage`
+  reports the term count, the alphabetical span and an `implausible` verdict,
+  and it reaches that verdict **without reference to which mechanism caused
+  it** — a truncated section, a section too small to be a glossary at all, or
+  too few terms from a healthy one. A repair aimed at either individual cause
+  would not have caught the other.
+- **The routing itself is repaired, under a guard.** A numbered definitions
+  heading whose entries Docling promoted to siblings now widens to the next
+  *numbered* sibling. It is a strict no-op when the routed section already
+  carries a real glossary, which is the Cairn and Green Lion case — so no
+  existing deal's extraction moves.
+
+**What was priced and not built.** Widening the span makes the 40,000-character
+budget bite where it previously did not, so the remaining question is a larger
+constant versus chunking. Chunking wins, and not on cost: 445 definitions
+emitted as full text need roughly 60,000 output tokens against Gemini 2.5 Pro's
+65,536-token ceiling, so a single widened call would truncate the *function
+call* — a partial tool payload, which fails less visibly than a truncated input.
+It is deferred because it would move Cairn's extraction, which feeds a committed
+answer key and a graded reconciliation. The truncation record is what makes that
+follow-on decidable rather than speculative.
 `extraction/payment_schedule_parser.py` reads the schedule from the Listing
 Particulars' text layer via `pypdf` — no OCR, no model call, the same bytes every
 run — and the seed now carries it, plus both definitions verbatim:

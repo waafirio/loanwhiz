@@ -155,6 +155,71 @@ class SectionMap:
                 return s.start_char
         return len(self.full_text)
 
+    def _numbered_sibling_end_char(self, section: Section) -> int:
+        """Char offset where a *numbered* section's span ends (exclusive).
+
+        :meth:`_descendant_end_char` stops at the next heading of the same or a
+        shallower level unless its dotted number marks it a child. That is right
+        for a document whose headings are real structure, and wrong for one
+        where Docling has promoted *content* to a heading.
+
+        Contego CLO XI is the second case: every defined term in its glossary
+        surfaces as its own level-2 heading (``' Payment Date ' means:``), so
+        ``1. Definitions`` — itself a level-2 heading — ends at the first of
+        them, 3,255 chars in, while the glossary runs on for another 240 k
+        (#548).
+
+        The discriminator is the **number**. ``1. Definitions`` carries one and
+        ``' Payment Date ' means:`` does not, and an unnumbered heading cannot
+        prove it is a sibling: it is at least as likely to be content the
+        converter mislabelled. So only a *numbered* non-descendant heading ends
+        the span here; unnumbered headings are passed over.
+
+        This is strictly wider than :meth:`_descendant_end_char` and therefore
+        never used as a general replacement for it — only
+        :func:`widen_to_definitions` calls it, and only behind a guard that
+        requires the widening to actually recover a glossary.
+
+        An unnumbered ``section`` has no number to reason from, so its own
+        narrow end is returned unchanged.
+        """
+        parent_number = _section_number(section.title)
+        if not parent_number:
+            return section.end_char
+
+        try:
+            idx = next(
+                i for i, s in enumerate(self.sections)
+                if s.start_char == section.start_char and s.level == section.level
+            )
+        except StopIteration:
+            # Section not part of this map — fall back to its own narrow end.
+            return section.end_char
+
+        for s in self.sections[idx + 1:]:
+            number = _section_number(s.title)
+            if number is None:
+                continue  # unnumbered: content, not proven structure
+            if _is_numeric_descendant(s.title, parent_number):
+                continue  # a child never ends its parent
+            return s.start_char
+        return len(self.full_text)
+
+    def with_numbered_sibling_text(self, section: Section) -> Section:
+        """Copy of ``section`` spanning to the next numbered sibling heading.
+
+        Leaves the :class:`SectionMap` and the original :class:`Section`
+        untouched, exactly as :meth:`with_descendant_text` does.
+        """
+        end = self._numbered_sibling_end_char(section)
+        return Section(
+            title=section.title,
+            level=section.level,
+            start_char=section.start_char,
+            end_char=end,
+            text=self.full_text[section.start_char:end],
+        )
+
     def descendant_text(self, section: Section) -> str:
         """Return ``section`` plus all of its deeper sub-sections as one span.
 
@@ -709,6 +774,103 @@ def _widen_to_payment_list(
     return section
 
 
+# The shape of a defined-term entry in a prospectus glossary, in the two forms
+# every ESMA-convention document uses: ``"X" means ...`` and ``"X" shall have
+# the meaning ...``. Deliberately not anchored to a line start — Docling emits
+# glossary entries as headings, table cells and paragraphs interchangeably, and
+# an anchored pattern would score the same glossary differently depending on
+# which shape the converter happened to choose.
+_DEFINITION_MARKER_RE = re.compile(
+    r"\b(?:means\b|(?:shall\s+have|has)\s+the\s+meaning\b)",
+    re.IGNORECASE,
+)
+
+# A stub carries a handful of these in passing prose; a real glossary carries
+# hundreds. The floor sits between those two populations, well clear of both:
+# Contego's routed stub scores 4 and its true span scores 445.
+_DEFINITION_MIN_MARKERS = 25
+
+# How many of the headings a widening would cross must themselves look like
+# glossary entries before we believe the converter promoted entries to headings.
+# On the real Contego document 13 of the 17 crossed headings match; the rest are
+# ``provided that:`` continuation fragments, which are glossary content too.
+_MIN_PROMOTED_ENTRY_HEADINGS = 3
+
+
+def _definition_marker_count(text: str) -> int:
+    """How many defined-term entries ``text`` plausibly contains."""
+    return len(_DEFINITION_MARKER_RE.findall(text))
+
+
+def _promoted_entry_headings(
+    section_map: SectionMap, section: Section, end_char: int
+) -> tuple[int, int]:
+    """``(definition-shaped, total)`` headings strictly inside a widened span.
+
+    The evidence that Docling promoted glossary *entries* to headings is that
+    the headings being crossed are themselves entries — ``' Payment Date '
+    means:``. Counting them tests the mechanism directly, where "the wider span
+    contains many defined terms" only tests a proxy that ordinary prose can
+    satisfy.
+    """
+    crossed = [
+        s for s in section_map.sections
+        if section.start_char < s.start_char < end_char
+    ]
+    shaped = [s for s in crossed if _DEFINITION_MARKER_RE.search(s.title)]
+    return len(shaped), len(crossed)
+
+
+def widen_to_definitions(section_map: SectionMap, section: Section) -> Section:
+    """Widen a routed definitions section iff that recovers a real glossary.
+
+    The Contego (IE CLO) failure mode: the keyword router lands on the correct
+    ``1. Definitions`` heading, but Docling has promoted each defined term to
+    its own same-level heading, so the section's ``.text`` ends at the first
+    entry and the extractor is handed a Condition-1 stub. No character budget
+    can fix that — the cap never even engages — and the extraction succeeds
+    quietly on 1.3% of the glossary (#548).
+
+    Same shape as :func:`_widen_to_payment_list`, and the same guard rails,
+    because the same rails are what make it safe on the deals that do not need
+    it:
+
+    - **Only widen when the narrow text is not already a glossary.** Cairn CLO
+      XVII and Green Lion both route to a section dense with defined terms, so
+      they return unchanged and their extractions do not move. Cairn's output
+      feeds a committed seed and a graded reconciliation; this guard is what
+      keeps it byte-identical.
+    - **Only widen when the crossed headings are themselves glossary entries.**
+      This is the mechanism, not a proxy for it. Without it the guard fires on a
+      small-but-legitimate glossary followed by ordinary prose that happens to
+      use "means" — a 20-term section followed by ``## Risk Factors`` widened
+      and put the risk factors into the definitions prompt. Density does not
+      separate those two populations; the shape of the crossed headings does.
+    - **Only widen when widening actually recovers a glossary.** If the wider
+      span is no more glossary-like than the narrow one, widening would pull in
+      unrelated text for no gain, so the section is returned unchanged.
+    - **Idempotent.** An already-widened section is dense by construction and
+      returns unchanged, so applying this at both the ``resolve_sections``
+      chokepoint and inside ``extract_definitions`` cannot double-widen.
+    """
+    if _definition_marker_count(section.text) >= _DEFINITION_MIN_MARKERS:
+        return section
+
+    widened = section_map.with_numbered_sibling_text(section)
+    if widened.end_char <= section.end_char:
+        return section
+
+    shaped, crossed = _promoted_entry_headings(section_map, section, widened.end_char)
+    # A majority, not merely a few: one stray ``' X ' means:`` heading in a run
+    # of ordinary sub-sections is not a shattered glossary.
+    if shaped < _MIN_PROMOTED_ENTRY_HEADINGS or shaped * 2 < crossed:
+        return section
+
+    if _definition_marker_count(widened.text) >= _DEFINITION_MIN_MARKERS:
+        return widened
+    return section
+
+
 def resolve_sections(
     section_map: SectionMap,
     *,
@@ -790,5 +952,14 @@ def resolve_sections(
         sec = keyword.get(role)
         if sec is not None:
             keyword[role] = _widen_to_payment_list(section_map, sec)
+
+    # The definitions counterpart of the widening above (#548). Separate because
+    # the signal is different — a glossary has defined terms, not a payment list
+    # — and because the span it widens to is the next *numbered* sibling rather
+    # than the descendant span: the headings it must cross are content Docling
+    # mislabelled, not real sub-sections.
+    defs = keyword.get("definitions")
+    if defs is not None:
+        keyword["definitions"] = widen_to_definitions(section_map, defs)
 
     return keyword

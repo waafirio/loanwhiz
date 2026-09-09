@@ -28,3 +28,16 @@ visible input produces end to end before believing the fix; the rows a guard
 used to drop are exactly the ones no fixture ever covered.
 
 Refs: #456
+
+## 2026-09-09 · pattern · #548
+
+Guard an extraction stage on **its own output's plausibility**, not on the cause
+you just diagnosed. `"Payment Date"` was lost from two CLO glossaries two ways:
+Cairn to a real `max_chars` truncation, Contego to section *orphaning* — Docling
+promotes each defined term to its own heading, so the routed section ends at the
+first entry and the cap never engages. A fix aimed at either misses the other,
+and both leave a healthy-looking count over a silent alphabetical cliff. Ask
+instead "is four terms from a 420-page prospectus plausibly a glossary?" — no
+theory of the cause needed, and it catches the mechanism nobody has seen yet.
+
+Refs: #548
