@@ -388,11 +388,23 @@ class WaterfallFunds(BaseModel):
         which is the honest answer while "replacement or addition" is undecided;
         deciding it is a modelling question, not a matter for a regex here.
 
+        **An exact match wins outright.** A tranche named for the class itself is
+        the class, and the series scan is skipped — so a stack that carried both
+        an aggregate ``class_a`` row and its ``class_a_1``/``class_a_2``
+        components (an extraction that read a total line as a tranche) reports the
+        aggregate once instead of paying the class roughly twice. It also makes
+        the single-strip path *structurally* identical to the pre-#538 lookup
+        rather than identical only because no committed deal happens to spell
+        both.
+
         Returns ``[]`` when the class was issued in no strip. That is the
         **unknown** answer, and every caller must keep it distinct from a need of
         zero — see :func:`_make_tranche_interest_need` (#493).
         """
-        pattern = re.compile(rf"^{re.escape(class_name)}_?\d*$")
+        exact = self.tranche(class_name)
+        if exact is not None:
+            return [exact]
+        pattern = re.compile(rf"^{re.escape(class_name)}_?\d+$")
         return [t for t in self.tranches if pattern.match(t.name)]
 
     @computed_field  # type: ignore[prop-decorator]

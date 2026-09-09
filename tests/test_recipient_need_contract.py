@@ -525,6 +525,28 @@ class TestClassResolvesOntoItsStrips:
         assert evaluable
         assert math.isclose(need, 10_000_000.0 * 0.06 / 360.0 * 90, rel_tol=1e-9)
 
+    def test_an_aggregate_row_wins_over_its_own_components(self) -> None:
+        """A tranche named for the class IS the class — never it plus its strips.
+
+        An extraction that read a capital-structure *total* line as a tranche
+        would leave the stack carrying ``class_a`` beside ``class_a_1`` and
+        ``class_a_2``. Summing all three pays the class about twice, and the
+        result would look entirely plausible. The exact match short-circuits the
+        series scan, which also makes every single-strip deal structurally
+        identical to the pre-#538 lookup rather than identical only because no
+        committed deal spells both.
+        """
+        funds = _funds(
+            tranches=[
+                _tranche("class_a", balance=100_000_000.0, rate_pct=4.0),
+                _tranche("class_a_1", balance=60_000_000.0, rate_pct=4.0),
+                _tranche("class_a_2", balance=40_000_000.0, rate_pct=4.0),
+            ]
+        )
+        need, evaluable = compute_need("class_a_interest", funds)
+        assert evaluable
+        assert math.isclose(need, 100_000_000.0 * 0.04 / 360.0 * 90, rel_tol=1e-9)
+
     def test_a_refinanced_strip_is_not_summed_with_the_class_it_replaces(self) -> None:
         """``class_a_r`` is a replacement for Class A, not a second strip of it.
 
