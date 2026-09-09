@@ -1226,6 +1226,12 @@ RETRACTED_CLAIMS: tuple[tuple[str, tuple[str, ...]], ...] = (
             # grade, not a join error. The corrected sentence still says
             # "join-error string", so the ban has to carry the whole claim.
             "replaced a true refusal with a join-error string",
+            # #515: the Cairn row narrates #496's failure, which is history and
+            # stays — but it stated it in the present tense, so the row said the
+            # cascade does not reconcile several sentences before saying all 29
+            # steps agree. The ban names the tense, not the history.
+            "grade anyway and it does not reconcile",
+            "so the failure is the tie-out, not a delta",
         ),
     ),
     (
