@@ -102,6 +102,7 @@ matches no step, so a real payment reconciles 0.00-vs-0.00 against its parent).
 On a failing grade, pin the figures and change neither side: the gap is it.
 
 Refs: #496
+Refs: #514 — closing the join turned the vacuous pass into a visible failure.
 
 ## 2026-09-08 · pattern · #512
 
@@ -127,3 +128,16 @@ reason. Prefer this to widening the *inputs*: the shape refused may be correct.
 
 Refs: #513
 Refs: #494 — same failure one level down: presence and correctness differ.
+
+## 2026-09-09 · pitfall · #514
+
+Fixing one copy of a mirrored function moves no number when the two copies sit on
+**opposite sides of the same comparison**. `report_adapter`'s report-to-cascade
+fold becomes each report-supplied step's *need*; `reconciler`'s becomes the
+published figure that need is checked against, so repairing only the reconciler's
+leaves the engine distributing the same total and merely turns vacuous
+0.00-vs-0.00 passes into failures. Before changing a reader, trace whether its
+twin feeds the *other* side of the assertion: if it does, the fix is one shared
+function, not two that agree.
+
+Refs: #514
