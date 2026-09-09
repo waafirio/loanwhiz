@@ -152,14 +152,16 @@ _RESIDUAL_LABELS = frozenset(
 )
 
 
-#: Spellings the committed reports use for one currency: Cairn's schedule prints
-#: the ISO code ``EUR``, Contego's prints ``Euro``. This is an **alias table,
-#: not a fold** — no orthographic rule turns ``Euro`` into ``EUR``, and one
-#: loose enough to try would merge currencies that merely look alike. A spelling
-#: not listed here is compared as published, so an unseen one **raises** rather
-#: than joining silently. That is the recoverable direction: a refusal is fixed
-#: by adding a line here, whereas two currencies quietly summed produce a number
-#: in no currency at all and nothing downstream can tell.
+#: Published currency spellings that mean one currency. Only the euro pair is
+#: drawn from data — Cairn's schedule prints the ISO code ``EUR`` and Contego's
+#: prints ``Euro``; the other codes are identity entries so a report already
+#: printing ISO passes through unchanged. This is an **alias table, not a
+#: fold** — no orthographic rule turns ``Euro`` into ``EUR``, and one loose
+#: enough to try would merge currencies that merely look alike. A spelling not
+#: listed is compared as published, so an unseen one (``Sterling``) **raises**
+#: rather than joining silently. That is the recoverable direction: a refusal is
+#: fixed by adding a line here, whereas two currencies quietly summed produce a
+#: number in no currency at all and nothing downstream can tell.
 _CURRENCY_ALIASES: Mapping[str, str] = {
     "eur": "EUR",
     "euro": "EUR",
@@ -469,9 +471,19 @@ class DealContribution(BaseModel, frozen=True):
 
 
 def _contributions_reconcile(
-    per_deal: Sequence[DealContribution], balance: Decimal, asset_count: int, what: str
+    per_deal: Sequence[DealContribution],
+    balance: Decimal,
+    asset_count: int | None,
+    what: str,
 ) -> None:
-    """Refuse a record whose per-deal parts do not add up to its own totals."""
+    """Refuse a record whose per-deal parts do not add up to its own totals.
+
+    ``asset_count`` is ``None`` for a record that *derives* its count from these
+    same contributions rather than carrying one. Checking a derived count here
+    would compare a value against itself and could never fire, and a check that
+    cannot fire is worse than no check because it reads as one — so the caller
+    says so in the type instead.
+    """
     deals = [c.deal for c in per_deal]
     if len(set(deals)) != len(deals):
         raise ValueError(f"{what} carries the same deal's contribution twice: {sorted(deals)}")
@@ -480,6 +492,8 @@ def _contributions_reconcile(
         raise ValueError(
             f"{what} states balance {balance} but its per-deal contributions sum to {summed}"
         )
+    if asset_count is None:
+        return
     counted = sum(c.asset_count for c in per_deal)
     if counted != asset_count:
         raise ValueError(
@@ -630,9 +644,13 @@ class BucketedExposure(BaseModel, frozen=True):
         for bucket in self.buckets:
             if self.axis.fold(bucket.label) in _RESIDUAL_LABELS:
                 raise ValueError(
-                    f"bucket {bucket.label!r} names a residual rather than a holding; "
-                    "an asset with no published value belongs in `unattributed`, "
-                    "which is a different record kind for exactly this reason"
+                    f"bucket {bucket.label!r} names a residual rather than a holding. "
+                    "If it came from an absent value, that asset belongs in "
+                    "`unattributed`, a different record kind for exactly this reason. "
+                    "If a report genuinely publishes this label, this figure would "
+                    "inherit that report's residual bucket (#496), so it refuses "
+                    "rather than reporting a concentration that absorbs the unknown "
+                    "— giving such a label its own record kind is the change to make."
                 )
 
         declared = {entry.deal for entry in self.as_of}
@@ -737,7 +755,7 @@ class ObligorExposureRow(BaseModel, frozen=True):
         _contributions_reconcile(
             self.per_deal,
             self.balance,
-            sum(c.asset_count for c in self.per_deal),
+            None,  # a row derives its count from these contributions; see the helper
             f"obligor {self.display_name!r}",
         )
         spans = len(self.per_deal) > 1

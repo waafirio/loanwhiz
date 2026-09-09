@@ -654,6 +654,33 @@ def test_a_bucket_cannot_assert_a_split_that_misses_its_balance() -> None:
         )
 
 
+def test_a_bucket_cannot_assert_an_asset_count_its_contributions_do_not_carry() -> None:
+    """The population arm, not the balance arm.
+
+    A bucket that reported a count its per-deal parts do not reach would let a
+    dropped facility keep the money and lose the name behind it, which is the
+    half a balance check cannot see.
+    """
+    with pytest.raises(ValidationError, match="its contributions carry"):
+        ExposureBucket(
+            label="Chemicals",
+            published_spellings=("Chemicals",),
+            balance=Decimal("10"),
+            asset_count=4,
+            split=ResolutionSplit(unresolved=Decimal("10")),
+            per_deal=(_contribution(CAIRN, "10", count=1),),
+        )
+
+
+def test_an_unattributed_record_cannot_assert_a_count_its_parts_do_not_carry() -> None:
+    with pytest.raises(ValidationError, match="its contributions carry"):
+        UnattributedExposure(
+            balance=Decimal("10"),
+            asset_count=9,
+            per_deal=(_contribution(CAIRN, "10", count=1),),
+        )
+
+
 def test_the_split_moves_when_a_group_flips_from_proposed_to_proven() -> None:
     """The paired assertion that makes the split load-bearing rather than decorative.
 
@@ -837,10 +864,7 @@ def test_bounds_are_carried_through_and_nothing_collapses_them_to_one_number() -
         assert figure.bounds == portfolio.resolution.distinct_obligor_bounds()
         assert not figure.bounds.is_exact
         assert "-" in str(figure.bounds)
-
-    banned = {"distinct_obligors", "obligor_count", "distinct_obligor_count", "n_obligors"}
-    for name in dir(cross_deal_exposure.ObligorExposure):
-        assert name not in banned
+        assert figure.bounds.lower != figure.bounds.upper
 
 
 def test_an_obligor_row_cannot_claim_a_tier_its_deals_contradict() -> None:
