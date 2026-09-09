@@ -55,6 +55,7 @@ conventions of the surrounding primitives.
 
 from __future__ import annotations
 
+import re
 from typing import Callable, Protocol, runtime_checkable
 
 from pydantic import BaseModel, Field, computed_field, model_validator
@@ -209,6 +210,19 @@ class TrancheFunds(BaseModel):
         and that default is a real answer ("nothing is deferred on this class"),
         exactly as ``pdl_balance``'s is — an absent *tranche* is the unknown, not
         an absent balance.
+    days_in_period:
+        This tranche's own day count for the period, overriding the deal-wide
+        ``WaterfallFunds.days_in_period`` when set (#539). ``None`` — the usual
+        case — means "no per-class convention was sourced for this tranche", and
+        the deal-wide count applies unchanged.
+
+        It exists because a day-count convention is a **per-class** fact, not a
+        per-deal one: Cairn CLO XVII issues Class B in two strips whose
+        Conditions state different bases, so B-1 accrues over the actual days
+        between two adjusted Payment Dates while B-2 accrues on 30/360 between
+        the two unadjusted ones. A single deal-level count cannot express that
+        at all. Only the *numerator* varies — every basis the Conditions state
+        divides by 360 — which is why this is a day count rather than a formula.
     """
 
     name: str = Field(..., description="Tranche name.")
@@ -216,6 +230,7 @@ class TrancheFunds(BaseModel):
     rate_pct: float | None = Field(default=None, ge=0.0)
     pdl_balance: float = Field(default=0.0, ge=0.0)
     deferred_interest_balance: float = Field(default=0.0, ge=0.0)
+    days_in_period: int | None = Field(default=None, gt=0)
 
 
 class WaterfallFunds(BaseModel):
@@ -261,7 +276,10 @@ class WaterfallFunds(BaseModel):
         ``not_evaluable`` rather than a zero fee — the distinction the silent-zero
         bug class turns on.
     days_in_period:
-        Day count for interest accrual (Act/360).
+        Deal-wide day count for interest accrual. A tranche carrying its own
+        ``TrancheFunds.days_in_period`` (a per-class convention sourced from the
+        deal's Conditions, #539) uses that instead; this remains the count for
+        every tranche that states none, and the base for fee accrual.
     sequential_pay:
         Whether the Sequential Pay Trigger is in effect this period. The default
         condition evaluator reads this; S5 may instead compute it. ``None``
@@ -355,6 +373,56 @@ class WaterfallFunds(BaseModel):
             if t.name == name:
                 return t
         return None
+
+    def tranche_strips(self, class_name: str) -> list[TrancheFunds]:
+        """Every strip the class ``class_name`` was issued in, in stack order.
+
+        A recipient names a **class**; an issuer sells that class in one or more
+        **strips**. Green Lion sells Class B whole, so ``class_b`` is one tranche
+        and this returns it alone. Cairn sells Class B in two — ``class_b_1``
+        floating and ``class_b_2`` fixed — so ``class_b`` names no tranche at all
+        and the class is exactly those two. Split classes are ordinary in CLOs
+        (A-1/A-2, B-1/B-2, a refinanced A-R), which is why the resolution lives
+        here rather than in an alias table pointing one class at one strip: an
+        alias would have to pick a strip, and picking one computes a fraction of
+        the class's need and ties to nothing.
+
+        The grammar is the sub-series one :mod:`loanwhiz.extraction.assembler`
+        already defines on the document side — a class letter followed by an
+        optional series **number** — read here through the slug
+        :func:`~loanwhiz.primitives.capital_structure.engine_tranche_name`
+        produces from it. Both spellings in the committed corpus are covered:
+        hyphen-separated ``"Class B-1"`` slugs to ``class_b_1`` and joined
+        ``"Class A1"`` to ``class_a1`` (#456), so matching only one of them would
+        drop a real deal's stack on the floor with no error anywhere.
+
+        **A lettered suffix is deliberately not a series.** A refinanced
+        ``"Class A-R"`` (``class_a_r``) is conventionally a *replacement* for
+        Class A rather than a second strip sold alongside it, so sweeping it in
+        would double-count wherever both are present — and the assembler's
+        grammar does not treat it as a series either. A deal carrying only
+        ``class_a_r`` therefore resolves ``class_a`` to no strips and **refuses**,
+        which is the honest answer while "replacement or addition" is undecided;
+        deciding it is a modelling question, not a matter for a regex here.
+
+        **An exact match wins outright.** A tranche named for the class itself is
+        the class, and the series scan is skipped — so a stack that carried both
+        an aggregate ``class_a`` row and its ``class_a_1``/``class_a_2``
+        components (an extraction that read a total line as a tranche) reports the
+        aggregate once instead of paying the class roughly twice. It also makes
+        the single-strip path *structurally* identical to the pre-#538 lookup
+        rather than identical only because no committed deal happens to spell
+        both.
+
+        Returns ``[]`` when the class was issued in no strip. That is the
+        **unknown** answer, and every caller must keep it distinct from a need of
+        zero — see :func:`_make_tranche_interest_need` (#493).
+        """
+        exact = self.tranche(class_name)
+        if exact is not None:
+            return [exact]
+        pattern = re.compile(rf"^{re.escape(class_name)}_?\d+$")
+        return [t for t in self.tranches if pattern.match(t.name)]
 
     @computed_field  # type: ignore[prop-decorator]
     @property
@@ -511,7 +579,12 @@ def _canonical_recipient(name: str) -> RecipientType | None:
 
 
 def _accrued_interest(balance: float, rate_pct: float, days: int) -> float:
-    """Act/360 accrued interest: balance × (rate/100) / 360 × days."""
+    """Accrued interest: balance × (rate/100) / 360 × ``days``.
+
+    Every day-count basis the Conditions state divides by 360 — Act/360 and
+    30/360 alike — so the convention lives entirely in how ``days`` was counted,
+    never here. See :mod:`loanwhiz.extraction.day_count_parser`.
+    """
     return balance * (rate_pct / 100.0) / 360.0 * days
 
 
@@ -526,39 +599,78 @@ def _accrued_interest(balance: float, rate_pct: float, days: int) -> float:
 
 
 def _make_tranche_interest_need(tranche: str) -> NeedCalculator:
-    """Act/360 accrual on ``tranche``; ``None`` when the need is unanswerable.
+    """Coupon accrual over every strip of class ``tranche``; ``None`` if unanswerable.
 
-    Three cases, and the whole point is that they stay three. An absent tranche
-    is *unknown*, not zero: a step paying Class D interest in a deal whose funds
-    carry no Class D has an unanswerable need, and answering ``0.0`` would put
-    an authoritative-looking figure into the distribution. A tranche *present*
-    with an unresolved coupon (``rate_pct is None``) is unanswerable for the
-    same reason — every floating class of a real CLO reaches here, because the
+    The recipient names a **class**, so the need is the sum of the accruals of
+    the strips that class was issued in (:meth:`WaterfallFunds.tranche_strips`).
+    A class sold whole is one strip and the sum is that strip's accrual, which is
+    why every single-strip deal is unchanged to the byte. A class sold in two —
+    Cairn's Class B-1 floating and B-2 fixed, one published ``(H)`` step for both
+    — is the sum of the two, and neither strip alone is the answer.
+
+    Each strip is counted on **its own** day-count basis where its Condition
+    states one (#539). The two strips above do not share a convention, so a sum
+    taken on one day count is wrong however the strips are resolved.
+
+    Three cases refuse, and the whole point is that they stay three. A class with
+    **no strips** is *unknown*, not zero: a step paying Class D interest in a deal
+    whose funds carry no Class D has an unanswerable need, and answering ``0.0``
+    would put an authoritative-looking figure into the distribution. A strip with
+    an unresolved coupon (``rate_pct is None``) makes the **whole class**
+    unanswerable — every floating class of a real CLO reaches here, because the
     capital structure rightly refuses to coerce a margin like
     ``"3 month EURIBOR + 1.80%"`` into a rate, and accruing 0% would service the
-    whole note stack for free. Only a tranche that is present *with* a rate
-    evaluates — and then a zero balance or a genuine 0% coupon is a real answer
-    (fully amortised, or owed nothing) and still evaluates to 0.
+    note stack for free. Summing only the strips that *do* resolve would be worse
+    than either: a confidently wrong number where a refusal belongs, since
+    nothing downstream could tell the partial sum from a whole one (#493).
+
+    Only a class whose strips are **all** present *with* rates evaluates — and
+    then a zero balance or a genuine 0% coupon is a real answer (fully amortised,
+    or owed nothing) and still evaluates to 0.
     """
 
     def _need(funds: WaterfallFunds) -> float | None:
-        t = funds.tranche(tranche)
-        if t is None or t.rate_pct is None:
+        strips = funds.tranche_strips(tranche)
+        if not strips:
             return None
-        return _accrued_interest(t.balance, t.rate_pct, funds.days_in_period)
+        total = 0.0
+        for t in strips:
+            if t.rate_pct is None:
+                return None
+            # Each strip accrues on the day count ITS OWN Condition states, and
+            # only falls back to the deal-wide count when it states none (#539).
+            # This is where the class-resolution and the per-class convention
+            # meet: Cairn's Class B is one published step over a floating strip
+            # on Act/360 and a fixed strip on 30/360, so the sum is right only if
+            # each term is counted on its own basis. A deal whose strips share one
+            # convention carries no per-strip count and is unchanged to the byte.
+            days = (
+                t.days_in_period
+                if t.days_in_period is not None
+                else funds.days_in_period
+            )
+            total += _accrued_interest(t.balance, t.rate_pct, days)
+        return total
 
     _need.__name__ = f"_need_{tranche}_interest"
     return _need
 
 
 def _make_tranche_pdl_need(tranche: str) -> NeedCalculator:
-    """Cure up to ``tranche``'s outstanding PDL; ``None`` when it has no tranche."""
+    """Cure class ``tranche``'s outstanding PDL; ``None`` when it has no strips.
+
+    Resolved over the class's strips for the same reason as the interest need: a
+    ledger is kept per strip, and a step curing "the Class B PDL" cures all of
+    it. Unlike interest this family cannot refuse mid-sum — a PDL balance is a
+    carried figure, always known once the strip exists — so the only refusal is
+    a class that was issued in no strip at all.
+    """
 
     def _need(funds: WaterfallFunds) -> float | None:
-        t = funds.tranche(tranche)
-        if t is None:
+        strips = funds.tranche_strips(tranche)
+        if not strips:
             return None
-        return t.pdl_balance
+        return sum(t.pdl_balance for t in strips)
 
     _need.__name__ = f"_need_{tranche}_pdl_cure"
     return _need
@@ -574,14 +686,16 @@ def _make_tranche_deferred_interest_need(tranche: str) -> NeedCalculator:
     ``class_c_deferred_interest`` from charging one period's coupon twice — and
     it is why this family does **not** refuse on an unresolved ``rate_pct``: a
     deferred balance is already-crystallised interest, so it is known even while
-    the current coupon is not.
+    the current coupon is not. Summed over the class's strips, like both of its
+    siblings — a class deferring interest defers it on every strip it was issued
+    in.
     """
 
     def _need(funds: WaterfallFunds) -> float | None:
-        t = funds.tranche(tranche)
-        if t is None:
+        strips = funds.tranche_strips(tranche)
+        if not strips:
             return None
-        return t.deferred_interest_balance
+        return sum(t.deferred_interest_balance for t in strips)
 
     _need.__name__ = f"_need_{tranche}_deferred_interest"
     return _need

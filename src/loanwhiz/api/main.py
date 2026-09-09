@@ -105,6 +105,7 @@ from loanwhiz.primitives.notes_cash_parser import NotesCashPeriod, NotesCashRepo
 from loanwhiz.primitives.period_state_machine import (
     DealStateSeries,
     PeriodInput,
+    published_rate_inputs,
     reconstruct_period_series,
     run_period,
 )
@@ -2210,30 +2211,43 @@ def _primitives_seed_from_report_seed(seed: DomainDealState) -> PrimitivesDealSt
     """Bridge a ``ReportAdapter`` (domain) seed onto the fold's ``DealState``.
 
     The ``ReportAdapter`` returns the canonical ``loanwhiz.domain.state.DealState``
-    (a list of ``tranches``), while the fold kernel ``run_period`` consumes the
-    ``loanwhiz.primitives.deal_state.DealState`` (flat ``class_{a,b,c}_balance``
-    fields). The two schemas coexist during the cold-start engine slice (#257);
-    this is the total, mechanical bridge between them — every domain-seed field
-    maps to a primitives-seed field, no value invented.
+    and the fold kernel ``run_period`` consumes the
+    ``loanwhiz.primitives.deal_state.DealState``. Both carry the same canonical
+    ``tranches: list[TrancheState]`` (#363), of the same type, so the liability
+    side is a **relay**: the deal's own stack is passed through whole.
+
+    It used to be a *collapse*. This function named the three classes
+    ``class_{a,b,c}`` in six flat constructor kwargs and read them out of the
+    domain seed by name, so a deal whose stack is ``class_b_1``/``class_d``..
+    ``class_f`` arrived as three tranches — two of them zero-filled — however many
+    classes the adapter had resolved. That made it the **fourth** site of #478's
+    truncation, and the reason it outlived the other three is worth stating: #478
+    catalogued the defect by *dict key*, and this instance is spelled as
+    constructor *arguments*, so a grep for the dict shape never reached it. A
+    defect catalogue keyed on one syntax misses the same bug written in another.
+
+    Relaying is also what keeps the refusal direction intact (#452, #478). The
+    bridge now names no class at all, so there is no second place for a
+    Green-Lion-shaped fallback to hide: whether a deal's stack is resolvable is
+    decided once, upstream, by ``report_adapter.tranche_classes_from_model`` —
+    which refuses a stated-but-unplaceable structure rather than truncating it.
+
+    Green Lion is unaffected: its seed carries exactly ``class_a``/``class_b``/
+    ``class_c``, and the legacy ``class_{a,b,c}_balance`` accessors read the same
+    values off the relayed list as the kwargs used to write into it — pinned by
+    ``tests/test_report_path_seed_bridge.py``.
+
+    Each ``TrancheState`` is **copied** rather than shared. It is not frozen, and
+    pydantic does not re-validate (so does not copy) a model instance passed into
+    a typed field, so relaying the objects themselves would alias the engine state
+    onto the adapter's seed — where the old flat kwargs always built fresh ones.
+    Nothing in the engine mutates a tranche in place today
+    (``DealState.with_tranche_updates`` is a ``model_copy``), so this closes a
+    hazard this bridge would otherwise introduce rather than an existing bug.
     """
-    by_name = {t.name: t for t in seed.tranches}
-
-    def _bal(name: str) -> float:
-        t = by_name.get(name)
-        return t.balance if t else 0.0
-
-    def _pdl(name: str) -> float:
-        t = by_name.get(name)
-        return t.pdl_balance if t else 0.0
-
     return PrimitivesDealState(
         reporting_date=seed.reporting_date,
-        class_a_balance=_bal("class_a"),
-        class_b_balance=_bal("class_b"),
-        class_c_balance=_bal("class_c"),
-        class_a_pdl=_pdl("class_a"),
-        class_b_pdl=_pdl("class_b"),
-        class_c_pdl=_pdl("class_c"),
+        tranches=[t.model_copy() for t in seed.tranches],
         reserve_balance=seed.reserve_balance,
         reserve_target=seed.reserve_target,
         cumulative_losses=seed.cumulative_losses,
@@ -2272,6 +2286,41 @@ def _report_coupon_pct(report: NotesCashReport) -> float:
     fold uses :func:`_period_coupon_pct` so each floating-rate quarter is exact.
     """
     return _period_coupon_pct(report.periods[0]) if report.periods else 0.0
+
+
+def _report_period_rates(period: NotesCashPeriod) -> dict[str, float]:
+    """The per-tranche coupon inputs for ONE report period — published rate first.
+
+    Two sources, in that order of trust:
+
+    - **the rate the report publishes** for each class this period
+      (``NoteClassBalance.interest_rate_applied``; a CLO Note Valuation Report
+      prints one per class in its Distribution Summary). It is a deal input read
+      straight off the document, and it is the only thing that lets a class
+      whose prospectus coupon is a floating margin accrue at all — the
+      capital structure rightly refuses to coerce ``"3 month EURIBOR + 1.80%"``
+      into a number, so without it the class reaches
+      ``_make_tranche_interest_need`` with nothing to accrue and is refused
+      (#493). What is never read is the report's *distributed amount*: the rate
+      is an input, the amount is the answer being checked.
+    - **Class A's rate recovered** from the report's own interest and balance
+      (:func:`_period_coupon_pct`) — an RMBS Notes & Cash report prints no rate
+      column at all, so Green Lion has nothing else to go on. It is a fallback,
+      never an override: a published rate always wins, so a deal that prints its
+      rates never has an amount-derived figure substituted for one.
+
+    Both halves are per period, because a floating class's applied rate moves
+    every payment date. A class the report publishes no rate for, and that is
+    not Class A, carries no key here — its coupon stays unresolved and its
+    interest need is reported ``not_evaluable`` rather than accrued as zero.
+    Cairn's Subordinated Notes are the live instance, and are excluded from the
+    committed answer key for the same reason.
+    """
+    rates = published_rate_inputs(
+        {b.note_class: b.interest_rate_applied for b in period.note_balances}
+    )
+    rates.setdefault("class_a_rate_pct", _period_coupon_pct(period))
+    return rates
 
 
 def _reconstruct_series_from_reports(deal_id: str, deal: dict) -> DealStateSeries:
@@ -2439,8 +2488,11 @@ def fold_report_series(
 
     - the residual sweep step is flagged (``_report_step_specs``) so the revenue
       ``(k)`` line ties the pot out;
-    - the Class A coupon is recovered **per period** (the notes are floating-rate),
-      so each quarter's engine-computed Class A interest is exact.
+    - the coupon rates are resolved **per period** (:func:`_report_period_rates`),
+      because the notes are floating-rate: a report that publishes its applied
+      rates supplies one per class, and Class A's is recovered from the report's
+      own interest and balance where it does not. Either way each quarter's
+      engine-computed note interest is that quarter's, never the deal's first.
 
     No Green-Lion-2026-1 constant is consulted — the seed and the rates both come
     from the report.
@@ -2453,7 +2505,7 @@ def fold_report_series(
     period_results = []
     current = seed
     for period_inputs, report_period in zip(inputs, report.periods):
-        rates = {"class_a_rate_pct": _period_coupon_pct(report_period)}
+        rates = _report_period_rates(report_period)
         result = run_period(
             current,
             period_inputs,

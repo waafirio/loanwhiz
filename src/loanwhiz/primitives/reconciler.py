@@ -36,6 +36,7 @@ fast test suite across all 3 quarterly periods.
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Sequence
 
 from pydantic import BaseModel, Field
 
@@ -51,7 +52,12 @@ from loanwhiz.primitives.report_adapter import (
     DEFAULT_REVENUE_RESIDUAL_LABEL,
     ReportAdapter,
 )
-from loanwhiz.primitives.step_source_classifier import ENGINE_COMPUTED_RECIPIENTS
+from loanwhiz.primitives.report_label_fold import (
+    FoldedPoP,
+    UnplacedReportRow,
+    fold_report_pop,
+)
+from loanwhiz.primitives.step_source_classifier import is_engine_computed
 from loanwhiz.primitives.waterfall_interpreter import WaterfallExecution
 
 _REPO_ROOT = Path(__file__).resolve().parents[3]
@@ -111,48 +117,44 @@ SOURCE_NOTE = (
 # ===========================================================================
 
 
-def _fold_report_revenue_steps(period: NotesCashPeriod) -> dict[str, float]:
-    """Collapse the report's revenue PoP into ``{priority_label: amount}``.
+def _fold_report_revenue_steps(
+    period: NotesCashPeriod, cascade_labels: Sequence[str]
+) -> FoldedPoP:
+    """Fold the report's revenue PoP onto the engine's revenue labels (#514).
 
-    The Notes & Cash report prints step ``(b)`` as wrapped sub-line items
-    ``(1)…(n)`` (a ``pypdf`` layout artefact the V3 parser surfaces individually);
-    the extracted model carries a single ``(b)`` step, so the sub-items are folded
-    back into one ``(b)`` total. Top-level ``(a)`` and ``(c)…(k)`` labels pass
-    through unchanged.
+    A thin named seam over
+    :func:`~loanwhiz.primitives.report_label_fold.fold_report_pop`. The join is
+    deal-agnostic and lives there, so this reader and ``ReportAdapter`` — the two
+    sides of every comparison below — cannot fold differently.
     """
-    folded: dict[str, float] = {}
-    b_total = 0.0
-    saw_sub_item = False
-    for step in period.revenue_pop:
-        inner = step.priority.strip("()").strip()
-        if inner.isdigit():
-            b_total += step.amount
-            saw_sub_item = True
-        else:
-            folded[step.priority] = folded.get(step.priority, 0.0) + step.amount
-    if saw_sub_item:
-        folded["(b)"] = b_total
-    return folded
+    return fold_report_pop(period.revenue_pop, cascade_labels)
 
 
-def _fold_report_redemption_steps(period: NotesCashPeriod) -> dict[str, float]:
-    """``{label: amount}`` for the report's redemption PoP (no folding needed)."""
-    out: dict[str, float] = {}
-    for step in period.redemption_pop:
-        out[step.priority] = out.get(step.priority, 0.0) + step.amount
-    return out
+def _fold_report_redemption_steps(
+    period: NotesCashPeriod, cascade_labels: Sequence[str]
+) -> FoldedPoP:
+    """Fold the report's redemption PoP onto the engine's redemption labels."""
+    return fold_report_pop(period.redemption_pop, cascade_labels)
 
 
 def _source_of(recipient: str) -> str:
     """Classify an engine-execution step's source from the shared classifier.
 
-    A recipient in :data:`ENGINE_COMPUTED_RECIPIENTS` is ``"engine"`` (the
-    interpreter computed it from balances/rates with no report input); anything
-    else is ``"report-supplied"`` (its amount was fed in from the report). The
-    residual sweep is detected separately by the caller (it is whichever step is
-    flagged ``residual`` on the spec, surfaced via the execution's remaining pot).
+    ``"engine"`` when the interpreter derives this recipient's need from the deal
+    model with no report input; otherwise ``"report-supplied"`` (its amount was fed
+    in from the report). The residual sweep is detected separately by the caller
+    (whichever step is flagged ``residual`` on the spec).
+
+    The test is :func:`~loanwhiz.primitives.step_source_classifier.is_engine_computed`,
+    which **resolves** the recipient into the canonical vocabulary first. This used
+    to be a second raw-string membership test, so a deal spelling its cascade in
+    the document's own words — Cairn's ``class_a_notes_interest`` against the set's
+    ``class_a_interest`` — was reported ``report-supplied`` even where the fold had
+    genuinely computed the need, and ``engine_computed_passed`` read zero on a
+    grade that had engine-computed lines in it (#511 fixed the engine's side and
+    pinned this one for #514).
     """
-    return "engine" if recipient in ENGINE_COMPUTED_RECIPIENTS else "report-supplied"
+    return "engine" if is_engine_computed(recipient) else "report-supplied"
 
 
 # ===========================================================================
@@ -201,6 +203,15 @@ class WaterfallReconciliation(BaseModel):
     The tie-out gate checks ``engine_total + unapplied_rounding == available_funds``,
     so the engine reproduces the published distribution exactly *and* the leftover
     pot matches the report's own rounding line — neither side is fudged.
+
+    ``unjoined_report_rows`` is the third thing to read, and it is the one a
+    ``steps_passed`` tally cannot tell you (#496): the published rows the fold
+    could attribute to **no** step. They are counted into ``report_total`` — so the
+    tie-out above still fails by exactly their value — but they are listed rather
+    than folded onto a nearby label or swept into the residual, because their money
+    belongs to *named* recipients and placing it anywhere else would pay the wrong
+    party and turn a visible failure silent. Empty is the normal case, and an
+    engine cannot make it empty: only a join that reaches every published row can.
     """
 
     waterfall_type: str = Field(..., description="'revenue' or 'redemption'.")
@@ -211,6 +222,10 @@ class WaterfallReconciliation(BaseModel):
     unapplied_rounding: float = Field(
         default=0.0,
         description="Report's documented undistributed remainder (rounding line).",
+    )
+    unjoined_report_rows: list[UnplacedReportRow] = Field(
+        default_factory=list,
+        description="Published rows the fold could attribute to no step (#514).",
     )
     tolerance_eur: float = DEFAULT_TOLERANCE_EUR
 
@@ -245,6 +260,34 @@ class PeriodValidation(BaseModel):
         return self.revenue.passed and self.redemption.passed
 
 
+class SkippedPeriod(BaseModel):
+    """A period the reconciliation did not grade, and why (#513).
+
+    Deliberately **not** a :class:`PeriodValidation` with empty waterfalls.
+    ``WaterfallReconciliation.passed`` is ``all(...)`` over its steps plus a
+    tie-out against ``available_funds``, so an empty step list against a EUR 0.00
+    pot returns ``True``, and ``PeriodValidation.passed`` has no escape hatch —
+    a skipped period modelled that way would read as a **pass** in
+    :attr:`ReconciliationReport.passed`, in ``periods_passed``, in
+    ``quality_harness._grade_pop_side``'s tally and in the capability matrix's
+    ``engine_validation`` cell. A four-period key with one Priority of Payments
+    would then report three-quarters green for free, which is the vacuity
+    ``answer_keys/README.md`` exists to prevent, arriving somewhere new.
+
+    So a skip carries no pass/fail at all: it is a separate record, in a separate
+    list, naming what could not be graded and the reason. It is the same shape
+    ``quality_harness._grade_pool_stats`` already uses for a published statistic
+    no grader resolves (``ungraded_stat_keys``) and that ``covenant_monitor``
+    uses for an unplaceable tranche — report the gap, never score it.
+    """
+
+    reporting_date: str
+    period_label: str
+    reason: str = Field(
+        ..., description="Why this period was not graded, in operator-facing prose."
+    )
+
+
 class ReconciliationReport(BaseModel):
     """The full engine-vs-report reconciliation for one deal, across its periods.
 
@@ -252,25 +295,46 @@ class ReconciliationReport(BaseModel):
     published Notes & Cash priority of payments, period by period, to the cent.
     ``source_note`` carries the standing honesty disclosure of which lines were
     engine-computed vs. report-supplied.
+
+    ``periods`` is the **graded** set and every count below is over it.
+    ``skipped_periods`` carries the periods there was nothing to grade in (#513);
+    it is empty for a report whose every period was graded, which is every report
+    built by :func:`reconcile_series` directly.
     """
 
     deal_name: str
     periods: list[PeriodValidation]
     tolerance_eur: float = DEFAULT_TOLERANCE_EUR
     source_note: str = SOURCE_NOTE
+    skipped_periods: list[SkippedPeriod] = Field(
+        default_factory=list,
+        description="Periods carrying nothing to grade, each with its reason (#513).",
+    )
 
     @property
     def passed(self) -> bool:
-        """Every period's revenue + redemption reconciled to the cent."""
+        """Every **graded** period's revenue + redemption reconciled to the cent.
+
+        Skipped periods neither help nor hurt: they are not evidence the engine
+        is right (so they cannot make a report pass) and not evidence it is wrong
+        (so they cannot make one fail). ``bool(self.periods)`` keeps a report that
+        graded nothing at all from passing vacuously.
+        """
         return bool(self.periods) and all(p.passed for p in self.periods)
 
     @property
     def periods_checked(self) -> int:
+        """How many periods were actually graded — never the key's period count."""
         return len(self.periods)
 
     @property
     def periods_passed(self) -> int:
         return sum(1 for p in self.periods if p.passed)
+
+    @property
+    def periods_skipped(self) -> int:
+        """How many periods carried nothing to grade."""
+        return len(self.skipped_periods)
 
     def summary(self) -> str:
         """A one-block human summary of the proof."""
@@ -288,6 +352,24 @@ class ReconciliationReport(BaseModel):
                 f"redemption {p.redemption.steps_passed}/{len(p.redemption.steps)} "
                 f"steps — {ec} engine-computed line(s) matched"
             )
+            # Named, never only counted (#496/#514): a row no step claims is money
+            # the grade did not compare, and a reader shown only "27/29 steps"
+            # would take that for a near-pass. The steps ratio is honest about
+            # what it measured; this says what it could not reach.
+            for wf in (p.revenue, p.redemption):
+                for row in wf.unjoined_report_rows:
+                    lines.append(
+                        f"    {wf.waterfall_type} {row.priority}: "
+                        f"EUR {row.amount:,.2f} published, joined to no step"
+                    )
+        # The skipped periods are named here, not just counted: a reader shown
+        # "1/1 periods reconciled" for a four-period key would otherwise take the
+        # grade for complete. The ratio is honest about what it measured; this
+        # says what it did not measure.
+        for sp in self.skipped_periods:
+            lines.append(
+                f"  {sp.reporting_date} ({sp.period_label}): not graded — {sp.reason}"
+            )
         lines.append(SOURCE_NOTE)
         return "\n".join(lines)
 
@@ -301,7 +383,7 @@ def _reconcile_one(
     *,
     waterfall_type: str,
     execution: WaterfallExecution,
-    report_amounts: dict[str, float],
+    folded: FoldedPoP,
     available: float,
     residual_label: str,
     tolerance: float,
@@ -309,10 +391,13 @@ def _reconcile_one(
     """Reconcile one folded waterfall execution against the report's PoP.
 
     The engine side is read straight off the fold's :class:`WaterfallExecution`
-    (no re-interpretation); the report side is the published per-label amounts.
-    Each step is labelled ``engine`` / ``report-supplied`` / ``residual`` so the
-    proof distinguishes the independently-computed lines from the routed ones.
+    (no re-interpretation); the report side is ``folded``, the published rows
+    joined onto this waterfall's own labels. Each step is labelled ``engine`` /
+    ``report-supplied`` / ``residual`` so the proof distinguishes the
+    independently-computed lines from the routed ones, and anything the join could
+    not place is carried through rather than dropped.
     """
+    report_amounts = folded.amounts
     recs: list[StepReconciliation] = []
     for result in execution.steps:
         label = result.priority
@@ -332,7 +417,10 @@ def _reconcile_one(
                 passed=abs(delta) <= tolerance,
             )
         )
-    report_total = sum(report_amounts.values())
+    # Everything published, placed or not: a row the join could not attribute is
+    # still money the report distributed, so excluding it here would let the
+    # tie-out gate agree by not looking at the gap (#514).
+    report_total = folded.total
     # The report's own documented "Unapplied … due to rounding" remainder: the pot
     # it deliberately left undistributed (available − published distribution).
     # Clamp tiny negatives to 0 (published steps may sum a hair over the pot from
@@ -345,6 +433,7 @@ def _reconcile_one(
         report_total=report_total,
         available_funds=available,
         unapplied_rounding=unapplied,
+        unjoined_report_rows=list(folded.unplaced),
         tolerance_eur=tolerance,
     )
 
@@ -363,18 +452,24 @@ def reconcile_period(
     :class:`PeriodResult` and compares each to the report's published amount, to
     the cent.
     """
+    revenue_execution = period_result.revenue_execution
+    redemption_execution = period_result.redemption_execution
     revenue = _reconcile_one(
         waterfall_type="revenue",
-        execution=period_result.revenue_execution,
-        report_amounts=_fold_report_revenue_steps(period),
+        execution=revenue_execution,
+        folded=_fold_report_revenue_steps(
+            period, [step.priority for step in revenue_execution.steps]
+        ),
         available=period.available_revenue_funds or 0.0,
         residual_label=revenue_residual_label,
         tolerance=tolerance,
     )
     redemption = _reconcile_one(
         waterfall_type="redemption",
-        execution=period_result.redemption_execution,
-        report_amounts=_fold_report_redemption_steps(period),
+        execution=redemption_execution,
+        folded=_fold_report_redemption_steps(
+            period, [step.priority for step in redemption_execution.steps]
+        ),
         available=period.available_principal_funds or 0.0,
         residual_label=redemption_residual_label,
         tolerance=tolerance,

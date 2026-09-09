@@ -193,6 +193,15 @@ _INTEREST_STEP_RE = re.compile(
 #: a month.
 _AS_OF_RE = re.compile(r"^As of\s*:?\s+(?P<day>\d{2})/(?P<month>\d{2})/(?P<year>\d{4})\s*$")
 
+#: ``Next Payment Date: 21/01/2025`` — the Payment Date this report's period pays
+#: on, stated in its header. The trustee prints it spaced in the Note Valuation
+#: Report and unspaced-and-run-together in the monthly collateral schedules
+#: (``Calculation Date:18/02/2025Next Payment Date:22/04/2025Principal…``), so the
+#: separators are optional and the match is deliberately not anchored to a line.
+_NEXT_PAYMENT_DATE_RE = re.compile(
+    r"Next Payment(?: Date)?\s*:?\s*(?P<day>\d{2})/(?P<month>\d{2})/(?P<year>\d{4})"
+)
+
 _PAGE_MARKER_RE = re.compile(r"^--- page (\d+) ---$")
 
 #: Page furniture: banners, footers and the column headers the report repeats on
@@ -212,6 +221,68 @@ _FURNITURE_PREFIXES: tuple[str, ...] = (
     "Issue Name Value Balance Payment Balance Due Payable Current",
     "Closing Balance Accrued Total Interest",
 )
+
+
+def stated_next_payment_date(text: str) -> str | None:
+    """The Payment Date this report states it pays on, as an ISO date.
+
+    The report prints point-in-time dates only — a Calculation Date and this one —
+    and no accrual period range, which is what #521 established and why the day
+    count has to come from the prospectus's Payment Date schedule instead
+    (:mod:`loanwhiz.extraction.payment_schedule_parser`).
+
+    This is the other half of that: the schedule *predicts* Payment Dates, and
+    this reads the one the trustee actually paid on, so the two can be compared.
+    A prediction that disagrees with a stated date means the schedule or the
+    business-day calendar is wrong, and is meant to be loud.
+
+    Returns ``None`` when the header states no payment date — a finding for the
+    caller, not an error here.
+    """
+    match = _NEXT_PAYMENT_DATE_RE.search(text)
+    if match is None:
+        return None
+    return f"{match['year']}-{match['month']}-{match['day']}"
+
+
+#: ``Class B-2 Senior Secured FXR Notes`` → ``("B-2", "FXR")``. The trustee spells
+#: the rate type into every class name, and :func:`_class_key` drops it along with
+#: the rest of the structure words — a designation is all a tranche key needs. It
+#: is worth reading separately because it is an **independent** statement of what
+#: :mod:`loanwhiz.extraction.day_count_parser` reads out of the Conditions: the
+#: prospectus says which classes accrue on a fixed basis, and this says which the
+#: trustee actually pays as fixed. Double spaces occur in the printed names
+#: (``Class B-1  Senior Secured  FLR``), so the gap is not a single space.
+_RATE_TYPE_RE = re.compile(
+    r"^Class\s+(?P<designation>[A-Za-z0-9-]+)\s+.*?\b(?P<rate_type>FXR|FLR)\b",
+    re.MULTILINE,
+)
+
+
+def stated_rate_types(text: str) -> dict[str, str]:
+    """Each class's rate type as the report prints it — ``"FXR"`` or ``"FLR"``.
+
+    The second half of the day-count cross-check, in the same shape as
+    :func:`stated_next_payment_date` is the second half of #528's schedule check.
+    The Conditions state which classes accrue on a fixed day-count basis; this
+    reads which classes the trustee independently marks fixed. Agreement makes
+    the parsed basis two-sourced; **disagreement is a finding to report, not
+    something to reconcile silently** — the two documents would then be saying
+    different things about the same note, and picking one is a judgment no parser
+    should make on its own.
+
+    Args:
+        text: The Note Valuation Report's text, as extracted.
+
+    Returns:
+        ``class designation -> rate type``, e.g. ``{"A": "FLR", "B-2": "FXR"}``.
+        Empty when the report marks no class, which is the ordinary case for a
+        document family that does not print the rate type at all.
+    """
+    return {
+        match["designation"]: match["rate_type"]
+        for match in _RATE_TYPE_RE.finditer(text)
+    }
 
 
 # ===========================================================================

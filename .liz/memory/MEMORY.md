@@ -11,7 +11,12 @@ triage by opening the entry, not by reading the line.
   - [2026-09-06 · gotcha · #471](#2026-09-06--gotcha--471) — keywords: grep-for-absence, banned substring, retracted wording, prose assertion, denial, false positive
   - [2026-09-08 · pitfall · #481](#2026-09-08--pitfall--481) — keywords: all-pass ground truth, never-fires mutant, graded cell bound, covenants_graded, published outcomes vary, answer key
   - [2026-09-08 · pattern · #495](#2026-09-08--pattern--495) — keywords: several documents, one constructor per document, merge_answer_keys, per-period assertion, answer key, PoP section
+  - [2026-09-08 · pitfall · #513](#2026-09-08--pitfall--513) — keywords: partly graded, skipped record, empty instance passes, all([]) is True, periods_skipped, free green, not-applicable kind
+  - [2026-09-09 · pitfall · #514](#2026-09-09--pitfall--514) — keywords: mirrored fold, report_adapter, reconciler, step_overrides, need vs published figure, both sides of a comparison
   - [2026-09-08 · pitfall · #496](#2026-09-08--pitfall--496) — keywords: steps_passed, tie-out gate, report-supplied, engine_computed_passed, unjoined label, sub-lettered rows, failing grade
+  - [2026-09-08 · pattern · #512](#2026-09-08--pattern--512) — keywords: series provider, answer key not a fold input, pool_stats, published input, checked ground truth, applied_rate
+  - [2026-09-09 · pitfall · #538](#2026-09-09--pitfall--538) — keywords: residual sweep, tie-out blind, offsetting deltas, fixed pot, steps_passed, equal and opposite, total_shortfall
+  - [2026-09-09 · pitfall · #515](#2026-09-09--pitfall--515) — keywords: ENGINE_COMPUTED_RECIPIENTS, engine_computed_passed, allowlist bound, step_source_classifier, report-supplied, declaration not data
 - [Extraction guards & false-positive filters](extraction-guards.md)
   - [2026-09-02 · pitfall · #439](#2026-09-02--pitfall--439) — keywords: _CLASS_LETTERS, tranche, note class, Class J, Class O, false positive, guard, proxy range
   - [2026-09-05 · pitfall · #456](#2026-09-05--pitfall--456) — keywords: widening a guard, newly visible input, N/A cell, scavenged rating, Subordinated Notes, untested downstream
@@ -22,6 +27,7 @@ triage by opening the entry, not by reading the line.
   - [2026-09-08 · pitfall · #494](#2026-09-08--pitfall--494) — keywords: vacuous reconciliation, zero rows, empty section, presence check, stated total 0.00, nothing is wrong vs I saw nothing
   - [2026-09-08 · pitfall · #484](#2026-09-08--pitfall--484) — keywords: balance share, count share, generated population, per-bucket draw, stratification, arrears bucket, rendered axis
   - [2026-09-02 · pitfall · #441](#2026-09-02--pitfall--441) — keywords: completeness_score
+  - [2026-09-09 · pattern · #528](#2026-09-09--pattern--528) — keywords: back-solved input, read past the extractor, max_chars truncation, pypdf text layer, stated schedule, deterministic parser, cross-check against another document
 - [Registering a deal (deals.json)](deal-registration.md) — keywords: deals.json, notes_cash_report_urls, routing promise, registry key, asset_class, answer key invariant
   - [2026-09-05 · pitfall · #455](#2026-09-05--pitfall--455) — keywords: notes_cash_report_urls, _reconstruct_series
   - [2026-09-08 · pitfall · #483](#2026-09-08--pitfall--483) — keywords: sha256(tape_url).json, _tape_analytics_period
@@ -45,6 +51,11 @@ triage by opening the entry, not by reading the line.
   - [2026-09-05 · pitfall · #453](#2026-09-05--pitfall--453) — keywords: LLM classifier options, deny list, enum growth, near-miss, incentive fee, use_llm=False, unmapped escape
   - [2026-09-06 · pitfall · #471](#2026-09-06--pitfall--471) — keywords: absent column, all-False mask, arrears breakdown, silent clean pool, degrade, no key not zero
   - [2026-09-08 · pattern · #493](#2026-09-08--pattern--493) — keywords: not_evaluable, layered refusal, paired assertion, unresolved coupon, rate_pct, silent zero, false green
+  - [2026-09-08 · pitfall · #511](#2026-09-08--pitfall--511) — keywords: canonicalise both sides, membership test, ENGINE_COMPUTED_RECIPIENTS, mixed vocabulary, legacy spelling, unmapped leak, derived set
+  - [2026-09-08 · gotcha · #512](#2026-09-08--gotcha--512) — keywords: ReportAdapter, DEFAULT_TRANCHE_CLASSES, report path seed, tranche name lookup, per-class input, complete map reaches nothing
+  - [2026-09-09 · pitfall · #520](#2026-09-09--pitfall--520) — keywords: _primitives_seed_from_report_seed, class_a_balance kwargs, domain vs engine DealState, flat scalar kwargs, generalise the consumer, assert arrival
+  - [2026-09-09 · pitfall · #511](#2026-09-09--pitfall--511) — keywords: tie proves nothing, amount-recovered coupon, back-solved rate, report agrees with itself, circular reconciliation, input provenance, expect green to turn red
+  - [2026-09-09 · pattern · #539](#2026-09-09--pattern--539) — keywords: fact scope, per-class not per-deal, day-count basis, TrancheFunds override, parse the scope, limb boundary, block runs to end-of-text, deal-level field averages
 - [Extracting tables from PDFs](pdf-table-extraction.md) — keywords: visitor_text, text matrix, tm[4], rotated table, extraction_mode layout, row boundary, continuation line, column order, pypdf
   - [2026-09-06 · pitfall · #469](#2026-09-06--pitfall--469) — keywords: extract_text(), extraction_mode="layout", visitor_text=, tm[4]
   - [2026-09-08 · pitfall · #494](#2026-09-08--pitfall--494) — keywords: page furniture, banner prefix, data row first, footer eats a row, numeric tail, prefix filter ordering

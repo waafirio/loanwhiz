@@ -208,6 +208,27 @@ class DealModel(BaseModel):
     covenants: dict             # ExtractedCovenants.model_dump()
     tranche_structure: list[dict]   # derived from waterfall + covenant extraction
     trigger_names: list[str]        # quick list of all trigger names
+    #: The deal's stated Payment Date schedule (#528), as
+    #: :meth:`~loanwhiz.extraction.payment_schedule_parser.PaymentDateSchedule.to_dict`
+    #: writes it. Optional because the LLM extraction path does not produce it:
+    #: the glossary prompt is truncated at ``max_chars`` and ``"Payment Date"``
+    #: falls in the dropped alphabetical range, so it is recovered
+    #: deterministically by :mod:`loanwhiz.extraction.payment_schedule_parser`
+    #: and committed to the seed. ``None`` means this deal states no schedule
+    #: that could be read — which leaves the accrual day count at its documented
+    #: approximation rather than inventing one.
+    payment_schedule: dict | None = None
+    #: Each note class's day-count basis as its own Condition states it (#539),
+    #: keyed by the class designation the Conditions use (``"A"``, ``"B-2"``) and
+    #: shaped by
+    #: :meth:`~loanwhiz.extraction.day_count_parser.ClassDayCount.to_dict`.
+    #: Optional for the same reason ``payment_schedule`` is: the fraction lives in
+    #: the *Conditions*, which the truncated definitions prompt never reaches, so
+    #: it is recovered deterministically by
+    #: :mod:`loanwhiz.extraction.day_count_parser` and committed to the seed.
+    #: ``None`` means this deal states no per-class convention, which leaves every
+    #: class on the deal-wide day count rather than inventing a split.
+    note_day_counts: dict | None = None
 
 
 # ---------------------------------------------------------------------------

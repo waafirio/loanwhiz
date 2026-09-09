@@ -103,3 +103,74 @@ a code path, assert they agree over the real corpus: neither one's own tests can
 see the disagreement.
 
 Refs: #503
+
+## 2026-09-08 · pitfall · #511
+
+Canonicalise **both sides** of a membership test, never only the incoming value.
+A frozenset named for "recipients the engine can compute" read as canonical but
+held three legacy spellings whose canonical forms were absent from it, so
+resolving just the extracted name would have fixed the CLO steps and silently
+reclassified the RMBS ones. Derive the compared set through the same resolver,
+and exclude its "recognised but unplaceable" answer — letting `unmapped` into a
+computable set would classify every denied string computable at once. Check what
+a declared set is spelled in before trusting the name it is filed under.
+
+Refs: #511
+## 2026-09-08 · gotcha · #512
+
+Check what the **report path** actually seeds before wiring a per-class input
+onto it. `ReportAdapter.seed` iterates `DEFAULT_TRANCHE_CLASSES` — the canonical
+`class_a/b/c` triple — and `_funds_from_state` looks inputs up by **tranche
+name**, so a deal whose stack is `class_b_1`/`class_d`..`class_f` has no tranche
+to attach to. A complete, correct input map can reach nothing with no error
+anywhere: the class just keeps refusing. Assert the map and the per-tranche
+arrival separately; one passing does not imply the other.
+
+Refs: #512
+
+## 2026-09-09 · pitfall · #520
+
+A defect catalogue keyed on **one syntax misses the same bug written in
+another**. #478 listed three sites collapsing an N-class stack, all found by
+grepping *dict keys*; a fourth survived in `_primitives_seed_from_report_seed`,
+spelled as constructor **arguments** (`class_a_balance=`) that grep could not
+reach. Corollary: generalising a list off its producer does not generalise its
+consumers — `ReportAdapter` resolved eight classes while the bridge below
+delivered three. Assert arrival where the value is *read*: the list and the
+arrival are two assertions, and only the second failed.
+
+Refs: #520
+Refs: #539 — the carrier is also what a plan must scope, not just the two ends.
+## 2026-09-09 · pitfall · #511
+
+A reconciliation that **ties** proves nothing until you know where the engine's
+half came from. Cairn's Class A interest matched the published EUR 3,277,457.78
+to the cent — because, with no published rate wired, the fold fell back to an
+**amount-recovered** coupon back-solved from the very figure being checked. The
+tie was the report agreeing with itself one layer down, and the test asserting
+the tie was standing on the exact circularity it was written to detect. Wiring
+the genuinely published rate (#512) made the agreement vanish and uncovered a
+real day-count defect (#521) the false tie had been hiding.
+
+Two rules follow. **Pin the input provenance, not just the output**: assert the
+need against `size x published rate x day count` so an amount-recovered fallback
+creeping back in reds immediately — an output-only assertion cannot tell a
+computed figure from a copied one. And when you remove a circularity, **expect
+green to turn red and read that as the result**: a previously-passing assertion
+that breaks is the measurement beginning to work, not a regression to tune away.
+Check *why* a number agrees before recording that it agrees.
+
+Refs: #511, #512, #521
+
+## 2026-09-09 · pattern · #539
+
+Ask what **scope** a document states a fact at, and attach it there. A convention
+can vary per class within one deal — Cairn states Act/360 for its floating notes
+and 30/360 for the one fixed strip of the *same* class — so a deal-level field
+cannot express it, and fails by averaging rather than erroring. Parse the scope
+too: read which limb and which classes each rule names, and bound the block at
+the next heading. The limb after a rule often enumerates every class for an
+unrelated purpose, so a block running to end-of-text spreads that rule over all
+of them while still looking like a clean parse.
+
+Refs: #539

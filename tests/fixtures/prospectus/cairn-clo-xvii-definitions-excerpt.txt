@@ -1,0 +1,75 @@
+--- page 124 ---
+"Accrual Period" means, in respect of each Class  of Notes, the period from and including the Issue Date (or in 
+the case of a Class  that is subject to Refinancing, the Business Day upon which the Refinancing occurs) to, but 
+excluding, the first Payment Date (or. in the case of a Class that is subject to Refinancing, the first Payment Date 
+following the Refinancing) and each successive period from and including each Payment Date to, but excluding, 
+the following Payment Date; provided that, for the purposes of calculating i nterest payable in accordance with 
+Condition 6(e)(iii) (Calculation of Fixed Interest Amounts ), the Payment Date (for the purposes of determining 
+the Accrual Period) shall not be adjusted if the relevant Payment Date would have fallen other than on a Business 
+Day but for the proviso in the definition of Payment Date.
+--- page 129 ---
+"Business Day" means (save to the extent otherwise defined) a day: 
+(a) on which T2 is open for settlement of payments in Euro; 
+(b) on which commercial banks and foreign exchange markets settle payments in London, Dublin and New 
+York (other than a Saturday or a Sunday); and 
+(c) for the purposes of the definition of Presentation Date, in relation to any place, on which commercial 
+banks and foreign exchange markets settle payments in that place. 
+"CCC Excess" means the amount equal to the greater of: 
+
+--- page 163 ---
+of Payments shall be paid. 
+"Payment Date" means: 
+(a) following the occurrence of a Frequency Switch Event, on (A) 18 January  and 18 July  (where the 
+Payment Date immediately prior to the occurrence of the Frequency Switch Event falls in either January 
+or July), or (B) 18 April and 18 October (where the Payment Date immediately prior to the occurrence 
+of the Frequency Switch Event falls in either April or October); and 
+(b) 18 January, 18 April, 18 October and 18 July at all other times, 
+in each case, in each year commencing on 18 April 2024 up to and including the Maturity Date (each a 
+"Scheduled Payment Date"), any Redemption Date in connection with a redemption in whole, the Final 
+Distribution Date, and/or following the date upon which the Rated Notes have been redeemed in full, 
+any Business Day (other than and in addition to the dates set out in paragraphs  (a) and (b) above, any 
+Unscheduled Payment Date), provided that if any Payment Date would otherwise fall on a day which is 
+not a Business Day, it shall be postponed to the next day that is a Business Day (unless it would thereby 
+fall in the following month, in which case it shall b e brought forward to the immediately preceding 
+Business Day). 
+"Payment Date Report " means the report defined as such in the Investment Management Agreement which is 
+prepared and determined as of each Determination Date by the Co llateral Administrator (in consultation with the 
+--- page 226 ---
+(ii) Determination of Floating Rate of Interest and Calculation of Interest Amount  
+The Calculation Agent will, as soon as practicable (and in any  event (i) for each 
+Accrual Period following the occurrence of a Frequency Switch Event, not later than 
+the Business Day following the relevant Interest Determination Date, and (ii) for each 
+Accrual Period prior to the occurrence of a Frequency Switch Even t and for any 
+Accrual Period during which a Frequency Switch Event occurs, not later than the 
+Determination Date immediately preceding the Relevant Payment Date), determine the 
+Class A Floating Rate of Interest, the Class  B-1 Floating Rate of Interest, the  Class C 
+Floating Rate of Interest, the Class  D Floating Rate of Interest, the Class  E Floating 
+Rate of Interest and the Class  F Floating Rate of Interest and calculate the interest 
+amount payable in respect of original principal amounts of the Class A Not es, the 
+Class B-1 Notes, the Class  C Notes, the Class  D Notes, the Class  E Notes and the 
+Class F Notes for the relevant Accrual Period.  The amount of interest (an "Interest 
+Amount") payable in respect of such Notes shall be calculated by applying the Class A 
+Floating Rate of Interest in the case of the Class A Notes, the Class  B-1 Floating Rate 
+of Interest in the case of the Class  B-1 Notes, the Class C Floating Rate of Interest in 
+the case of the Class  C Notes, the Class  D Floating Rate of Interest in the case of the 
+Class D Notes, the Class  E Floating Rate of Interest in the case of the Class  E Notes 
+and the Class F Floating Rate of Interest in the case of the Class F Notes, respectively, 
+to an amount equal to the Principal Amount Outstanding in respect of the relevant 
+Class of Notes, multiplying the product by the actual number of days in the Accrual 
+Period concerned, divided by 360 and rounding the resultant figure to the nearest €0.01 
+(€0.005 being rounded upwards).
+--- page 227 ---
+(iii) Calculation of Fixed Interest Amounts 
+The Class B-2 Notes bear interest at the rate of 6.87 per cent. per annum (such rate, the 
+"Class B-2 Fixed Rate of Interest ").  Interest is calculated on the basis of a 360 -day 
+year consisting of 12 months of 30 days each, 
+The Calculation Agent will as soon as practicable after 11.00 am (London time) on the 
+Interest Determination Date in question, but in no event later than the Business Day 
+after such date, calculate the amount of inte rest (an "Interest Amount") payable in 
+respect of the Class B -2 Notes for the relevant Accrual Period by applying the Class 
+B-2 Fixed Rate of Interest in the case of the Class B-2 Notes, to an amount equal to the 
+Principal Amount Outstanding of the relevant Class of Notes, multiplying the product 
+by the number of days in the Accrual Period concerned (the number of days to be 
+calculated on the basis of a year of 360 days with 12 months of 30 days each), divided 
+by 360 and rounding the r esultant figure to the nearest €0.01 (€0.005 being rounded 
+upwards).

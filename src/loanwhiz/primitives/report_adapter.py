@@ -34,10 +34,14 @@ so the live adapter and the offline validation harness classify steps with **one
 classifier and cannot drift. The classifier speaks the harness vocabulary
 (``"report-supplied"``); translating that to the canonical ``step_sources``
 spelling (``"reported"``) is — by the classifier's own contract — *the adapter's*
-concern, done here. The report's revenue ``(b)`` line is printed as wrapped
-sub-items ``(1)…(14)`` (a ``pypdf`` layout artefact the V3 parser surfaces
-individually); :func:`_fold_revenue_pop` folds them back into one ``(b)`` total,
-mirroring the harness's ``_fold_report_revenue_steps``.
+concern, done here. A published report prints its Priority of Payments as a document, not as the
+cascade's step list, so joining the two is its own problem —
+:func:`~loanwhiz.primitives.report_label_fold.fold_report_pop` owns it, and this
+adapter and the Reconciler both call it. They are the two sides of one
+comparison: what comes back here becomes the engine's *need* for a
+report-supplied step, and what comes back there is the published figure that need
+is checked against, so a second copy of the join could grade the engine against a
+number it was never given (#514).
 
 Pure & offline: depends only on the parsed report model + the deal's extracted
 waterfall steps. No network, no LLM, no engine call.
@@ -45,14 +49,26 @@ waterfall steps. No network, no LLM, no engine call.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-from typing import Any, Literal
+from dataclasses import dataclass, field
+from datetime import date
+from typing import Any, Literal, Sequence
 
 from loanwhiz.domain.inputs import PeriodInputs
 from loanwhiz.domain.provenance import FieldProvenance, ProvenanceMap
 from loanwhiz.domain.state import DealState, TrancheState
+from loanwhiz.extraction.day_count_parser import (
+    ClassDayCount,
+    class_accrual_days,
+)
+from loanwhiz.extraction.payment_schedule_parser import (
+    PaymentDateSchedule,
+    accrual_period_days,
+    payment_date_on_or_after,
+)
 from loanwhiz.primitives.base import Citation
+from loanwhiz.primitives.capital_structure import CapitalStructure
 from loanwhiz.primitives.notes_cash_parser import NotesCashPeriod, NotesCashReport
+from loanwhiz.primitives.report_label_fold import FoldedPoP, fold_report_pop
 from loanwhiz.primitives.step_source_classifier import build_step_specs
 
 # ---------------------------------------------------------------------------
@@ -79,7 +95,23 @@ DEFAULT_REDEMPTION_REPORT_SUPPLIED_LABELS: frozenset[str] = frozenset(
 DEFAULT_REDEMPTION_RESIDUAL_LABEL = ""
 
 #: Canonical note-class keys, senior → junior, as the parser emits them.
+#:
+#: The **fallback only** — for a caller that supplies no capital structure at all
+#: (a hand-built adapter, a thin duck-typed model). It is *not* the shape of a
+#: deal: :meth:`ReportAdapter.from_deal_model` reads the deal's own tranche list
+#: off its ``tranche_structure`` (see :func:`tranche_classes_from_model`), so a
+#: deeper stack needs no change here. Green Lion's three vintages each state
+#: exactly these three classes, so the derived list and this constant coincide
+#: for the deal the constant was written from.
 DEFAULT_TRANCHE_CLASSES: tuple[str, ...] = ("class_a", "class_b", "class_c")
+
+#: Act/360 day count used when a deal states no Payment Date schedule this
+#: adapter can read — the quarterly approximation the report path has always
+#: asserted. It stays the default on purpose (#528): it is a legitimate
+#: approximation where nothing better exists, and every deal without a
+#: committed schedule keeps the exact numbers it had. A deal that *does*
+#: state one no longer uses it.
+DEFAULT_DAYS_IN_PERIOD = 90
 
 #: Source-vocabulary translation: the shared classifier speaks the harness's
 #: ``"report-supplied"``; the canonical ``PeriodInputs.step_sources`` spelling is
@@ -91,37 +123,62 @@ _CANONICAL_SOURCE: dict[str, Literal["engine", "reported", "residual"]] = {
 }
 
 
-def _fold_revenue_pop(period: NotesCashPeriod) -> dict[str, float]:
-    """Collapse the report's revenue PoP into ``{priority_label: amount}``.
+def tranche_classes_from_model(model: Any) -> tuple[str, ...]:
+    """The deal's own note classes, senior → junior, for the report-path seed.
 
-    The report prints step ``(b)`` as fourteen wrapped sub-line items
-    ``(1)…(14)`` (a ``pypdf`` layout artefact). The extracted model carries a
-    single ``(b)`` step, so the sub-items' amounts are folded back into one
-    ``(b)`` total; top-level ``(a)`` and ``(c)…(k)`` labels pass through. Mirrors
-    ``reconciler._fold_report_revenue_steps`` so the adapter and the Reconciler
-    fold identically.
+    :meth:`ReportAdapter.seed` builds one :class:`TrancheState` per name here and
+    every per-class input downstream is looked up **by tranche name**, so this
+    list decides which classes exist at all on the report path. Reading it off a
+    fixed triple is how an 8-class CLO folded as a 3-class deal with no error
+    anywhere: a complete, correct rate map simply reached nothing for the five
+    classes that had no tranche (#512, #520).
+
+    So the list comes from the deal's own ``tranche_structure``, via the one
+    sanctioned builder — :meth:`CapitalStructure.from_tranche_structure`, which
+    orders senior → junior and spells names the way
+    :meth:`DealState.seed_from_prospectus` keys on (#363, #478). Adding a deeper
+    deal needs no change here.
+
+    Two cases, and the distinction is the point:
+
+    - The model states **no** structure (no attribute, ``None``, or empty) —
+      there is nothing to read, so :data:`DEFAULT_TRANCHE_CLASSES` applies. This
+      keeps a hand-built or thin duck-typed model working unchanged.
+    - The model states a structure that **cannot be placed** — the builder's
+      :class:`UnresolvableCapitalStructure` propagates. Falling back would put
+      the Green Lion triple on a deal that is not Green Lion, which is precisely
+      the silent truncation this function exists to remove: a short stack reports
+      a smaller deal, and reads as health rather than as a bug (#452, #478).
     """
-    folded: dict[str, float] = {}
-    b_total = 0.0
-    saw_sub_item = False
-    for step in period.revenue_pop:
-        inner = step.priority.strip("()").strip()
-        if inner.isdigit():
-            b_total += step.amount
-            saw_sub_item = True
-        else:
-            folded[step.priority] = folded.get(step.priority, 0.0) + step.amount
-    if saw_sub_item:
-        folded["(b)"] = b_total
-    return folded
+    rows = getattr(model, "tranche_structure", None)
+    if not rows:
+        return DEFAULT_TRANCHE_CLASSES
+    return CapitalStructure.from_tranche_structure(rows).names
 
 
-def _fold_redemption_pop(period: NotesCashPeriod) -> dict[str, float]:
-    """``{priority_label: amount}`` for the report's redemption PoP (no folding)."""
-    out: dict[str, float] = {}
-    for step in period.redemption_pop:
-        out[step.priority] = out.get(step.priority, 0.0) + step.amount
-    return out
+def _step_labels(steps: list[dict[str, Any]]) -> list[str]:
+    """The cascade's priority labels, in cascade order — the fold's second input."""
+    return [str(step.get("priority", "")) for step in steps]
+
+
+def _fold_revenue_pop(
+    period: NotesCashPeriod, cascade_labels: Sequence[str]
+) -> FoldedPoP:
+    """Fold the report's revenue PoP onto ``cascade_labels`` (#514).
+
+    A thin named seam over
+    :func:`~loanwhiz.primitives.report_label_fold.fold_report_pop` — the join
+    itself is deal-agnostic and lives there, so the adapter and the Reconciler
+    cannot fold differently.
+    """
+    return fold_report_pop(period.revenue_pop, cascade_labels)
+
+
+def _fold_redemption_pop(
+    period: NotesCashPeriod, cascade_labels: Sequence[str]
+) -> FoldedPoP:
+    """Fold the report's redemption PoP onto ``cascade_labels`` (#514)."""
+    return fold_report_pop(period.redemption_pop, cascade_labels)
 
 
 @dataclass(frozen=True)
@@ -142,10 +199,23 @@ class ReportAdapter:
         revenue_residual_label:            Terminal revenue residual-sweep label.
         redemption_report_supplied_labels: Redemption labels forced report-supplied.
         redemption_residual_label:         Terminal redemption residual label ("" disables).
-        tranche_classes:  Canonical note-class keys, senior → junior.
+        tranche_classes:  Canonical note-class keys, senior → junior. Direct
+                          construction defaults to the Green Lion triple;
+                          :meth:`from_deal_model` derives the deal's own list.
         original_pool_balance: Pool balance at closing (factor denominator); when
                           ``None`` the seed uses the first period's outstanding
                           tranche total as the closing-par proxy.
+        payment_schedule: The deal's stated Payment Date schedule (#528). When
+                          present, each period's Act/360 day count is the distance
+                          between the two Payment Dates that bracket it; when
+                          ``None`` the day count stays
+                          :data:`DEFAULT_DAYS_IN_PERIOD`.
+        note_day_counts:  ``class designation -> ClassDayCount``, each class's
+                          day-count basis as its own Condition states it (#539).
+                          Empty — every deal but Cairn — leaves all tranches on
+                          the deal-wide count, so those deals are unchanged. A
+                          basis needs the schedule to be measured on, so this is
+                          inert without ``payment_schedule``.
     """
 
     revenue_steps: list[dict[str, Any]]
@@ -160,6 +230,8 @@ class ReportAdapter:
     redemption_residual_label: str = DEFAULT_REDEMPTION_RESIDUAL_LABEL
     tranche_classes: tuple[str, ...] = DEFAULT_TRANCHE_CLASSES
     original_pool_balance: float | None = None
+    payment_schedule: PaymentDateSchedule | None = None
+    note_day_counts: dict[str, ClassDayCount] = field(default_factory=dict)
 
     # -- constructors -------------------------------------------------------
 
@@ -176,7 +248,7 @@ class ReportAdapter:
             DEFAULT_REDEMPTION_REPORT_SUPPLIED_LABELS
         ),
         redemption_residual_label: str = DEFAULT_REDEMPTION_RESIDUAL_LABEL,
-        tranche_classes: tuple[str, ...] = DEFAULT_TRANCHE_CLASSES,
+        tranche_classes: tuple[str, ...] | None = None,
         original_pool_balance: float | None = None,
     ) -> "ReportAdapter":
         """Build an adapter from an extracted ``DealModel``.
@@ -186,8 +258,19 @@ class ReportAdapter:
         feeds the shared classifier). ``model`` is typed ``Any`` to avoid importing
         the API-layer ``DealModel`` into this primitive (it is duck-typed: any
         object exposing ``waterfalls["revenue"|"redemption"]["steps"]`` works).
+
+        ``tranche_classes`` defaults to the deal's **own** note classes, read off
+        ``model.tranche_structure`` by :func:`tranche_classes_from_model` — not to
+        :data:`DEFAULT_TRANCHE_CLASSES`. A model that states no structure still
+        gets the triple; an explicit argument still wins, so a caller that wants a
+        specific subset says so. ``None`` is the sentinel precisely so "passed the
+        triple deliberately" and "passed nothing" stay distinguishable.
         """
         waterfalls = model.waterfalls
+        raw_schedule = getattr(model, "payment_schedule", None)
+        raw_day_counts = getattr(model, "note_day_counts", None) or {}
+        if tranche_classes is None:
+            tranche_classes = tranche_classes_from_model(model)
         return cls(
             revenue_steps=list(waterfalls["revenue"]["steps"]),
             redemption_steps=list(waterfalls["redemption"]["steps"]),
@@ -197,6 +280,13 @@ class ReportAdapter:
             redemption_residual_label=redemption_residual_label,
             tranche_classes=tranche_classes,
             original_pool_balance=original_pool_balance,
+            payment_schedule=(
+                PaymentDateSchedule.from_dict(raw_schedule) if raw_schedule else None
+            ),
+            note_day_counts={
+                key: ClassDayCount.from_dict(raw)
+                for key, raw in raw_day_counts.items()
+            },
         )
 
     # -- public surface -----------------------------------------------------
@@ -302,6 +392,62 @@ class ReportAdapter:
             provenance=provenance,
         )
 
+    def _days_in_period(self, period: NotesCashPeriod) -> int:
+        """Act/360 day count for ``period`` — from stated dates where they exist.
+
+        The deal's *Accrual Period* is defined payment-date to payment-date, so
+        with a stated Payment Date schedule the day count is simply the distance
+        between the Payment Date this period pays on and the one before it. Both
+        are dates the prospectus names; no published amount is read, which is the
+        whole point (#528, superseding #521).
+
+        Without a schedule the count stays :data:`DEFAULT_DAYS_IN_PERIOD`. That
+        branch is what keeps every already-graded deal byte-identical: Green Lion
+        states no schedule in its seed, so it takes the same 90 it always did.
+
+        A schedule that *is* present but whose dates fall outside the committed
+        business-day calendar raises rather than silently reverting to 90 — a
+        deal we claim to model on stated dates must not quietly fall back to the
+        approximation those dates were meant to replace.
+        """
+        if self.payment_schedule is None:
+            return DEFAULT_DAYS_IN_PERIOD
+        reporting = date.fromisoformat(period.reporting_date)
+        payment = payment_date_on_or_after(self.payment_schedule, reporting)
+        return accrual_period_days(self.payment_schedule, payment)
+
+    def _tranche_days_in_period(self, period: NotesCashPeriod) -> dict[str, int]:
+        """Per-tranche day counts for the classes stating their own basis (#539).
+
+        Each class's basis comes from its own Condition, and the two bases measure
+        between different pairs of dates: a floating class over the actual
+        (business-day adjusted) Payment Dates, a class under the *Accrual Period*
+        proviso over the scheduled ones. :func:`class_accrual_days` applies the
+        distinction; this only routes each class to it.
+
+        Returns an empty map when the deal states no per-class basis — the
+        ordinary case, which leaves every tranche on
+        :meth:`_days_in_period` and every already-graded deal byte-identical. A
+        basis with no schedule to measure on is also empty rather than guessed.
+
+        A class whose day count cannot be sourced **raises** rather than falling
+        back to the deal-wide count, which is the same stance
+        :meth:`_days_in_period` takes on a schedule it cannot resolve. Omitting
+        the tranche instead would be the worse failure: an absent entry means
+        "no per-class convention", so the class would quietly accrue on the
+        floating count — the exact silent-wrong-convention this issue removes.
+        """
+        if self.payment_schedule is None or not self.note_day_counts:
+            return {}
+        reporting = date.fromisoformat(period.reporting_date)
+        payment = payment_date_on_or_after(self.payment_schedule, reporting)
+        return {
+            day_count.tranche_key: class_accrual_days(
+                self.payment_schedule, day_count, payment
+            )
+            for day_count in self.note_day_counts.values()
+        }
+
     def period_inputs(self, period: NotesCashPeriod) -> PeriodInputs:
         """One canonical :class:`PeriodInputs` from a report period.
 
@@ -313,20 +459,22 @@ class ReportAdapter:
         (loss surfaces as PDL movement, reconstructed downstream); seeding it
         ``0.0`` is the honest, conservative cut for this report shape.
         """
-        revenue_amounts = _fold_revenue_pop(period)
-        redemption_amounts = _fold_redemption_pop(period)
+        revenue_folded = _fold_revenue_pop(period, _step_labels(self.revenue_steps))
+        redemption_folded = _fold_redemption_pop(
+            period, _step_labels(self.redemption_steps)
+        )
 
         _, rev_overrides, rev_source = build_step_specs(
             self.revenue_steps,
             residual_label=self.revenue_residual_label,
             report_supplied_labels=self.revenue_report_supplied_labels,
-            report_amounts=revenue_amounts,
+            report_amounts=revenue_folded.amounts,
         )
         _, red_overrides, red_source = build_step_specs(
             self.redemption_steps,
             residual_label=self.redemption_residual_label,
             report_supplied_labels=self.redemption_report_supplied_labels,
-            report_amounts=redemption_amounts,
+            report_amounts=redemption_folded.amounts,
         )
 
         # The classifier keys overrides/sources by RECIPIENT; PeriodInputs keys by
@@ -375,7 +523,8 @@ class ReportAdapter:
 
         return PeriodInputs(
             reporting_date=period.reporting_date,
-            days_in_period=90,
+            days_in_period=self._days_in_period(period),
+            tranche_days_in_period=self._tranche_days_in_period(period),
             available_revenue=period.available_revenue_funds or 0.0,
             available_principal=period.available_principal_funds or 0.0,
             realized_loss=0.0,

@@ -676,10 +676,16 @@ def _has_pop_section(answer_key: "DealAnswerKey") -> bool:
     A key can be genuine and still carry no PoP: Cairn CLO XVII's (#481) was
     authored from trustee coverage-test outcomes and holds covenants only. Such a
     key grades a `covenants` row on ``/quality-matrix`` and must not be mistaken
-    for engine-validation ground truth — mirrors the same check in
-    :func:`loanwhiz.primitives.quality_harness._reconcile_deal`.
+    for engine-validation ground truth.
+
+    Delegates to :attr:`DealAnswerKey.has_pop_section`, which is defined in terms
+    of the per-period predicate (#513). This used to be one of three hand-written
+    copies of the same ``any(...)`` — here, in
+    :func:`loanwhiz.primitives.quality_harness._reconcile_deal`, and implicitly in
+    the grader — kept honest only by a test asserting they agreed. One definition
+    is what makes them unable to disagree.
     """
-    return any(p.revenue_pop or p.redemption_pop for p in answer_key.periods)
+    return answer_key.has_pop_section
 
 
 def _classify_engine_validation(
@@ -778,6 +784,17 @@ def _classify_engine_validation(
             ),
         )
     passed = report.passed
+    # A partly-PoP-bearing key grades only its PoP-bearing periods (#513), so the
+    # ratio below is over what was compared, never over the key's period count.
+    # The skipped periods are stated in the reason as well as counted in the
+    # detail: `validated` on "1/1 period(s)" of a four-period key is a narrower
+    # claim than it looks, and the cell is where that bound has to be visible.
+    skipped_clause = (
+        f" {report.periods_skipped} further period(s) of this key were not graded — "
+        "the documents they were authored from publish no Priority of Payments."
+        if report.periods_skipped
+        else ""
+    )
     return (
         STATE_VALIDATED if passed else STATE_RAN,
         (
@@ -786,7 +803,8 @@ def _classify_engine_validation(
             f"period(s))."
             if passed
             else "Engine ran against the published PoP but did not fully reconcile."
-        ),
+        )
+        + skipped_clause,
         CellEvidence(
             confidence=1.0 if passed else 0.5,
             citation=f"Published Notes & Cash report for {report.deal_name}, reconciled to the cent.",
@@ -794,6 +812,7 @@ def _classify_engine_validation(
                 "passed": passed,
                 "periods_checked": report.periods_checked,
                 "periods_passed": report.periods_passed,
+                "periods_skipped": report.periods_skipped,
                 "tolerance_eur": report.tolerance_eur,
             },
         ),

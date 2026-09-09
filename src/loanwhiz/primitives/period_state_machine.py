@@ -191,6 +191,42 @@ def _rate_inputs(capital_structure: Mapping[str, Any]) -> dict[str, float]:
     }
 
 
+def published_rate_inputs(applied_rates: Mapping[str, float | None]) -> dict[str, float]:
+    """``{note class: published rate}`` → the ``{<name>_rate_pct: float}`` funds map.
+
+    The report-path sibling of :func:`_rate_inputs`, which reads a *prospectus*
+    capital structure. A trustee / Note Valuation Report publishes the all-in
+    rate it says it **applied** to each class this period, and that rate is a
+    deal *input* exactly as a tranche balance is. What is circular — and what
+    this seam exists to stay clear of — is taking the report's *distributed
+    amount* as the need; a rate is not that, and none is read here.
+
+    It is what lets a class whose prospectus coupon is a floating margin accrue
+    at all: :func:`~loanwhiz.primitives.capital_structure.numeric_rate_pct`
+    rightly refuses to coerce ``"3 month EURIBOR + 1.80%"`` into a number, so
+    without a published rate the class reaches
+    :func:`~loanwhiz.primitives.waterfall_interpreter._make_tranche_interest_need`
+    with nothing to accrue.
+
+    **Per period, never per deal.** A floating class's applied rate moves every
+    payment date, so callers pass the rates belonging to the period they are
+    folding. Accruing one period's coupon against another period's balance
+    would put a wrong figure in the distribution that still looks plausible.
+
+    A class the report publishes **no** rate for carries no key here, so its
+    ``TrancheFunds.rate_pct`` stays ``None`` and its interest need is reported
+    ``not_evaluable`` (#493) rather than accruing a silent zero — the same
+    refusal :func:`_rate_inputs` preserves for an unresolved prospectus coupon.
+    ``0.0`` is *not* that case: a genuine 0% published rate is a real answer and
+    is kept.
+    """
+    return {
+        f"{note_class}{_RATE_KEY_SUFFIX}": float(rate)
+        for note_class, rate in applied_rates.items()
+        if rate is not None
+    }
+
+
 # ---------------------------------------------------------------------------
 # The S4 ↔ S5 join: a ConditionEvaluator backed by the real trigger engine
 # ---------------------------------------------------------------------------
@@ -379,6 +415,7 @@ def _funds_from_state(
     *,
     rates: dict[str, float],
     days_in_period: int,
+    tranche_days_in_period: dict[str, int] | None = None,
     senior_fees: float,
     swap_payment: float = 0.0,
     available_revenue: float | None = None,
@@ -413,12 +450,20 @@ def _funds_from_state(
     # resolve carries NO key here, and that absence is passed through as ``None``
     # rather than defaulted to 0: the interest need then reports it
     # ``not_evaluable`` instead of accruing nothing and servicing it for free.
+    #
+    # ``tranche_days_in_period`` carries a per-class day count for the classes
+    # whose own Conditions state a day-count basis (#539). A tranche absent from
+    # it keeps ``None`` and accrues on the deal-wide ``days_in_period``, so the
+    # map being empty — every deal but Cairn — is byte-for-byte the old
+    # behaviour.
+    tranche_days = tranche_days_in_period or {}
     tranches = [
         TrancheFunds(
             name=t.name,
             balance=t.balance,
             rate_pct=rates.get(f"{t.name}_rate_pct"),
             pdl_balance=t.pdl_balance,
+            days_in_period=tranche_days.get(t.name),
         )
         for t in state.tranches
     ]
@@ -478,6 +523,9 @@ class _NormalizedPeriod(BaseModel):
     collections: PeriodCollections
     reporting_date: str
     days_in_period: int
+    #: Per-tranche day counts for classes stating their own basis (#539); empty
+    #: for every deal that states none, which leaves the deal-wide count alone.
+    tranche_days_in_period: dict[str, int] = Field(default_factory=dict)
     revolving: bool | None
     available_revenue: float
     available_principal: float
@@ -568,6 +616,7 @@ def _normalize_period(period: "PeriodInput | CanonicalPeriodInputs") -> _Normali
         collections=collections,
         reporting_date=period.reporting_date,
         days_in_period=period.days_in_period,
+        tranche_days_in_period=dict(period.tranche_days_in_period),
         revolving=None,
         available_revenue=available_revenue,
         available_principal=available_principal,
@@ -741,6 +790,7 @@ def run_period(
         norm.collections,
         rates=rates,
         days_in_period=norm.days_in_period,
+        tranche_days_in_period=norm.tranche_days_in_period,
         senior_fees=senior_fees,
         swap_payment=swap_payment,
         available_revenue=norm.available_revenue,

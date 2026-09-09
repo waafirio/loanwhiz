@@ -66,6 +66,7 @@ from loanwhiz.primitives.period_state_machine import DealStateSeries
 from loanwhiz.primitives.reconciler import (
     DEFAULT_TOLERANCE_EUR,
     ReconciliationReport,
+    SkippedPeriod,
     reconcile_series,
 )
 
@@ -83,6 +84,19 @@ ANSWER_KEY_FORMAT_VERSION = 1
 #: ``ungraded_stat_keys``, which is the honest surface for a published figure
 #: nothing yet checks.
 APPLIED_RATE_STAT_PREFIX = "applied_rate_"
+
+
+#: Why a period of a partly-PoP-bearing key was not graded (#513). Stated as a
+#: fact about the **source document**, not about the engine or the key: the
+#: trustee reports Cairn's other three periods were authored from publish
+#: coverage-test outcomes and no cascade, so there is genuinely nothing for a
+#: reconciliation to compare against — which is a different claim from "the
+#: engine was not run" or "the key is incomplete", and #457/#471 are the record
+#: of what it costs to state a refusal more strongly than the evidence supports.
+NO_POP_PERIOD_REASON = (
+    "The document this period was authored from publishes no Priority of "
+    "Payments, so there is nothing in it for the engine to be reconciled against."
+)
 
 
 #: The date format a U.S. Bank trustee report prints in its section headers.
@@ -180,6 +194,26 @@ class AnswerKeyPeriod(BaseModel):
         description="Published pool statistics, e.g. {'pool_balance_end': ..., 'principal_collected': ...}.",
     )
 
+    @property
+    def has_priority_of_payments(self) -> bool:
+        """Does the document behind *this period* publish a Priority of Payments?
+
+        The per-period form of the question the key-level ``_has_pop_section``
+        asks (#513). A key drawn from more than one document family answers it
+        differently period by period — Cairn CLO XVII's three trustee-report
+        periods publish covenant outcomes and no PoP, while its Note Valuation
+        Report period publishes both — so the key-level answer ("some period
+        somewhere has one") cannot decide whether *this* period is gradeable.
+
+        #495 recorded the same rule for the authorship side: assert what each
+        record may claim per period, not per key. This is the grading side of it,
+        and it is the single definition
+        :func:`loanwhiz.primitives.capability_matrix._has_pop_section` and
+        ``quality_harness._reconcile_deal`` both read, so the two surfaces cannot
+        drift apart into disagreeing about what carries ground truth.
+        """
+        return bool(self.revenue_pop or self.redemption_pop)
+
 
 class DealAnswerKey(BaseModel):
     """A deal's complete published ground truth — its answer key.
@@ -204,9 +238,43 @@ class DealAnswerKey(BaseModel):
         default_factory=list, description="Published ground truth, one entry per reporting period."
     )
 
+    # --- which periods carry gradeable PoP ground truth ------------------------
+
+    @property
+    def pop_periods(self) -> list[AnswerKeyPeriod]:
+        """The periods carrying a Priority of Payments, in key order.
+
+        The gradeable subset. A key unioned from several document families (#495)
+        is only partly PoP-bearing, and this is what the reconciler grades; the
+        complement is reported not-applicable rather than graded, because a
+        covenant-only period has nothing for the engine to be compared against.
+        """
+        return [p for p in self.periods if p.has_priority_of_payments]
+
+    @property
+    def non_pop_periods(self) -> list[AnswerKeyPeriod]:
+        """The periods carrying no Priority of Payments, in key order.
+
+        Named as its own accessor rather than left as an inline complement: these
+        periods must be *reported*, never silently dropped, and a caller that has
+        to re-derive them tends to drop them instead.
+        """
+        return [p for p in self.periods if not p.has_priority_of_payments]
+
+    @property
+    def has_pop_section(self) -> bool:
+        """Does any period carry a Priority of Payments?
+
+        The key-level question, defined once here in terms of the per-period
+        predicate. ``capability_matrix._has_pop_section`` and
+        ``quality_harness._reconcile_deal`` both read this, so "this key carries
+        no PoP" has one definition rather than three copies that can diverge.
+        """
+        return any(p.has_priority_of_payments for p in self.periods)
+
     # --- bridge to the reconciler's report side -------------------------------
 
-    def to_notes_cash_report(self) -> NotesCashReport:
+    def to_notes_cash_report(self, *, pop_periods_only: bool = False) -> NotesCashReport:
         """Project the PoP ground truth onto a :class:`NotesCashReport`.
 
         The bridge into :func:`~loanwhiz.primitives.reconciler.reconcile_series`:
@@ -215,7 +283,14 @@ class DealAnswerKey(BaseModel):
         the published revenue + redemption PoP and the available-funds totals —
         the exact surface the reconciler reads. Covenant / pool-stat ground truth
         is not part of the PoP report and is graded separately (#428).
+
+        ``pop_periods_only`` narrows the projection to :attr:`pop_periods` — what
+        :func:`reconcile_against_answer_key` grades. It defaults to ``False`` so
+        the round-trip this method is half of (:meth:`from_notes_cash_report`)
+        stays lossless: a projection that silently dropped periods would make the
+        committed key un-regenerable from its own report fixtures.
         """
+        source_periods = self.pop_periods if pop_periods_only else self.periods
         nc_periods = [
             NotesCashPeriod(
                 reporting_date=p.reporting_date,
@@ -232,7 +307,7 @@ class DealAnswerKey(BaseModel):
                     for s in p.redemption_pop
                 ],
             )
-            for p in self.periods
+            for p in source_periods
         ]
         return NotesCashReport(deal_name=self.deal_name, periods=nc_periods)
 
@@ -703,11 +778,67 @@ def reconcile_against_answer_key(
     the answer key's PoP onto a :class:`NotesCashReport` and reconciles the folded
     series against it. ``tolerance`` defaults to the answer key's own
     ``tolerance_eur``. The quality_harness (#428) calls this per deal.
+
+    **Grades the PoP-bearing periods, reports the rest not-applicable (#513).** A
+    key unioned from several document families is only partly PoP-bearing: Cairn
+    CLO XVII's key carries four periods, of which the three authored from monthly
+    trustee reports state covenant outcomes and no Priority of Payments, and only
+    the one authored from the quarterly Note Valuation Report states both. A fold
+    can only produce a period result from a document that publishes a cascade, so
+    projecting all four periods handed :func:`reconcile_series` four report
+    periods against one period result and it refused the whole key on the join —
+    #496 had to bypass the key entirely to reach a verdict. Grading the gradeable
+    subset and naming the remainder is the honest answer; the key's shape is
+    correct and deliberate (#495) and is not what needed fixing.
+
+    A skipped period is **not** a pass. It never enters ``report.periods``, so it
+    is invisible to ``passed``, ``periods_checked``, ``periods_passed`` and every
+    downstream tally — see :class:`~loanwhiz.primitives.reconciler.SkippedPeriod`
+    for why an empty-waterfall period would have read as one.
+
+    Raises ``ValueError`` when the key carries no Priority of Payments at all
+    (there is nothing to grade, and an empty report is not the same claim as a
+    graded one), or when the PoP-bearing period count still does not match the
+    series — the positional join is only meaningful if the series was folded from
+    exactly those documents.
     """
-    report = answer_key.to_notes_cash_report()
-    return reconcile_series(
+    pop_periods = answer_key.pop_periods
+    if not pop_periods:
+        raise ValueError(
+            f"Answer key for {answer_key.deal_name} carries no Priority-of-Payments "
+            f"section in any of its {len(answer_key.periods)} period(s), so there is "
+            "nothing for the engine to be reconciled against. Grade its covenant or "
+            "pool-statistic ground truth instead."
+        )
+    if len(series.period_results) != len(pop_periods):
+        # Distinct from reconcile_series' own join message on purpose: there the
+        # counts are the report's, here one side has already been narrowed, and an
+        # operator told "the report has 1 period" of a four-period key would be
+        # reading about a report that does not exist.
+        raise ValueError(
+            "Reconciler join mismatch: the folded series has "
+            f"{len(series.period_results)} period result(s) but the answer key for "
+            f"{answer_key.deal_name} carries {len(pop_periods)} Priority-of-Payments "
+            f"period(s) (of {len(answer_key.periods)} total). The series must be "
+            "folded from exactly the documents those periods were authored from."
+        )
+
+    report = answer_key.to_notes_cash_report(pop_periods_only=True)
+    reconciliation = reconcile_series(
         series,
         report,
         deal_name=answer_key.deal_name,
         tolerance=tolerance if tolerance is not None else answer_key.tolerance_eur,
+    )
+    return reconciliation.model_copy(
+        update={
+            "skipped_periods": [
+                SkippedPeriod(
+                    reporting_date=p.reporting_date,
+                    period_label=p.period_label,
+                    reason=NO_POP_PERIOD_REASON,
+                )
+                for p in answer_key.non_pop_periods
+            ]
+        }
     )

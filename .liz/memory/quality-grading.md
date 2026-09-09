@@ -102,3 +102,70 @@ matches no step, so a real payment reconciles 0.00-vs-0.00 against its parent).
 On a failing grade, pin the figures and change neither side: the gap is it.
 
 Refs: #496
+Refs: #514 — closing the join turned the vacuous pass into a visible failure.
+Refs: #538 — the tie-out itself goes blind where a residual sweep absorbs.
+Refs: #515 — re-measured independently; all four hold and the count is the bound.
+
+## 2026-09-08 · pattern · #512
+
+Route a published *input* through the document, not the answer key, even when
+the key is where the figure was committed. `quality_harness` folds from the
+**series provider**, never the key, so an issue phrased "wire the key's
+`pool_stats` into the fold" is satisfied by reading the document the key was
+authored from and asserting the two equal in a test. The key stays ground truth
+and becomes checked rather than ungraded; putting it on the engine's input side
+would make the grade partly self-referential.
+
+Refs: #512
+
+## 2026-09-08 · pitfall · #513
+
+When a grader covers only **part** of a collection, make the ungraded part a
+**different kind of record** — never an instance of the graded kind with empty
+contents. An empty instance passes (`all([])` is `True`; a zero total ties out
+against a zero pot), so "graded and passed" and "nothing to compare" become one
+output and the ungraded fraction reads as free green. Keep the graded list
+graded — every count and verdict reads it — and give skips their own list and
+reason. Prefer this to widening the *inputs*: the shape refused may be correct.
+
+Refs: #513
+Refs: #494 — same failure one level down: presence and correctness differ.
+
+## 2026-09-09 · pitfall · #514
+
+Fixing one copy of a mirrored function moves no number when the two copies sit on
+**opposite sides of the same comparison**. `report_adapter`'s report-to-cascade
+fold becomes each report-supplied step's *need*; `reconciler`'s becomes the
+published figure that need is checked against, so repairing only the reconciler's
+leaves the engine distributing the same total and merely turns vacuous
+0.00-vs-0.00 passes into failures. Before changing a reader, trace whether its
+twin feeds the *other* side of the assertion: if it does, the fix is one shared
+function, not two that agree.
+
+Refs: #514
+
+## 2026-09-09 · pitfall · #538
+
+A cascade with a residual sweep cannot report a step-level error in its total.
+The pot is fixed, so a step that over-claims is funded by starving the sweep
+beneath it and `distributed == available` still holds: the tie-out #496 asks for
+goes green at the exact moment two steps become wrong by equal and opposite
+amounts. Read a tie-out as "no money escaped", never as "every step is right",
+and keep `steps_passed` and the per-step deltas as the completeness check. When
+a gap does split this way, assert both deltas AND that they cancel — a later fix
+to one then reds the pair instead of silently re-balancing the total.
+
+Refs: #538
+
+## 2026-09-09 · pitfall · #515
+
+Read an `engine_computed` count as a property of the **declaration**, not of the
+deal: the classifier answers from an authored allowlist, so it stops where that
+list stops rather than where the data does. Cairn's Classes D, E and F reach the
+fold with a seeded balance, a published applied rate and a parsed day count and
+reproduce their published interest to the cent, yet grade `report-supplied`
+because `ENGINE_COMPUTED_RECIPIENTS` ends at `class_c_interest`. Before
+publishing the count, check what the *un*counted members lack; if the answer is
+"nothing" say so beside the figure, and never widen the set to raise it.
+
+Refs: #515

@@ -76,7 +76,7 @@ the per-cell source of truth; it reports the current tally itself.
 | **Green Lion 2023-1 B.V.** | Netherlands | Prospectus (real) + investor reports + **quarterly Notes & Cash (real)** | **1.0** | Full waterfall, 4 triggers | **Validated to the cent** — graded by `GET /quality-matrix` against a committed answer key (#440) across all three published periods, and since #492 `validated` on the capability matrix too, because that cell is now derived from the committed key rather than from a hand-built builder. The `/deal/{id}/validation` endpoint still returns `available=false`: no validation *builder* is registered, so that one endpoint continues to understate what is graded. |
 | **Leone Arancio RMBS 2023-1 S.r.l.** | Italy | Prospectus (real, Italian) + investor reports | **0.925** | Full waterfall (23/23/12 steps), 3 triggers, 3 note classes — A1 480m / A2 6,600m / J 920m | Pipeline ran; tranche sizes reconcile to the curated `deals.json` registry, but **no** Notes & Cash report is published, so no external validation is possible |
 | **Sol-Lion II RMBS Fondo de Titulización** | Spain | Prospectus (real, Spanish) + investor reports | **0.925** | Full waterfall (20/15/12 steps), 3 triggers, 8 note classes — A1–A6, B, C | Pipeline ran; tranche sizes reconcile to the curated `deals.json` registry, but **no** Notes & Cash report is published, so no external validation is possible |
-| **Cairn CLO XVII DAC** *(CLO — extracted, covenants graded, PoP ground truth committed, graded and does **not** reconcile)* | Ireland | Listing Particulars (real, 420pp) + 3 monthly trustee reports (real) + Note Valuation Report (real, 83pp) | **1.0** | Full 8-class stack (A, B-1, B-2, C, D, E, F + Subordinated, EUR 404.1m), both Priorities of Payments as distinct cascades (29-step Interest / 23-step Principal / 26-step Post-Acceleration), 10 triggers of which 8 are per-class coverage tests, 25 definitions | **Executes and is graded on one row; not validated.** The seed folds through the shared `run_period` kernel with the deal's own cascades (#457). Since #481 an answer key **is** committed — authored from the trustee reports' stated coverage-test results, so `GET /quality-matrix` grades the `covenants` row `passed`. It is still **not** `validated`: since #492 that cell is earned by committed *data* — an answer key carrying a Priority-of-Payments section plus an offline engine series — rather than by a bespoke validation builder. #494 **parses** the Note Valuation Report's Interest and Principal Priorities of Payments and #495 committed them as the key's January 2025 period, so the first artifact exists; the cell refuses on the second, the offline engine series. **#496 ran that grade anyway and it does not reconcile — the finding, not a deferral.** Folded against the very document the key's PoP period was authored from, the deal's 29-step Interest cascade distributes EUR 5,434,911.93 of the report's stated EUR 7,255,062.35 available revenue and leaves EUR 1,820,150.42 undistributed. The pot is the report's own figure and no step is starved — `total_shortfall` is EUR 0.00 — so this is not an under-funded cascade but an incomplete one: the money has no step to go to. No step disagrees: the report prints its 62 rows against the cascade's 29 labels, 20 of them are joined by no step at all, and the eight of those that carry money (`(A)(i)`, `(A)(ii)`, `(H)(i)`, `(H)(ii)`, `(CC)(1)(a)`, two it re-letters bare `(a)`) account for the shortfall to the cent — so the failure is the tie-out, not a delta. Two bounds on the 29 lines that do agree: none is engine-computed — no Cairn recipient is in `ENGINE_COMPUTED_RECIPIENTS`, so each step's amount is taken from the report and compared to itself, and Class B's published EUR 644,398.50 "passes" as 0.00-vs-0.00 against an unjoined parent — and the Principal cascade reconciles on EUR 0.00 of available principal funds, which an engine that never paid anything would reproduce exactly. Against the committed key the grade is not reachable at all: the key unions four periods and only one is foldable, so the reconciler refuses the join. `tests/test_clo_pop_grading.py` holds every figure above; no answer key or engine module was changed to produce them. `covenant_monitoring`, `waterfall_execution` and — since #471 registered the derived tape — `tape_analytics` are `ran`; collateral reconciliation and engine validation stay `not-applicable`, each with a reason true of this deal. Collateral reconciliation stays refused because the deal registers no structural config, not because it has no tape. The coverage tests' required levels are extracted from the trustee reports (#480) and are **still not wired onto the deal model's triggers**, which carry `threshold: null` — so on the deal's own state the monitor still reports them not-evaluable. #481 did not change that; it supplies the published level *and* the published ratio from the answer key on the grading path only. A second reason the deal's own cascades did not evaluate has since been closed: every extracted step recipient now resolves to a canonical `RecipientType` (#503, pinned by `tests/test_clo_recipient_vocabulary.py`), which is what made the grade above runnable at all. See the limitation below |
+| **Cairn CLO XVII DAC** *(CLO — extracted, covenants graded, PoP ground truth committed, graded; the Interest cascade reconciles)* | Ireland | Listing Particulars (real, 420pp) + 3 monthly trustee reports (real) + Note Valuation Report (real, 83pp) | **1.0** | Full 8-class stack (A, B-1, B-2, C, D, E, F + Subordinated, EUR 404.1m), both Priorities of Payments as distinct cascades (29-step Interest / 23-step Principal / 26-step Post-Acceleration), 10 triggers of which 8 are per-class coverage tests, 25 definitions | **Executes and is graded on one row; not validated.** The seed folds through the shared `run_period` kernel with the deal's own cascades (#457). Since #481 an answer key **is** committed — authored from the trustee reports' stated coverage-test results, so `GET /quality-matrix` grades the `covenants` row `passed`. It is still **not** `validated`: since #492 that cell is earned by committed *data* — an answer key carrying a Priority-of-Payments section plus an offline engine series — rather than by a bespoke validation builder. #494 **parses** the Note Valuation Report's Interest and Principal Priorities of Payments and #495 committed them as the key's January 2025 period, so the first artifact exists; the cell refuses on the second, the offline engine series. **#496 ran that grade anyway and it did not reconcile — the finding, not a deferral.** Folded against the very document the key's PoP period was authored from, the deal's 29-step Interest cascade distributed EUR 5,434,911.93 of the report's stated EUR 7,255,062.35 available revenue and left EUR 1,820,150.42 undistributed. The pot was the report's own figure and no step was starved — `total_shortfall` was EUR 0.00 — so that was not an under-funded cascade but an incomplete one: the money had no step to go to. No step disagreed: the report prints its 62 rows against the cascade's 29 labels, 20 of them were joined by no step at all, and the eight of those that carry money (`(A)(i)`, `(A)(ii)`, `(H)(i)`, `(H)(ii)`, `(CC)(1)(a)`, two it re-letters bare `(a)`) accounted for the shortfall to the cent — so that failure was the tie-out, not a delta. Three of the 29 lines are genuinely engine-computed, and the rest are not: #511 resolved the recipient spelling so Class A and Class C interest are derived rather than handed the report's figure, #512 supplied their published applied rates and #528 the accrual period, so each is computed from tranche size x rate x a day count measured between two stated Payment Dates and reproduces its published figure (EUR 3,277,457.78 and EUR 415,004.33) with no report input on the engine's side. Every other step's amount is still taken from the report and compared to itself, and the Principal cascade reconciles on EUR 0.00 of available principal funds, which an engine that never paid anything would reproduce exactly. **The Interest cascade's own gaps are now closed, and each turned out to be a different thing.** #514 joined the 20 unmatched rows so every published cent reaches a step; #538 resolved Class B's recipient onto the two strips the class was issued in — its stack is spelled `class_b_1`/`class_b_2` while the report path seeded a canonical `class_b`, so no tranche had attached; and #539 sourced each strip's day-count fraction from Conditions 6(e)(ii)/(iii), which is what makes the sum right, since B-1 accrues over 95 actual days and B-2 over 90 on 30/360. All 29 steps now agree at the key's EUR 0.01 tolerance and `engine_computed_passed` reads 3. **The aggregate is not what earns that**: for one period the cascade's total tied perfectly while two steps were wrong by equal and opposite amounts, because the pot is fixed and the `(CC)` residual sweep absorbs any senior step's over-draw — so `steps_passed` and the per-step deltas are the signal, and the tie-out only corroborates them. Since #513 the grade is reachable through the committed key itself: the key unions four periods and only the one authored from the Note Valuation Report is foldable, so `reconcile_against_answer_key` grades that period and reports the other three not-applicable — the document behind them publishes no Priority of Payments — reaching the same figures through the key that #496 reached by bypassing it. A period skipped that way is not a period passed: it is excluded from the verdict and from both period counts, so this key cannot report three-quarters green for periods nothing compared. `tests/test_clo_pop_grading.py` holds every figure above; no answer key or engine module was changed to produce them. `covenant_monitoring`, `waterfall_execution` and — since #471 registered the derived tape — `tape_analytics` are `ran`; collateral reconciliation and engine validation stay `not-applicable`, each with a reason true of this deal. Collateral reconciliation stays refused because the deal registers no structural config, not because it has no tape. The coverage tests' required levels are extracted from the trustee reports (#480) and are **still not wired onto the deal model's triggers**, which carry `threshold: null` — so on the deal's own state the monitor still reports them not-evaluable. #481 did not change that; it supplies the published level *and* the published ratio from the answer key on the grading path only. A second reason the deal's own cascades did not evaluate has since been closed: every extracted step recipient now resolves to a canonical `RecipientType` (#503, pinned by `tests/test_clo_recipient_vocabulary.py`), which is what made the grade above runnable at all. See the limitation below |
 
 ### Cairn CLO XVII DAC — what is and is not obtainable
 
@@ -246,6 +246,113 @@ The same parse also takes each class's **resolved current coupon** — Class A's
 `4.54400` for March 2025, where the circular can only say
 `3 month EURIBOR + 1.80%` — and its periodic interest.
 
+**#528: the accrual period is obtainable too, and from the circular itself.**
+The same 40,000-character truncation that lost the coverage-test levels also lost
+`"Payment Date"` and `"Business Day"` — both fall in the dropped C–Z range — and
+with them the deal's *Accrual Period*, which the seed does state and which is
+defined payment-date to payment-date. Without it the engine accrued Act/360 over
+a hardcoded 90-day quarterly approximation, and that assumption was the entire
+residual on the two interest lines it computes for itself.
+
+The remedy is #480's, applied to a different lost fact: a deterministic parser
+over the document's own text rather than a wider LLM budget.
+`extraction/payment_schedule_parser.py` reads the schedule from the Listing
+Particulars' text layer via `pypdf` — no OCR, no model call, the same bytes every
+run — and the seed now carries it, plus both definitions verbatim:
+
+| Stated term | Value | Source |
+|---|---|---|
+| Scheduled Payment Dates | 18 January, 18 April, 18 July, 18 October | Listing Particulars, Definitions — "Payment Date" |
+| First Payment Date | 18 April 2024 | same |
+| Business-day convention | Modified following | same |
+| Business Day centres | T2, London, Dublin **and New York** | Listing Particulars, Definitions — "Business Day" |
+
+**The January 2025 Accrual Period is therefore 95 days** — from the 18 October
+2024 Payment Date to the 21 January 2025 one. Both endpoints are stated dates,
+not fitted ones, and the number is measured between them rather than read off any
+published amount. That distinction is the whole point: 95 was previously
+reachable only by dividing the published Class A interest by what the engine
+computed, and #521 stood down rather than commit a figure back-solved from the
+answer it was meant to check. The derivation agreeing with that figure is its
+result, not its method.
+
+**The holiday table is a hand-authored input, and it is cross-checked rather than
+trusted.** Resolving a scheduled date needs published holidays for four centres,
+so `BUSINESS_CENTRE_HOLIDAYS` carries them for 2024–2026 with per-centre
+provenance (ECB fixed closing days; GOV.UK; Citizens Information; US OPM), and
+raises rather than guessing outside those years. The control on it is that the
+reports state the Payment Dates they actually paid on: 18 January 2025 is a
+Saturday and the Monday is Martin Luther King Jr. Day, giving the 21st the
+December and January reports both print; 18 April 2025 is Good Friday and the
+21st Easter Monday, giving the 22nd the February report prints. A mis-entered
+holiday breaks that match, which `tests/test_payment_schedule_parser.py` asserts.
+
+Two bounds. The derivation reads **Scheduled** Payment Dates, while the
+definition also admits unscheduled ones — the March 2025 report states a
+28/03/2025 redemption date on no scheduled month — so a period ending on one is
+shorter than the schedule predicts; the graded fold uses only the January Note
+Valuation Report, and the case is pinned rather than silently handled. And the
+90-day default itself is unchanged: it remains a fair approximation where a deal
+states nothing better, so every deal without a committed schedule — Green Lion
+included, which stays byte-identical — keeps the numbers it had.
+
+**#539: the day-count *fraction* is per class, and the Conditions state it.**
+#528 sourced the accrual period; it did not source the convention that period is
+counted on, and the engine applied one — Act/360 — to every class. #538 measured
+that this deal does not have one: Class B is issued in two strips under two
+conventions, so no deal-level setting can express it. The fraction sits in the
+*Conditions*, a section the definitions extractor never emits at all, so the same
+`pypdf` route recovers it: `extraction/day_count_parser.py` reads Condition 6(e)
+off the text layer, and the seed carries the result per class.
+
+| Class | Basis | Accrual Period measured over | Source |
+|---|---|---|---|
+| A, B-1, C, D, E, F | Actual days / 360 | Adjusted Payment Dates | Listing Particulars, Conditions — 6(e)(ii) |
+| B-2 | 360-day year of twelve 30-day months | **Unadjusted** Payment Dates | Listing Particulars, Conditions — 6(e)(iii) |
+
+Condition 6(e)(iii) states the fixed basis outright — *"Interest is calculated on
+the basis of a 360-day year consisting of 12 months of 30 days each"* — and the
+*Accrual Period* proviso states which Condition's dates go unadjusted; the parser
+reads which limb that proviso names rather than assuming it is the fixed one.
+**Nothing here was chosen because it made a published figure tie**: the residual
+#538 measured was used as neither a target, a check nor a bound, and had the
+Condition stated something else, that would have been the finding.
+
+**Two independent documents agree on which class is fixed.** The prospectus states
+a fixed day-count basis for Class B-2 alone; the Note Valuation Report separately
+prints Class B-2 as `FXR` where every other class is `FLR`, and
+`note_valuation_parser.stated_rate_types` captures that marking — previously
+discarded as furniture — so the two can be compared. They agree. A disagreement
+would be reported as a finding rather than reconciled, since choosing between two
+documents is not a parser's judgment to make.
+
+**Where the convention is not obtainable, it is refused rather than defaulted.**
+"12 months of 30 days each" names a *family* — 30/360 US, 30E/360 and 30E/360
+ISDA — whose members differ only when an endpoint is the 31st or the last day of
+February. Every Payment Date this deal states is the 18th, so all three agree
+everywhere the schedule reaches and no unstated pick is needed; an endpoint where
+they would diverge raises instead, because there the document genuinely has not
+decided. The same holds for a class stating no basis at all, and for an
+Unscheduled Payment Date, which has no unadjusted counterpart to measure between.
+
+**A deal stating no per-class convention is untouched.** Green Lion states none,
+so its seed carries no `note_day_counts`, every tranche keeps the deal-wide count,
+and its graded output stays byte-identical — asserted per seed rather than
+assumed.
+
+**Composed with #538, this closes the Interest cascade.** #538 resolved the
+recipient-to-tranche seam so `class_b_interest` reaches both strips and sums them;
+#539 gives each strip its own basis, which is what makes the sum right — B-1 over
+95 actual days, B-2 over 90 on 30/360, reproducing EUR 386,773.50 and
+EUR 257,625.00 against the published pair. Every step of the 29-step Interest
+cascade now agrees and `engine_computed_passed` reads 3.
+
+**That the figures tie is the result, not the method.** The fractions were read
+out of Conditions 6(e)(ii) and 6(e)(iii) and the dates off the stated schedule; no
+published amount was divided by anything to obtain either, and the residual #538
+measured was used as neither target, check nor bound. Had the Condition stated a
+different fraction, the line would be red and that would be the finding.
+
 **What this does *not* change: on the deal's own state the monitor still reports
 every coverage test `not_evaluable`, and both of the reasons above still hold.**
 These figures are extracted and reconciled, not wired: nothing writes them onto
@@ -346,10 +453,12 @@ key yet".
   shape now, and the reason its `engine_validation` cell still refuses. That
   reason is a fact about this repo's registry and stayed accurate through #496,
   which measured what such a fold produces without registering one: the grade
-  fails, so registering a series would have replaced a true refusal with a
-  join-error string rather than moving the cell. Each still ends with the same
-  explicit disclaimer, because the registry still cannot see what an issuer
-  publishes.
+  fails. #513 changed what registering a series would now produce — a real
+  failing grade rather than a join-error string — by teaching the grader to
+  grade the key's PoP-bearing period and report the other three not-applicable;
+  it did not register one, so the cell has not moved and the refusal above is
+  still the accurate one. Each still ends with the same explicit disclaimer,
+  because the registry still cannot see what an issuer publishes.
   Splitting the reason is what #471 asks for — "no key is committed" and "the
   committed key carries no PoP" are different findings, and one sentence covering
   both is false of one of them.
@@ -445,9 +554,44 @@ earned by two committed artifacts: an answer key carrying a Priority-of-Payments
 section, and an offline engine series to reconcile it against. #495 supplied the
 first — the key's January 2025 period carries both waterfalls from the Note
 Valuation Report — so the cell refuses on the second. #496 ran the reconciliation
-without one and reports that it fails: the Interest cascade is short EUR
-1,820,150.42 of the report's stated available revenue, and not one of its steps
-is independently computed. The cell would not have turned green either way.
+without one and reported that it failed: the Interest cascade was short EUR
+1,820,150.42 of the report's stated available revenue, the published rows that
+joined no cascade step at all. #514 closed the join and #538/#539 gave Class B a
+computable, correctly-counted need, so all 29 Interest steps now agree and three
+are independently computed (#511/#512/#528/#538/#539). The cell would not have
+turned green either way: it is earned by an offline engine series, which this
+deal still does not have.
+
+**And if it did, `validated` would mean something narrower here than it means
+for Green Lion — so read the count, not the word.** Across the two cascades this
+deal publishes, 52 steps are compared and **3 are engine-computed; 49 are
+report-supplied**. Every one of the 3 is a note-interest line — Class A, Class B
+and Class C — derived from the seed's tranche balance, the report's published
+applied rate and a day count read off the prospectus Payment Date schedule and
+Conditions 6(e)(ii)/(iii). The remaining 49 have their amount taken from the
+report and compared to itself, so they demonstrate that this repo *routes* a
+published figure to the right step in the right order, never that it *computes*
+the figure. That split is not a defect to be engineered away: a CLO waterfall
+carries steps no deal model can derive — management fees, capped administrative
+expenses, coverage-test and par-value-test cures, hedge and swap payments —
+whose amounts come from the manager's and trustee's own books rather than from
+any formula in the Listing Particulars. On this period 26 of the 49 sit in the
+Interest cascade and 23 in the Principal one; 40 of the 52 compare EUR 0.00 with
+EUR 0.00 and could not have distinguished a correct engine from a silent one.
+So the reconciliation's whole independent signal is 3 lines carrying EUR
+4,336,860.61 of the Interest cascade's EUR 7,255,062.35 pot.
+
+**Why 3 and not 7 is a fact about this repo, not about the document.** The
+engine computes a note-interest need only for recipients named in
+`primitives/step_source_classifier.ENGINE_COMPUTED_RECIPIENTS`, which stops at
+`class_c_interest` — a set authored for a three-tranche RMBS stack. Cairn's
+Classes D, E and F reach the fold with everything those three have: a seeded
+balance, an applied rate in the same published `Rate Current` column, and a
+day-count basis parsed from Condition 6(e)(ii). Each reproduces its published
+interest exactly — EUR 594,969.17, EUR 484,208.67 and EUR 495,004.89 — so the
+figure 3 bounds a declaration this repo authored, not the data the deal
+publishes. Widening it is a change to the engine and was deliberately not made
+while measuring the engine.
 
 **The engine executes this deal (#457).** The committed seed folds through the
 existing `run_period` kernel — the same one the RMBS deals use — over the full
@@ -682,7 +826,7 @@ The dataset is **not intended** for:
 | **Two validated deals of six** | The pipeline *runs* on 5 of the 6 registered deals; **Green Lion 2024-1** and **Green Lion 2023-1** are validated to the cent against their own published Notes & Cash reports — the only `validated` capability cells, and both Dutch RMBS. Since #492 that cell is earned by committed data (an answer key carrying a Priority-of-Payments section, plus an offline engine series) rather than by bespoke Python, which is what made 2023-1's long-standing to-the-cent grade legible as validation. **Cairn CLO XVII** is additionally graded by `GET /quality-matrix` on its published coverage-test outcomes (#481) — a different check, against a different kind of document, and not a to-the-cent reconciliation. Its to-the-cent reconciliation was run separately (#496) and **fails**, which is why the count of validated deals is two rather than three. Every other cell is `ran` or `not-applicable` — outputs there are unvalidated and do not generalise without re-validation, and no non-Dutch and no non-RMBS deal is validated at all. |
 | **Coverage without external truth on the non-English deals** | Extraction on the Italian (Leone Arancio) and Spanish (Sol-Lion II) prospectuses now reaches 0.925 completeness with a full waterfall on both — this card's earlier "≈ 0.38 / ≈ 0.30, no waterfall" described pre-#438/#439 seeds. Neither deal publishes a Notes & Cash report, so neither can ever be graded against published actuals without inventing ground truth. High coverage on these two is not evidence that their numbers are right. |
 | **Ungraded PDL / reserve proximity** | Principal-deficiency-ledger and reserve-account proximity are computed and surfaced, but the Green Lion keys carry empty `covenants` and `pool_stats` for every period and the CLO key carries coverage tests only, so those checks grade `not-applicable` for every deal and no PDL or reserve check key exists. A flat or zero proximity there means "not evaluable from current inputs", not "healthy". |
-| **Two asset classes are extracted; only one is validated** | The pipeline now reads both RMBS (Dutch, Italian, Spanish) and a CLO (Cairn CLO XVII DAC). Extraction is not validation, and neither is grading one row. The CLO's committed key now carries a published-report Priority of Payments too (#495), and #496 reconciled the engine against it: **it does not tie out** — the Interest cascade is short EUR 1,820,150.42 of the report's stated available revenue and none of its steps is independently computed. So the deal's distributions are not merely unchecked; they are checked and disagreeing, and its per-deal endpoints still refuse it. CMBS, US RMBS, ABS and other asset classes are not represented at all. |
+| **Two asset classes are extracted; only one is validated** | The pipeline now reads both RMBS (Dutch, Italian, Spanish) and a CLO (Cairn CLO XVII DAC). Extraction is not validation, and neither is grading one row. The CLO's committed key now carries a published-report Priority of Payments too (#495), and #496 reconciled the engine against it: it did **not** tie out — the Interest cascade was short EUR 1,820,150.42 of the report's stated available revenue, the published rows no cascade step joined. That gap is now closed (#514/#538/#539) and all 29 Interest steps agree, three of them from the deal model alone. **This still is not validation of the deal.** One cascade of one period of one document reconciles; the Principal cascade ties on EUR 0.00 and proves nothing, 26 of the 29 agreeing lines are report figures compared against themselves, and the per-deal endpoints still refuse this deal. CMBS, US RMBS, ABS and other asset classes are not represented at all. |
 | **Synthetic loan performance** | No real default history in the synthetic tapes. Arrears rates, default rates, and prepayment rates reflect synthetic generation assumptions, not observed market behaviour. |
 | **Three jurisdictions run, a fourth only registered** | The deals the pipeline runs on span Dutch, Italian, and Spanish RMBS only — three legal regimes, three EPC/market conventions. Ireland is present in the registry (the CLO) but nothing has been run against it. Coverage of other European or non-European markets is untested. |
 | **Synthetic time series (snapshots, not a panel)** | The deal's three 2026 monthly tapes enable time-series views and multi-period waterfall runs. The tapes are **re-sampled each period** — loan IDs do not persist — so the series is a sequence of point-in-time snapshots, not a tracked-cohort longitudinal panel. It is synthetically generated, so prepayment/default speeds estimated from it reflect the generation process, not observed market behaviour. |
