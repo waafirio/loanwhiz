@@ -34,6 +34,7 @@ triage by opening the entry, not by reading the line.
   - [2026-09-08 · pitfall · #484](#2026-09-08--pitfall--484) — keywords: balance share, count share, generated population, per-bucket draw, stratification, arrears bucket, rendered axis
   - [2026-09-02 · pitfall · #441](#2026-09-02--pitfall--441) — keywords: completeness_score
   - [2026-09-09 · pattern · #528](#2026-09-09--pattern--528) — keywords: back-solved input, read past the extractor, max_chars truncation, pypdf text layer, stated schedule, deterministic parser, cross-check against another document
+  - [2026-09-10 · pitfall · #550](#2026-09-10--pitfall--550) — keywords: scarcity premise, document already folded, Par Value Tests Detail, overcollateralisation numerator, aggregate_principal_balance, stated total, components tie-out
   - [2026-09-09 · pitfall · #555](#2026-09-09--pitfall--555) — keywords: stated count population, count grain, accrual record, asset grain, aggregate table, two populations, cannot fail
 - [Registering a deal (deals.json)](deal-registration.md) — keywords: deals.json, notes_cash_report_urls, routing promise, registry key, asset_class, answer key invariant
   - [2026-09-05 · pitfall · #455](#2026-09-05--pitfall--455) — keywords: notes_cash_report_urls, _reconstruct_series
