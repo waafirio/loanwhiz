@@ -497,14 +497,15 @@ def parse_risk_retention(text: str) -> RiskRetention:
             "verification obligation asks for"
         )
 
-    first_refusal: UnsourcedRetention | None = None
+    refusals: list[UnsourcedRetention] = []
     for citation in citations:
         try:
             return _read_undertaking(collapsed, citation)
         except UnsourcedRetention as refusal:
-            first_refusal = first_refusal or refusal
-    assert first_refusal is not None
-    raise first_refusal
+            refusals.append(refusal)
+    # ``citations`` is non-empty above, so reaching here means every one of them
+    # refused and ``refusals`` is non-empty too.
+    raise refusals[0]
 
 
 # ===========================================================================
