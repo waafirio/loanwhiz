@@ -414,6 +414,41 @@ def test_a_family_declaring_an_unimplemented_furniture_order_is_refused() -> Non
         module._assert_furniture_order(inverted, US_BANK.label)
 
 
+def test_the_coverage_test_column_order_comes_from_the_family() -> None:
+    """Swap the family's markers and the parse refuses — so the table is the source.
+
+    The existing coverage-test-header regression corrupts the *document*, which a
+    parser holding a private hardcoded copy of the markers would pass identically.
+    This changes the *family* instead and leaves the document alone, so it fails
+    unless the parser really reads the order off the detected layout.
+
+    Refusing is the right failure: reading two like-typed percentage columns in a
+    guessed order reports a breaching coverage test as passing (#480).
+    """
+    import loanwhiz.primitives.collateral_schedule_parser as module
+
+    monthly = US_BANK.layout(DocumentKind.MONTHLY_REPORT)
+    unmatched = dataclasses.replace(
+        monthly,
+        column_order_markers={"AHEADERTHISREPORTNEVERPRINTS": ColumnOrder.RATIO_FIRST},
+    )
+    monkeypatched = pytest.MonkeyPatch()
+    monkeypatched.setattr(module, "_resolve_layout", lambda pages: unmatched)
+    try:
+        with pytest.raises(ValueError, match="no recognised coverage-test column header"):
+            module.parse_liability_summary_text(
+                MONTHLY_FIXTURE.read_text(encoding="utf-8"), period_label="March 2025"
+            )
+    finally:
+        monkeypatched.undo()
+
+    # And the untouched family still parses the same document, so the refusal
+    # above is the markers doing the work rather than the document being broken.
+    assert module.parse_liability_summary_text(
+        MONTHLY_FIXTURE.read_text(encoding="utf-8"), period_label="March 2025"
+    ).coverage_tests
+
+
 def test_the_note_valuation_waterfalls_come_from_the_family() -> None:
     """The two Priorities of Payments are a table entry, not a hand-unrolled pair."""
     layout = US_BANK.layout(DocumentKind.NOTE_VALUATION_REPORT)
