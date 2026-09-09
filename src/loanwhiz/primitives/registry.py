@@ -293,6 +293,17 @@ def ensure_all_registered() -> None:
     Idempotent: ``import_module`` returns the already-imported module on later
     calls, and the registry's duplicate-name guard means a module cannot
     double-register. Safe to call on every request.
+
+    **A module that fails to import propagates, deliberately.** This widens the
+    blast radius of a broken primitive module: before #574 the REST app imported
+    a fixed handful, so a broken ``library-only`` module nothing reached was
+    invisible to it; now any import error here fails ``loanwhiz.api.main`` at
+    startup. That is the intended trade-off rather than an oversight. Swallowing
+    the error would drop the module from the catalogue silently — which is
+    precisely the invisibility this function exists to remove, and it would fail
+    in the one direction nobody checks: a primitive quietly absent reads as a
+    primitive that was never written. A loud startup failure names the broken
+    module; a silent skip names nothing.
     """
     import importlib
     import pkgutil

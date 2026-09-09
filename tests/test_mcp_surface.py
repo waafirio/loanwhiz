@@ -20,7 +20,9 @@ import os
 import subprocess
 import sys
 from pathlib import Path
+from unittest import mock
 
+import pytest
 from fastapi.testclient import TestClient
 
 from loanwhiz.api import app
@@ -206,3 +208,27 @@ def test_primitives_and_mcp_surface_cannot_disagree():
         assert entry["reachability"] == primitives[name]["reachability"], name
         assert entry["input_schema"] == primitives[name]["input_schema"], name
         assert entry["version"] == primitives[name]["version"], name
+
+
+def test_a_module_that_fails_to_import_is_loud_rather_than_silently_dropped():
+    """A broken primitive module must not vanish quietly from the catalogue.
+
+    `ensure_all_registered` deliberately lets an import error propagate. The
+    alternative — skipping the module with a warning — drops a primitive from
+    every catalogue in the one direction nothing checks: absent reads exactly
+    like never-written, which is the invisibility this whole issue was about.
+    This pins the choice so a later "make it robust" change has to argue with a
+    red test rather than silently reinstate the bug.
+    """
+    import importlib as _importlib
+
+    real_import = _importlib.import_module
+
+    def explode(name, *args, **kwargs):
+        if name.endswith(".tranche_analytics"):
+            raise ModuleNotFoundError("simulated broken primitive module")
+        return real_import(name, *args, **kwargs)
+
+    with mock.patch.object(_importlib, "import_module", side_effect=explode):
+        with pytest.raises(ModuleNotFoundError, match="simulated broken primitive module"):
+            ensure_all_registered()
