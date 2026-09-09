@@ -30,14 +30,138 @@ from google import genai
 from google.genai import types as genai_types
 
 from loanwhiz.config import GCP_LOCATION, GCP_PROJECT, MODEL_PRO
-from loanwhiz.extraction.section_router import Section, SectionMap, route_sections
+from loanwhiz.extraction.section_router import (
+    Section,
+    SectionMap,
+    route_sections,
+    widen_to_definitions,
+)
+from loanwhiz.extraction.truncation import Truncation, clip
 
 logger = logging.getLogger(__name__)
+
+
+# A real structured-finance prospectus glossary defines hundreds of terms, and
+# the section carrying it runs to tens of thousands of characters. Both floors
+# below sit far under any genuine glossary: they are a smoke alarm for "this is
+# not a whole glossary", not a quality bar (#548).
+_MIN_PLAUSIBLE_TERMS = 50
+_MIN_PLAUSIBLE_SECTION_CHARS = 10_000
 
 
 # ---------------------------------------------------------------------------
 # Data model
 # ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class GlossaryCoverage:
+    """Whether an extracted glossary is plausibly a *whole* glossary.
+
+    Two deals have lost glossary facts at this stage by two different
+    mechanisms — Cairn CLO XVII to a real ``max_chars`` truncation, Contego CLO
+    XI to section *orphaning* (Docling promotes each defined term to its own
+    markdown heading, so the routed ``1. Definitions`` section ends at the first
+    of them and 98.7% of the glossary becomes sibling sections nobody sends).
+    Both produced a healthy-looking term count over a silent alphabetical
+    cliff, and ``' Payment Date ' means:`` was lost by both.
+
+    So this check is deliberately **cause-agnostic**: it asks only whether the
+    output looks like a complete glossary, never which mechanism truncated it.
+    A repair aimed at either individual cause would not have caught the other,
+    and would not catch the third (#548).
+
+    ``reason`` is empty exactly when ``implausible`` is ``False``.
+    """
+
+    term_count: int
+    source_chars: int
+    first_initial: str | None
+    last_initial: str | None
+    implausible: bool
+    reason: str = ""
+
+    def to_dict(self) -> dict:
+        return {
+            "term_count": self.term_count,
+            "source_chars": self.source_chars,
+            "first_initial": self.first_initial,
+            "last_initial": self.last_initial,
+            "implausible": self.implausible,
+            "reason": self.reason,
+        }
+
+    @classmethod
+    def from_dict(cls, data: object) -> "GlossaryCoverage | None":
+        """Rebuild from a cache payload; a pre-#548 cache has no such key."""
+        if not isinstance(data, dict):
+            return None
+        return cls(
+            term_count=int(data.get("term_count", 0)),
+            source_chars=int(data.get("source_chars", 0)),
+            first_initial=data.get("first_initial") or None,
+            last_initial=data.get("last_initial") or None,
+            implausible=bool(data.get("implausible", False)),
+            reason=str(data.get("reason", "")),
+        )
+
+
+def assess_glossary(
+    terms: dict[str, "DefinedTerm"],
+    source_chars: int,
+    truncation: Truncation | None,
+) -> GlossaryCoverage:
+    """Judge whether ``terms`` plausibly represents a whole glossary.
+
+    Three independent signals, any one of which condemns the result. They are
+    ordered most-informative first, because ``reason`` reports only the first
+    that fires and the truncation record is the most actionable:
+
+    1. **It was truncated.** We know we did not see all of it — no inference
+       required. (Cairn.)
+    2. **The section handed to us is too small to be a glossary.** This fires
+       regardless of what the LLM returned, which is what makes it catch a
+       *routing* failure that no character budget can fix. (Contego.)
+    3. **Too few terms came back.** The section looked fine and was not cut, so
+       the extraction itself under-delivered.
+
+    Initials are reported whatever the verdict: on an alphabetical glossary the
+    span from first to last is the cheapest read of where a cliff falls.
+    """
+    initials = sorted({term[:1].upper() for term in terms if term[:1].isalpha()})
+    first_initial = initials[0] if initials else None
+    last_initial = initials[-1] if initials else None
+    term_count = len(terms)
+
+    reason = ""
+    if truncation is not None:
+        reason = (
+            f"section truncated at {truncation.kept_chars} of "
+            f"{truncation.original_chars} chars "
+            f"({truncation.discarded_fraction:.0%} discarded); "
+            f"nothing after {truncation.last_line!r} was seen"
+        )
+    elif source_chars < _MIN_PLAUSIBLE_SECTION_CHARS:
+        reason = (
+            f"the routed definitions section is only {source_chars} chars — "
+            f"below the {_MIN_PLAUSIBLE_SECTION_CHARS}-char floor for a real "
+            f"glossary, so section selection, not the character budget, is what "
+            f"limited this extraction"
+        )
+    elif term_count < _MIN_PLAUSIBLE_TERMS:
+        reason = (
+            f"only {term_count} terms extracted from {source_chars} chars, "
+            f"below the floor of {_MIN_PLAUSIBLE_TERMS} for a prospectus glossary"
+        )
+
+    return GlossaryCoverage(
+        term_count=term_count,
+        source_chars=source_chars,
+        first_initial=first_initial,
+        last_initial=last_initial,
+        implausible=bool(reason),
+        reason=reason,
+    )
 
 
 @dataclass
@@ -59,6 +183,12 @@ class DefinitionsGraph:
     """
 
     terms: dict[str, DefinedTerm] = field(default_factory=dict)
+    # Structural record of what the character budget discarded, and a verdict on
+    # whether the result is plausibly a whole glossary. Both default to ``None``
+    # so every existing construction site (tests, cache loads written before
+    # #548) keeps working unchanged.
+    truncation: Truncation | None = None
+    coverage: GlossaryCoverage | None = None
 
     # ------------------------------------------------------------------
     # Lookup helpers
@@ -237,8 +367,16 @@ def extract_definitions(
     if not defs_section:
         raise ValueError("Definitions section not found in prospectus")
 
-    section_text = defs_section.text[:max_chars]
-    if len(defs_section.text) > max_chars:
+    # Rescue a glossary that Docling shattered into sibling sections before any
+    # budget is applied — otherwise the cap is measured against a stub and the
+    # extraction silently succeeds on 1.3% of the terms (#548). A no-op when the
+    # routed section already carries a real glossary, so Cairn and Green Lion are
+    # byte-identical, and idempotent when the assembler passes an already-widened
+    # section through ``section``.
+    defs_section = widen_to_definitions(section_map, defs_section)
+
+    section_text, truncation = clip(defs_section.title, defs_section.text, max_chars)
+    if truncation is not None:
         # A definitions section longer than the budget is truncated MID-GLOSSARY,
         # and a glossary is alphabetical — so the terms that survive are a prefix
         # of the alphabet, not a sample. Cairn CLO XVII's runs past this cap, and
@@ -256,9 +394,9 @@ def extract_definitions(
         logger.warning(
             "definitions section truncated at %d of %d chars — a glossary is "
             "alphabetical, so no term after %r was seen",
-            max_chars,
-            len(defs_section.text),
-            section_text[-200:].strip().split("\n")[-1][:60],
+            truncation.kept_chars,
+            truncation.original_chars,
+            truncation.last_line,
         )
 
     client = genai.Client(vertexai=True, project=GCP_PROJECT, location=GCP_LOCATION)
@@ -334,7 +472,7 @@ def extract_definitions(
     args = function_call.args
     raw_terms: list[dict] = args.get("terms", [])
 
-    graph = DefinitionsGraph()
+    graph = DefinitionsGraph(truncation=truncation)
     for raw in raw_terms:
         term_str = raw.get("term", "").strip()
         definition_str = raw.get("definition", "").strip()
@@ -348,6 +486,12 @@ def extract_definitions(
             page_or_section=page_sec,
             excerpt=excerpt,
         )
+
+    # Judged after the terms land, so the verdict is about the real output
+    # rather than about the inputs we hoped it would have.
+    graph.coverage = assess_glossary(graph.terms, len(defs_section.text), truncation)
+    if graph.coverage.implausible:
+        logger.warning("definitions extraction looks incomplete: %s", graph.coverage.reason)
 
     return graph
 
@@ -381,11 +525,23 @@ def _graph_to_json(graph: DefinitionsGraph) -> str:
         }
         for dt in graph.terms.values()
     ]
-    return json.dumps({"terms": terms_list}, ensure_ascii=False, indent=2)
+    payload: dict = {"terms": terms_list}
+    # Only written when present, so a graph with nothing to report serialises to
+    # exactly the pre-#548 shape and existing cache files stay byte-comparable.
+    if graph.truncation is not None:
+        payload["truncation"] = graph.truncation.to_dict()
+    if graph.coverage is not None:
+        payload["coverage"] = graph.coverage.to_dict()
+    return json.dumps(payload, ensure_ascii=False, indent=2)
 
 
 def _graph_from_json(data: dict) -> DefinitionsGraph:
-    graph = DefinitionsGraph()
+    # ``.get`` returning ``None`` for both keys is what lets a cache written
+    # before #548 load unchanged rather than raising.
+    graph = DefinitionsGraph(
+        truncation=Truncation.from_dict(data.get("truncation")),
+        coverage=GlossaryCoverage.from_dict(data.get("coverage")),
+    )
     for item in data.get("terms", []):
         term_str = item.get("term", "").strip()
         if not term_str:

@@ -515,3 +515,212 @@ def test_a_truncated_glossary_says_so(caplog) -> None:
             extract_definitions(section_map, max_chars=1_000, force_refresh=True)
 
     assert any("truncated" in r.getMessage() for r in caplog.records), caplog.text
+
+
+# ---------------------------------------------------------------------------
+# Truncation record + glossary plausibility (#548)
+# ---------------------------------------------------------------------------
+
+
+def _terms(n: int, start: str = "A") -> dict:
+    """``n`` DefinedTerms whose initials walk forward from ``start``."""
+    from loanwhiz.extraction.definitions_graph import DefinedTerm
+
+    out = {}
+    for i in range(n):
+        initial = chr(ord(start) + (i % 26))
+        term = f"{initial}{i:04d} Term"
+        out[term] = DefinedTerm(
+            term=term, definition="means something", page_or_section="Definitions",
+            excerpt="means something",
+        )
+    return out
+
+
+class TestAssessGlossary:
+    """The plausibility verdict is deliberately cause-agnostic.
+
+    Two deals lost glossary facts here by two different mechanisms — Cairn to a
+    real ``max_chars`` truncation, Contego to section orphaning — and
+    ``' Payment Date ' means:`` was lost by both. A check aimed at either
+    individual cause would have missed the other.
+    """
+
+    def test_truncation_condemns_the_result(self) -> None:
+        from loanwhiz.extraction.definitions_graph import assess_glossary
+        from loanwhiz.extraction.truncation import Truncation
+
+        coverage = assess_glossary(
+            _terms(200),
+            source_chars=120_000,
+            truncation=Truncation(
+                section_title="Definitions",
+                original_chars=120_000,
+                kept_chars=40_000,
+                last_line='"Bankruptcy Exchange Test" means',
+            ),
+        )
+        assert coverage.implausible
+        assert "truncated" in coverage.reason
+        assert "Bankruptcy Exchange Test" in coverage.reason
+
+    def test_a_too_small_section_condemns_it_regardless_of_term_count(self) -> None:
+        """The Contego signal, and the one no character budget can produce.
+
+        The routed section was 3,255 chars, the cap never engaged, and every
+        term the LLM returned from it was real. The output is still not a
+        glossary — which is a fact about *routing*, so the check must fire
+        without any truncation record to go on.
+        """
+        from loanwhiz.extraction.definitions_graph import assess_glossary
+
+        coverage = assess_glossary(_terms(80), source_chars=3_255, truncation=None)
+        assert coverage.implausible
+        assert "section selection" in coverage.reason
+        assert "3255" in coverage.reason
+
+    def test_too_few_terms_from_a_healthy_section_condemns_it(self) -> None:
+        from loanwhiz.extraction.definitions_graph import assess_glossary
+
+        coverage = assess_glossary(_terms(4), source_chars=200_000, truncation=None)
+        assert coverage.implausible
+        assert "only 4 terms" in coverage.reason
+
+    def test_a_healthy_glossary_passes_with_no_reason(self) -> None:
+        from loanwhiz.extraction.definitions_graph import assess_glossary
+
+        coverage = assess_glossary(_terms(300), source_chars=200_000, truncation=None)
+        assert not coverage.implausible
+        assert coverage.reason == ""
+        assert coverage.term_count == 300
+
+    def test_reports_the_alphabetical_span(self) -> None:
+        """On an alphabetical glossary this is the cheapest read of a cliff."""
+        from loanwhiz.extraction.definitions_graph import DefinedTerm, assess_glossary
+
+        terms = {
+            name: DefinedTerm(term=name, definition="d", page_or_section="s", excerpt="d")
+            for name in ("Acceleration Notice", "Bankruptcy Exchange Test")
+        }
+        coverage = assess_glossary(terms, source_chars=200_000, truncation=None)
+        assert coverage.first_initial == "A"
+        assert coverage.last_initial == "B"
+
+    def test_empty_glossary_has_no_initials(self) -> None:
+        from loanwhiz.extraction.definitions_graph import assess_glossary
+
+        coverage = assess_glossary({}, source_chars=200_000, truncation=None)
+        assert coverage.first_initial is None
+        assert coverage.last_initial is None
+        assert coverage.implausible
+
+
+class TestGraphCarriesTheRecords:
+    def test_round_trip_through_the_cache(self) -> None:
+        from loanwhiz.extraction.definitions_graph import (
+            GlossaryCoverage,
+            _graph_from_json,
+            _graph_to_json,
+        )
+        from loanwhiz.extraction.truncation import Truncation
+
+        graph = _make_graph(("Term", "means a thing", "Definitions"))
+        graph.truncation = Truncation(
+            section_title="1. Definitions",
+            original_chars=246_245,
+            kept_chars=40_000,
+            last_line='"Bankruptcy Exchange Test" means',
+        )
+        graph.coverage = GlossaryCoverage(
+            term_count=1, source_chars=246_245, first_initial="T",
+            last_initial="T", implausible=True, reason="only 1 terms extracted",
+        )
+
+        restored = _graph_from_json(json.loads(_graph_to_json(graph)))
+        assert restored.truncation == graph.truncation
+        assert restored.coverage == graph.coverage
+        assert restored.truncation.discarded_chars == 206_245
+
+    def test_a_cache_written_before_548_loads_unchanged(self) -> None:
+        """The warm-cache guarantee: no ``truncation``/``coverage`` key at all."""
+        from loanwhiz.extraction.definitions_graph import _graph_from_json
+
+        restored = _graph_from_json(
+            {"terms": [{"term": "Payment Date", "definition": "means a date"}]}
+        )
+        assert restored.truncation is None
+        assert restored.coverage is None
+        assert "Payment Date" in restored.terms
+
+    def test_a_graph_with_nothing_to_report_serialises_to_the_old_shape(self) -> None:
+        from loanwhiz.extraction.definitions_graph import _graph_to_json
+
+        payload = json.loads(_graph_to_json(_make_graph(("T", "means", "s"))))
+        assert set(payload) == {"terms"}
+
+
+class TestExtractDefinitionsReportsTruncation:
+    """The record must reach the caller, not just the log."""
+
+    @staticmethod
+    def _fake_gemini(terms: list[dict]):
+        from unittest.mock import MagicMock
+
+        fake_fc = MagicMock()
+        fake_fc.args = {"terms": terms}
+        fake_part = MagicMock()
+        fake_part.function_call = fake_fc
+        fake_candidate = MagicMock()
+        fake_candidate.content.parts = [fake_part]
+        fake_response = MagicMock()
+        fake_response.candidates = [fake_candidate]
+        return fake_response
+
+    def test_returned_graph_carries_the_truncation_and_verdict(self) -> None:
+        from unittest.mock import patch
+
+        from loanwhiz.extraction.definitions_graph import extract_definitions
+        from loanwhiz.extraction.section_router import route_sections
+
+        md = "## Definitions\n\n" + "\n".join(
+            f'"Term {i}" means something.' for i in range(4000)
+        )
+        section_map = route_sections(md)
+        response = self._fake_gemini(
+            [{"term": "Term 0", "definition": "means something",
+              "page_or_section": "Definitions"}]
+        )
+
+        with patch("loanwhiz.extraction.definitions_graph.genai.Client") as client:
+            client.return_value.models.generate_content.return_value = response
+            graph = extract_definitions(section_map, max_chars=1_000, force_refresh=True)
+
+        assert graph.truncation is not None
+        assert graph.truncation.kept_chars == 1_000
+        assert graph.truncation.original_chars > 1_000
+        assert graph.coverage is not None
+        assert graph.coverage.implausible
+        assert "truncated" in graph.coverage.reason
+
+    def test_an_untruncated_extraction_reports_no_truncation(self) -> None:
+        from unittest.mock import patch
+
+        from loanwhiz.extraction.definitions_graph import extract_definitions
+        from loanwhiz.extraction.section_router import route_sections
+
+        md = "## Definitions\n\n" + "\n".join(
+            f'"Term {i}" means something.' for i in range(4000)
+        )
+        section_map = route_sections(md)
+        response = self._fake_gemini(
+            [{"term": f"Term {i}", "definition": "means something",
+              "page_or_section": "Definitions"} for i in range(300)]
+        )
+
+        with patch("loanwhiz.extraction.definitions_graph.genai.Client") as client:
+            client.return_value.models.generate_content.return_value = response
+            graph = extract_definitions(section_map, max_chars=10_000_000, force_refresh=True)
+
+        assert graph.truncation is None
+        assert graph.coverage is not None
+        assert not graph.coverage.implausible

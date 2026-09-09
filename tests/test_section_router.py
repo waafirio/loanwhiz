@@ -1275,3 +1275,165 @@ def test_router_cache_corrupt_entry_falls_through_to_the_model(tmp_path) -> None
 
     assert client.calls == 2
     assert "revenue_priority_of_payments" in _located(result)
+
+
+# ---------------------------------------------------------------------------
+# Definitions widening — the Contego (IE CLO) section-orphaning rescue (#548)
+# ---------------------------------------------------------------------------
+#
+# Docling promotes each defined term of Contego CLO XI's glossary to its own
+# level-2 heading, so ``1. Definitions`` ends at the first entry and the
+# extractor is handed a 3,255-char Condition-1 stub while the glossary runs on
+# for another 240 k. No character budget can fix that: on the real document the
+# 40 k cap never engaged at all.
+
+
+def _entry(term: str, filler: int = 1) -> str:
+    """One glossary entry as Docling emits it — the term promoted to a heading."""
+    body = " ".join(f"clause {i} of the definition." for i in range(filler))
+    return f"## ' {term} ' means:\n\n{body}\n"
+
+
+def _contego_shaped_md(entries: int = 60) -> str:
+    """A numbered Definitions heading whose entries became sibling headings."""
+    terms = "\n".join(_entry(f"Term {i:03d}") for i in range(entries))
+    return (
+        "## 1. Definitions\n\n"
+        "' Acceleration Notice ' shall have the meaning ascribed to it in "
+        "Condition 10(b).\n\n"
+        f"{terms}\n"
+        "## 2. Form and Denomination, Title, Transfer and Exchange\n\n"
+        "The Notes are issued in registered form.\n"
+    )
+
+
+def _cairn_shaped_md(entries: int = 60) -> str:
+    """A numbered Definitions heading that carries its own glossary inline.
+
+    The shape Cairn CLO XVII and Green Lion both take: the entries are body
+    text, not headings, so the routed section is already dense.
+    """
+    body = "\n\n".join(
+        f"' Term {i:03d} ' means the amount determined under this deed."
+        for i in range(entries)
+    )
+    return (
+        "## 1. Definitions\n\n"
+        f"{body}\n\n"
+        "## 2. Form and Denomination, Title, Transfer and Exchange\n\n"
+        "The Notes are issued in registered form.\n"
+    )
+
+
+class TestWidenToDefinitions:
+    def test_widens_past_orphaned_entry_headings(self) -> None:
+        sm = route_sections(_contego_shaped_md())
+        narrow = sm.find("definitions", "9.1")
+        assert narrow is not None
+        assert narrow.title == "1. Definitions"
+
+        widened = section_router.widen_to_definitions(sm, narrow)
+
+        # The narrow span stopped at the first promoted entry; the widened one
+        # crosses every unnumbered heading and stops at the next NUMBERED one.
+        assert len(widened.text) > len(narrow.text)
+        assert "Term 059" in widened.text
+        assert "Form and Denomination" not in widened.text
+
+    def test_no_op_when_the_routed_section_is_already_a_glossary(self) -> None:
+        """Cairn/Green-Lion shape: dense narrow text is returned untouched.
+
+        Cairn's extraction feeds a committed seed and a graded reconciliation,
+        so this guard is what keeps this change from moving it.
+        """
+        sm = route_sections(_cairn_shaped_md())
+        narrow = sm.find("definitions", "9.1")
+        assert narrow is not None
+
+        assert section_router.widen_to_definitions(sm, narrow) is narrow
+
+    def test_no_op_when_widening_recovers_nothing(self) -> None:
+        """A genuinely small definitions section is not padded with neighbours.
+
+        Widening a stub into unrelated prose would put noise in the prompt and
+        buy nothing, so the section is returned unchanged.
+        """
+        md = (
+            "## 1. Definitions\n\nCapitalised terms are defined in the Conditions.\n\n"
+            "## Risk Factors\n\n" + ("Prose about risk. " * 400) + "\n"
+            "## 2. Form and Denomination\n\nRegistered form.\n"
+        )
+        sm = route_sections(md)
+        narrow = sm.find("definitions", "9.1")
+        assert narrow is not None
+
+        assert section_router.widen_to_definitions(sm, narrow) is narrow
+
+    def test_idempotent(self) -> None:
+        """Applied at both resolve_sections and extract_definitions — must not stack."""
+        sm = route_sections(_contego_shaped_md())
+        narrow = sm.find("definitions", "9.1")
+        assert narrow is not None
+
+        once = section_router.widen_to_definitions(sm, narrow)
+        twice = section_router.widen_to_definitions(sm, once)
+        assert twice.text == once.text
+
+    def test_unnumbered_definitions_heading_is_left_alone(self) -> None:
+        """Without a number there is nothing to reason a sibling boundary from."""
+        md = "## Definitions\n\nShort stub.\n\n## Risk Factors\n\nProse.\n"
+        sm = route_sections(md)
+        narrow = sm.find("definitions", "9.1")
+        assert narrow is not None
+
+        assert section_router.widen_to_definitions(sm, narrow) is narrow
+
+    def test_resolve_sections_applies_it_to_the_definitions_role(self) -> None:
+        """The production chokepoint, not just the helper."""
+        sm = route_sections(_contego_shaped_md())
+        resolved = resolve_sections(sm, use_llm=False)
+
+        definitions = resolved["definitions"]
+        assert definitions is not None
+        assert "Term 059" in definitions.text
+
+
+class TestNumberedSiblingSpan:
+    def test_stops_at_the_next_numbered_non_descendant(self) -> None:
+        sm = route_sections(_contego_shaped_md())
+        section = sm.find("definitions", "9.1")
+        assert section is not None
+
+        widened = sm.with_numbered_sibling_text(section)
+        assert widened.text.rstrip().endswith("clause 0 of the definition.")
+        assert "Form and Denomination" not in widened.text
+
+    def test_a_numbered_child_does_not_end_its_parent(self) -> None:
+        md = (
+            "## 1. Definitions\n\nIntro.\n\n"
+            "## 1.1 Interpretation\n\nSub-section body.\n\n"
+            "## 2. Form\n\nRegistered.\n"
+        )
+        sm = route_sections(md)
+        section = sm.find("definitions", "9.1")
+        assert section is not None
+
+        widened = sm.with_numbered_sibling_text(section)
+        assert "Sub-section body" in widened.text
+        assert "Registered" not in widened.text
+
+    def test_unnumbered_section_returns_its_own_span(self) -> None:
+        md = "## Definitions\n\nBody.\n\n## Risk Factors\n\nProse.\n"
+        sm = route_sections(md)
+        section = sm.find("definitions", "9.1")
+        assert section is not None
+
+        assert sm.with_numbered_sibling_text(section).text == section.text
+
+    def test_runs_to_end_of_document_when_no_numbered_sibling_follows(self) -> None:
+        md = "## 1. Definitions\n\nIntro.\n\n## Schedule\n\nTail content.\n"
+        sm = route_sections(md)
+        section = sm.find("definitions", "9.1")
+        assert section is not None
+
+        assert "Tail content" in sm.with_numbered_sibling_text(section).text

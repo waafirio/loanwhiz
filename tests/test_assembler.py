@@ -2413,3 +2413,112 @@ class TestPartiallyLabelledTrancheTable:
         assert by_name["Class B"]["size_eur"] == 20_000_000.0
         # The declared column is still read from its own column.
         assert by_name["Class A"]["rating"] == "AAA"
+
+
+# ---------------------------------------------------------------------------
+# Truncation + glossary coverage reach the caller via metadata (#548)
+# ---------------------------------------------------------------------------
+#
+# A logger.warning is not a fact the result carries. These two helpers are what
+# turn a clipped section into something `GET /deal/{id}/model`, the demo summary
+# and the data card can read — none of which read logs.
+
+
+class TestTruncationReachesMetadata:
+    @staticmethod
+    def _truncation(title="1. Definitions", original=246_245, kept=40_000):
+        from loanwhiz.extraction.truncation import Truncation
+
+        return Truncation(
+            section_title=title,
+            original_chars=original,
+            kept_chars=kept,
+            last_line='"Bankruptcy Exchange Test" means',
+        )
+
+    def test_collects_from_both_stages_and_names_which(self) -> None:
+        from loanwhiz.extraction.assembler import _collect_truncations
+        from loanwhiz.extraction.definitions_graph import DefinitionsGraph
+        from loanwhiz.extraction.waterfall_extractor import ExtractedWaterfall
+
+        graph = DefinitionsGraph(truncation=self._truncation())
+        waterfall = ExtractedWaterfall(
+            deal_name="d",
+            waterfall_type="revenue",
+            steps=[],
+            source_section="Section 5.2",
+            extraction_confidence=0.0,
+            truncation=self._truncation("Revenue Priority of Payments", 60_000, 20_000),
+        )
+
+        collected = _collect_truncations(graph, {"revenue": waterfall})
+
+        stages = [entry["stage"] for entry in collected]
+        assert stages == ["definitions", "waterfall:revenue"]
+        assert collected[0]["original_chars"] == 246_245
+        assert collected[1]["kept_chars"] == 20_000
+
+    def test_reports_nothing_when_nothing_was_truncated(self) -> None:
+        from loanwhiz.extraction.assembler import _collect_truncations
+        from loanwhiz.extraction.definitions_graph import DefinitionsGraph
+
+        assert _collect_truncations(DefinitionsGraph(), {}) == []
+
+    def test_mock_backed_sub_extractors_do_not_leak_into_the_model(self) -> None:
+        """The assembler's own tests patch these extractors with MagicMocks.
+
+        Attribute access on a MagicMock invents an object rather than raising,
+        so without an isinstance guard a mock would be handed to a validated
+        pydantic field. This pins the guard, not the mock.
+        """
+        from unittest.mock import MagicMock
+
+        from loanwhiz.extraction.assembler import _collect_truncations, _coverage_dict
+
+        assert _collect_truncations(MagicMock(terms={}), {"revenue": MagicMock()}) == []
+        assert _coverage_dict(MagicMock(terms={})) is None
+
+    def test_coverage_is_reported_as_a_plain_dict(self) -> None:
+        from loanwhiz.extraction.assembler import _coverage_dict
+        from loanwhiz.extraction.definitions_graph import (
+            DefinitionsGraph,
+            GlossaryCoverage,
+        )
+
+        graph = DefinitionsGraph(
+            coverage=GlossaryCoverage(
+                term_count=4,
+                source_chars=3_255,
+                first_initial="A",
+                last_initial="B",
+                implausible=True,
+                reason="the routed definitions section is only 3255 chars",
+            )
+        )
+
+        coverage = _coverage_dict(graph)
+        assert coverage is not None
+        assert coverage["implausible"] is True
+        assert coverage["term_count"] == 4
+        assert "3255" in coverage["reason"]
+
+    def test_metadata_defaults_keep_committed_seeds_valid(self) -> None:
+        """Both fields are optional with defaults.
+
+        The six committed seed models under ``src/loanwhiz/data/deals/seed/``
+        were written before #548 and are validated by several test modules; a
+        required field here would red every one of them.
+        """
+        from loanwhiz.extraction.assembler import DealModelMetadata
+
+        metadata = DealModelMetadata(
+            deal_name="d",
+            prospectus_url="u",
+            extracted_at="2026-09-09T00:00:00Z",
+            extraction_duration_sec=1.0,
+            sections_found=[],
+            completeness_score=0.0,
+            cache_path="c",
+        )
+        assert metadata.truncations == []
+        assert metadata.glossary_coverage is None
