@@ -70,7 +70,7 @@ from loanwhiz.primitives.reconciliation_answer_key import (
     load_answer_key,
     reconcile_against_answer_key,
 )
-from loanwhiz.primitives.report_adapter import ReportAdapter
+from loanwhiz.primitives.report_adapter import DEFAULT_TRANCHE_CLASSES, ReportAdapter
 from loanwhiz.primitives.step_source_classifier import ENGINE_COMPUTED_RECIPIENTS
 from tests.clo_answer_key_source import CLO_DEAL_ID, CLO_DEAL_NAME, clo_note_valuation_report
 
@@ -135,10 +135,12 @@ def clo_series(clo_model: DealModel, nvr_report: NotesCashReport) -> DealStateSe
     """Fold the CLO through the shared report path — no per-deal constant.
 
     ``ReportAdapter.from_deal_model`` is used with its defaults deliberately.
-    Choosing Cairn's tranche classes and residual label is a modelling decision
-    with no published figure to check it against, and #496 is forbidden from
-    making one to reach a cell state. ``test_the_finding_survives_the_adapter_choice``
-    shows the choice cannot change this result anyway.
+    Since #520 the tranche classes are no longer one of those defaults: they are
+    read off the deal's own ``tranche_structure``, so all eight of Cairn's classes
+    are seeded and there is no modelling decision left to make here. The residual
+    label still is one — #496 is forbidden from choosing it to reach a cell state,
+    and ``test_the_finding_survives_the_adapter_choice`` shows the choice cannot
+    change this result anyway.
     """
     return fold_report_series(clo_model, nvr_report, ReportAdapter.from_deal_model(clo_model))
 
@@ -445,30 +447,73 @@ def test_the_principal_cascade_reconciles_on_zero_and_proves_nothing(
 def test_the_finding_survives_the_adapter_choice(
     clo_model: DealModel, nvr_report: NotesCashReport
 ) -> None:
-    """Folding all eight classes rather than the adapter's default three changes nothing.
+    """Narrowing the fold back to three classes changes nothing about the grade.
 
-    ``ReportAdapter``'s ``DEFAULT_TRANCHE_CLASSES`` is Green-Lion-shaped, so a
-    Cairn fold built on it seeds three of the deal's eight classes. That is the
-    one modelling decision #496 declined to make, and this pins why declining it
-    is safe: because no step is engine-computed, no tranche balance reaches any
-    amount, and the grade is identical either way. It also reds if a later change
-    makes a step engine-computed without revisiting the seeding.
+    The direction of this test inverted at #520. It used to widen off a
+    Green-Lion-shaped ``DEFAULT_TRANCHE_CLASSES`` default; the default is now the
+    deal's own eight classes, so the *narrowing* is what has to be pinned. The
+    property it protects is unchanged and is still #496's: because no step is
+    engine-computed, no tranche balance reaches any amount, so the grade is
+    identical either way — and this reds if a later change makes a step
+    engine-computed without revisiting the seeding.
     """
-    # Derived from the seed, not transcribed: a re-extraction that changed the
-    # capital structure would otherwise leave this widening silently partial.
+    narrowed_adapter = ReportAdapter.from_deal_model(
+        clo_model, tranche_classes=DEFAULT_TRANCHE_CLASSES
+    )
+    series = fold_report_series(clo_model, nvr_report, narrowed_adapter)
+    narrowed = reconcile_series(series, nvr_report, deal_name=CLO_DEAL_NAME, tolerance=0.01)
+
+    revenue = narrowed.periods[0].revenue
+    assert narrowed.passed is False
+    assert revenue.engine_total == pytest.approx(ENGINE_DISTRIBUTED_REVENUE, abs=0.01)
+    assert revenue.engine_computed_passed == 0
+
+
+def test_every_declared_class_reaches_the_adapter_seed_not_just_the_name_list(
+    clo_model: DealModel, nvr_report: NotesCashReport
+) -> None:
+    """The eight classes arrive as real tranches on the adapter's seed, by name.
+
+    #512's lesson, asserted where it bites: a complete, correct per-class map can
+    reach nothing with no error anywhere, because the lookup is by **tranche
+    name** and the class simply has no tranche. So the derived name list and the
+    per-tranche *arrival* are two separate assertions — one passing does not imply
+    the other. Asserting only the first is how this stayed invisible.
+
+    This covers the adapter's own boundary (#520's scope). It does **not** yet
+    reach the folded engine state: ``api.main._primitives_seed_from_report_seed``
+    flattens this list back onto ``class_{a,b,c}_balance`` kwargs, so the stack is
+    truncated a second time one layer down. That site is outside this issue's
+    declared paths and is raised as a scope-expansion request on #520 rather than
+    silently fixed here.
+
+    Expected names are derived from the committed seed rather than transcribed, so
+    a re-extraction that changed the capital structure cannot leave this test
+    quietly asserting a stale stack.
+    """
     every_class = tuple(
         re.sub(r"[^a-z0-9]+", "_", tranche["name"].lower()).strip("_")
         for tranche in clo_model.tranche_structure
     )
     assert len(every_class) == 8, every_class
-    widened_adapter = ReportAdapter.from_deal_model(clo_model, tranche_classes=every_class)
-    series = fold_report_series(clo_model, nvr_report, widened_adapter)
-    widened = reconcile_series(series, nvr_report, deal_name=CLO_DEAL_NAME, tolerance=0.01)
 
-    revenue = widened.periods[0].revenue
-    assert widened.passed is False
-    assert revenue.engine_total == pytest.approx(ENGINE_DISTRIBUTED_REVENUE, abs=0.01)
-    assert revenue.engine_computed_passed == 0
+    # 1. The adapter names them.
+    adapter = ReportAdapter.from_deal_model(clo_model)
+    assert adapter.tranche_classes == every_class
+
+    # 2. They arrive — as real tranches carrying the report's own balances, which
+    #    is what a resolved per-class rate needs in order to land anywhere.
+    seed = adapter.seed(nvr_report.periods[0])
+    seeded = [t.name for t in seed.tranches]
+    assert seeded == list(every_class)
+    # The five the Green Lion triple could never reach, named so a regression to
+    # a prefix of the stack reds here rather than passing vacuously.
+    assert {"class_b_1", "class_b_2", "class_d", "class_e", "class_f"} <= set(seeded)
+    # Class B is #515's sharpest case: both its sub-classes carry a real balance,
+    # so its EUR 644,398.50 has somewhere to attach rather than folding to 0.00.
+    by_name = {t.name: t for t in seed.tranches}
+    assert by_name["class_b_1"].balance > 0.0
+    assert by_name["class_b_2"].balance > 0.0
 
 
 # ---------------------------------------------------------------------------
