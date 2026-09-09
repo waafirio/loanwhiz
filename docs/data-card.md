@@ -996,6 +996,78 @@ The control is parametrised alongside the CLO sets in
 
 ---
 
+### Which industry taxonomy a cross-deal figure is expressed in (#563)
+
+**Read this before registering a third deal.** Every `CollateralAsset` carries
+both an `sp_industry` and a `fitch_industry`, and the two are not
+interchangeable. Cairn's March 2025 report tests the same portfolio against both
+at the same limits and gets **11.36%** on S&P against **10.83%** on Fitch. So an
+industry concentration that does not name its taxonomy is not comparable to
+either figure the deal itself publishes — it is wrong, not merely imprecise.
+
+**The decision: a cross-deal industry concentration is expressed in Fitch.**
+S&P remains a per-deal axis and is deliberately *not* joined across deals. It is
+settled in one place, `src/loanwhiz/primitives/industry_taxonomy.py`
+(`CROSS_DEAL_TAXONOMY`), and `IndustryTaxonomy` is a required argument
+throughout, so a cross-deal figure cannot be built without naming its axis.
+
+**Why Fitch, given both are tied out.** Since #530 *both* taxonomies are
+reconciled per bucket against the report that published them (`_BUCKET_TABLES`
+in `collateral_schedule_parser`), on both deals, every period — so the
+acceptance oracle does not choose between them. The join does. The two deals'
+Fitch vocabularies canonicalise onto substantially one vocabulary, and the
+labels that do not join are genuine portfolio differences: Contego holds a
+utility Cairn does not, Cairn holds oil and gas Contego does not. Their S&P
+vocabularies do not join, because the deals published against **different GICS
+vintages** — Contego emits the post-2023 names (`Consumer staples distribution
+and retail`, `Financial services`), Cairn the pre-2023 ones (`Food & Staples
+Retailing`, `Diversified Financial Services`). Close to half the combined S&P
+vocabulary is unjoinable, and almost all of that is vintage drift rather than a
+real difference in holdings.
+
+That asymmetry runs one way. An unjoined pair holds one exposure apart in two
+buckets, so its reported concentration is **lower than the truth** — the book
+reads as more diversified than it is, which is the error that harms a buyer and
+looks like good news.
+
+**What is canonicalised, and what is refused.** The fold is orthographic only:
+case, diacritics, `&` versus `and`, punctuation, whitespace. It does not stem,
+singularise or fold spelling variants, and the seam raises rather than merging
+if two labels one table publishes ever collide — Cairn's December 2024 Fitch
+table prints both `Building and materials` and `Buildings and materials` as
+separate buckets, so that guard sits one plural-strip away from firing.
+
+Mapping *across GICS vintages* is refused outright. It needs a concordance this
+repo does not hold, and a similarity score dressed up as a mapping would under-
+and over-match with equal confidence. The pairs that a reader can see are
+related are named in `DECLINED_CROSS_VINTAGE_PAIRS` with the reason each is left
+alone — a refusal that is named can be reviewed and reversed; one that is silent
+cannot.
+
+**Nothing is folded into "Other."** A `TaxonomyJoin` is a *partition* of the
+canonical union — joined, left-only, right-only — enforced by the model, so
+there is no residual bucket for an unmappable category to disappear into. A
+bucket that absorbs the unknown is how a concentration understates itself
+(#496).
+
+**Regenerating this, rather than trusting the prose.** The vocabularies, the
+join and both percentages above are re-derived from the committed report
+fixtures by `tests/test_industry_taxonomy.py` — deliberately not transcribed as
+bucket counts here, because a number in prose goes stale in silence (#441). Run
+it to see the current vocabularies and the current unjoined set:
+
+```bash
+python -m pytest tests/test_industry_taxonomy.py
+```
+
+**What a third deal changes.** If it publishes S&P against a third vintage, the
+unjoined S&P set grows and this decision holds unchanged. If it publishes no
+Fitch table at all, that is the decision's first real test: the honest answer is
+a figure that reports the deals it *can* join and names the one it cannot, never
+a silent fallback to S&P.
+
+---
+
 ## IMPORTANT: Synthetic vs Real Data
 
 > **The loan-level data (loan tapes) in this dataset is SYNTHETIC.**

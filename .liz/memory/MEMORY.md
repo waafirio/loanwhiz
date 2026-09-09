@@ -68,6 +68,7 @@ triage by opening the entry, not by reading the line.
   - [2026-09-09 · pitfall · #511](#2026-09-09--pitfall--511) — keywords: tie proves nothing, amount-recovered coupon, back-solved rate, report agrees with itself, circular reconciliation, input provenance, expect green to turn red
   - [2026-09-09 · pattern · #539](#2026-09-09--pattern--539) — keywords: fact scope, per-class not per-deal, day-count basis, TrancheFunds override, parse the scope, limb boundary, block runs to end-of-text, deal-level field averages
   - [2026-09-09 · pitfall · #549](#2026-09-09--pitfall--549) — keywords: refusal keeps the value, metric_value, not_evaluable, screen vs grade, numerator identity, exactly 100.00, notes over notes
+  - [2026-09-10 · decision · #563](#2026-09-10--decision--563) — keywords: candidate vocabularies, unjoined share, acceptance oracle, GICS vintage drift, orthographic fold, published table, injective
 - [Extracting tables from PDFs](pdf-table-extraction.md) — keywords: visitor_text, text matrix, tm[4], rotated table, extraction_mode layout, row boundary, continuation line, column order, pypdf
   - [2026-09-06 · pitfall · #469](#2026-09-06--pitfall--469) — keywords: extract_text(), extraction_mode="layout", visitor_text=, tm[4]
   - [2026-09-08 · pitfall · #494](#2026-09-08--pitfall--494) — keywords: page furniture, banner prefix, data row first, footer eats a row, numeric tail, prefix filter ordering
