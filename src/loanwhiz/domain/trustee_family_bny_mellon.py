@@ -88,8 +88,9 @@ _FURNITURE: tuple[str, ...] = (
 #: How BNY's monthly report names its deal and its date. Page 1's first line is
 #: ``LEI :``, so the deal name is taken from the banner this administrator
 #: repeats in every page footer — ``Contego CLO XI DAC as of 30-Aug-2024`` —
-#: anchored to the whole line so the 69 copies reflowed into the tail of a data
-#: row cannot match. The date is stated once on page 1, in its own format.
+#: anchored to the whole line, so the copies reflowed into the tail of a data row
+#: cannot match — those lines end in a page number, not in the date. The date is
+#: stated once on page 1, in its own format.
 _MONTHLY_HEADER = ReportHeader(
     deal_name=re.compile(
         r"\A(?P<deal_name>\S.*?)\s+as of\s+\d{2}-[A-Za-z]{3}-\d{4}\s*\Z"

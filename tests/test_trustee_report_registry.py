@@ -48,6 +48,7 @@ from loanwhiz.domain.trustee_report_registry import (
     SECTION_NV_INTEREST_POP,
     SECTION_NV_PRINCIPAL_POP,
     SECTION_SP_INDUSTRY,
+    COVERAGE_OUTCOME,
     CoverageTestRow,
     DocumentKind,
     DocumentLayout,
@@ -151,6 +152,23 @@ def test_a_family_missing_a_required_section_is_refused_at_registration() -> Non
     assert SECTION_CCC in message, "the refusal must name the missing section"
     assert "vacuously" in message
     assert registry.all() == (), "a refused family must not be half-registered"
+
+
+def test_the_outcome_alternation_names_every_outcome() -> None:
+    """``COVERAGE_OUTCOME`` and ``CoverageTestOutcome`` cannot drift apart.
+
+    Every family's row pattern names the outcomes through the one alternation,
+    and the parser turns what it captured into the enum. An outcome in the enum
+    but missing from the alternation is the dangerous direction: the row matches
+    nothing, so it is absent from one rendering and present in the other, and the
+    cross-rendering check then reports the *test* missing rather than its outcome
+    being unreadable — a true statement pointing at the wrong thing.
+    """
+    from loanwhiz.primitives.collateral_schedule_parser import (  # noqa: PLC0415
+        CoverageTestOutcome,
+    )
+
+    assert set(COVERAGE_OUTCOME.split("|")) == {o.value for o in CoverageTestOutcome}
 
 
 def _replace_monthly(family: TrusteeReportFamily, **changes) -> TrusteeReportFamily:
