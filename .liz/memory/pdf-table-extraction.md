@@ -53,3 +53,17 @@ that cannot be zipped back — one blank cell desyncs every column after it —
 with the identifier mid-row. Re-cut rows on the row's own anchored tail.
 
 Refs: #533
+
+
+## 2026-09-09 · pitfall · #555
+
+Detect row geometry per **page**, not per document, even where a family record
+declares it. Contego's Interest Accrual Detail runs seven pages: six extract as
+one row-major line and one as one row per line, so a parser reading only each
+page's longest line skips the seventh's forty rows. Rows wrap across lines
+there too, so join a non-reflowed page's lines before scanning. The declaration
+says which geometry to expect; the page says which it is, and rows it silently
+omits move a count while leaving par untouched.
+
+Refs: #555
+

@@ -163,7 +163,16 @@
     "vintage": 2023,
     "prospectus_url": "https://ise-prodnr-eu-west-1-data-integration.s3-eu-west-1.amazonaws.com/202306/769c88dc-c38d-42af-b7d7-49cbe7c9bf4e.pdf",
     "registration_note": "Registered against the 29-Jun-2023 Listing Particulars, NOT the 19-Nov-2024 reset (202411/2c3fcac2-3b84-43e3-8000-15092934c4fa.pdf). Every trustee report published for this deal is Aug/Sep-2024 and therefore pre-reset: the 2023 document describes the Class A-F stack due 2035 that those reports report on, while the reset is a different stack (Class A-R EUR310m due 2038). Registering the reset against pre-reset reports would make every downstream figure confidently wrong rather than visibly broken. Before changing prospectus_url, check which side of a reset the document and the reports sit on.",
-    "tape_urls": [],
+    "tape_urls": [
+      {
+        "date": "2024-08-30",
+        "url": "derived+trustee-report:https://ise-prodnr-eu-west-1-data-integration.s3-eu-west-1.amazonaws.com/202410/201a9a43-6d23-44e5-bf17-42159a78ee70.pdf#period=August+2024"
+      },
+      {
+        "date": "2024-09-30",
+        "url": "derived+trustee-report:https://ise-prodnr-eu-west-1-data-integration.s3-eu-west-1.amazonaws.com/202410/b7246856-907d-4623-93b7-8a82765f678c.pdf#period=September+2024"
+      }
+    ],
     "investor_report_urls": [
       {"period": "August 2024", "url": "https://ise-prodnr-eu-west-1-data-integration.s3-eu-west-1.amazonaws.com/202410/201a9a43-6d23-44e5-bf17-42159a78ee70.pdf"},
       {"period": "September 2024", "url": "https://ise-prodnr-eu-west-1-data-integration.s3-eu-west-1.amazonaws.com/202410/b7246856-907d-4623-93b7-8a82765f678c.pdf"}
