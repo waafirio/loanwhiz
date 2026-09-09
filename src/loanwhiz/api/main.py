@@ -2211,30 +2211,35 @@ def _primitives_seed_from_report_seed(seed: DomainDealState) -> PrimitivesDealSt
     """Bridge a ``ReportAdapter`` (domain) seed onto the fold's ``DealState``.
 
     The ``ReportAdapter`` returns the canonical ``loanwhiz.domain.state.DealState``
-    (a list of ``tranches``), while the fold kernel ``run_period`` consumes the
-    ``loanwhiz.primitives.deal_state.DealState`` (flat ``class_{a,b,c}_balance``
-    fields). The two schemas coexist during the cold-start engine slice (#257);
-    this is the total, mechanical bridge between them — every domain-seed field
-    maps to a primitives-seed field, no value invented.
+    and the fold kernel ``run_period`` consumes the
+    ``loanwhiz.primitives.deal_state.DealState``. Both carry the same canonical
+    ``tranches: list[TrancheState]`` (#363), of the same type, so the liability
+    side is a **relay**: the deal's own stack is passed through whole.
+
+    It used to be a *collapse*. This function named the three classes
+    ``class_{a,b,c}`` in six flat constructor kwargs and read them out of the
+    domain seed by name, so a deal whose stack is ``class_b_1``/``class_d``..
+    ``class_f`` arrived as three tranches — two of them zero-filled — however many
+    classes the adapter had resolved. That made it the **fourth** site of #478's
+    truncation, and the reason it outlived the other three is worth stating: #478
+    catalogued the defect by *dict key*, and this instance is spelled as
+    constructor *arguments*, so a grep for the dict shape never reached it. A
+    defect catalogue keyed on one syntax misses the same bug written in another.
+
+    Relaying is also what keeps the refusal direction intact (#452, #478). The
+    bridge now names no class at all, so there is no second place for a
+    Green-Lion-shaped fallback to hide: whether a deal's stack is resolvable is
+    decided once, upstream, by ``report_adapter.tranche_classes_from_model`` —
+    which refuses a stated-but-unplaceable structure rather than truncating it.
+
+    Green Lion is unaffected: its seed carries exactly ``class_a``/``class_b``/
+    ``class_c``, and the legacy ``class_{a,b,c}_balance`` accessors read the same
+    values off the relayed list as the kwargs used to write into it — pinned by
+    ``tests/test_report_path_seed_bridge.py``.
     """
-    by_name = {t.name: t for t in seed.tranches}
-
-    def _bal(name: str) -> float:
-        t = by_name.get(name)
-        return t.balance if t else 0.0
-
-    def _pdl(name: str) -> float:
-        t = by_name.get(name)
-        return t.pdl_balance if t else 0.0
-
     return PrimitivesDealState(
         reporting_date=seed.reporting_date,
-        class_a_balance=_bal("class_a"),
-        class_b_balance=_bal("class_b"),
-        class_c_balance=_bal("class_c"),
-        class_a_pdl=_pdl("class_a"),
-        class_b_pdl=_pdl("class_b"),
-        class_c_pdl=_pdl("class_c"),
+        tranches=list(seed.tranches),
         reserve_balance=seed.reserve_balance,
         reserve_target=seed.reserve_target,
         cumulative_losses=seed.cumulative_losses,

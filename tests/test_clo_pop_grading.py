@@ -723,10 +723,10 @@ def test_the_finding_survives_the_adapter_choice(
     assert revenue.engine_computed_passed == 0
 
 
-def test_every_declared_class_reaches_the_adapter_seed_not_just_the_name_list(
-    clo_model: DealModel, nvr_report: NotesCashReport
+def test_every_declared_class_reaches_the_folded_state_not_just_the_name_list(
+    clo_model: DealModel, nvr_report: NotesCashReport, clo_series: DealStateSeries
 ) -> None:
-    """The eight classes arrive as real tranches on the adapter's seed, by name.
+    """The eight classes arrive as tranches in the folded engine state, by name.
 
     #512's lesson, asserted where it bites: a complete, correct per-class map can
     reach nothing with no error anywhere, because the lookup is by **tranche
@@ -734,11 +734,11 @@ def test_every_declared_class_reaches_the_adapter_seed_not_just_the_name_list(
     per-tranche *arrival* are two separate assertions — one passing does not imply
     the other, and asserting only the first is how this stayed invisible.
 
-    This covers the adapter's own boundary. It does **not** yet reach the folded
-    engine state: ``api.main._primitives_seed_from_report_seed`` flattens this
-    list back onto ``class_{a,b,c}_balance`` kwargs, truncating the stack a second
-    time one layer down. That is fixed in the next commit, which promotes this
-    assertion onto the folded state.
+    Both layers are checked here on purpose, because #520 found the truncation
+    written twice in two different syntaxes: ``ReportAdapter`` held it as a fixed
+    tuple, and ``api.main._primitives_seed_from_report_seed`` held it again as
+    flat ``class_{a,b,c}_balance=`` constructor kwargs. Fixing the first alone
+    left this assertion red.
 
     Expected names are derived from the committed seed rather than transcribed, so
     a re-extraction that changed the capital structure cannot leave this test
@@ -750,16 +750,23 @@ def test_every_declared_class_reaches_the_adapter_seed_not_just_the_name_list(
     )
     assert len(every_class) == 8, every_class
 
-    adapter = ReportAdapter.from_deal_model(clo_model)
-    assert adapter.tranche_classes == every_class
+    # 1. The adapter names them.
+    assert ReportAdapter.from_deal_model(clo_model).tranche_classes == every_class
 
-    seed = adapter.seed(nvr_report.periods[0])
-    seeded = [t.name for t in seed.tranches]
+    # 2. They survive the domain -> engine bridge and arrive on the period-0 state
+    #    the fold opens from, which is where a resolved per-class rate must land.
+    seeded = [t.name for t in clo_series.states[0].tranches]
     assert seeded == list(every_class)
+    # The five the Green Lion triple could never reach, named so a regression to
+    # a prefix of the stack reds here rather than passing vacuously.
     assert {"class_b_1", "class_b_2", "class_d", "class_e", "class_f"} <= set(seeded)
-    by_name = {t.name: t for t in seed.tranches}
+    # Class B is #515's sharpest case: both strips carry a real balance, so its
+    # published EUR 644,398.50 has a tranche to attach to.
+    by_name = {t.name: t for t in clo_series.states[0].tranches}
     assert by_name["class_b_1"].balance > 0.0
     assert by_name["class_b_2"].balance > 0.0
+
+
 
 # ---------------------------------------------------------------------------
 # 4. The grade changed no committed ground truth.

@@ -130,14 +130,14 @@ Refs: #512
 
 ## 2026-09-09 · pitfall · #520
 
-Generalising a hardcoded class list off its producer does **not** generalise the
-consumers it flows through — follow the value to where it is read, then assert
-arrival there. `ReportAdapter` was widened to the deal's own eight classes and
-its seed carried all eight, while `api.main._primitives_seed_from_report_seed`
-flattened them straight back onto `class_{a,b,c}_balance=` kwargs one layer
-down. Grep the **flat scalar kwarg** shape too, not just the tuple: #478
-catalogued three sites of this defect by dict key and missed the domain→engine
-`DealState` bridge, because it is spelled as arguments rather than a dict.
+A defect catalogue keyed on **one syntax misses the same bug written in
+another**. #478 listed three sites collapsing an N-class stack, all found by
+grepping *dict keys*; a fourth survived in `_primitives_seed_from_report_seed`,
+spelled as constructor **arguments** (`class_a_balance=`) that grep could not
+reach. Corollary: generalising a list off its producer does not generalise its
+consumers — `ReportAdapter` resolved eight classes while the bridge below
+delivered three. Assert arrival where the value is *read*: the list and the
+arrival are two assertions, and only the second failed.
 
 Refs: #520
 ## 2026-09-09 · pitfall · #511
