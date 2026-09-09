@@ -317,6 +317,28 @@ def test_a_citation_in_the_generic_passage_does_not_shadow_the_undertaking() -> 
     assert retention.method_letter == "d"
 
 
+def test_an_inverted_citation_is_tried_even_when_a_direct_one_appears_first() -> None:
+    """The two citation forms are one ordered list, not two fallbacks.
+
+    A describing passage may use the direct form while the undertaking uses the
+    inverted one. Trying direct citations first and inverted ones only when
+    none exist would never reach the real commitment here.
+    """
+    text = (
+        "An originator may retain under Article 6(3)(d); nothing is committed "
+        "in this paragraph. "
+        + "Filler sentence. " * 50
+        + "Acme LLP shall act as Retention Holder. It qualifies as an "
+        '"originator" and will retain not less than five per cent. of the '
+        "Aggregate Collateral Balance in accordance with option 3 (a) of "
+        "article 6 of the Securitisation Regulation."
+    )
+    retention = parse_risk_retention(text)
+
+    assert retention.retainer == "Acme LLP"
+    assert retention.method == "vertical slice"
+
+
 def test_a_document_sized_span_is_read_without_backtracking(
     cairn_undertaking: str,
 ) -> None:

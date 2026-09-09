@@ -236,15 +236,30 @@ _METHOD_WORDS: tuple[tuple[re.Pattern[str], str], ...] = (
 )
 
 
+def _all_citations(collapsed: str) -> list[re.Match[str]]:
+    """Every Article 6(3) sub-paragraph citation, either form, in document order.
+
+    Both forms are merged and sorted rather than tried one family at a time: a
+    document carrying a direct citation in a *describing* passage and the
+    inverted form in its actual undertaking would otherwise never have the
+    second one read.
+    """
+    return sorted(
+        [*_ARTICLE_DIRECT.finditer(collapsed), *_ARTICLE_INVERTED.finditer(collapsed)],
+        key=lambda match: match.start(),
+    )
+
+
 def _locate_citation(collapsed: str) -> re.Match[str] | None:
-    """The Article 6(3) sub-paragraph citation, in either form, or ``None``.
+    """The first Article 6(3) sub-paragraph citation, or ``None``.
 
     This is the module's locator, and it earns the job by being *rare*:
     ``Article 6(3)`` appears on exactly one page of each ~420-page document
     surveyed, while the threshold figure and the retention vocabulary appear
     throughout. Everything else is read relative to where this lands.
     """
-    return _ARTICLE_DIRECT.search(collapsed) or _ARTICLE_INVERTED.search(collapsed)
+    citations = _all_citations(collapsed)
+    return citations[0] if citations else None
 
 
 #: How far either side of the citation the method-in-words may be stated and
@@ -487,9 +502,7 @@ def parse_risk_retention(text: str) -> RiskRetention:
             the passage that looked most like an undertaking.
     """
     collapsed = _collapse(text)
-    citations = list(_ARTICLE_DIRECT.finditer(collapsed)) or list(
-        _ARTICLE_INVERTED.finditer(collapsed)
-    )
+    citations = _all_citations(collapsed)
     if not citations:
         raise UnsourcedRetention(
             "the text cites no sub-paragraph of Article 6(3), so the retention "
