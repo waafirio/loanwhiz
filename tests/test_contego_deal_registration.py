@@ -42,6 +42,7 @@ fixture, so a regression in the data file is caught here.
 from __future__ import annotations
 
 import json
+from unittest import mock
 
 import pytest
 from fastapi import HTTPException
@@ -365,3 +366,37 @@ def test_contego_seed_states_no_payment_schedule() -> None:
     assert model is not None
     assert model.payment_schedule is None
     assert model.note_day_counts is None
+
+
+def test_deal_model_route_serves_contego_from_its_committed_seed() -> None:
+    """The registry entry survives the real route, not just a dict lookup.
+
+    This is the integration half of the ``tape_urls`` finding. ``deal_model``
+    reads ``deal["tape_urls"]`` and ``deal["investor_report_urls"]`` by direct
+    subscript, so a registry entry that omitted either would raise ``KeyError``
+    and 500 — and no assertion over ``DEAL_REGISTRY`` alone would catch it,
+    because the dict is well-formed either way. Only a request through the app
+    exercises the subscript.
+
+    It also pins that the committed seed is what the route serves on a cold
+    runtime cache (the seed-dir fallback), and that what it serves is the
+    **pre-reset** stack.
+    """
+    from fastapi.testclient import TestClient
+
+    from loanwhiz.api.main import app
+
+    client = TestClient(app)
+    with mock.patch("loanwhiz.api.main.DEAL_MODEL_CACHE_DIR", "/nonexistent-cache"):
+        resp = client.get(f"/deal/{CONTEGO_DEAL_ID}/model")
+
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["deal_name"] == CONTEGO_DEAL_NAME
+    assert body["prospectus_url"] == PRE_RESET_LP_URL
+    assert body["tape_urls"] == []
+    assert [e["period"] for e in body["investor_report_urls"]] == EXPECTED_REPORT_PERIODS
+    # Served from the committed seed, and it is the 2023 stack.
+    assert body["deal_model"] is not None
+    tranches = body["deal_model"]["tranche_structure"]
+    assert sum(t["size_eur"] for t in tranches) == 380_600_000.0
