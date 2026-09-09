@@ -1072,6 +1072,18 @@ prefix strips off before the file is fetched, so the pool figures are unchanged
 — re-running the normaliser across the re-identified tapes moved `data_source`
 and nothing else. See [`tape-ingestion.md`](tape-ingestion.md).
 
+**That claim holds for the API surfaces, not yet for the web ones (#568).**
+"Every provenance surface" above means the evidence pack, the capability matrix
+and the tape citation — the surfaces named in the paragraph before it, all of
+which read the tape's registered kind. The Next.js layer does not: the Pool and
+Waterfall pages render no synthetic badge at all, and the evidence pack sheet's
+own provenance badge resolves its text with a binary on `deeploans`, so a
+`derived` or `synthetic` source is labelled "direct ingestion" there — the one
+label #483 exists to prevent. The disclosure *sentence* beneath the badges is
+correct, because it reads the full label table; the badge above it is not. This
+is #484's open surface, recorded here rather than fixed in passing: a reader
+who trusts the sentence above should not conclude the screens say so too.
+
 ### The four fitted pools (#484)
 
 Green Lion 2026-1's tapes above were supplied ready-made. The other four deals
