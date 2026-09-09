@@ -195,8 +195,13 @@ _TRANCHE_CLASS_RE = re.compile(r"class[_\s]*([a-z])(?![a-z])")
 #: fires after ``subordinated`` in that slug. Accepting a space as well as an
 #: underscore mirrors ``_TRANCHE_CLASS_RE``'s own ``class[_\s]*``, so both
 #: regexes read a slug and a document label the same way.
+#: ``re.escape`` because the point of importing the vocabulary is that it can
+#: grow: a member carrying a regex metacharacter would otherwise silently
+#: change the alternation's meaning (or fail to compile) at import time.
 _TRANCHE_RESIDUAL_RE = re.compile(
-    r"^(?:" + "|".join(n.lower() for n in _RESIDUAL_CLASS_NAMES) + r")(?:[_\s]|$)"
+    r"^(?:"
+    + "|".join(re.escape(n.lower()) for n in _RESIDUAL_CLASS_NAMES)
+    + r")(?:[_\s]|$)"
 )
 
 #: Rank for a named residual: below **every** class letter, including the
