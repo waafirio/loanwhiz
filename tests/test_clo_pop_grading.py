@@ -171,7 +171,7 @@ from loanwhiz.extraction.payment_schedule_parser import (
     payment_date_on_or_after,
 )
 from loanwhiz.primitives.notes_cash_parser import NotesCashReport
-from loanwhiz.primitives.period_state_machine import DealStateSeries
+from loanwhiz.primitives.period_state_machine import DealStateSeries, published_rate_inputs
 from loanwhiz.primitives.reconciler import ReconciliationReport, reconcile_series
 from loanwhiz.primitives.reconciliation_answer_key import (
     DealAnswerKey,
@@ -180,7 +180,10 @@ from loanwhiz.primitives.reconciliation_answer_key import (
 )
 from loanwhiz.primitives.report_adapter import DEFAULT_TRANCHE_CLASSES, ReportAdapter
 from loanwhiz.primitives.report_label_fold import fold_report_pop
-from loanwhiz.primitives.step_source_classifier import ENGINE_COMPUTED_RECIPIENTS
+from loanwhiz.primitives.step_source_classifier import (
+    ENGINE_COMPUTED_RECIPIENTS,
+    is_engine_computed,
+)
 from loanwhiz.domain.rules import RecipientType
 from loanwhiz.primitives.waterfall_interpreter import WaterfallFunds, _canonical_recipient
 from tests.clo_answer_key_source import CLO_DEAL_ID, CLO_DEAL_NAME, clo_note_valuation_report
@@ -1409,6 +1412,82 @@ def test_the_cards_state_the_split_as_a_figure_this_run_re_derives(
     # And the redemption cascade is named as proving nothing wherever it is
     # counted, since all of its steps are in that vacuous set.
     assert len(redemption.steps) == len([s for s in vacuous if s in redemption.steps])
+
+
+#: The note classes the classifier does NOT count, paired with the cascade
+#: recipient each is issued under. Cairn has seven interest-bearing classes and
+#: ``ENGINE_COMPUTED_RECIPIENTS`` reaches three, so these are the remainder.
+UNCOUNTED_NOTE_CLASSES: tuple[tuple[str, str], ...] = (
+    ("class_d", "class_d_notes_interest"),
+    ("class_e", "class_e_notes_interest"),
+    ("class_f", "class_f_notes_interest"),
+)
+
+
+def test_the_uncounted_classes_would_compute_too_so_three_bounds_the_declaration(
+    clo_model: DealModel, nvr_report: NotesCashReport, recon: ReconciliationReport
+) -> None:
+    """``engine_computed_passed`` of 3 is a fact about a list, not about Cairn.
+
+    #515's verdict rests on this, and it is the half a reader is most likely to
+    take on trust, so it is measured rather than asserted. The classifier counts
+    a note-interest line only when its recipient is in
+    ``ENGINE_COMPUTED_RECIPIENTS``, a set authored for a three-tranche RMBS
+    stack that ends at ``class_c_interest``. Classes D, E and F arrive at the
+    fold holding *exactly* what Classes A and C hold — a seeded balance, an
+    applied rate in the report's own ``Rate Current`` column, and a day count
+    parsed from Condition 6(e)(ii) — and each reproduces its published interest
+    to the cent from them. They grade ``report-supplied`` anyway.
+
+    So the count bounds the declaration, not the deal, and the cards say so.
+    **Do not make this test pass by widening the set**: that would change the
+    engine to raise the number #515 was sent to measure, which is the one thing
+    the issue forbids. If a later issue widens it deliberately, this test reds
+    and the cards' published figures red with it — they are re-derived from the
+    same run — which is the intended way for that decision to surface.
+    """
+    seed, inputs = ReportAdapter.from_deal_model(clo_model).to_inputs(nvr_report)
+    balances = {tranche.name: tranche.balance for tranche in seed.tranches}
+    days = inputs[0].tranche_days_in_period
+    rates = published_rate_inputs(
+        {
+            balance.note_class: balance.interest_rate_applied
+            for balance in nvr_report.periods[0].note_balances
+        }
+    )
+    published = {
+        step.recipient: step.report_amount for step in recon.periods[0].revenue.steps
+    }
+
+    for tranche, recipient in UNCOUNTED_NOTE_CLASSES:
+        # Every input the counted classes use is present for this one too, so
+        # its absence from the count cannot be laid at the document's door.
+        accrued = balances[tranche] * rates[f"{tranche}_rate_pct"] / 100 / 360 * days[tranche]
+        assert abs(accrued - published[recipient]) <= recon.tolerance_eur, (
+            recipient,
+            accrued,
+            published[recipient],
+        )
+        # And yet the classifier does not count it — which is the finding.
+        assert not is_engine_computed(recipient), recipient
+
+    # The contrast is the point: the counted classes differ only by membership.
+    assert is_engine_computed("class_a_notes_interest")
+    assert is_engine_computed("class_c_notes_interest")
+
+    # The data card publishes these three figures. Re-derive them, so a card
+    # quoting a stale one reds here rather than misinforming a reader.
+    data_card = _collapsed(
+        (Path(__file__).resolve().parents[1] / "docs/data-card.md").read_text(
+            encoding="utf-8"
+        )
+    )
+    head = ", ".join(
+        f"EUR {published[recipient]:,.2f}"
+        for _, recipient in UNCOUNTED_NOTE_CLASSES[:-1]
+    )
+    tail = f"EUR {published[UNCOUNTED_NOTE_CLASSES[-1][1]]:,.2f}"
+    assert f"{head} and {tail}" in data_card, (head, tail)
 
 
 def test_both_sides_of_the_comparison_fold_the_report_the_same_way(
