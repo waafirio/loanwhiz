@@ -75,12 +75,15 @@ assets is the failure mode this module is built to make impossible.
 
 from __future__ import annotations
 
+import os
 import re
 import time
 import urllib.request
 from decimal import Decimal
 from enum import Enum
 from pathlib import Path
+from collections.abc import Mapping
+from types import MappingProxyType
 from typing import TYPE_CHECKING, Any, Final
 
 from pydantic import BaseModel, Field, PrivateAttr
@@ -89,8 +92,10 @@ from loanwhiz.domain.trustee_report_families import (
     FAMILY_REGISTRY,
     ColumnOrder,
     DocumentKind,
+    CountGrain,
     DocumentLayout,
     FurnitureOrder,
+    RowGeometry,
     UnknownReportFamilyError,
 )
 from loanwhiz.domain.trustee_report_registry import (
@@ -182,28 +187,46 @@ def _resolve_layout(pages: list[list[str]]) -> DocumentLayout:
     return layout
 
 
-#: The furniture ordering this parser implements. ``_data_rows`` filters
-#: furniture *before* testing a line for data, which is safe only because every
-#: data row here opens with an asset identifier no furniture prefix can produce.
-_IMPLEMENTED_FURNITURE_ORDER = FurnitureOrder.FURNITURE_FIRST
+#: The furniture ordering each row geometry's parse path implements — the two
+#: are not independent choices.
+#:
+#: ``ROW_PER_LINE`` is ``_data_rows``: it drops furniture *before* testing a
+#: line for data, which is safe only because every data row on that path opens
+#: with an asset identifier no furniture prefix can produce.
+#:
+#: ``REFLOWED_ROWS`` is ``_reflowed_rows``: a row is evidenced by its own
+#: anchored tail (identifier, then this section's column shape), so the row
+#: question is asked **first** and no furniture filter takes part in finding
+#: rows at all. That is #494's ordering, and it is what lets BNY's per-page
+#: banner ``<deal name> as of <date>`` be rejected for carrying no row's tail
+#: rather than by a prefix list a family table may not contain.
+_FURNITURE_ORDER_BY_GEOMETRY: Mapping[RowGeometry, FurnitureOrder] = MappingProxyType(
+    {
+        RowGeometry.ROW_PER_LINE: FurnitureOrder.FURNITURE_FIRST,
+        RowGeometry.REFLOWED_ROWS: FurnitureOrder.DATA_FIRST,
+    }
+)
 
 
 def _assert_furniture_order(layout: DocumentLayout, family_label: str) -> None:
-    """Refuse a family whose declared furniture ordering this parser does not implement.
+    """Refuse a family whose declared furniture ordering its parse path does not implement.
 
     The ordering is declared on the family so it is reviewable, but a
     declaration nothing reads drifts from the code it describes. Checking it
-    here makes registering a family that needs the other order a loud failure
-    rather than a silent re-run of the defect the ordering exists to prevent.
+    here makes registering a family whose two declarations disagree a loud
+    failure rather than a silent re-run of the defect the ordering exists to
+    prevent — a family that says ``data-first`` while taking the path that
+    filters furniture first would eat any row opening like a banner (#494).
     """
-    if layout.furniture_order is not _IMPLEMENTED_FURNITURE_ORDER:
+    implemented = _FURNITURE_ORDER_BY_GEOMETRY[layout.row_geometry]
+    if layout.furniture_order is not implemented:
         raise UnknownReportFamilyError(
             f"{family_label} declares furniture_order="
-            f"{layout.furniture_order.value!r} for its monthly report, but this "
-            f"parser implements {_IMPLEMENTED_FURNITURE_ORDER.value!r}: it drops "
-            "page furniture before testing a line for data, which is safe only "
-            "where every data row opens with an asset identifier. Parsing this "
-            "family would eat rows whose text begins like a banner (#494)."
+            f"{layout.furniture_order.value!r} for its monthly report with "
+            f"row_geometry={layout.row_geometry.value!r}, but that geometry's "
+            f"parse path implements {implemented.value!r}. The two declarations "
+            "describe one behaviour and disagreeing about it is how a data row "
+            "that opens like a banner gets eaten (#494)."
         )
 
 #: The eight Part III flags, in the column order the section header prints them:
@@ -232,7 +255,16 @@ PART_III_FLAGS: tuple[str, ...] = (
 #: bond-identified asset. The set this excludes is: CUSIPs, SEDOLs, internal
 #: trustee identifiers, and any LoanX id that is not six digits. If a future
 #: report uses one, the row is *counted* as unrecognised, never skipped.
-IDENTIFIER_RE = re.compile(r"^(LX\d{6}|[A-Z]{2}[A-Z0-9]{9}\d)(?=\D|$)")
+_IDENTIFIER = r"LX\d{6}|[A-Z]{2}[A-Z0-9]{9}\d"
+IDENTIFIER_RE = re.compile(rf"^({_IDENTIFIER})(?=\D|$)")
+
+#: The same identifier, searched for **inside** a row rather than at its start.
+#: Derived from one alternation with :data:`IDENTIFIER_RE` on purpose: two
+#: hand-maintained copies drifting apart about what an identifier is would
+#: reproduce #468 (an ``LX``-only pattern silently skipped 34 ISIN-identified
+#: assets and understated par by ~EUR 53m) one family at a time. The left
+#: look-behind stops a match starting mid-token.
+_EMBEDDED_IDENTIFIER_RE = re.compile(rf"(?<![A-Z0-9])({_IDENTIFIER})(?=\D|$)")
 
 #: A comma-grouped money amount with exactly two decimals.
 MONEY = r"\d{1,3}(?:,\d{3})*\.\d{2}"
@@ -408,6 +440,18 @@ class ReportAggregates(BaseModel):
     #: contradicts itself — so its balances are excluded and the discrepancy is
     #: reported. Its counts are still compared.
     inconsistent_tables: list[str] = Field(default_factory=list)
+    #: Section key → the reason this administrator does not publish it, taken
+    #: from the family record. Absence *with* a reason is a fact about the
+    #: document; absence without one is a parse that failed. Keeping the reason
+    #: here is what lets the reconciliation report a check it did not run
+    #: rather than silently running one fewer (#494).
+    unpublished_sections: dict[str, str] = Field(default_factory=dict)
+    #: How many rows the report's own accrual-record section carries, when it
+    #: publishes one. This is the population a family whose
+    #: :class:`~loanwhiz.domain.trustee_report_registry.CountGrain` is
+    #: ``ACCRUAL_RECORD`` states its counts over — Contego's 212 against 177
+    #: assets — so it is what that count must be reconciled against.
+    accrual_record_count: int | None = None
 
     def profile_test(self, prefix: str) -> ProfileTest | None:
         """Return the first profile test whose name starts with ``prefix``."""
@@ -647,6 +691,23 @@ def _pages_for(
     return [lines for lines in pages if _page_section(lines, layout) == title]
 
 
+def _published_pages(
+    pages: list[list[str]], layout: DocumentLayout, section_key: str
+) -> list[list[str]] | None:
+    """A section's pages, or ``None`` when this family does not publish it.
+
+    ``None`` and ``[]`` are deliberately different answers, and keeping them
+    apart is the whole of #494: a section the administrator does not print is
+    **absent**, while a section that routed to no pages is a parse that found
+    nothing. Collapsing the two is how a missing title reads as a clean
+    reconciliation. Callers must handle ``None`` by recording the declared
+    reason, never by treating it as an empty table.
+    """
+    if not layout.publishes(section_key):
+        return None
+    return _pages_for(pages, layout, section_key)
+
+
 def _report_header(pages: list[list[str]]) -> tuple[str | None, str | None]:
     """The deal name and reporting date a report states about itself.
 
@@ -712,6 +773,305 @@ def _data_rows(pages: list[list[str]], layout: DocumentLayout) -> list[list[str]
 
 
 # ===========================================================================
+# Reflowed pages — re-cutting rows out of a row-major line
+# ===========================================================================
+
+#: How many identifiers one line must carry before it is read as the page's
+#: whole table rather than as a single row. Three separates a row-major line
+#: (dozens) from a per-row line (one) with margin to spare.
+_REFLOW_MIN_IDENTIFIERS = 3
+
+
+def _reflowed_line(
+    lines: list[str], evidence: re.Pattern[str] = _EMBEDDED_IDENTIFIER_RE
+) -> str | None:
+    """The page's row-major line, or ``None`` when the page has no such line.
+
+    Geometry is declared per **family** and detected per **page**, because a
+    document is not uniform. Contego's ``Interest Accrual Detail`` runs to
+    seven pages: six extract as one row-major line, and one extracts as one row
+    per line. A parser that trusted the family's declaration alone would read
+    six pages and silently skip the seventh's forty rows — the count would come
+    in short with the par unchanged, which is exactly the shape #468 was.
+
+    The declaration says which geometry to *expect*; the page says which it is.
+
+    *evidence* is what a repetition of this section's rows looks like: an asset
+    identifier on the detail pages, and the numeric tail of an aggregate row on
+    the concentration pages, which carry no identifiers at all. Passing it in
+    keeps one detection rule for every section rather than a per-section guess
+    at which line is the table.
+    """
+    if not lines:
+        return None
+    candidate = max(lines, key=len)
+    found = evidence.findall(candidate)
+    return candidate if len(found) >= _REFLOW_MIN_IDENTIFIERS else None
+
+
+def _repeated_header(texts: list[str]) -> str:
+    """The column-header run a section repeats at the head of every page.
+
+    A row-major line opens with the section's own printed column header, so the
+    first row's description would otherwise arrive with the header glued to its
+    front. The header is *derived* rather than declared: it is the longest
+    prefix every one of the section's pages shares, which is what a repeated
+    header is. Truncated at the first identifier so a section whose pages
+    happen to open with the same obligor cannot swallow a row.
+
+    Returns ``""`` for a single-page section, where repetition cannot show what
+    is header and what is data. Callers that need descriptions treat that as a
+    refusal rather than guessing; callers that need only the anchored tail (the
+    CCC cross-check, the accrual census) are unaffected, since the tail is
+    matched from each identifier forward and never from the head of the line.
+    """
+    if len(texts) < 2:
+        return ""
+    prefix = os.path.commonprefix(texts)
+    first_id = _EMBEDDED_IDENTIFIER_RE.search(texts[0])
+    if first_id is not None:
+        prefix = prefix[: first_id.start()]
+    return prefix
+
+
+def _section_row_texts(pages: list[list[str]], layout: DocumentLayout) -> list[str]:
+    """One scannable text per page for a section, whatever geometry it came in.
+
+    A reflowed page contributes its row-major line with the repeated header
+    removed; any other page contributes each of its non-furniture lines. Both
+    are then scanned identically — identifier, then the row's own anchored tail
+    — so the two geometries share one parse path instead of forking it.
+    """
+    reflowed = [line for lines in pages if (line := _reflowed_line(lines)) is not None]
+    header = _repeated_header(reflowed)
+    texts: list[str] = []
+    for lines in pages:
+        line = _reflowed_line(lines)
+        if line is not None:
+            texts.append(line[len(header) :] if header and line.startswith(header) else line)
+            continue
+        # A page of this document that did not reflow still wraps: Contego's
+        # September accrual page splits one row after its identifier, leaving
+        # the period and balance on the next line. Joining the page's lines
+        # bridges that, and is safe because a row is evidenced by its own
+        # anchored tail — furniture and stray cells produce none, so no
+        # furniture filter takes part in finding rows here at all. That is the
+        # data-first ordering (#494), and it is what a prefix list cannot do.
+        texts.append(" ".join(lines))
+    return texts
+
+
+def _cut_rows(
+    text: str, tail: re.Pattern[str]
+) -> list[tuple[str, str, re.Match[str]]]:
+    """Cut one text into ``(identifier, description, tail match)`` triples.
+
+    The identifier sits mid-row here, so on its own it cannot say where a row
+    begins or ends: an identifier followed by text that is not this section's
+    column shape is not a row of this section. The **tail** decides. A row runs
+    from wherever the previous row ended to the end of its own tail, and the
+    description is what precedes its identifier — so a row whose tail does not
+    match is not silently absorbed into its neighbour. It yields no row, and
+    the count then comes in short against the report's own stated one, which is
+    the whole point of having a count in the oracle at all (#468).
+    """
+    rows: list[tuple[str, str, re.Match[str]]] = []
+    cursor = 0
+    for identifier in _EMBEDDED_IDENTIFIER_RE.finditer(text):
+        if identifier.start() < cursor:
+            continue
+        matched = tail.match(text, identifier.end())
+        if matched is None:
+            continue
+        rows.append(
+            (identifier.group(1), text[cursor : identifier.start()].strip(), matched)
+        )
+        cursor = matched.end()
+    return rows
+
+
+def _reflowed_rows(
+    pages: list[list[str]], layout: DocumentLayout, tail: re.Pattern[str]
+) -> list[tuple[str, str, re.Match[str]]]:
+    """Every ``(identifier, description, tail match)`` a section yields."""
+    rows: list[tuple[str, str, re.Match[str]]] = []
+    for text in _section_row_texts(pages, layout):
+        rows.extend(_cut_rows(text, tail))
+    return rows
+
+
+# ---------------------------------------------------------------------------
+# BNY Mellon's column grammars
+# ---------------------------------------------------------------------------
+
+#: A rating cell, including the ``***`` this administrator prints for "no
+#: rating from this agency". ``***`` is not a rating and never becomes one: it
+#: reaches :class:`CollateralAsset` as ``None``, because an unrated asset and
+#: an asset the report declines to rate are the same fact and neither is a
+#: rating that happens to sort last.
+_BNY_RATING = r"\*\*\*|[A-Z]{1,3}[+-]?"
+_BNY_RATE_PCT = r"\*\*\*|\d+\.\d{2}"
+
+#: ``Asset Information I``: ``<Loan Type> <Market Price> <Par/Quantity>
+#: <Principal Balance> <Unfunded Amount> <Security Level> <Maturity Date>``.
+#:
+#: ``Loan Type`` is **optional**, and that is a fact about the document rather
+#: than defensive coding: the report prints the cell for loans (``Term Loan``,
+#: ``Delayed Draw Loan``) and emits no cell at all for its 28 bond positions.
+#: Requiring it would drop every bond — #468's failure exactly, reached through
+#: a column rather than through an identifier pattern.
+#:
+#: ``Market Price`` is a **price per 100 of par** (75.0–101.652 across this
+#: report), not a value. It is captured under a name that says so; #470 is the
+#: correction of a column that looked like a market value and was a price,
+#: wrong by four orders of magnitude into the OC ratio.
+_BNY_PART_I_TAIL = re.compile(
+    rf"(?:{_S}(?P<asset_type>[A-Za-z][A-Za-z ]*?))?{_S}"
+    rf"(?P<market_price_pct>\d+\.\d{{4}}){_S}"
+    rf"(?P<par>{MONEY}){_S}(?P<principal_balance>{MONEY}){_S}(?P<unfunded>{MONEY}){_S}"
+    rf"(?P<seniority>Senior Secured|Senior Unsecured|Second Lien|Subordinated|Mezzanine)"
+    rf"{_S}(?P<maturity_date>\d{{2}}-[A-Z][a-z]{{2}}-\d{{4}})"
+)
+
+#: ``Asset Information II``: ``<Issue CCY> <Principal Balance> <DIP/Corp
+#: Rescue> <Cov-Lite> <Loan PIK> <Lien Type> <Avg Life> <Country>``.
+#:
+#: The tail deliberately **stops at Avg Life** and does not read ``Country``.
+#: Country is the row's last cell, free text, with the next row's obligor name
+#: immediately after it and no delimiter between them — and BNY publishes no
+#: country table, so there is no vocabulary to resolve the boundary against
+#: (that absence is declared on the family). Reading it here would mean
+#: guessing where a country ends. ``Asset Information IV`` prints the same
+#: country followed by a rating cell, which bounds it, so country is taken
+#: from there instead.
+_BNY_PART_II_TAIL = re.compile(
+    rf"{_S}(?P<currency>[A-Z]{{3}}){_S}(?P<principal_balance>{MONEY})"
+    rf"(?P<flags>(?:{_S}(?:Yes|-)){{3}}){_S}"
+    rf"(?:(?P<lien_type>[A-Z][A-Za-z ]*?Lien|Unsecured){_S})?(?P<avg_life>\d+\.\d{{2}})"
+)
+
+#: ``Asset Information IV``: lot level, ``<Country> <Country Rating S&P>
+#: <Fitch>`` then eight flag cells. The country is bounded on its right by a
+#: rating, which is what makes it readable here and not in Part II.
+_BNY_PART_IV_TAIL = re.compile(
+    rf"{_S}(?P<country>[A-Z][A-Za-z .'\-]*?){_S}(?P<country_sp>{_BNY_RATING})"
+    rf"{_S}(?P<country_fitch>{_BNY_RATING})"
+    rf"(?P<flags>(?:{_S}(?:Yes|-)){{8}})"
+)
+
+#: ``Interest Accrual Detail``: ``<Payment Period> <Principal Balance>``, which
+#: is enough of an anchored tail to prove a row. This section is the population
+#: BNY's aggregate tables count — one record per asset per rate contract, so an
+#: asset accruing under two contracts is two rows here and two in every
+#: ``# of Assets`` column.
+#:
+#: The period cell is matched as *any* single hyphenated word rather than
+#: against the five values these two reports happen to print (``Quarterly``,
+#: ``Semi-Annual``, ``Monthly``, ``Bi-Monthly``, ``Annually``). A closed list
+#: here would silently drop the rows of any period outside it, and dropping
+#: rows from the very population the count oracle is measured against is the
+#: one failure this section exists to catch. The money cell after it is what
+#: makes the tail evidence rather than a guess.
+_BNY_ACCRUAL_TAIL = re.compile(
+    rf"{_S}(?P<period>[A-Za-z][A-Za-z-]*){_S}(?P<principal_balance>{MONEY})"
+)
+
+
+def _bny_accrual_tail(pages: list[list[str]], layout: DocumentLayout) -> re.Pattern[str]:
+    """The accrual tail, with the balance cell made optional by the document.
+
+    Contego's September report prints one accrual row — Rubix Group's extended
+    add-facility — carrying a payment period and **no balance cell at all**.
+    Requiring the balance drops that row, and a row dropped out of the very
+    population the count oracle measures against is the one failure this
+    section exists to catch: the count came in at 214 against a stated 215
+    while par was untouched, which is #468's shape exactly.
+
+    So the period vocabulary is read off the document first — every word this
+    report uses in a period cell that *does* carry a balance — and the second
+    pass admits those same words with the balance optional. The vocabulary is
+    evidence from the report rather than a list of the five values these two
+    happen to print, and the balance stays required for any word the report has
+    not already shown to be a period. A row admitted with no balance is
+    recorded as a defect, never silently completed with a zero.
+    """
+    vocabulary: set[str] = set()
+    for text in _section_row_texts(pages, layout):
+        for _, _, matched in _cut_rows(text, _BNY_ACCRUAL_TAIL):
+            vocabulary.add(matched.group("period"))
+    if not vocabulary:
+        return _BNY_ACCRUAL_TAIL
+    alternation = "|".join(re.escape(word) for word in sorted(vocabulary, key=len, reverse=True))
+    return re.compile(
+        rf"{_S}(?P<period>{alternation})(?:{_S}(?P<principal_balance>{MONEY}))?(?=\s|$)"
+    )
+
+#: ``CCC Obligations``: ``<S&P Rating> <Fitch Rating> <Market Price> <Market
+#: Value> <Principal Balance>``. Read only as a **unit cross-check**: this is
+#: the one BNY table printing a price and a value side by side for the same
+#: asset, so ``value == par * price / 100`` is checkable against the document
+#: rather than against the parser's own arithmetic (#470).
+_BNY_CCC_TAIL = re.compile(
+    rf"{_S}(?P<sp_rating>{_BNY_RATING}){_S}(?P<fitch_rating>{_BNY_RATING}){_S}"
+    rf"(?P<market_price_pct>\d+\.\d{{4}}){_S}(?P<market_value>{MONEY}){_S}"
+    rf"(?P<principal_balance>{MONEY})"
+)
+
+
+def _vocabulary_alternation(labels: list[str]) -> str:
+    """A regex alternation over free-text labels, longest first.
+
+    The labels come from the report's own concentration tables — the closed
+    vocabulary its detail pages draw on, which is why a two-pass parse can
+    resolve a free-text column that has no delimiter after it. Whitespace
+    inside a label is matched as ``\\s+`` because the extraction preserves the
+    double spaces a wrapped cell leaves behind (``Diversified  telecommunication
+    services``).
+    """
+    return "|".join(
+        r"\s+".join(re.escape(word) for word in label.split())
+        for label in sorted(labels, key=len, reverse=True)
+    )
+
+
+def _bny_part_iii_tail(aggregates: ReportAggregates) -> re.Pattern[str] | None:
+    """``Asset Information III``'s tail, built from the report's own vocabularies.
+
+    Both industry columns are free text with no delimiter after them, so the
+    boundary is resolved against the closed vocabulary the report's own
+    concentration tables enumerate — the reason pass 1 runs first. With no
+    vocabulary there is nothing to resolve against and the section is refused
+    rather than cut at a guess.
+    """
+    sp = [bucket.label for bucket in aggregates.sp_industry]
+    fitch = [bucket.label for bucket in aggregates.fitch_industry]
+    if not sp or not fitch:
+        return None
+    return re.compile(
+        rf"{_S}(?P<principal_balance>{MONEY}){_S}(?P<sp_rating>{_BNY_RATING}){_S}"
+        rf"(?P<sp_recovery>{_BNY_RATE_PCT}){_S}(?P<sp_industry>{_vocabulary_alternation(sp)})"
+        rf"{_S}(?P<fitch_rating>{_BNY_RATING}){_S}"
+        rf"(?P<fitch_recovery>{_BNY_RATE_PCT}){_S}"
+        rf"(?P<fitch_industry>{_vocabulary_alternation(fitch)})"
+    )
+
+
+def _split_description(description: str) -> tuple[str | None, str]:
+    """Split BNY's ``<obligor> - <facility>`` description on its first dash.
+
+    Unlike U.S. Bank's, this administrator prints a separator, so the split is
+    exact rather than recovered — the obligor is what precedes the first
+    ``" - "``. A description with no separator keeps the whole string as the
+    facility name and reports no obligor, rather than inventing one.
+    """
+    cleaned = _squash(description)
+    obligor, separator, facility = cleaned.partition(" - ")
+    if not separator:
+        return None, cleaned
+    return obligor.strip() or None, facility.strip()
+
+
+# ===========================================================================
 # Pass 1 — the report's own aggregates
 # ===========================================================================
 
@@ -741,6 +1101,131 @@ def _parse_aggregate_table(
             count = int(match.group("count"))
             if not label:
                 # The table's own total row: no label, 100.00%.
+                total_balance = balance
+                total_count = count
+                continue
+            buckets.append(
+                AggregateBucket(label=label, balance=balance, percent=percent, count=count)
+            )
+    return buckets, total_balance, total_count
+
+
+# ---------------------------------------------------------------------------
+# BNY Mellon's aggregate tables
+# ---------------------------------------------------------------------------
+
+#: One reflowed aggregate row: ``<label> <count> <balance> <percent>%``. Note
+#: the column order — this administrator states the **count before** the
+#: balance where the other states it last, which is exactly why the order is
+#: read off the family's own table rather than assumed from the other family's
+#: habits (#480). The label is whatever precedes the count, so the split is
+#: unambiguous left to right even for a label ending in a digit.
+_BNY_AGGREGATE_TAIL = re.compile(
+    rf"(?P<count>\d{{1,4}}){_S}(?P<balance>{MONEY}){_S}(?P<percent>\d+\.\d{{2}})%"
+)
+
+#: The table's own total row, which this administrator prints two ways: with a
+#: ``Total:`` label and no percentage on the rating tables, and as a bare
+#: ``<count> <balance> 100.00%`` row on the industry tables.
+_BNY_AGGREGATE_TOTAL = re.compile(rf"Total:{_S}(?P<count>\d{{1,4}}){_S}(?P<balance>{MONEY})")
+
+
+def _marker_pattern(marker: str) -> re.Pattern[str]:
+    """A regex matching one table's sub-header fingerprint in a reflowed line.
+
+    The family records each marker whitespace-stripped and upper-cased, because
+    that is the only form stable across the extraction's stray double spaces.
+    Matching it back against real text therefore means allowing whitespace
+    between every character, which is what this rebuilds.
+    """
+    return re.compile(r"\s*".join(re.escape(character) for character in marker), re.IGNORECASE)
+
+
+def _table_segment(text: str, marker: str, siblings: list[str]) -> str | None:
+    """The slice of a reflowed line belonging to one of several tables on it.
+
+    BNY prints two industry tables under one ``Industry Concentrations`` title
+    and three under ``Rating Concentrations``, so the printed title cannot route
+    them and the pair (title, sub-header marker) is what is unique — the
+    distinction #533 grew ``section_table_markers`` for. A segment runs from its
+    own marker to whichever sibling marker comes next, or to the end.
+    """
+    found = _marker_pattern(marker).search(text)
+    if found is None:
+        return None
+    end = len(text)
+    for sibling in siblings:
+        if sibling == marker:
+            continue
+        other = _marker_pattern(sibling).search(text, found.end())
+        if other is not None:
+            end = min(end, other.start())
+    return text[found.end() : end]
+
+
+def _trim_to_cell(label: str, cells: set[str]) -> str:
+    """Strip a column-header run off the front of a reflowed table's first label.
+
+    A row-major line opens with the table's own column header (``# of Assets
+    Principal % of APB``), so the first row's label arrives with that glued to
+    its front while every later label is clean. The page's *other* rendering
+    settles it: the same table is also emitted as a column-major stack of
+    single cells, so each true label appears somewhere on the page as a line of
+    its own.
+
+    That stack is used here only to **bound one label**, never zipped back
+    against the row-major line — zipping is what a single blank cell desyncs
+    (#533). A label already present as a cell is returned untouched, so the
+    repair cannot fire on a label that needs none.
+    """
+    if label in cells or not label:
+        return label
+    words = label.split(" ")
+    for start in range(1, len(words)):
+        candidate = " ".join(words[start:])
+        if candidate in cells:
+            return candidate
+    return label
+
+
+def _parse_reflowed_aggregate_table(
+    pages: list[list[str]], layout: DocumentLayout, section_key: str
+) -> tuple[list[AggregateBucket], Decimal | None, int | None]:
+    """Parse one concentration table out of a row-major page.
+
+    Same two answers as the per-line reader — the buckets and the table's own
+    stated total — reached the same way rows are reached everywhere on this
+    geometry: match the row's anchored numeric tail, and take the label as what
+    precedes it.
+    """
+    marker = layout.section_table_markers.get(section_key)
+    siblings = list(layout.section_table_markers.values())
+    buckets: list[AggregateBucket] = []
+    total_balance: Decimal | None = None
+    total_count: int | None = None
+    for lines in pages:
+        text = _reflowed_line(lines, _BNY_AGGREGATE_TAIL)
+        if text is None:
+            continue
+        segment = _table_segment(text, marker, siblings) if marker else text
+        if segment is None:
+            continue
+        stated = _BNY_AGGREGATE_TOTAL.search(segment)
+        if stated is not None:
+            total_count = int(stated.group("count"))
+            total_balance = Decimal(stated.group("balance").replace(",", ""))
+            segment = segment[: stated.start()]
+        cells = {_collapse(line) for line in lines if line is not text}
+        cursor = 0
+        for matched in _BNY_AGGREGATE_TAIL.finditer(segment):
+            label = _trim_to_cell(_collapse(segment[cursor : matched.start()]), cells)
+            cursor = matched.end()
+            balance = Decimal(matched.group("balance").replace(",", ""))
+            percent = Decimal(matched.group("percent"))
+            count = int(matched.group("count"))
+            if not label:
+                # The bare total row the industry tables print: no label, and
+                # 100.00% of the balance by construction.
                 total_balance = balance
                 total_count = count
                 continue
@@ -783,26 +1268,46 @@ def _parse_profile_tests(pages: list[list[str]], layout: DocumentLayout) -> list
     return tests
 
 
+def _aggregate_table(
+    pages: list[list[str]], layout: DocumentLayout, section_key: str
+) -> tuple[list[AggregateBucket], Decimal | None, int | None]:
+    """One concentration table, read the way this family's pages are laid out."""
+    if layout.row_geometry is RowGeometry.REFLOWED_ROWS:
+        return _parse_reflowed_aggregate_table(pages, layout, section_key)
+    return _parse_aggregate_table(pages, layout)
+
+
 def _parse_aggregates(pages: list[list[str]], layout: DocumentLayout) -> ReportAggregates:
     """Read every summary table the report publishes about itself."""
     aggregates = ReportAggregates()
 
-    country, total, count = _parse_aggregate_table(
-        _pages_for(pages, layout, SECTION_COUNTRY), layout
-    )
-    aggregates.country = country
-    aggregates.aggregate_principal_balance = total
-    aggregates.asset_count = count
+    country_pages = _published_pages(pages, layout, SECTION_COUNTRY)
+    if country_pages is None:
+        # Declared absent with a reason (#494), not empty. Recorded so the
+        # oracle can say "this administrator publishes no country table"
+        # instead of quietly running one fewer check than it did last month.
+        aggregates.unpublished_sections[SECTION_COUNTRY] = layout.unpublished_reason(
+            SECTION_COUNTRY
+        )
+    else:
+        country, total, count = _aggregate_table(country_pages, layout, SECTION_COUNTRY)
+        aggregates.country = country
+        aggregates.aggregate_principal_balance = total
+        aggregates.asset_count = count
 
-    aggregates.sp_industry, _, _ = _parse_aggregate_table(
-        _pages_for(pages, layout, SECTION_SP_INDUSTRY), layout
+    aggregates.sp_industry, industry_total, industry_count = _aggregate_table(
+        _pages_for(pages, layout, SECTION_SP_INDUSTRY), layout, SECTION_SP_INDUSTRY
     )
-    aggregates.fitch_industry, _, _ = _parse_aggregate_table(
-        _pages_for(pages, layout, SECTION_FITCH_INDUSTRY), layout
+    aggregates.fitch_industry, _, _ = _aggregate_table(
+        _pages_for(pages, layout, SECTION_FITCH_INDUSTRY), layout, SECTION_FITCH_INDUSTRY
     )
-    rating, rating_total, rating_count = _parse_aggregate_table(
-        _pages_for(pages, layout, SECTION_SP_RATING), layout
+    rating, rating_total, rating_count = _aggregate_table(
+        _pages_for(pages, layout, SECTION_SP_RATING), layout, SECTION_SP_RATING
     )
+    if aggregates.aggregate_principal_balance is None:
+        aggregates.aggregate_principal_balance = industry_total
+    if aggregates.asset_count is None:
+        aggregates.asset_count = industry_count
     aggregates.sp_rating = rating
     if aggregates.aggregate_principal_balance is None:
         aggregates.aggregate_principal_balance = rating_total
@@ -896,6 +1401,17 @@ def _squash(text: str) -> str:
     have to special-case every junction.
     """
     return re.sub(r"\s+", "", text)
+
+
+def _collapse(text: str) -> str:
+    """Text with runs of whitespace collapsed to one space, ends trimmed.
+
+    Distinct from :func:`_squash`, deliberately. Squashing is right for
+    *matching* free text across a wrap that swallowed the space; it is wrong
+    for a label the parse then hands on, because a bucket label has to stay
+    comparable with the same words as they appear in a detail row.
+    """
+    return re.sub(r"\s+", " ", text).strip()
 
 
 def _cut_after(text: str, count: int) -> int | None:
