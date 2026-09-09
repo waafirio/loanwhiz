@@ -276,6 +276,26 @@ class DealModel(BaseModel):
     #: ``None`` means this deal states no per-class convention, which leaves every
     #: class on the deal-wide day count rather than inventing a split.
     note_day_counts: dict | None = None
+    #: The deal's risk-retention undertaking (#566) — who retains, in which
+    #: capacity, by which Article 6(3) method, at what level over which base —
+    #: shaped by
+    #: :meth:`~loanwhiz.extraction.retention_parser.RiskRetention.to_dict`.
+    #: Optional for the same reason the two fields above are, and for a sharper
+    #: instance of it: the undertaking is stated in a *named section* of the
+    #: offering document ("The Retention Holder and the Securitisation
+    #: Regulations") that no stage of the LLM pipeline routes to. Cairn's
+    #: committed glossary stops at ``Payment Date`` — the whole R range,
+    #: ``Retention Requirements`` included, is lost to the ``max_chars``
+    #: truncation — so the fact is recovered deterministically by
+    #: :mod:`loanwhiz.extraction.retention_parser` and committed to the seed.
+    #:
+    #: ``None`` means **not read**, never "this deal retains nothing". The
+    #: distinction is the point: a deal that states no undertaking and a section
+    #: that never arrived produce the same empty parse, and only one of them is a
+    #: fact about the deal.
+    #: :func:`~loanwhiz.extraction.retention_parser.assess_retention` tells them
+    #: apart, and #567 records which one applies.
+    risk_retention: dict | None = None
 
 
 # ---------------------------------------------------------------------------
