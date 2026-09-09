@@ -74,3 +74,6 @@ triage by opening the entry, not by reading the line.
 - [Extracting tables from PDFs](pdf-table-extraction.md)
   - [2026-09-06 · pitfall · #469](#2026-09-06--pitfall--469) — keywords: visitor_text, text matrix, tm[4], rotated table, extraction_mode layout, row boundary, continuation line, column order, pypdf
   - [2026-09-08 · pitfall · #480](#2026-09-08--pitfall--480) — keywords: column header, required level, guessed order, like-typed columns, stated twice, cross-check, coverage test, refuse unrecognised header
+- [Primitive registry population & catalogue surfaces](registry-population.md)
+  - [2026-09-09 · pitfall · #574](#2026-09-09--pitfall--574) — keywords: import side effect, PRIMITIVE_MODULES, pkgutil.iter_modules, two importers, catalogue disagreement, ensure_all_registered
+  - [2026-09-09 · gotcha · #574](#2026-09-09--gotcha--574) — keywords: process-global registry, in-process census, clean subprocess, backfilled gap, red-when survivor, surface before import
