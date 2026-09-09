@@ -201,13 +201,17 @@ See `src/loanwhiz/api/README.md` for the full endpoint reference and curl exampl
 The Next.js dashboard (`./scripts/run-demo-v2.sh`, UI on :3000) groups its views into two sidebar sections (`NAV_GROUPS` in `web/lib/nav.ts`):
 
 - **Deal Analytics** — Overview, Pool & Performance, Waterfall, Compliance, Projection (the per-deal analyst views, one loaded deal at a time).
-- **Platform & Governance** — Showcase (the primitives × 6 registered deals capability matrix across Dutch / Italian / Spanish RMBS plus the registered-only Irish CLO), Validation (the Green Lion 2024-1 engine-vs-Notes-&-Cash proof, to the cent), Framework (the primitive-registry catalogue), and Governance (the FINOS evidence pack + per-tape `data_source` provenance — direct / derived / synthetic).
+- **Platform & Governance** — Showcase (the primitives × 6 registered deals capability matrix across Dutch / Italian / Spanish RMBS plus the registered-only Irish CLO), Validation (the Green Lion 2024-1 engine-vs-Notes-&-Cash proof, to the cent), Framework (the primitive-registry catalogue), MCP (the tool surface, and the evidence a tool call's result carries), and Governance (the FINOS evidence pack + per-tape `data_source` provenance — direct / derived / synthetic).
 
 The capability matrix is the honest source of truth for what is validated vs ran vs not-applicable across the deal set — never read the cross-jurisdiction coverage as "validated everywhere".
 
 ### MCP server
 
 The primitives are also consumable as a governed MCP server (`mcp/`) — each `live` primitive becomes an MCP tool that returns the full `PrimitiveResult` evidence pack. See [mcp/README.md](../mcp/README.md) for wiring it into an MCP client.
+
+**For the current surface, read `GET /mcp/surface`** (or the MCP view in the UI, which renders it): which primitives are exposed as callable tools, each tool's typed input schema, and the governance fields its result carries. Read it from the endpoint rather than from here — exposure comes from the server's own `is_exposed_as_tool()`, and a roster transcribed into prose goes stale in silence, as this repo's did before #574.
+
+> **The MCP server has no authentication of any kind** — no token, no bearer, no API key. It accepts every caller. This is deliberate: authentication is intended to live in waafir-platform, which LoanWhiz runs on top of. The setup flow drawn on the MCP view is an illustration of that planned design and is marked throughout as not implemented; `tests/test_mcp_page.py` fails if the marking is removed. Do not deploy this server anywhere it can be reached by an untrusted caller.
 
 ---
 
