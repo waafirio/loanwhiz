@@ -38,10 +38,13 @@ EXPECTED_LIVE_TOOLS = {
     # /deal/{id}/report-verification endpoint + the verify_report agent tool.
     "report_verifier",
 }
-# Every registered primitive is now reached in the live path — no library-only
-# primitives remain. The set is kept (empty) so the catalogue-honesty assertions
-# below still iterate over it and the union math in the resource tests is stable.
-EXPECTED_LIBRARY_ONLY: set[str] = set()
+# There is deliberately no EXPECTED_LIBRARY_ONLY roster. Naming the non-callable
+# primitives here would be the same hand-maintained second list #574 removed from
+# catalogue.py and mcp/README.md, and it would go stale the same way — the
+# comment it replaces claimed no library-only primitives remained, which had
+# stopped being true. The assertions below check the *property* instead: the
+# exposed set is exactly EXPECTED_LIVE_TOOLS, and everything else the registry
+# holds is library-only and absent from the tool list.
 
 
 async def _list_tools(server) -> list[types.Tool]:
@@ -159,11 +162,20 @@ async def test_catalogue_resource_lists_all_primitives_with_honest_reachability(
     server = build_server()
     catalogue = await _read_catalogue(server)
     by_name = {e["name"]: e for e in catalogue}
-    assert set(by_name) == EXPECTED_LIVE_TOOLS | EXPECTED_LIBRARY_ONLY
+    tool_names = {t.name for t in await _list_tools(server)}
+
+    # The catalogue is a superset of the tools: it exists to show the primitives
+    # that are NOT callable alongside those that are.
+    assert EXPECTED_LIVE_TOOLS <= set(by_name)
     for name in EXPECTED_LIVE_TOOLS:
         assert by_name[name]["reachability"] == LIVE
-    for name in EXPECTED_LIBRARY_ONLY:
-        assert by_name[name]["reachability"] == LIBRARY_ONLY
+    for name, entry in by_name.items():
+        if name in EXPECTED_LIVE_TOOLS:
+            continue
+        # Anything the registry holds beyond the exposed set is library-only,
+        # and is catalogued without being advertised as callable.
+        assert entry["reachability"] == LIBRARY_ONLY, name
+        assert name not in tool_names, f"{name} is library-only but listed as a tool"
     # Every entry carries the typed I/O contract and governance semantics.
     for entry in catalogue:
         assert entry["input_schema"].get("type") == "object"
@@ -174,7 +186,9 @@ async def test_catalogue_resource_lists_all_primitives_with_honest_reachability(
 def test_build_catalogue_is_json_serialisable():
     """The catalogue is plain JSON — safe to ship over the wire / as a resource."""
     catalogue = build_catalogue()
-    assert len(catalogue) == len(EXPECTED_LIVE_TOOLS | EXPECTED_LIBRARY_ONLY)
+    # No expected total: the catalogue is whatever the registry holds, and a
+    # transcribed count here is what went stale everywhere else (#574).
+    assert {e["name"] for e in catalogue} >= EXPECTED_LIVE_TOOLS
     json.dumps(catalogue)  # must not raise
 
 
@@ -184,7 +198,12 @@ def test_reachability_map_matches_api():
     This is the guard that lets the MCP package keep a small local copy of
     ``_PRIMITIVE_REACHABILITY`` instead of importing FastAPI: if anyone changes
     the API's map without updating this mirror (or vice-versa), this fails.
+
+    Since #574 there is no mirror to drift — both names re-export the one map in
+    ``loanwhiz.primitives.reachability`` — so this now asserts that property
+    directly. It is kept rather than deleted: it is what would catch a future
+    edit that reintroduces a private copy on either side.
     """
     from loanwhiz.api.main import _PRIMITIVE_REACHABILITY
 
-    assert PRIMITIVE_REACHABILITY == _PRIMITIVE_REACHABILITY
+    assert PRIMITIVE_REACHABILITY is _PRIMITIVE_REACHABILITY

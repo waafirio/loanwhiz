@@ -28,12 +28,12 @@ from mcp.server import Server
 from mcp.server.lowlevel.helper_types import ReadResourceContents
 
 from loanwhiz.primitives.audit_logger import audit_result
+from loanwhiz.primitives.registry import ensure_all_registered
 from loanwhiz_primitives_mcp.catalogue import (
     build_catalogue,
-    ensure_primitives_registered,
     primitive_input_type,
 )
-from loanwhiz_primitives_mcp.reachability import LIVE, reachability_of
+from loanwhiz_primitives_mcp.reachability import is_exposed_as_tool
 
 SERVER_NAME = "loanwhiz-primitives"
 CATALOGUE_URI = "primitives://catalogue"
@@ -50,15 +50,16 @@ MCP_AUDIT_LOG_DIR = "/tmp/loanwhiz_audit"
 
 
 def _live_registrations() -> list[Any]:
-    """Return the ``PrimitiveRegistration`` objects for every ``live`` primitive."""
-    ensure_primitives_registered()
+    """Return the ``PrimitiveRegistration`` objects for every exposed primitive.
+
+    Filtered through ``is_exposed_as_tool`` — the one predicate that decides the
+    MCP surface. ``GET /mcp/surface`` describes this server by asking the same
+    function, so the documented surface is the dispatched one (#574).
+    """
+    ensure_all_registered()
     from loanwhiz.primitives.registry import PRIMITIVE_REGISTRY
 
-    return [
-        reg
-        for reg in PRIMITIVE_REGISTRY.list_all()
-        if reachability_of(reg.name) == LIVE
-    ]
+    return [reg for reg in PRIMITIVE_REGISTRY.list_all() if is_exposed_as_tool(reg.name)]
 
 
 def build_server() -> Server:

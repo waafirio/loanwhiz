@@ -1,57 +1,39 @@
-"""Primitive reachability map for the MCP server (catalogue honesty).
+"""Primitive reachability for the MCP server — re-exported, never re-stated.
 
-Not every registered primitive is reachable in the live path. This map mirrors
-``loanwhiz.api.main._PRIMITIVE_REACHABILITY`` so the MCP catalogue advertises
-reachability exactly as the repo's ``GET /primitives`` endpoint does — nothing
-is shown as ``live`` (callable) that a consumer can't actually reach, and the
-``library-only`` primitives are surfaced honestly in the catalogue resource
-without being exposed as callable tools.
+This module used to hold a hand-copied mirror of the API's reachability map,
+kept equal by a test. That was a second mechanism for one fact, and it drifted:
+``mcp/README.md``'s table, written from it, marked a ``live`` primitive
+``library-only`` and listed two primitives that had been deleted.
 
-Why a mirror rather than an import: this package owns ``mcp/**`` and only
-*reads* ``src/loanwhiz/primitives/**`` (issue #238 scope); importing the API
-module would pull FastAPI and the whole REST app's import graph into the MCP
-server's startup just to reuse one dict. The mirror is small and is guarded by
-``test_server_smoke.py``, which asserts it stays equal to the API's map so the
-two can never silently drift.
+Since #574 the decision lives once, in
+:mod:`loanwhiz.primitives.reachability`, and this module re-exports it. The
+reason the mirror existed — that importing ``loanwhiz.api.main`` would drag
+FastAPI and the whole REST app into the MCP server's startup for one dict — is
+answered by *where* the decision now lives rather than by copying it: the
+``loanwhiz.primitives`` package is the primitives themselves, which this server
+already imports, and it pulls in no web framework.
 
-- ``live``         — called by a REST endpoint and/or exposed as a LangGraph
-                     agent tool in the host app; exposed here as a callable MCP
-                     tool.
-- ``library-only`` — registered (so it appears in the catalogue) and importable
-                     as library code, but reached by no endpoint or agent tool;
-                     surfaced in the catalogue resource, not as a tool.
-
-Unknown / future primitives default to ``library-only`` (the conservative,
-honest default), matching the API's ``.get(name, _REACHABILITY_LIBRARY_ONLY)``.
+The names below are the MCP package's public reachability surface. Import them
+from here; the module they come from is an implementation detail of where the
+one decision is kept.
 """
 
 from __future__ import annotations
 
-LIVE = "live"
-LIBRARY_ONLY = "library-only"
+from loanwhiz.primitives.reachability import (
+    LIBRARY_ONLY,
+    LIVE,
+    PRIMITIVE_REACHABILITY,
+    is_exposed_as_tool,
+    live_primitive_names,
+    reachability_of,
+)
 
-# Mirror of loanwhiz.api.main._PRIMITIVE_REACHABILITY. Kept in sync by
-# test_server_smoke.py::test_reachability_map_matches_api.
-PRIMITIVE_REACHABILITY: dict[str, str] = {
-    "esma_tape_normaliser": LIVE,
-    "collections_aggregator": LIVE,
-    "covenant_monitor": LIVE,
-    "waterfall_runner": LIVE,
-    "audit_logger": LIVE,
-    "report_verifier": LIVE,
-}
-
-
-def reachability_of(name: str) -> str:
-    """Return the reachability of *name*, defaulting to ``library-only``.
-
-    The conservative default mirrors the API: an unknown / future primitive is
-    treated as ``library-only`` (not advertised as a callable tool) until it is
-    explicitly wired up.
-    """
-    return PRIMITIVE_REACHABILITY.get(name, LIBRARY_ONLY)
-
-
-def live_primitive_names() -> list[str]:
-    """Return the names mapped to ``live``, in declaration order."""
-    return [name for name, r in PRIMITIVE_REACHABILITY.items() if r == LIVE]
+__all__ = [
+    "LIBRARY_ONLY",
+    "LIVE",
+    "PRIMITIVE_REACHABILITY",
+    "is_exposed_as_tool",
+    "live_primitive_names",
+    "reachability_of",
+]
