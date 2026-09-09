@@ -202,3 +202,17 @@ injective over each **published table**, not your examples — Cairn's December
 Fitch table prints `Building and materials` beside `Buildings and materials`.
 
 Refs: #563
+Refs: #562 — same fold, opposite failure: `B.V.` vs `BV` split one borrower.
+
+## 2026-09-10 · pitfall · #562
+
+A guard that passes by **finding nothing** needs a test that deletes its
+*call*, not only one that calls it. Every census test here invoked
+`_assert_every_asset_placed` directly, so the file still passed with the
+builder's invocation removed — "the checker found nothing" and "nothing ran
+the checker" are one silence. Assert the wiring where they differ: make the
+builder emit a lossy result and require it to raise. #478 says put the check
+*in* the builder; this is how you know it is still plugged in.
+
+Refs: #562
+Refs: #478 — the guard this one keeps wired.
