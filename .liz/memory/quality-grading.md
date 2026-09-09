@@ -156,6 +156,7 @@ a gap does split this way, assert both deltas AND that they cancel — a later f
 to one then reds the pair instead of silently re-balancing the total.
 
 Refs: #538
+Refs: #564 — same rule for a bucket's obligor-tier split, not just a cascade.
 
 ## 2026-09-09 · pitfall · #515
 
