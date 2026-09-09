@@ -34,10 +34,14 @@ so the live adapter and the offline validation harness classify steps with **one
 classifier and cannot drift. The classifier speaks the harness vocabulary
 (``"report-supplied"``); translating that to the canonical ``step_sources``
 spelling (``"reported"``) is — by the classifier's own contract — *the adapter's*
-concern, done here. The report's revenue ``(b)`` line is printed as wrapped
-sub-items ``(1)…(14)`` (a ``pypdf`` layout artefact the V3 parser surfaces
-individually); :func:`_fold_revenue_pop` folds them back into one ``(b)`` total,
-mirroring the harness's ``_fold_report_revenue_steps``.
+concern, done here. A published report prints its Priority of Payments as a document, not as the
+cascade's step list, so joining the two is its own problem —
+:func:`~loanwhiz.primitives.report_label_fold.fold_report_pop` owns it, and this
+adapter and the Reconciler both call it. They are the two sides of one
+comparison: what comes back here becomes the engine's *need* for a
+report-supplied step, and what comes back there is the published figure that need
+is checked against, so a second copy of the join could grade the engine against a
+number it was never given (#514).
 
 Pure & offline: depends only on the parsed report model + the deal's extracted
 waterfall steps. No network, no LLM, no engine call.
@@ -46,13 +50,14 @@ waterfall steps. No network, no LLM, no engine call.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Literal
+from typing import Any, Literal, Sequence
 
 from loanwhiz.domain.inputs import PeriodInputs
 from loanwhiz.domain.provenance import FieldProvenance, ProvenanceMap
 from loanwhiz.domain.state import DealState, TrancheState
 from loanwhiz.primitives.base import Citation
 from loanwhiz.primitives.notes_cash_parser import NotesCashPeriod, NotesCashReport
+from loanwhiz.primitives.report_label_fold import FoldedPoP, fold_report_pop
 from loanwhiz.primitives.step_source_classifier import build_step_specs
 
 # ---------------------------------------------------------------------------
@@ -91,37 +96,29 @@ _CANONICAL_SOURCE: dict[str, Literal["engine", "reported", "residual"]] = {
 }
 
 
-def _fold_revenue_pop(period: NotesCashPeriod) -> dict[str, float]:
-    """Collapse the report's revenue PoP into ``{priority_label: amount}``.
+def _step_labels(steps: list[dict[str, Any]]) -> list[str]:
+    """The cascade's priority labels, in cascade order — the fold's second input."""
+    return [str(step.get("priority", "")) for step in steps]
 
-    The report prints step ``(b)`` as fourteen wrapped sub-line items
-    ``(1)…(14)`` (a ``pypdf`` layout artefact). The extracted model carries a
-    single ``(b)`` step, so the sub-items' amounts are folded back into one
-    ``(b)`` total; top-level ``(a)`` and ``(c)…(k)`` labels pass through. Mirrors
-    ``reconciler._fold_report_revenue_steps`` so the adapter and the Reconciler
-    fold identically.
+
+def _fold_revenue_pop(
+    period: NotesCashPeriod, cascade_labels: Sequence[str]
+) -> FoldedPoP:
+    """Fold the report's revenue PoP onto ``cascade_labels`` (#514).
+
+    A thin named seam over
+    :func:`~loanwhiz.primitives.report_label_fold.fold_report_pop` — the join
+    itself is deal-agnostic and lives there, so the adapter and the Reconciler
+    cannot fold differently.
     """
-    folded: dict[str, float] = {}
-    b_total = 0.0
-    saw_sub_item = False
-    for step in period.revenue_pop:
-        inner = step.priority.strip("()").strip()
-        if inner.isdigit():
-            b_total += step.amount
-            saw_sub_item = True
-        else:
-            folded[step.priority] = folded.get(step.priority, 0.0) + step.amount
-    if saw_sub_item:
-        folded["(b)"] = b_total
-    return folded
+    return fold_report_pop(period.revenue_pop, cascade_labels)
 
 
-def _fold_redemption_pop(period: NotesCashPeriod) -> dict[str, float]:
-    """``{priority_label: amount}`` for the report's redemption PoP (no folding)."""
-    out: dict[str, float] = {}
-    for step in period.redemption_pop:
-        out[step.priority] = out.get(step.priority, 0.0) + step.amount
-    return out
+def _fold_redemption_pop(
+    period: NotesCashPeriod, cascade_labels: Sequence[str]
+) -> FoldedPoP:
+    """Fold the report's redemption PoP onto ``cascade_labels`` (#514)."""
+    return fold_report_pop(period.redemption_pop, cascade_labels)
 
 
 @dataclass(frozen=True)
@@ -313,20 +310,22 @@ class ReportAdapter:
         (loss surfaces as PDL movement, reconstructed downstream); seeding it
         ``0.0`` is the honest, conservative cut for this report shape.
         """
-        revenue_amounts = _fold_revenue_pop(period)
-        redemption_amounts = _fold_redemption_pop(period)
+        revenue_folded = _fold_revenue_pop(period, _step_labels(self.revenue_steps))
+        redemption_folded = _fold_redemption_pop(
+            period, _step_labels(self.redemption_steps)
+        )
 
         _, rev_overrides, rev_source = build_step_specs(
             self.revenue_steps,
             residual_label=self.revenue_residual_label,
             report_supplied_labels=self.revenue_report_supplied_labels,
-            report_amounts=revenue_amounts,
+            report_amounts=revenue_folded.amounts,
         )
         _, red_overrides, red_source = build_step_specs(
             self.redemption_steps,
             residual_label=self.redemption_residual_label,
             report_supplied_labels=self.redemption_report_supplied_labels,
-            report_amounts=redemption_amounts,
+            report_amounts=redemption_folded.amounts,
         )
 
         # The classifier keys overrides/sources by RECIPIENT; PeriodInputs keys by
