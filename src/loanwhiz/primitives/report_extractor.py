@@ -548,8 +548,9 @@ def _parse_cairn_note_valuation(
 
 #: The format registry — deterministic-first. Append a new ``ReportFormat`` to
 #: add a fast-path for another issuer (spec: optional + incremental; the LLM
-#: path covers everything until a deterministic parser is chosen). The Green
-#: Lion Notes & Cash parser is the first (and currently only) entry.
+#: path covers everything until a deterministic parser is chosen). Order is
+#: significant only in that the first ``matches`` wins, so each recognizer must
+#: reject every other registered layout — see the mutual-exclusion test.
 FORMAT_REGISTRY: list[ReportFormat] = [
     ReportFormat(
         name="green_lion_notes_cash",
