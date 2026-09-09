@@ -23,7 +23,7 @@ What the run says
    period result against the key's four.
 
 2. **Reconciled against that one document directly, the Interest cascade leaves
-   EUR 2,235,154.75 undistributed** — 31% of the period's available revenue, and
+   EUR 2,014,490.53 undistributed** — 28% of the period's available revenue, and
    the sum of two separately-named mechanisms. The pot is the report's own stated
    figure and no step is starved (``total_shortfall`` is EUR 0.00).
 
@@ -36,30 +36,56 @@ What the run says
       purely-numeric ``(b)(1..n)`` wrap artefact, which is not this report's
       shape. Owned by #514.
 
-   b. **EUR 415,004.33 is a step the engine now claims and cannot compute.**
-      Since #511 the Class C interest step is engine-computed rather than handed
-      the report's figure, and its coupon does not resolve, so it refuses
-      (``not_evaluable``) and distributes EUR 0.00 against a published
-      EUR 415,004.33. This is the #493 layered refusal working: the engine says
-      "I cannot answer" where it used to say "the report's answer is mine".
-      Owned by #512, which wires the published applied rates.
+   b. **EUR 194,340.11 is the day-count gap on the two lines the engine now
+      computes for itself.** Since #511 the Class A and Class C interest steps
+      are engine-computed rather than handed the report's figure, and since #512
+      supplied the published applied rates both of them resolve a coupon and
+      produce a number. Each is short by the same factor, for the same single
+      reason, and neither is this issue's to fix — see item 3 and **#521**.
 
-3. **One line of the cascade is now genuinely engine-computed, and it ties.**
+3. **Two lines of the cascade are now genuinely engine-computed, and neither
+   ties — which is how you can tell they are computed.**
    Before #511 the membership test ran against the *raw* extracted recipient, so
    Cairn's ``class_a_notes_interest`` missed the set's ``class_a_interest`` and
    every step was classified ``report-supplied`` — its amount taken from the
    report under its own label and compared to itself. Resolving the spelling
-   first makes the three note-interest steps engine-computed; Class A's coupon
-   resolves, and the engine derives EUR 3,277,457.78 from balance and rate with
-   **no report input**, matching the published figure to the cent. That is the
-   first independently-computed line this deal has ever had.
+   first makes the three note-interest steps engine-computed. With #512's
+   published applied rates in place, Classes A and C each resolve a coupon, and
+   the engine derives the need from the seed's own tranche size and that rate —
+   ``balance × rate/100 / 360 × days`` — with **no report input**::
 
-   The other two are the honest cost of the same change: Class B and Class C now
-   refuse rather than echo. Class B was already reconciling zero-against-zero
-   (its money is in the unjoined ``(H)(i)``/``(H)(ii)`` rows), so only Class C
-   turns a vacuous pass into a visible EUR 415,004.33 disagreement — which is
-   the point. ``steps_passed`` falls 29 → 28 and the undistributed total rises;
-   both are the measurement improving, not the engine regressing.
+     Class A:  EUR 248,000,000 @ 5.008%  ->  3,104,960.00   published 3,277,457.78
+     Class C:  EUR  23,100,000 @ 6.808%  ->    393,162.00   published   415,004.33
+
+   **The disagreement is the proof.** While the engine echoed the report, a tie
+   asserted nothing: a figure copied from the report matches the report by
+   construction, and that circularity is the whole thing epic #510 exists to
+   remove. Before this change Class A appeared to tie to EUR 3,277,457.78 to the
+   cent — but only because the fold, lacking a published rate, fell back to a
+   coupon back-solved from the very amount being checked. It was still the
+   report agreeing with itself, one layer down. These two lines are now derived
+   from the deal model alone, so they *can* disagree with the report, and here
+   they do.
+
+   **The residual has one cause, and it is not this issue's.** Both classes are
+   short by exactly the same factor: ``waterfall_interpreter``'s
+   ``WaterfallFunds.days_in_period`` defaults to 90 — the quarterly Act/360
+   approximation — while Cairn's accrual period for this reporting date is 95
+   days. At 95 days each figure reproduces its published counterpart **to the
+   cent**, which ``test_the_residual_is_exactly_the_day_count_default`` asserts
+   below so the handoff is measured rather than argued. Two lines with different
+   balances and different coupons landing on the same 95 days is one shared
+   cause, not a coincidence. Owned by **#521**.
+
+   Class B is the third engine-claimed step and the only one that still refuses
+   (``not_evaluable``): the deal's stack is spelled ``class_b_1``/``class_b_2``
+   while the report path seeds a canonical ``class_b``, so no tranche attaches —
+   #512's own recorded gotcha. It was already reconciling zero-against-zero (its
+   money sits in the unjoined ``(H)(i)``/``(H)(ii)`` rows), so refusing costs
+   nothing it was not already failing to place.
+
+   ``steps_passed`` falls 29 → 27 and the undistributed total rises; both are
+   the measurement improving, not the engine regressing.
 
 3b. **The reconciliation still *labels* every step ``report-supplied``.**
    ``reconciler._source_of`` is a second raw-membership test over the same set
@@ -99,6 +125,7 @@ from loanwhiz.primitives.reconciliation_answer_key import (
 )
 from loanwhiz.primitives.report_adapter import ReportAdapter
 from loanwhiz.primitives.step_source_classifier import ENGINE_COMPUTED_RECIPIENTS
+from loanwhiz.primitives.waterfall_interpreter import WaterfallFunds
 from tests.clo_answer_key_source import CLO_DEAL_ID, CLO_DEAL_NAME, clo_note_valuation_report
 
 SEED_PATH = (
@@ -113,7 +140,7 @@ NVR_PERIOD = "January 2025"
 #: actually distributes through the deal's extracted 29-step Interest cascade.
 #: The difference is this issue's finding.
 PUBLISHED_AVAILABLE_REVENUE = 7_255_062.35
-ENGINE_DISTRIBUTED_REVENUE = 5_019_907.60
+ENGINE_DISTRIBUTED_REVENUE = 5_240_571.82
 
 #: The shortfall's two mechanisms, named separately because they have different
 #: owners and different fixes (#511 split them; before it, only the first
@@ -123,17 +150,37 @@ ENGINE_DISTRIBUTED_REVENUE = 5_019_907.60
 #: whole, which is exactly the reading epic #510 is trying to avoid.
 #:
 #: - the published rows the fold joins to no cascade step at all — #514's gap;
-#: - the Class C interest the engine now claims and cannot compute — #512's gap.
+#: - the day-count gap on the two lines the engine now computes — #521's gap.
 UNJOINED_REVENUE_ROWS_TOTAL = 1_820_150.42
-UNCOMPUTED_CLASS_C_INTEREST = 415_004.33
 
-#: Derived, never transcribed: a fix to either mechanism must move this too.
-REVENUE_SHORTFALL = UNJOINED_REVENUE_ROWS_TOTAL + UNCOMPUTED_CLASS_C_INTEREST
+#: The two engine-computed interest lines: what the engine derives from the deal
+#: model, and what the report publishes. Since #512 supplied the applied rates
+#: **both** classes compute; neither ties, and both miss by the same day-count
+#: factor — see ``CAIRN_ACCRUAL_DAYS`` below and #521.
+ENGINE_COMPUTED_CLASS_A_INTEREST = 3_104_960.00
+PUBLISHED_CLASS_A_INTEREST = 3_277_457.78
+ENGINE_COMPUTED_CLASS_C_INTEREST = 393_162.00
+PUBLISHED_CLASS_C_INTEREST = 415_004.33
 
-#: Class A interest, computed by the engine from balance and rate with no report
-#: input, and equal to the published figure to the cent — the deal's first
-#: independently-reconciled line (#511).
-ENGINE_COMPUTED_CLASS_A_INTEREST = 3_277_457.78
+#: The inputs those two lines are computed from: the seed's tranche sizes and
+#: #512's published applied rates. No report figure is among them — which is
+#: what makes the lines independent, and the disagreement below meaningful.
+CLASS_A_SIZE_EUR, CLASS_A_APPLIED_RATE_PCT = 248_000_000.00, 5.008
+CLASS_C_SIZE_EUR, CLASS_C_APPLIED_RATE_PCT = 23_100_000.00, 6.808
+
+#: ``waterfall_interpreter.WaterfallFunds.days_in_period`` defaults to 90 — the
+#: quarterly Act/360 approximation — while Cairn's actual accrual period for
+#: this reporting date is 95 days. That single default is the entire residual
+#: between every figure below and its published counterpart. **Owned by #521;
+#: deliberately not fixed here.**
+INTERPRETER_DEFAULT_DAYS = 90
+CAIRN_ACCRUAL_DAYS = 95
+
+#: Derived, never transcribed: a fix to either mechanism must move these too.
+CLASS_A_DAY_COUNT_GAP = PUBLISHED_CLASS_A_INTEREST - ENGINE_COMPUTED_CLASS_A_INTEREST
+CLASS_C_DAY_COUNT_GAP = PUBLISHED_CLASS_C_INTEREST - ENGINE_COMPUTED_CLASS_C_INTEREST
+DAY_COUNT_SHORTFALL = CLASS_A_DAY_COUNT_GAP + CLASS_C_DAY_COUNT_GAP
+REVENUE_SHORTFALL = UNJOINED_REVENUE_ROWS_TOTAL + DAY_COUNT_SHORTFALL
 
 #: The money-carrying Interest rows no engine label joins, and what each pays.
 #: (Twenty report rows join nothing; the rest of them are zero.) The report
@@ -310,12 +357,12 @@ def test_the_keys_pop_period_is_the_report_the_grade_uses(
 
 
 def test_the_interest_cascade_does_not_reconcile(recon: ReconciliationReport) -> None:
-    """The headline: EUR 2,235,154.75 of published revenue the engine never places.
+    """The headline: EUR 2,014,490.53 of published revenue the engine never places.
 
     ``WaterfallReconciliation.passed`` requires both that every joined step agrees
     and that the distributed total ties to available funds. Since #511 **both**
-    gates fail: the tie-out gap is still the larger finding, but one step now
-    carries a real delta instead of echoing the report at itself.
+    gates fail: the tie-out gap is still the larger finding, but two steps now
+    carry a real delta instead of echoing the report at themselves.
     """
     assert recon.passed is False
     assert recon.periods_passed == 0
@@ -332,10 +379,10 @@ def test_the_interest_cascade_does_not_reconcile(recon: ReconciliationReport) ->
     )
 
 
-def test_exactly_one_step_disagrees_and_the_rest_is_the_tie_out_gap(
+def test_exactly_two_steps_disagree_and_the_rest_is_the_tie_out_gap(
     recon: ReconciliationReport,
 ) -> None:
-    """28 of 29 steps match; the one that does not is the engine refusing.
+    """27 of 29 steps match; the two that do not are the two the engine computes.
 
     Stated as its own assertion because the numbers read as contradictory and a
     reader who only saw ``steps_passed`` would report a near-pass. Two distinct
@@ -343,25 +390,43 @@ def test_exactly_one_step_disagrees_and_the_rest_is_the_tie_out_gap(
 
     - **the tie-out gate** — EUR 1,820,150.42 of published rows join no step
       (#514); and
-    - **one step-level delta** — Class C interest, which #511 made
-      engine-computed and whose coupon does not resolve, so it refuses instead
-      of quoting the report back (#512).
+    - **two step-level deltas** — Class A and Class C interest, which #511 made
+      engine-computed and #512 gave resolvable published coupons. Both produce a
+      number and both are short by the interpreter's 90-day default against a
+      95-day accrual period (#521).
 
     Before #511 this file asserted ``steps_passed == 29`` and every delta zero.
-    That was 29 comparisons of the report against itself; this is 28 of them
-    plus one honest disagreement, and the second is worth more than the first.
+    That was 29 comparisons of the report against itself; this is 27 of them plus
+    two honest disagreements, and the pair is worth more than the 29 were: a step
+    that *can* disagree is a step that was actually computed.
     """
     revenue = recon.periods[0].revenue
     assert len(revenue.steps) == 29
-    assert revenue.steps_passed == 28
+    assert revenue.steps_passed == 27
 
     disagreeing = [step for step in revenue.steps if step.delta != 0.0]
     assert [(s.priority, s.recipient) for s in disagreeing] == [
-        ("(J)", "class_c_notes_interest")
+        ("(G)", "class_a_notes_interest"),
+        ("(J)", "class_c_notes_interest"),
     ]
-    (class_c,) = disagreeing
-    assert class_c.engine_amount == 0.0
-    assert class_c.report_amount == pytest.approx(UNCOMPUTED_CLASS_C_INTEREST, abs=0.01)
+    class_a, class_c = disagreeing
+    assert class_a.engine_amount == pytest.approx(
+        ENGINE_COMPUTED_CLASS_A_INTEREST, abs=0.01
+    )
+    assert class_a.report_amount == pytest.approx(PUBLISHED_CLASS_A_INTEREST, abs=0.01)
+    assert class_c.engine_amount == pytest.approx(
+        ENGINE_COMPUTED_CLASS_C_INTEREST, abs=0.01
+    )
+    assert class_c.report_amount == pytest.approx(PUBLISHED_CLASS_C_INTEREST, abs=0.01)
+
+    # Neither is a refusal. A EUR 0.00 engine amount here would mean the coupon
+    # stopped resolving — a different failure, with a different owner, that would
+    # otherwise hide inside the same "step disagrees" count.
+    assert class_a.engine_amount > 0.0
+    assert class_c.engine_amount > 0.0
+    assert sum(abs(s.delta) for s in disagreeing) == pytest.approx(
+        DAY_COUNT_SHORTFALL, abs=0.01
+    )
 
 
 def test_the_money_is_undistributed_not_underfunded(
@@ -382,11 +447,11 @@ def test_the_money_is_undistributed_not_underfunded(
     guess — so a residual sweep would pay it to the wrong party and turn a
     visible failure into a silent one. #496 named that fix and rejected it.
 
-    Since #511 the remainder has two sources, and the ``not_evaluable`` steps are
-    the new one: recipients the engine now *claims* (their spelling resolves into
-    ``ENGINE_COMPUTED_RECIPIENTS``) but cannot compute for want of a coupon. That
-    is #493's layered refusal reaching the CLO, and it must stay visible here —
-    an empty ``not_evaluable`` list would now mean the echo came back.
+    Since #511 the remainder has two sources. The larger is still the unjoined
+    rows; the newer is the day-count gap on the two lines the engine now computes
+    for itself (#521). A single step still refuses outright — Class B, whose
+    tranche the report path never attaches (#512's recorded gotcha) — and that
+    refusal must stay visible here: #493's layered refusal reaching the CLO.
     """
     execution = clo_series.period_results[0].revenue_execution
 
@@ -400,12 +465,12 @@ def test_the_money_is_undistributed_not_underfunded(
     assert execution.total_shortfall == 0.0
     assert not [step for step in execution.steps if step.gated]
 
-    # Exactly the two note-interest steps whose coupon does not resolve refuse.
-    # Class A, the third engine-computed step, is absent from this list because
-    # it computed — which is the whole of #511's result in one assertion.
+    # Only Class B still refuses. Classes A and C — the other two engine-claimed
+    # steps — are absent from this list because they computed, which is #511's
+    # result plus #512's rates in one assertion. Their disagreement shows up as a
+    # delta (asserted above), not as an absence.
     assert [step.recipient for step in execution.steps if step.not_evaluable] == [
         "class_b_notes_interest",
-        "class_c_notes_interest",
     ]
     # And the reconciliation's shortfall is that same remainder, not a second
     # number that happens to be close.
@@ -476,30 +541,56 @@ def test_class_b_interest_passes_without_ever_being_compared(
 # ---------------------------------------------------------------------------
 
 
-def test_class_a_interest_is_computed_from_the_deal_model_and_ties(
+def test_class_a_interest_is_computed_from_the_deal_model_and_does_not_yet_tie(
     clo_series: DealStateSeries, recon: ReconciliationReport
 ) -> None:
-    """The independent line: EUR 3,277,457.78 derived, not copied, and it matches.
+    """The independent line: EUR 3,104,960.00 derived, not copied — and it disagrees.
 
-    This is what #511 bought. ``ENGINE_COMPUTED_RECIPIENTS`` names the recipients
-    the interpreter derives from the deal model with no report input — the
-    independent half of any reconciliation. It is spelled in canonical vocabulary
-    (``class_a_interest``) while Cairn's cascade carries the document's own
-    spelling (``class_a_notes_interest``), and the classifier used to test the raw
-    string, so the membership test missed every step including the three classes
-    the set does name. Every step was then handed the report's own figure as its
-    "need" and agreed with it by construction.
+    This is what #511 bought, and the **disagreement is the receipt.**
+    ``ENGINE_COMPUTED_RECIPIENTS`` names the recipients the interpreter derives
+    from the deal model with no report input — the independent half of any
+    reconciliation. It is spelled in canonical vocabulary (``class_a_interest``)
+    while Cairn's cascade carries the document's own spelling
+    (``class_a_notes_interest``), and the classifier used to test the raw string,
+    so the membership test missed every step including the three classes the set
+    does name. Every step was then handed the report's own figure as its "need"
+    and agreed with it by construction.
 
-    Resolving the spelling first, Class A's coupon resolves and the engine
-    computes ``balance × rate/100 / 360 × days`` itself. Asserted through the
-    fold (the need the interpreter actually produced) *and* the reconciliation
-    (that need against the published figure), because only the pair distinguishes
-    "computed and correct" from "copied and therefore correct".
+    **This test used to assert a tie, and the tie was the bug.** On #511's own
+    branch no published rate existed, so the fold fell back to an
+    amount-recovered coupon — back-solved from the very figure being checked —
+    and reproduced EUR 3,277,457.78 to the cent. That agreement was the report
+    agreeing with itself one layer down, which is exactly the circularity epic
+    #510 exists to delete. #512 then supplied the genuinely published 5.008%,
+    the fallback stopped firing, and the agreement went with it. The tie
+    disappearing is this change working, not breaking.
+
+    What the engine computes now comes from the seed's own tranche size and that
+    published rate: ``248,000,000 × 5.008/100 / 360 × 90``. It falls short of the
+    published EUR 3,277,457.78 for exactly one reason — ``days_in_period``
+    defaults to 90 while Cairn accrues over 95 days.
+    **That default is #521's, not this issue's**, and
+    ``test_the_residual_is_exactly_the_day_count_default`` below proves it is the
+    whole gap. **The expected value here changes when #521 lands:** it becomes
+    ``PUBLISHED_CLASS_A_INTEREST``, the delta becomes zero, and this test is
+    renamed back to ``..._and_ties``.
+
+    Asserted through the fold (the need the interpreter actually produced) *and*
+    the reconciliation (that need against the published figure), because only the
+    pair distinguishes "computed" from "copied".
     """
     execution = clo_series.period_results[0].revenue_execution
     (class_a,) = [s for s in execution.steps if s.recipient == "class_a_notes_interest"]
     assert class_a.not_evaluable is False
     assert class_a.need == pytest.approx(ENGINE_COMPUTED_CLASS_A_INTEREST, abs=0.01)
+
+    # Derived from the deal model's own two inputs, so this reds if the need ever
+    # starts arriving from somewhere other than size × published rate × day count
+    # — the amount-recovered fallback creeping back would be caught right here.
+    assert class_a.need == pytest.approx(
+        CLASS_A_SIZE_EUR * CLASS_A_APPLIED_RATE_PCT / 100 / 360 * INTERPRETER_DEFAULT_DAYS,
+        abs=0.01,
+    )
 
     (reconciled,) = [
         s for s in recon.periods[0].revenue.steps if s.recipient == "class_a_notes_interest"
@@ -507,15 +598,52 @@ def test_class_a_interest_is_computed_from_the_deal_model_and_ties(
     assert reconciled.engine_amount == pytest.approx(
         ENGINE_COMPUTED_CLASS_A_INTEREST, abs=0.01
     )
-    assert reconciled.report_amount == pytest.approx(
-        ENGINE_COMPUTED_CLASS_A_INTEREST, abs=0.01
-    )
-    assert reconciled.delta == 0.0
+    # The report's figure is emphatically *not* the engine's. Before #511 these
+    # two assertions read the same constant; that they now differ is the finding.
+    assert reconciled.report_amount == pytest.approx(PUBLISHED_CLASS_A_INTEREST, abs=0.01)
+    assert reconciled.engine_amount != reconciled.report_amount
+    assert reconciled.delta == pytest.approx(-CLASS_A_DAY_COUNT_GAP, abs=0.01)
+    assert reconciled.passed is False
 
     # The set itself gained no CLO spelling — the fix is at the comparison, which
     # is what keeps one vocabulary in the table (#503).
     assert "class_a_notes_interest" not in ENGINE_COMPUTED_RECIPIENTS
     assert "class_a_interest" in ENGINE_COMPUTED_RECIPIENTS
+
+
+def test_the_residual_is_exactly_the_day_count_default() -> None:
+    """Both computed lines tie to the cent at 95 days — so #521 is the whole gap.
+
+    A handoff is only worth making if it is measured. Class A and Class C have
+    different balances (EUR 248,000,000 / EUR 23,100,000) and different coupons
+    (5.008% / 6.808%), so the *only* input they share is the day count. Each
+    recomputed at Cairn's actual 95-day accrual period reproduces its published
+    figure exactly, with nothing else about either line moving. Two independent
+    lines landing on the same 95 days is one shared cause, not a coincidence.
+
+    That turns the residual into a single-cause defect owned elsewhere rather
+    than a vague "close enough". When #521 replaces the 90-day default with the
+    deal's real accrual period, both deltas go to zero and ``steps_passed``
+    reaches 29 with nothing in #511's classifier changing.
+
+    **If this test ever reds, the gap is no longer only the day count** and the
+    #521 handoff — in this module's docstring and in every ``expected to change``
+    note above — needs re-stating before anything else is believed.
+    """
+    for size, rate, computed, published in (
+        (CLASS_A_SIZE_EUR, CLASS_A_APPLIED_RATE_PCT,
+         ENGINE_COMPUTED_CLASS_A_INTEREST, PUBLISHED_CLASS_A_INTEREST),
+        (CLASS_C_SIZE_EUR, CLASS_C_APPLIED_RATE_PCT,
+         ENGINE_COMPUTED_CLASS_C_INTEREST, PUBLISHED_CLASS_C_INTEREST),
+    ):
+        per_day_act360 = size * rate / 100 / 360
+        assert per_day_act360 * INTERPRETER_DEFAULT_DAYS == pytest.approx(computed, abs=0.01)
+        assert per_day_act360 * CAIRN_ACCRUAL_DAYS == pytest.approx(published, abs=0.01)
+
+    # Read the default off the interpreter itself rather than restating it, so
+    # this reds the moment #521 changes it — which is precisely the signal that
+    # every expected value pinned above has gone stale.
+    assert WaterfallFunds.model_fields["days_in_period"].default == INTERPRETER_DEFAULT_DAYS
 
 
 def test_the_reconciliation_still_labels_every_step_report_supplied(
@@ -690,9 +818,9 @@ def test_the_published_statements_carry_the_measured_result() -> None:
     asserts, so a card quoting a stale number reds here.
 
     **The figure checked is the fold gap, not the total (#511).** The cards were
-    written when the two were the same number. #511 made Class C's refusal
-    visible, so the engine's total remainder is now ``REVENUE_SHORTFALL`` =
-    ``UNJOINED_REVENUE_ROWS_TOTAL + UNCOMPUTED_CLASS_C_INTEREST`` while the cards
+    written when the two were the same number. Since #511 the engine computes two
+    interest lines for itself, so its total remainder is ``REVENUE_SHORTFALL`` =
+    ``UNJOINED_REVENUE_ROWS_TOTAL + DAY_COUNT_SHORTFALL`` while the cards
     still state only the first — which remains true of the rows they describe,
     but understates the deal's gap. Restating them is #515's ("Re-grade the CLO
     and record the verdict"); ``docs/**`` is outside #511's declared paths, and
