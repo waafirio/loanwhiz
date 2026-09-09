@@ -190,11 +190,27 @@ def test_a_refusal_carries_the_document_it_looked_in() -> None:
     Particulars answered.
     """
     region = _region()
-    for field in ("source.url", "source.registry_slot", "source.registry_note"):
-        assert field in region, (
+    for field in ("source.url", "source.registry_slot"):
+        assert f"{{{field}}}" in region, (
             f"{field} is no longer rendered; a refusal that does not name the "
             "document it read cannot be challenged"
         )
+
+    # The registration note is asserted through its own CELL, not by the field
+    # appearing anywhere in the region. This guard's first version checked only
+    # that `source.registry_note` occurred somewhere — and it survived replacing
+    # the rendered `{source.registry_note}` with `{null}`, because the field is
+    # *also* named in the conditional that decides whether to draw the row. A
+    # reference is not a rendering; only the cell's contents prove the note
+    # reaches a reader. This is Contego's whole point: without the note, nothing
+    # on screen says which of its two Listing Particulars answered.
+    start = region.index("<dt>Registry note</dt>")
+    cell = region[start : region.index("</dd>", start)]
+    assert "{source.registry_note}" in cell, (
+        "the registry-note cell no longer renders the note itself; a reader "
+        "cannot tell which of a deal's documents was consulted"
+    )
+
     # The reason itself renders on both outcomes, unconditionally.
     assert "{check.reason}" in region
 
