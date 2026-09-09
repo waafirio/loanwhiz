@@ -45,6 +45,7 @@ from loanwhiz.extraction.payment_schedule_parser import (
     payment_date_for,
     payment_date_on_or_after,
     previous_payment_date,
+    scheduled_dates_in_year,
 )
 from loanwhiz.primitives.note_valuation_parser import stated_next_payment_date
 from loanwhiz.primitives.report_adapter import DEFAULT_DAYS_IN_PERIOD, ReportAdapter
@@ -126,6 +127,80 @@ def test_the_business_day_definition_spans_four_centres(
         "New York",
     ]
     assert set(schedule.business_centres) <= set(BUSINESS_CENTRE_HOLIDAYS)
+
+
+def test_the_centre_list_does_not_depend_on_cairns_parenthetical(
+    prospectus_text: str,
+) -> None:
+    """A re-worded Business Day limb still yields all four centres.
+
+    Self-review finding. The pattern originally required a ``(`` immediately after
+    the centre list — true of this document ("… and New York (other than a
+    Saturday …") and of nothing in general. A prospectus phrasing the limb without
+    it parsed to ``["T2"]`` alone and resolved January 2025 to the **20th**, a
+    94-day period, with no exception raised anywhere.
+
+    That is the worst available failure for this module: not a crash, but a
+    plausible number that is wrong by one holiday. Pinned against the same
+    fixture with the parenthetical removed.
+    """
+    reworded = prospectus_text.replace(
+        "New \nYork (other than a Saturday or a Sunday); and", "New \nYork; and"
+    )
+    assert reworded != prospectus_text, "the mutation did not apply"
+    assert parse_business_day_centres(reworded) == [
+        "T2",
+        "London",
+        "Dublin",
+        "New York",
+    ]
+
+
+def test_limb_c_back_reference_is_not_read_as_a_centre(prospectus_text: str) -> None:
+    """"settle payments in **that place**" is a back-reference, not a city.
+
+    Limb ``(c)`` matches the same "settle payments in …" shape as limb ``(b)``.
+    Now that the pattern scans every occurrence rather than only the first, the
+    back-reference has to be excluded explicitly or it becomes a business centre
+    with no holiday list — which would then raise on every date.
+    """
+    assert "settle payments in that place" in " ".join(prospectus_text.split())
+    assert "that place" not in parse_business_day_centres(prospectus_text)
+
+
+def test_a_business_day_definition_naming_no_centre_refuses() -> None:
+    """Found but unreadable raises — it must not return a usable-looking subset.
+
+    Dropping centres does not fail loudly; it shifts dates by a day or two, which
+    is indistinguishable from a correct answer downstream.
+    """
+    with pytest.raises(ValueError, match="names no settlement centres"):
+        parse_business_day_centres(
+            '"Business Day" means a day of the week. "Cut-off" means something.'
+        )
+
+
+def test_a_schedule_stating_no_convention_refuses() -> None:
+    """A business-day convention is read or the schedule is refused.
+
+    Defaulting it silently is the same shape as the centres finding: the
+    convention decides which day a period ends on.
+    """
+    with pytest.raises(ValueError, match="no business-day convention"):
+        parse_payment_date_schedule(
+            '"Payment Date" means: (b) 18 January, 18 April, 18 October and '
+            "18 July at all other times, in each case, in each year commencing "
+            'on 18 April 2024. "Person" means a person.'
+        )
+
+
+def test_a_schedule_whose_day_does_not_exist_in_a_month_refuses() -> None:
+    """The 31st of February is not a date, and no convention is stated for it."""
+    impossible = PaymentDateSchedule(
+        day_of_month=31, months=(1, 2), commencing=date(2024, 1, 31)
+    )
+    with pytest.raises(UnresolvableBusinessDay, match="does not exist in month"):
+        scheduled_dates_in_year(impossible, 2025)
 
 
 def test_the_convention_survives_the_inline_defined_term(schedule: PaymentDateSchedule) -> None:
@@ -406,15 +481,28 @@ def test_the_report_adapter_derives_cairns_day_count() -> None:
     ) == 95
 
 
-@pytest.mark.parametrize(
-    "seed_name",
-    [
-        "green-lion-2023-1-bv.json",
-        "green-lion-2024-1-bv.json",
-        "green-lion-2026-1-bv.json",
-        "leone-arancio-rmbs-2023-1-srl.json",
-    ],
+#: Every committed seed except the CLO — enumerated from disk rather than listed,
+#: so a seed added later is covered the day it lands. A hardcoded list omitted
+#: ``sol-lion-ii`` and would have silently exempted any new deal (self-review
+#: finding); the point of this guard is that it covers *all* of them.
+OTHER_SEEDS: tuple[str, ...] = tuple(
+    sorted(
+        path.name
+        for path in SEED_DIR.glob("*.json")
+        if path.name != "cairn-clo-xvii-dac.json"
+    )
 )
+
+
+def test_the_byte_identity_guard_covers_every_other_committed_seed() -> None:
+    """The guard below is only worth its name if nothing escapes it."""
+    assert len(OTHER_SEEDS) == len(list(SEED_DIR.glob("*.json"))) - 1
+    assert "green-lion-2024-1-bv.json" in OTHER_SEEDS
+    assert any(name.startswith("sol-lion") for name in OTHER_SEEDS)
+    assert "cairn-clo-xvii-dac.json" not in OTHER_SEEDS
+
+
+@pytest.mark.parametrize("seed_name", OTHER_SEEDS)
 def test_deals_without_a_stated_schedule_keep_the_ninety_day_default(
     seed_name: str,
 ) -> None:

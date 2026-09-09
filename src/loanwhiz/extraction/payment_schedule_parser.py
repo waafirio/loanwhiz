@@ -373,10 +373,17 @@ _MODIFIED_RE = re.compile(r"fall in the following month")
 
 #: ``(b) on which commercial banks ... settle payments in London, Dublin and New
 #: York``. T2 is stated in its own limb ``(a)`` and added separately.
-_CENTRES_RE = re.compile(
-    r"settle payments in\s+(?P<centres>[A-Z][A-Za-z]+(?:\s*,\s*[A-Z][A-Za-z ]+?)*"
-    r"\s+and\s+[A-Z][A-Za-z ]+?)\s*\("
-)
+#:
+#: Deliberately delimiter-terminated rather than shaped to Cairn's wording. An
+#: earlier version required a ``(`` immediately after the list — true of this
+#: document's parenthetical and of nothing in general — and a prospectus phrasing
+#: the limb without it parsed to ``["T2"]`` alone, silently, yielding a 94-day
+#: January period instead of 95. Every centre dropped moves dates.
+_CENTRES_RE = re.compile(r"settle payments in\s+(?P<centres>[^;.()]+)")
+
+#: Limb ``(c)`` says "settle payments in **that place**" — a back-reference, not a
+#: centre. It matches the pattern above and must not become a business centre.
+_NOT_A_CENTRE = frozenset({"that place", "that jurisdiction", "each such place"})
 _T2_RE = re.compile(r"\bT2\b\s+is open for settlement")
 
 
@@ -446,9 +453,13 @@ def parse_payment_date_schedule(text: str) -> PaymentDateSchedule | None:
             f"unrecognised commencement month {commencing.group('month')!r}"
         )
 
-    convention = "following"
-    if _POSTPONED_RE.search(body):
-        convention = "modified_following" if _MODIFIED_RE.search(body) else "following"
+    if not _POSTPONED_RE.search(body):
+        raise ValueError(
+            '"Payment Date" is defined but states no business-day convention; '
+            "a convention decides which day a period ends on, so it is read or "
+            "the schedule is refused"
+        )
+    convention = "modified_following" if _MODIFIED_RE.search(body) else "following"
 
     return PaymentDateSchedule(
         day_of_month=next(iter(days)),
@@ -468,8 +479,17 @@ def parse_business_day_centres(text: str) -> list[str]:
     """Parse the settlement centres the ``"Business Day"`` definition requires.
 
     Returns them in the order they appear, T2 first when the definition's Euro
-    settlement limb is present. An empty list means the definition was not found —
-    the caller decides whether that is fatal.
+    settlement limb is present. An empty list means the definition was **not
+    found** at all — the caller decides whether that is fatal.
+
+    A definition that *is* found but yields no recognisable centre raises instead.
+    That asymmetry is the point: dropping centres does not fail, it shifts dates,
+    and the shift is small enough to look like a real answer. Missing New York
+    alone moves Cairn's January 2025 Payment Date from the 21st to the 20th and
+    its accrual period from 95 days to 94.
+
+    Raises:
+        ValueError: If the definition is present but no centre could be read.
     """
     block = _BUSINESS_DAY_BLOCK_RE.search(text)
     if block is None:
@@ -480,13 +500,23 @@ def parse_business_day_centres(text: str) -> list[str]:
     if _T2_RE.search(body):
         centres.append("T2")
 
-    named = _CENTRES_RE.search(body)
-    if named is not None:
+    for named in _CENTRES_RE.finditer(body):
         raw = named.group("centres").replace(" and ", ", ")
         for part in raw.split(","):
-            centre = part.strip()
-            if centre and centre not in centres:
+            centre = " ".join(part.split())
+            if not centre or centre.lower() in _NOT_A_CENTRE:
+                continue
+            if not centre[0].isupper():
+                continue
+            if centre not in centres:
                 centres.append(centre)
+
+    if not centres:
+        raise ValueError(
+            '"Business Day" is defined but names no settlement centres this '
+            "parser recognises; refusing to resolve payment dates against an "
+            "empty calendar"
+        )
     return centres
 
 
@@ -571,12 +601,19 @@ def scheduled_dates_in_year(schedule: PaymentDateSchedule, year: int) -> list[da
     Dates before :attr:`PaymentDateSchedule.commencing` are excluded — they are
     not Payment Dates, so an accrual period must never start on one.
     """
-    return [
-        candidate
-        for month in schedule.months
-        if (candidate := date(year, month, schedule.day_of_month))
-        >= schedule.commencing
-    ]
+    dates: list[date] = []
+    for month in schedule.months:
+        try:
+            candidate = date(year, month, schedule.day_of_month)
+        except ValueError as exc:  # e.g. a schedule stated on the 31st, in February
+            raise UnresolvableBusinessDay(
+                f"the stated schedule's day-of-month ({schedule.day_of_month}) "
+                f"does not exist in month {month} of {year}; the document states "
+                "no convention for that case, so it must not be assumed"
+            ) from exc
+        if candidate >= schedule.commencing:
+            dates.append(candidate)
+    return dates
 
 
 def payment_date_for(schedule: PaymentDateSchedule, scheduled: date) -> date:
