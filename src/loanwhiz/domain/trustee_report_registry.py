@@ -140,6 +140,14 @@ REQUIRED_SECTION_KEYS: Mapping[DocumentKind, frozenset[str]] = MappingProxyType(
 )
 
 
+#: The ``NotesCashPeriod`` fields the note-valuation parser fills from a
+#: family's declared waterfalls. Same contract as :data:`REQUIRED_SECTION_KEYS`,
+#: one level down: the parser looks each of these up by name, so a family that
+#: declares only one of them would fail with a bare ``KeyError`` deep inside the
+#: parse instead of at the boundary, naming nothing.
+REQUIRED_WATERFALL_FIELDS: frozenset[str] = frozenset({"revenue", "redemption"})
+
+
 class ColumnOrder(str, Enum):
     """Which of a coverage-test table's two percentage columns comes first.
 
@@ -412,6 +420,23 @@ class TrusteeReportFamilyRegistry:
                     f"{undeclared} have no declared title — the waterfall would "
                     "route to no pages"
                 )
+
+            if kind is DocumentKind.NOTE_VALUATION_REPORT:
+                fields = [field_name for _, field_name in layout.waterfalls]
+                duplicated = sorted({f for f in fields if fields.count(f) > 1})
+                if duplicated:
+                    raise ValueError(
+                        f"{family.family_id}/{kind.value}: waterfall field(s) "
+                        f"{duplicated} are declared twice — the second would "
+                        "silently overwrite the first"
+                    )
+                absent = sorted(REQUIRED_WATERFALL_FIELDS - set(fields))
+                if absent:
+                    raise ValueError(
+                        f"{family.family_id}/{kind.value}: no waterfall declared "
+                        f"for {absent} — the parser looks each up by name, so "
+                        "this would fail deep in the parse naming nothing"
+                    )
 
         self._families.append(family)
         return family

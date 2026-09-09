@@ -41,6 +41,7 @@ from loanwhiz.domain.trustee_report_registry import (
     FAMILY_REGISTRY,
     REQUIRED_SECTION_KEYS,
     SECTION_CCC,
+    SECTION_NV_INTEREST_POP,
     SECTION_NV_PRINCIPAL_POP,
     ColumnOrder,
     DocumentKind,
@@ -86,6 +87,10 @@ def _complete_family(**overrides) -> TrusteeReportFamily:
                 },
                 furniture_prefixes=("Page ",),
                 furniture_order=FurnitureOrder.DATA_FIRST,
+                waterfalls=(
+                    (SECTION_NV_INTEREST_POP, "revenue"),
+                    (SECTION_NV_PRINCIPAL_POP, "redemption"),
+                ),
             ),
         },
     )
@@ -214,6 +219,51 @@ def test_a_waterfall_pointing_at_an_undeclared_section_is_refused() -> None:
 # ---------------------------------------------------------------------------
 # Signature hygiene
 # ---------------------------------------------------------------------------
+
+
+def test_a_family_declaring_only_one_waterfall_is_refused() -> None:
+    """The parser looks each waterfall up by name, so a gap must refuse here.
+
+    Without this the omission surfaces as a bare ``KeyError`` deep inside the
+    parse, naming neither the family nor the field — the boundary is where a
+    registration mistake should be reported.
+    """
+    registry = TrusteeReportFamilyRegistry()
+    family = _complete_family()
+    nv = family.documents[DocumentKind.NOTE_VALUATION_REPORT]
+    only_one = dataclasses.replace(
+        nv, waterfalls=((SECTION_NV_PRINCIPAL_POP, "redemption"),)
+    )
+
+    with pytest.raises(ValueError, match="revenue"):
+        registry.register(
+            dataclasses.replace(
+                family,
+                documents={**family.documents, DocumentKind.NOTE_VALUATION_REPORT: only_one},
+            )
+        )
+
+
+def test_a_waterfall_field_declared_twice_is_refused() -> None:
+    """Two sections filling one field would silently overwrite each other."""
+    registry = TrusteeReportFamilyRegistry()
+    family = _complete_family()
+    nv = family.documents[DocumentKind.NOTE_VALUATION_REPORT]
+    duplicated = dataclasses.replace(
+        nv,
+        waterfalls=(
+            (SECTION_NV_INTEREST_POP, "revenue"),
+            (SECTION_NV_PRINCIPAL_POP, "revenue"),
+        ),
+    )
+
+    with pytest.raises(ValueError, match="declared twice"):
+        registry.register(
+            dataclasses.replace(
+                family,
+                documents={**family.documents, DocumentKind.NOTE_VALUATION_REPORT: duplicated},
+            )
+        )
 
 
 def test_an_empty_header_signature_is_refused() -> None:
