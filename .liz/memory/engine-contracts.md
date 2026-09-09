@@ -104,6 +104,18 @@ see the disagreement.
 
 Refs: #503
 
+## 2026-09-08 · pitfall · #511
+
+Canonicalise **both sides** of a membership test, never only the incoming value.
+A frozenset named for "recipients the engine can compute" read as canonical but
+held three legacy spellings whose canonical forms were absent from it, so
+resolving just the extracted name would have fixed the CLO steps and silently
+reclassified the RMBS ones. Derive the compared set through the same resolver,
+and exclude its "recognised but unplaceable" answer — letting `unmapped` into a
+computable set would classify every denied string computable at once. Check what
+a declared set is spelled in before trusting the name it is filed under.
+
+Refs: #511
 ## 2026-09-08 · gotcha · #512
 
 Check what the **report path** actually seeds before wiring a per-class input
@@ -128,3 +140,23 @@ catalogued three sites of this defect by dict key and missed the domain→engine
 `DealState` bridge, because it is spelled as arguments rather than a dict.
 
 Refs: #520
+## 2026-09-09 · pitfall · #511
+
+A reconciliation that **ties** proves nothing until you know where the engine's
+half came from. Cairn's Class A interest matched the published EUR 3,277,457.78
+to the cent — because, with no published rate wired, the fold fell back to an
+**amount-recovered** coupon back-solved from the very figure being checked. The
+tie was the report agreeing with itself one layer down, and the test asserting
+the tie was standing on the exact circularity it was written to detect. Wiring
+the genuinely published rate (#512) made the agreement vanish and uncovered a
+real day-count defect (#521) the false tie had been hiding.
+
+Two rules follow. **Pin the input provenance, not just the output**: assert the
+need against `size x published rate x day count` so an amount-recovered fallback
+creeping back in reds immediately — an output-only assertion cannot tell a
+computed figure from a copied one. And when you remove a circularity, **expect
+green to turn red and read that as the result**: a previously-passing assertion
+that breaks is the measurement beginning to work, not a regression to tune away.
+Check *why* a number agrees before recording that it agrees.
+
+Refs: #511, #512, #521
