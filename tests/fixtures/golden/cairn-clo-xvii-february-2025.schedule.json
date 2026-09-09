@@ -1,0 +1,984 @@
+{
+  "aggregates": {
+    "accrual_record_count": null,
+    "aggregate_principal_balance": "401342140.14",
+    "asset_count": 191,
+    "ccc_total": "9001404.36",
+    "country": [
+      {
+        "balance": "88195572.08",
+        "count": 38,
+        "label": "France",
+        "percent": "21.98"
+      },
+      {
+        "balance": "78579960.76",
+        "count": 32,
+        "label": "United Kingdom",
+        "percent": "19.58"
+      },
+      {
+        "balance": "59869588.03",
+        "count": 30,
+        "label": "Germany",
+        "percent": "14.92"
+      },
+      {
+        "balance": "48774434.57",
+        "count": 22,
+        "label": "Netherlands",
+        "percent": "12.15"
+      },
+      {
+        "balance": "34026081.35",
+        "count": 20,
+        "label": "United States",
+        "percent": "8.48"
+      },
+      {
+        "balance": "24895356.43",
+        "count": 13,
+        "label": "Spain",
+        "percent": "6.20"
+      },
+      {
+        "balance": "12910132.73",
+        "count": 5,
+        "label": "Sweden",
+        "percent": "3.22"
+      },
+      {
+        "balance": "9987500.00",
+        "count": 4,
+        "label": "Luxembourg",
+        "percent": "2.49"
+      },
+      {
+        "balance": "8500000.00",
+        "count": 5,
+        "label": "Italy",
+        "percent": "2.12"
+      },
+      {
+        "balance": "8000000.00",
+        "count": 5,
+        "label": "Finland",
+        "percent": "1.99"
+      },
+      {
+        "balance": "7397000.00",
+        "count": 3,
+        "label": "Belgium",
+        "percent": "1.84"
+      },
+      {
+        "balance": "7146316.18",
+        "count": 5,
+        "label": "Switzerland",
+        "percent": "1.78"
+      },
+      {
+        "balance": "5000000.00",
+        "count": 4,
+        "label": "Ireland",
+        "percent": "1.25"
+      },
+      {
+        "balance": "2076493.83",
+        "count": 1,
+        "label": "Norway",
+        "percent": "0.52"
+      },
+      {
+        "balance": "2000000.00",
+        "count": 1,
+        "label": "Canada",
+        "percent": "0.50"
+      },
+      {
+        "balance": "1983704.18",
+        "count": 1,
+        "label": "Austria",
+        "percent": "0.49"
+      },
+      {
+        "balance": "1000000.00",
+        "count": 1,
+        "label": "Israel",
+        "percent": "0.25"
+      },
+      {
+        "balance": "1000000.00",
+        "count": 1,
+        "label": "Lithuania",
+        "percent": "0.25"
+      }
+    ],
+    "fitch_industry": [
+      {
+        "balance": "41800005.44",
+        "count": 17,
+        "label": "Pharmaceuticals",
+        "percent": "10.42"
+      },
+      {
+        "balance": "41420349.38",
+        "count": 18,
+        "label": "Chemicals",
+        "percent": "10.32"
+      },
+      {
+        "balance": "38552363.30",
+        "count": 18,
+        "label": "Healthcare providers",
+        "percent": "9.61"
+      },
+      {
+        "balance": "35690591.85",
+        "count": 17,
+        "label": "Telecommunications",
+        "percent": "8.89"
+      },
+      {
+        "balance": "35138301.20",
+        "count": 16,
+        "label": "Technology software",
+        "percent": "8.76"
+      },
+      {
+        "balance": "30986626.56",
+        "count": 12,
+        "label": "Consumer products",
+        "percent": "7.72"
+      },
+      {
+        "balance": "27966340.64",
+        "count": 14,
+        "label": "Business services general",
+        "percent": "6.97"
+      },
+      {
+        "balance": "26435971.36",
+        "count": 13,
+        "label": "Industrial and manufacturing",
+        "percent": "6.59"
+      },
+      {
+        "balance": "19283450.09",
+        "count": 12,
+        "label": "Broadcasting and media",
+        "percent": "4.80"
+      },
+      {
+        "balance": "17027874.70",
+        "count": 9,
+        "label": "Buildings and materials",
+        "percent": "4.24"
+      },
+      {
+        "balance": "15000000.00",
+        "count": 7,
+        "label": "Healthcare devices",
+        "percent": "3.74"
+      },
+      {
+        "balance": "10801978.38",
+        "count": 5,
+        "label": "Automobiles",
+        "percent": "2.69"
+      },
+      {
+        "balance": "9431000.00",
+        "count": 5,
+        "label": "Environmental services",
+        "percent": "2.35"
+      },
+      {
+        "balance": "8907961.50",
+        "count": 5,
+        "label": "Gaming and leisure and entertainment",
+        "percent": "2.22"
+      },
+      {
+        "balance": "6959747.34",
+        "count": 4,
+        "label": "Retail food and drug",
+        "percent": "1.73"
+      },
+      {
+        "balance": "5700000.00",
+        "count": 4,
+        "label": "Transportation and distribution",
+        "percent": "1.42"
+      },
+      {
+        "balance": "5000000.00",
+        "count": 2,
+        "label": "Cable",
+        "percent": "1.25"
+      },
+      {
+        "balance": "4500000.00",
+        "count": 1,
+        "label": "Real estate",
+        "percent": "1.12"
+      },
+      {
+        "balance": "4500000.00",
+        "count": 1,
+        "label": "Retail",
+        "percent": "1.12"
+      },
+      {
+        "balance": "4000000.00",
+        "count": 2,
+        "label": "Packaging and containers",
+        "percent": "1.00"
+      },
+      {
+        "balance": "3000000.00",
+        "count": 3,
+        "label": "Food, beverage and tobacco",
+        "percent": "0.75"
+      },
+      {
+        "balance": "2739578.40",
+        "count": 1,
+        "label": "Business services data and analytics",
+        "percent": "0.68"
+      },
+      {
+        "balance": "2500000.00",
+        "count": 1,
+        "label": "Technology Hardware",
+        "percent": "0.62"
+      },
+      {
+        "balance": "2000000.00",
+        "count": 2,
+        "label": "Energy oil and gas",
+        "percent": "0.50"
+      },
+      {
+        "balance": "1000000.00",
+        "count": 1,
+        "label": "Aerospace and defence",
+        "percent": "0.25"
+      },
+      {
+        "balance": "1000000.00",
+        "count": 1,
+        "label": "Banking and finance",
+        "percent": "0.25"
+      }
+    ],
+    "inconsistent_tables": [],
+    "profile_tests": [
+      {
+        "denominator": "401005051.90",
+        "name": "(a) Senior Secured Loans and Senior Secured Bonds",
+        "numerator": "399005051.90"
+      },
+      {
+        "denominator": "401005051.90",
+        "name": "(b) Senior Secured Loans (Including Cash)",
+        "numerator": "344160303.97"
+      },
+      {
+        "denominator": "401005051.90",
+        "name": "(c) Unsecured Senior Loans, Second Lien Loans,",
+        "numerator": "2000000.00"
+      },
+      {
+        "denominator": "401005051.90",
+        "name": "(d)(i) Single Obligor Concentration of Senior Secured",
+        "numerator": "7002987.07"
+      },
+      {
+        "denominator": "401005051.90",
+        "name": "(d)(ii) Single Obligor Concentration of Senior Secured",
+        "numerator": "5093899.00"
+      },
+      {
+        "denominator": "401005051.90",
+        "name": "(e) Single Obligor Concentration of non Senior",
+        "numerator": "1000000.00"
+      },
+      {
+        "denominator": "401005051.90",
+        "name": "(f)(i) Single Obligor Concentration (Largest Obligor)",
+        "numerator": "7002987.07"
+      },
+      {
+        "denominator": "401005051.90",
+        "name": "(f)(ii) Single Obligor Concentration (Fourth Largest",
+        "numerator": "5093899.00"
+      },
+      {
+        "denominator": "401005051.90",
+        "name": "(g) Participations",
+        "numerator": "0.00"
+      },
+      {
+        "denominator": "401005051.90",
+        "name": "(h) Current Pay Obligations",
+        "numerator": "0.00"
+      },
+      {
+        "denominator": "401005051.90",
+        "name": "(i) Revolving Obligations or Delayed Drawdown",
+        "numerator": "131539.81"
+      },
+      {
+        "denominator": "401005051.90",
+        "name": "(j) S&P CCCC Obligations",
+        "numerator": "9001404.36"
+      },
+      {
+        "denominator": "401005051.90",
+        "name": "(k) Fitch CCC Obligations",
+        "numerator": "15501404.36"
+      },
+      {
+        "denominator": "401005051.90",
+        "name": "(l) Bridge Loans",
+        "numerator": "0.00"
+      },
+      {
+        "denominator": "401005051.90",
+        "name": "(m)(i) Corporate Rescue Loans or Defaulted Uptier",
+        "numerator": "0.00"
+      },
+      {
+        "denominator": "401005051.90",
+        "name": "(m)(ii) Single Obligor Concentration of Corporate",
+        "numerator": "0.00"
+      },
+      {
+        "denominator": "401005051.90",
+        "name": "(n) PIK Securities",
+        "numerator": "0.00"
+      },
+      {
+        "denominator": "401005051.90",
+        "name": "(o) Cov-Lite Loans",
+        "numerator": "2316978.38"
+      },
+      {
+        "denominator": "401005051.90",
+        "name": "(p) Unhedged Fixed Rate Collateral Debt Obligations",
+        "numerator": "32750000.00"
+      },
+      {
+        "denominator": "401005051.90",
+        "name": "(q) Non-Euro Obligations",
+        "numerator": "0.00"
+      }
+    ],
+    "section_asset_counts": {},
+    "sp_industry": [
+      {
+        "balance": "43552363.30",
+        "count": 21,
+        "label": "Healthcare Providers & Services",
+        "percent": "10.85"
+      },
+      {
+        "balance": "41800005.44",
+        "count": 17,
+        "label": "Pharmaceuticals",
+        "percent": "10.42"
+      },
+      {
+        "balance": "38405778.09",
+        "count": 16,
+        "label": "Chemicals",
+        "percent": "9.57"
+      },
+      {
+        "balance": "32306824.97",
+        "count": 16,
+        "label": "Software",
+        "percent": "8.05"
+      },
+      {
+        "balance": "29992187.49",
+        "count": 14,
+        "label": "Diversified Telecommunication Services",
+        "percent": "7.47"
+      },
+      {
+        "balance": "27836172.41",
+        "count": 13,
+        "label": "Commercial Services & Supplies",
+        "percent": "6.94"
+      },
+      {
+        "balance": "26531729.45",
+        "count": 16,
+        "label": "Media",
+        "percent": "6.61"
+      },
+      {
+        "balance": "19000000.00",
+        "count": 8,
+        "label": "Diversified Consumer Services",
+        "percent": "4.73"
+      },
+      {
+        "balance": "18469465.64",
+        "count": 7,
+        "label": "Professional Services",
+        "percent": "4.60"
+      },
+      {
+        "balance": "12000000.00",
+        "count": 6,
+        "label": "Healthcare Equipment & Supplies",
+        "percent": "2.99"
+      },
+      {
+        "balance": "7966785.00",
+        "count": 4,
+        "label": "Hotels, Restaurants & Leisure",
+        "percent": "1.99"
+      },
+      {
+        "balance": "7486626.56",
+        "count": 3,
+        "label": "Household Durables",
+        "percent": "1.87"
+      },
+      {
+        "balance": "7197000.00",
+        "count": 3,
+        "label": "Wireless Telecommunication Services",
+        "percent": "1.79"
+      },
+      {
+        "balance": "7000000.00",
+        "count": 3,
+        "label": "Building Products",
+        "percent": "1.74"
+      },
+      {
+        "balance": "6500000.00",
+        "count": 3,
+        "label": "Oil, Gas & Consumable Fuels",
+        "percent": "1.62"
+      },
+      {
+        "balance": "6480798.95",
+        "count": 3,
+        "label": "Machinery",
+        "percent": "1.61"
+      },
+      {
+        "balance": "6301978.38",
+        "count": 4,
+        "label": "Auto Components",
+        "percent": "1.57"
+      },
+      {
+        "balance": "5131539.34",
+        "count": 3,
+        "label": "Construction Materials",
+        "percent": "1.28"
+      },
+      {
+        "balance": "5000000.00",
+        "count": 4,
+        "label": "Food Products",
+        "percent": "1.25"
+      },
+      {
+        "balance": "4896335.36",
+        "count": 3,
+        "label": "Construction & Engineering",
+        "percent": "1.22"
+      },
+      {
+        "balance": "4871054.63",
+        "count": 1,
+        "label": "Diversified Financial Services",
+        "percent": "1.21"
+      },
+      {
+        "balance": "4500000.00",
+        "count": 1,
+        "label": "Automobiles",
+        "percent": "1.12"
+      },
+      {
+        "balance": "4500000.00",
+        "count": 2,
+        "label": "Industrial Conglomerates",
+        "percent": "1.12"
+      },
+      {
+        "balance": "4000000.00",
+        "count": 2,
+        "label": "Personal Products",
+        "percent": "1.00"
+      },
+      {
+        "balance": "3959747.34",
+        "count": 2,
+        "label": "Food & Staples Retailing",
+        "percent": "0.99"
+      },
+      {
+        "balance": "3000000.00",
+        "count": 2,
+        "label": "Consumer Finance",
+        "percent": "0.75"
+      },
+      {
+        "balance": "3000000.00",
+        "count": 2,
+        "label": "Containers & Packaging",
+        "percent": "0.75"
+      },
+      {
+        "balance": "3000000.00",
+        "count": 1,
+        "label": "Specialty Retail",
+        "percent": "0.75"
+      },
+      {
+        "balance": "2941176.50",
+        "count": 2,
+        "label": "Paper & Forest Products",
+        "percent": "0.73"
+      },
+      {
+        "balance": "2500000.00",
+        "count": 1,
+        "label": "Marine",
+        "percent": "0.62"
+      },
+      {
+        "balance": "2500000.00",
+        "count": 1,
+        "label": "Technology Hardware, Storage & Peripherals",
+        "percent": "0.62"
+      },
+      {
+        "balance": "2200000.00",
+        "count": 2,
+        "label": "Transportation Infrastructure",
+        "percent": "0.55"
+      },
+      {
+        "balance": "2000000.00",
+        "count": 1,
+        "label": "Household Products",
+        "percent": "0.50"
+      },
+      {
+        "balance": "2000000.00",
+        "count": 1,
+        "label": "Internet Software and Services",
+        "percent": "0.50"
+      },
+      {
+        "balance": "1000000.00",
+        "count": 1,
+        "label": "Aerospace & Defense",
+        "percent": "0.25"
+      },
+      {
+        "balance": "1000000.00",
+        "count": 1,
+        "label": "Beverages",
+        "percent": "0.25"
+      },
+      {
+        "balance": "514571.29",
+        "count": 1,
+        "label": "Metals & Mining",
+        "percent": "0.13"
+      }
+    ],
+    "sp_rating": [
+      {
+        "balance": "0.00",
+        "count": 0,
+        "label": "AAA",
+        "percent": "0.00"
+      },
+      {
+        "balance": "0.00",
+        "count": 0,
+        "label": "AA+",
+        "percent": "0.00"
+      },
+      {
+        "balance": "0.00",
+        "count": 0,
+        "label": "AA",
+        "percent": "0.00"
+      },
+      {
+        "balance": "0.00",
+        "count": 0,
+        "label": "AA-",
+        "percent": "0.00"
+      },
+      {
+        "balance": "0.00",
+        "count": 0,
+        "label": "A+",
+        "percent": "0.00"
+      },
+      {
+        "balance": "0.00",
+        "count": 0,
+        "label": "A",
+        "percent": "0.00"
+      },
+      {
+        "balance": "0.00",
+        "count": 0,
+        "label": "A-",
+        "percent": "0.00"
+      },
+      {
+        "balance": "0.00",
+        "count": 0,
+        "label": "BBB+",
+        "percent": "0.00"
+      },
+      {
+        "balance": "0.00",
+        "count": 0,
+        "label": "BBB",
+        "percent": "0.00"
+      },
+      {
+        "balance": "0.00",
+        "count": 0,
+        "label": "BBB-",
+        "percent": "0.00"
+      },
+      {
+        "balance": "1000000.00",
+        "count": 1,
+        "label": "BB+",
+        "percent": "0.25"
+      },
+      {
+        "balance": "35611140.90",
+        "count": 17,
+        "label": "BB",
+        "percent": "8.87"
+      },
+      {
+        "balance": "33363294.56",
+        "count": 16,
+        "label": "BB-",
+        "percent": "8.31"
+      },
+      {
+        "balance": "64254433.95",
+        "count": 33,
+        "label": "B+",
+        "percent": "16.01"
+      },
+      {
+        "balance": "164063249.12",
+        "count": 76,
+        "label": "B",
+        "percent": "40.88"
+      },
+      {
+        "balance": "94048617.25",
+        "count": 44,
+        "label": "B-",
+        "percent": "23.43"
+      },
+      {
+        "balance": "6487500.00",
+        "count": 3,
+        "label": "CCC+",
+        "percent": "1.62"
+      },
+      {
+        "balance": "0.00",
+        "count": 0,
+        "label": "CCC",
+        "percent": "0.00"
+      },
+      {
+        "balance": "2513904.36",
+        "count": 1,
+        "label": "CCC-",
+        "percent": "0.63"
+      },
+      {
+        "balance": "0.00",
+        "count": 0,
+        "label": "CC",
+        "percent": "0.00"
+      },
+      {
+        "balance": "0.00",
+        "count": 0,
+        "label": "C",
+        "percent": "0.00"
+      },
+      {
+        "balance": "0.00",
+        "count": 0,
+        "label": "SD",
+        "percent": "0.00"
+      },
+      {
+        "balance": "0.00",
+        "count": 0,
+        "label": "D",
+        "percent": "0.00"
+      },
+      {
+        "balance": "0.00",
+        "count": 0,
+        "label": "NR",
+        "percent": "0.00"
+      },
+      {
+        "balance": "0.00",
+        "count": 0,
+        "label": "SUSP",
+        "percent": "0.00"
+      },
+      {
+        "balance": "0.00",
+        "count": 0,
+        "label": "WR",
+        "percent": "0.00"
+      }
+    ],
+    "unpublished_sections": {}
+  },
+  "assets": [
+    "LX226715 66f873b9db23e8033b60396c71639827299693076f19b780c2164ae691c1c79d",
+    "LX192467 13a2e6080ba7251853fa21051a5e0a2a843d7ad1b004811274a59a0a3e8024dd",
+    "LX236054 543d4c4787082b0fd8cab08f343de4123f88f56a5ec971088b17c719f3f8faf1",
+    "LX171119 c19aadcd7e8820d0118adb80e0dc45087d7d74a5dd5d0bbc02b96e0428f34e8a",
+    "LX193594 fda107ea4d346e590a73e834c1c3925010adbb4fa3566e30400bb558b4ba6d7a",
+    "LX213528 b27277c8e05d4e2a5f6ad480083f2f7f49cd2279ee0b35c9110ac0eaa2917ba7",
+    "LX202736 b2a93e56849fabfa32054e445f9d7219a2e673ed054cd57479ba4c4dc10b61e2",
+    "LX217474 9bbb93148dfb4eb5ac76bab410eb66343f3481baf85551526a684bd4887f259f",
+    "LX254125 1e233ed567cd5899049ddd3d2366f17fd01195c4af3ffecf1413053fa98e5a49",
+    "LX235576 a18ec994660077c18c9f9e088f69dad5d1261cd198a630a9443265940ae714ea",
+    "LX199035 d9f01752a0e79b905ec70cf8a4c98319e2e27d90c835b894f7311923dffd4ee9",
+    "LX196255 23ab92e8e15c2140f236fac573ef468600185e6d879859dd990627e45a5a904a",
+    "LX246973 91aacfca380f452680a888e61e63f6349c5ad0cf7c104fa6308ca1580893d5cf",
+    "XS2954189234 6030e5e637239d66c2a5f1ce337f36c58b5a4483b01a77c86e96017dd17a713c",
+    "LX213673 916fce8028c72a805c6e9b4144b009199a94dcd3202c065c374ccdbf7fbce677",
+    "LX228174 8caeab68d87a0f5d467b7566cf7cbf12544477d1704f88846015b43eacae160c",
+    "LX247701 a8448681f88f8bb9fed78907546157c7bf0cdfdd91230698b859b1800030e133",
+    "LX257836 4347fe27cf3fa5b0441096ad4e863a71399ed2bb82f6a74acf3aa2e371e691cb",
+    "LX247575 6d98b5577bdb88793723d8d246cb01ee772e3f577217d4d75a5f29087b3077d1",
+    "LX257760 2f55d8acf624a501fcdc14b034a7656f0e6fa4cf3c1c78478dea826e4d711ec0",
+    "LX228682 8ee37eea43365c13121a0da36d1a80595429d36845628fa6487de51c7b993762",
+    "LX257648 23640cefcc3c9325b65d560a256fa1af7f0afece5be9b31138ae0e608a4d13a4",
+    "LX238947 b7a4e47fed26ceb4ce4f206d44dcf43fe0d985ca3df51717622472ec5d500080",
+    "LX196487 83906ba4e83f56d4e0fbc245f12ad4d3f307333dc85e034e8ce4929a96585792",
+    "XS2295691633 a4a08ff91e2e4040cd02d0ba1dbc5229181d5a14a786d1fdea5b462fffc1fda3",
+    "XS2294186965 e34c1178fdc6d99d745ff4405509889f5d03614834948b8882867cde6d6b4309",
+    "LX192244 d902e2266aca5fdf5ea21b6394daeb3793a1d21bded25f3d3d8b511ec979d4e8",
+    "LX235674 92e2d8a9e740e03eba0e2641b19bc6bf0feb5a010dc88316d791199266a6290a",
+    "LX202330 8f434b93d75a3ad01d817240662f40d1198bda3c5969cff81bf5159e18ca873f",
+    "LX202118 fa6423d6cf1cc9152f47d9f24f80d165aa7274711292de195ba23742506c6203",
+    "XS2929905292 85fe03fada4869f64023f37c723a172cc7a34e01801da9b61211b3b6a12ee389",
+    "XS2445840809 f86626e7c429dbca410858187c940d69e914d6a1b94b909f8c4e995e974720c5",
+    "XS2345190263 1cc6cdc0a73d5b11f2ded9ebf41ac63b7ebf9018a8f9e4f59c737b3ca840b7fa",
+    "XS2622212707 10ad140f2342f388e511fbcb65b05076fb26e86987baeaca131c269bc07b164e",
+    "LX227374 50f6a0f51da74a49b640b01ace0822ca09e967af0f1b759c47b3305f20f9ec12",
+    "LX234218 8d6b514b68b884fb6c8b50e9c63eef4de140ebfac25783ea861cae78b20a75c8",
+    "XS2618840974 c04c3cbd068d6e65f727869ac493383b7c10f1c3eba22b88e6e15f153ade9d01",
+    "LX202725 3ee7269f2365c0b01a9cb12f1c5eb67f6ce8e7f64abf60eece4e182cc9880a6a",
+    "LX194780 2c05604ef3b97461a0e3c33debf4143b8a63773ff43013a33161f9a9aa88b4b7",
+    "XS2325699994 871e85302049dc3d980a98d5a489b07b7ac5fdcc0807f55a0f65bf2a09b704d6",
+    "LX249777 d2df6159a0dedf74b70bac59b6ef12502e29ff92079627fece07d5cfd1d7dc70",
+    "LX257570 23601e9c148ea5d3bd926d7460b6fa8a888a0b1b74cdccf37d41db400aedd83e",
+    "LX236134 5503c78dc189654369f6460f6e5f490985cb83ccf5a4b6090a78ac82b6bfaebb",
+    "LX257805 ab3aee1af5f790f8fb5a4a321fd91d4d2f05d0f2904f04f51ce2a70f0ad2bac9",
+    "LX193257 d16a178f69b2f1088be744667cabaa97a5e3645657294d34f4dba4e300779f2e",
+    "LX195644 2abd40a714abd230be7c7822bb9c0a2d37e214a4d087faf6c9453fb72c959d7a",
+    "LX253054 65c6709014b1a7514162d1068877175d15463ee14eb03eb89c9ac55387ab5e9f",
+    "LX254153 b9e3b4663049c4cdd7b4ab4e46bc0ae867887ec99fff1490e39e626918934fa4",
+    "LX195569 bad6c4fc1170d32be11ae11801c44ca241a0cfe38d40909a363cadd7c7d70c49",
+    "LX246414 bc623d622ac5c170017ebb4654cedd54dc8cc5c3068ef8a426c6bb88b2e3e7f3",
+    "LX202419 c85b6064d43c1314b67960967d2a5baf5db6e2fd969e7e8be647d91b1432c256",
+    "LX220996 413264cb517d4c9eeb34c0c9989b25437552c2b79269dd3ee4bf01c5dd3356fe",
+    "LX247592 a1d45af023016d589cac1b6439257cfc3697a5703b226eaf4325b352f4b0d804",
+    "XS2423013742 8e38f1b74d99f38c82ef0a3b7c87650c809e42d6a239b64d402d7ec5c7f7698f",
+    "LX227379 248257264ffd74d04c46f128c1c20bdb0bf791919107f5e80959ab3f6763cded",
+    "LX192651 b3b1decc8a0046231a069ff3d6604951c136e9dddd30490469eb971bed7d728d",
+    "LX181040 b10f6ffe99a90f84da7f9e7c6bf9919901b38664f43a344ab01b4643eed85079",
+    "XS2271247178 e154348d696131d5fddc264a6c4f357778976adf7d03a93db025579acd137371",
+    "LX254235 138e0708fd386267c5aef5349634b52057b2bf9784ab1c2a78ae9e867406cf29",
+    "LX235873 64de99e69a0da31572447acb8819cabca893d56923b1b1728cf2714ecda52e5d",
+    "LX217099 bc190d73af22c1228dfb136f334fa752739446b2a72d3986e334adf8086f720f",
+    "LX218476 0eb4657f152ca08165da7a7010f3a074f52b85019c4b781296618cf710b20b42",
+    "LX244533 e62de42536ca2cbe58463186e4edc6490606ca4eed317400062f8725726009c2",
+    "LX255858 b7dbd2980a1ac7c9f34c98428fd61bdfde590f41d82fbe4e3f3d6b57b29e8eb9",
+    "LX181787 28736c0edf52cc8c1e1680903469a3ea7d8370b640065dc627af3d8a650c33e7",
+    "LX254473 be9e70654eee3fa613617adc98cfed05ce2fab6ddf048ac04730d390a9aa3db4",
+    "LX257847 c489600974b24134085d5633df8f2b49ddb0923889a196eafeddd6b74baa7898",
+    "LX185085 f01b4e1e966c0b50673c236a9168943a3f85d1a2cb4e8ef05d7212c7167d15e6",
+    "LX191106 2c306bab08d71196497e8986c4f61a41816c306c80ef2cd8b5cdcd059809cf8c",
+    "XS2951378434 5e52c38814d08a83c0907d04d29dea9d55215bc756358cd3f94cd6d23bab6dfe",
+    "LX236640 26e471591987bfe7ff7f4459684f3d3ea9dcd383a01f5da44045bbf849acfdd5",
+    "LX257417 f6a5de84bd6fec1dd70d1b05fcc8c7c550e2aad1f0cd89c3cf8fb0e7d72f0600",
+    "LX196751 fb3713b97fceb11f8821909478891d1006186e24e25b9fec7bb06753d5bad161",
+    "LX225618 6b0626a783c91e6736e2f777248ccd65a99883f56290fd886a640201a49460e9",
+    "LX193483 5e431d10e441cdbf979d93651297d0c954eb00242bc3f3825eafb123846c831b",
+    "XS2915461458 2f046863b9a6b2baf911cb297e6069647936519e1d480c7118c485ed853a9489",
+    "XS2808407188 1d67815ec88330a9a8b831f4baccb02c4ed28fc088feb3561c0bb1a8b84b2979",
+    "LX193158 a50d9fe629f7384efb0ae9b6f5274cf8e70dd3e84d59120e670166b57872d2b9",
+    "LX193675 0f1e75174bc03119b78cbb3a8fca7939cdb683f33ae87e2a64ae27c0de06f570",
+    "XS2305744059 21f9bb93bb88d7fa3327c6a935909ac82986603ae5db1a0d7712d5649316a488",
+    "LX257767 925b1e825a5178dbd774245d62c229f4ca5a4b462432e3ae1d3e60c27cc8dc14",
+    "XS2397781944 9759d8c9e58c7381ad79647917f0f3476a15a664667656e4016d1c010554c9a4",
+    "LX211382 cee22b07d8544125450f7bd0500a3d23f9cc47e6f55bf91faaae5dc77e618024",
+    "LX255772 9f0a5ad03472724acd9ed7ed04829e8504eb524a7f9204ceb601ca9bb3a502c5",
+    "LX234266 57741a7c8fff234b3c343c2d63716b3402db7249a487c1ac8db2870a108118f8",
+    "LX247590 d68a73a49d66f23663aa9d2596eb0465669436dc5beec962f879b57aed2cbe32",
+    "LX211165 d7a0fffd54207caf78497c71f3b18ef0d8d2c0924c0d50d985d2c122c3c4ef78",
+    "LX196389 1bbbde09bf5839c7575b3c1569b6f44ad1f98a7728cbc8c014a5581e16ffce3c",
+    "LX255443 cc13a480e482be64df48c7da17f06d121417da78822bb9c59c4970b294760880",
+    "LX258502 ae58a18bcfa77b35cd6f614ceb4db893017e4e182d7de3df6fc78efd0863c374",
+    "LX248178 ee039ba156b31850ad431450b133db4884b23adc7d3a1abce8b0a554b043ae3a",
+    "XS2582796541 52eaeff2afa2d397d9f44f60b68cee7710045f02688827025d11bce35dc43513",
+    "XS2756269960 5deb79678c065058e91367a1c00d22b8fcc8010d837ae599a1ad8deb36ff8a87",
+    "XS2971567560 613c831cdcbbb50ef5ae8045b0aaaa0790e3f2d68fef8e46e7745d6830cb08e8",
+    "LX256025 a42f10317aa48bc0421c611ca0a2ac9bbc0770a2fa02a0c6e7caf3ada43759a5",
+    "LX192831 f2742c7e902598070b3f706e90dea53f4dd970334d2307f4392fe67293de7b60",
+    "LX193640 b305f48ef7856160361fbfd0e077c3ec99ed844a1f617705e61cf1345182b886",
+    "LX177087 668f1d466243cee15ee1326861ebbf37b32e9fe97042decb0c34fb542cd262a3",
+    "XS2483511957 116632dbc25c63df2b2e37ead7460faf72f008ff01be5fe1b7b22309cc66ca21",
+    "LX229603 fe869ff1d2ea890ac051d46fdc8bf8de8e2c35634e2b38b3e38587bc02f48c05",
+    "XS2982117694 89867b0fa16a43a43b0065685deb4bfb448b37cf7daf691b1d92e6666051a5c3",
+    "LX249559 2be4f4a20b9de5b0a8599d287b59f1a90f9812c8fafd250482906f55da1ef79f",
+    "XS2985311518 12bd165650866d8e9330e20d1ea977e2d59dd0772a8e20bf97e2e07f54476292",
+    "LX233937 4192bc0ffc4874e134fc5ef16d0ea2d8fcd33ba62ad6ffc9ee4b871a53f131ef",
+    "LX198689 36913be7adc5204d59a702bd1fe9a94e4fa6c380a9824cf7f741efac9bee402c",
+    "LX234327 538d50176a30fe880677a301e05bb4091472eb752d66a7a90e7b7b88d324119f",
+    "LX192775 64ff43f837054fb1474b1e00dc012598ae981e42a0ffbb9f6281cf08b6d1f15a",
+    "LX235701 bc703933991730bd544439c55d11eb0803822c5b814a075afe4aa9e287eef86c",
+    "LX236761 e46bc4dff58d2b1ca0170a175c5c42b2d2981aed324ccf3b6a537385acef886c",
+    "LX236760 5c2f11905c61ef9dd373b26ae5d3536ecb1aad90555290632a9d17badb3256bf",
+    "LX237835 9a41443fd0fa97b69093c46cb387915c4bbf5a78fff7625217604491894da35c",
+    "XS2615006983 72d6c038183df87236f2cc10f0de8fe19246383259a2ca5d6af1eba25a39ae98",
+    "LX213903 a91cb20e72a39d9db8b3f671391d7e50b8d785a275d90eb80a7ab73fcdb8ddfd",
+    "LX213009 2fa5d8d3aeecd86751be9ace5c3aade35a2111c44f5502d842531985c1291ef8",
+    "LX222394 2f56857a36685f92eb20de0b5d325a17247a75dbf9b5d140a195e1db16b01949",
+    "LX208600 7cffb5d886f3f0a9cf87bf98f8869e85b75420b4555b3d249175e04a177743be",
+    "LX236587 eee7594490647065d9dfea71b6c750477db789a8052c9290283f52e967b66e5d",
+    "LX257582 9c8cb18c663302d52d235b41085836087703f7f22dd60ff5a53d95ab5420c18f",
+    "XS2355515516 43bb28b0478f8e24231ccf19c4dff49465e2fac6002e1d80f5c4052afd843f7c",
+    "LX246433 f4673a0cbbc131eebff6d103f95e802add8484c4b65d19e268a97ea75e04f0dc",
+    "LX234053 8385cbe9e217f974e2c35718cd9835b06f6e973498d3d2115f1d004409f1189a",
+    "LX210660 be5689572a14b6b41a6eaa528039407cfbc6bdc303f56a912fc1bf62593597db",
+    "LX248915 aa8ca0bb794e59d9cb0657115e6a7e2a7d155a7d26f41f7fced0672e38f21551",
+    "LX200389 fe23fe278957e3291b3ee0080935576c073e1894d051e26eb89a4671aafcca3f",
+    "LX196125 8f7e336c9a6c8538f60f58cf31c6e0196f854b4261d8eead881159ce60194c0d",
+    "LX213580 b86ba068b586ad74be26847dcbe99874a6f299e37541c98021eb23f9aa0d3c21",
+    "XS2332250708 bb1f4fc1b6e5d587112d10a6e33243e6f820b9b61655669fc31f25c5ffe63c84",
+    "LX256012 1b0b3524f40d58637e53d01311cbe6f8e6e009c01f856b182ab01231779c1281",
+    "LX228248 f04e78d6e1c96b853037c464b9509ee3a4db418d0c5c90a8e8e41d6366e56c4f",
+    "LX202499 2904edd48bcb709b353c859a51313f16be39eaf1706604373fe61f2cd7e95330",
+    "XS2834245297 58fb001906ba44a6766ace780fe2268c7a4cff677163eadc0a66d49d2f58e0fb",
+    "LX250485 e709bba6e3699c24e51de998199980c2847890d5dfaee49a98a850a960caf6dc",
+    "LX252693 b25384fdaac31617f8ac78243797b451f5299e2acb7ae73fae3b840547569ab3",
+    "LX239315 13d7ab8cc750beddec97aea8743f964daf64a8573ce295a31967c139ad4cfcb9",
+    "LX233034 92e1ed41c3753f9af4a120bfa4bb1a20b662f61197c7a91a6ac90861c51f25b9",
+    "LX234519 baa9dc6b10da05aed31f7a037de9a45e6f83f84ab4c18e6897fb72d88116039f",
+    "LX230404 d94f382c1735c6bb4aca3788fdb67810c2b130b2283424c160433c2a87fdaa37",
+    "LX246013 ec4c38b49ad4cb54c1828de3236e5dde689a99f6ca0111f916bb7c29765c73c3",
+    "LX257766 c1ce81902e5ac968e4c4d236c4e7842548916e8de5c2ea3d8e14c25a0207e9c4",
+    "LX258040 a96d41266e6db41ff0d9dd25abb9b70a702d87158bef5edb08c796349e774935",
+    "LX250873 87f7b1827924b8c039bc302d03599426506de5b3cd7fa254031c607c158be185",
+    "LX248257 bc31df603708646cf0d15129891f142d0a560a1aed7c4a2bfc35477cd8c947a0",
+    "LX214261 6bc998c1750052a90bc72143edb10bdc87986e05aa26d09210fa85ad3df409b0",
+    "LX202335 604260769b8dd6d504d0fb89955119fec1a3c57b1c0c5673c195c275a9b411d6",
+    "LX258050 48e420f8390ed3062b838bab9aa9607e4bb46e70b9a7d5be8937c8da35f5dbe1",
+    "LX255951 b69db3969356b5ae7d7c5dfa398ad77a24998e8df99343bed5f7ae57bf43ed84",
+    "LX194401 31fccb0b5b2effdad318944c1f71d7396668be4c32c0bd84c94306b5c9f66f04",
+    "LX194191 f641c9cb613ea788bc50bbe0c5703a6f07a6d8ffb0a5893f8184d514b656e65a",
+    "LX228988 ea75eba7358a22f50f1343375a52c0f8a81f6c3885e871692021d07dd362d85f",
+    "LX189315 afa36d1bbfea20536b085ade25331c4322b1f956260af4c9c131a90128a81aaa",
+    "LX225334 49717c6d7684fa3da2178ae8b06e93efae592b56f7f5e70a008f1d13d4cd01df",
+    "LX225678 d289f7104bf17e848053ca8336a9278bc2dc7e7ca8d6922da2522c7221f6a30e",
+    "LX258367 f669c2fdcf384244b16911f2fb2f9c2cbd303d7abc814b3486476954cd6e6f4b",
+    "LX257759 d2b15bb3c37c63869139d6c22c6fd99dff06cb798d1d570ddf6de32a91e7314f",
+    "LX220198 6a99e994778f2d2cc83fc4297f08e1434c15264babada43ba026a5f4bd5eee79",
+    "LX249935 fce35a1ab4a5f16e5d10bc77c11529a65390a2ab7703d4e4efcb4a5c3f0edb38",
+    "LX199218 04ecbe7de4b380ea1199592ec117c2bf98bb5ce6adfba8facc535589b28748af",
+    "LX196483 fbec75591ef085153da835780986624f3b432c34966aedee725811e43488e5c2",
+    "LX193267 935bea0f80b7f25888c073aff575630f4318bd56c3f2d556913c9be211a8312f",
+    "LX250399 367d018aa5f00bef4b758c68fc8555dd6da85fcd1462a17f1ae6b0cb8fc7ba8a",
+    "LX248133 8880eee1eef09c38bd126305fccf3951f6e60e6e26e4fa718ad898e8d0c4bf37",
+    "LX228294 591f7b95e7c7ff521c7f3e802297f244e24e62dacedae5ac57540afddf5a61d6",
+    "LX225664 f8836b61c091e73399f96711e67a66ead7288b4826f8123673d4b927c98d97a3",
+    "LX194166 9149d3d94a666041b0e76fe697b5080f89c4b1fe64e040932c58d242b876f523",
+    "LX196017 920384d13fb7934ad3af7e3e8ad96ad4f504fc58af1ebbc923bd301fc8f46891",
+    "LX235593 5211fcda3776831667ad6b372f12d6e5edf50ea78ed2ee335403e5401ba483db",
+    "LX257890 fcfa1d546b281e9634dc634420fa67ca3492847d6c6569734aa22cb673e3a94e",
+    "LX254474 a7f4d4bb7d8e867d9d73d1e9465d57efd59910d239119241cec10d9750142292",
+    "LX195674 99a88cbbdf4ca401c1c1fcde9fb3d8efd66839eabb1279e199d50562b3eac1ad",
+    "LX226834 46bde4848d0cc2d1390c64236272627d1669d940b6023ee94b226e1f855efb0e",
+    "XS2932084507 7eae2a13c74b859ac57151ee19b169e51720f3960be440786db925f66515a605",
+    "XS1439749364 e1205959d5a419bce2b2133ec9a1d9e2d784649869720c2aaf10f80c89b55602",
+    "LX214554 a155de99750419b54767704cb1ef392de0eb985913eaa6d70eb3a7e8343cc372",
+    "XS2351344622 df2c4cf6e02bf3ef3719f1b6ef4ad4d40cb95ba2183882cd5958a28fdce8f589",
+    "LX194310 0b10a1b2ae7f5260435c583b824f18436dfb9fc47d6423fea34d41ef70e6a374",
+    "XS2919880679 fa6d1dccbf57ac4fca294842aab25146bc9179ba006673373bec7545d5ee25b8",
+    "XS2758099779 785c5fe40079dac6af9c51b360fec1137efd07cc40957d4a3cdaa7c837d59674",
+    "XS2010027881 188dfdebe96d9c9a5f51d7bf362f0fb8c8ee6d57b02d45cbcf2a862e1872b285",
+    "LX198606 bdc24c817044ed4d93da6ad0775b0a2868cf0c63b7042a4a4d79e93fb5f1182c",
+    "LX195575 7761e7a185fb6b59872cc86d8d90aede916c46ebb48086a5cb1ee069edb5bb6d",
+    "XS2231188876 90fddb9807fe312d4be4debdb6cdb86f8cdc40cb9fb406609efb4401a55f734d",
+    "LX258123 9fcee1fea609a5924bd28d8b160653e3a7229bd119ca3f23a760398e580ce539",
+    "LX230934 41cd5470833013463ebedd4d00e46a2ece2409c656025f6530803cddcf47746c",
+    "LX183233 a603467368b2dd9d72c47a1224d49be17599e20c12e2c97db9612c2dfd20a8e6",
+    "LX245523 58520b2d62d27dfd9dd54a48469a0186bc6da95b91806d196eb7253a356d1543",
+    "LX199727 42e7570587fccd1675c5d7bf5b2ff3969d86e5e8017f40d6bd60f4886e86eb0e",
+    "LX195828 8ea9a364c03e172c2afb62479c0bff3674d08aa8f3026a9046f9e64c5b66fc3e",
+    "LX185594 072d32b34c860d63109d252e7319f5740d2d36bc88d817a4fa8543fbb3fbb4af",
+    "LX237014 b2df119b4621b5f264f705cfde46771df37f0b0eb6d9770516c7c46e6d96560a",
+    "XS2431015655 25d56c08a07b63e5495cf110d0a5933c76bac2efa38288141dcc23c0374fbeff",
+    "LX183461 2c7adb987f2996a7c5aa5adb11307e243993c11b4dcc1e2a101bd08d79e6a017"
+  ],
+  "count_grain": "asset",
+  "deal_name": "Cairn CLO XVII DAC",
+  "defects": {
+    "accrual_records_without_a_balance": 0,
+    "balance_disagreement": 0,
+    "bucket_attribute_incomplete": 1,
+    "ccc_rows_unjoined": 0,
+    "descriptions_without_an_obligor": 0,
+    "identifiers_absent_from_the_anchor_section": 0,
+    "identifiers_missing_from_part_i": 0,
+    "identifiers_missing_from_part_ii": 0,
+    "identifiers_missing_from_part_iii": 0,
+    "identifiers_missing_from_part_iv": 0,
+    "market_value_units": 0,
+    "notes": [
+      "bucket_attribute_incomplete: the report publishes a S&P rating table but not every parsed asset carries a sp_rating, so its per-bucket distribution cannot be checked"
+    ],
+    "part_i_tail_unparsed": 0,
+    "section_header_not_derivable": 0,
+    "section_unreadable": 0,
+    "source_aggregate_inconsistent": 0,
+    "unrecognised_rows": 0,
+    "unresolved_country": 0,
+    "unresolved_industry": 0,
+    "unresolved_issuer_name": 0
+  },
+  "period_label": "February 2025",
+  "reporting_date": "18/02/2025"
+}

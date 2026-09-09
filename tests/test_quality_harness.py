@@ -72,6 +72,8 @@ GL23_DEAL_ID = "green-lion-2023-1"
 GL23_DEAL_NAME = "Green Lion 2023-1 B.V."
 CLO_DEAL_ID = "cairn-clo-xvii"
 CLO_DEAL_NAME = "Cairn CLO XVII DAC"
+CONTEGO_DEAL_ID = "contego-clo-xi"
+CONTEGO_DEAL_NAME = "Contego CLO XI DAC"
 
 #: Deals whose committed answer key carries a **Priority-of-Payments** section —
 #: Green Lion's from its quarterly Notes & Cash reports (#429, #440), Cairn's from
@@ -96,7 +98,22 @@ POP_GRADED_DEAL_IDS = {GL_DEAL_ID, GL23_DEAL_ID}
 #: Deals whose published **coverage-test results** are committed as an answer key
 #: (#481). A trustee report states no Priority of Payments, so these results reach
 #: the key through the other constructor and grade the covenants row.
-COVENANT_GRADED_DEAL_IDS = {CLO_DEAL_ID}
+#: Contego joined on #534, the second use of that constructor and the first
+#: evidence it is a route rather than a one-off: its key was authored by the
+#: same call, over a second administrator's layout, with nothing about the
+#: constructor changed to accept it.
+COVENANT_GRADED_DEAL_IDS = {CLO_DEAL_ID, CONTEGO_DEAL_ID}
+
+#: The covenant-keyed deals whose cell actually **grades**. Contego is keyed but
+#: not graded, and the two are deliberately separate sets: epic #530 onboards the
+#: deal and promises its published ground truth, explicitly not that its engine
+#: reconciles against it. Its cell is ``not-applicable`` because none of the nine
+#: names BNY prints matches one of the five triggers Contego's extracted seed
+#: carries — the #481 taxonomy gap (``reinvestment_overcollateralisation_ratio``
+#: resolving to no coverage metric), met again on a second deal and now on every
+#: one of its tests rather than one. Collapsing these two sets would either make
+#: this a red or make the key look graded; it is neither.
+COVENANT_PASSING_DEAL_IDS = {CLO_DEAL_ID}
 
 #: Every deal carrying a committed key, by any route.
 GRADED_DEAL_IDS = POP_KEYED_DEAL_IDS | COVENANT_GRADED_DEAL_IDS
@@ -104,6 +121,14 @@ GRADED_DEAL_IDS = POP_KEYED_DEAL_IDS | COVENANT_GRADED_DEAL_IDS
 #: The published coverage results the CLO key carries: 8 decided tests (Class F
 #: is published N/A and is excluded, not coerced) across 3 reporting dates.
 CLO_COVENANTS_GRADED = 24
+
+#: The published coverage results **each** Contego period carries: the 5 Par
+#: Value and 4 Interest Coverage tests BNY states in both of its renderings.
+#: Unlike Cairn's, this count excludes nothing — Contego's reports decide every
+#: test they state as a test, so no ``N/A`` exclusion applies to this deal. The
+#: Class F figure BNY prints is labelled a *Ratio*, not a Test, and sits only in
+#: the wide Compliance Tests table.
+CONTEGO_COVENANTS_PER_PERIOD = 9
 _EXPECTED_CHECK_KEYS = ["revenue_pop", "redemption_pop", "covenants", "pool_stats"]
 
 
@@ -231,7 +256,7 @@ def test_live_registry_reflects_the_backfilled_answer_keys_honestly() -> None:
     # the COUNT is pinned. A cell that quietly stopped resolving its metrics
     # would grade not-applicable rather than fail, so "did not go red" is not
     # evidence here; only the number of things actually graded is.
-    for deal_id in COVENANT_GRADED_DEAL_IDS:
+    for deal_id in COVENANT_PASSING_DEAL_IDS:
         cov = _cell(m, deal_id, "covenants")
         assert cov.grade == GRADE_PASSED and cov.score == pytest.approx(1.0)
         assert cov.evidence["covenants_graded"] == CLO_COVENANTS_GRADED
@@ -239,10 +264,27 @@ def test_live_registry_reflects_the_backfilled_answer_keys_honestly() -> None:
         assert cov.evidence["not_evaluable_covenant_names"] == []
         assert cov.evidence["unmatched_covenant_names"] == []
 
+    # Contego is keyed but not graded, and the reason is named rather than left
+    # to the grade. Asserting the unmatched names — not merely that the cell is
+    # not-applicable — is what stops this reading as "the key is missing": the
+    # key resolved, all nine of its published tests were offered to the engine,
+    # and every one of them failed to match a trigger. A future issue that fixes
+    # the taxonomy reds this line, which is the point of pinning it.
+    for deal_id in COVENANT_GRADED_DEAL_IDS - COVENANT_PASSING_DEAL_IDS:
+        cov = _cell(m, deal_id, "covenants")
+        assert cov.grade == GRADE_NOT_APPLICABLE
+        assert cov.evidence["covenants_graded"] == 0
+        assert cov.evidence["covenants_matched"] == 0
+        assert len(cov.evidence["unmatched_covenant_names"]) == CONTEGO_COVENANTS_PER_PERIOD
+        assert cov.evidence["trigger_count"] > 0, (
+            "the seed carries triggers, so this is a name mismatch and not an "
+            "empty model — a distinction the reason string has to keep"
+        )
+
     # Honest, not green-painted: exactly those pass, nothing fails, and every
     # other cell is not-applicable — including each graded deal's *other* rows,
     # which have no committed published figures of that kind.
-    passed_cells = 2 * len(POP_GRADED_DEAL_IDS) + len(COVENANT_GRADED_DEAL_IDS)
+    passed_cells = 2 * len(POP_GRADED_DEAL_IDS) + len(COVENANT_PASSING_DEAL_IDS)
     assert m.tally[GRADE_PASSED] == passed_cells
     assert m.tally.get(GRADE_FAILED, 0) == 0
     assert m.tally[GRADE_NOT_APPLICABLE] == len(m.cells) - passed_cells
@@ -251,12 +293,21 @@ def test_live_registry_reflects_the_backfilled_answer_keys_honestly() -> None:
             assert _cell(m, deal_id, ck).grade == GRADE_NOT_APPLICABLE
     for deal_id in COVENANT_GRADED_DEAL_IDS:
         for ck in ("revenue_pop", "redemption_pop", "pool_stats"):
-            cell = _cell(m, deal_id, ck)
-            assert cell.grade == GRADE_NOT_APPLICABLE
-            # The reason names the series, and no longer claims the key is
-            # empty — that claim was retracted when #495 committed the PoP.
-            assert "engine series" in cell.reason.lower()
-            assert "carries no" not in cell.reason.lower()
+            assert _cell(m, deal_id, ck).grade == GRADE_NOT_APPLICABLE
+
+    # And the two covenant-keyed deals reach that same grade for *different*
+    # reasons, which is the half a grade cannot carry. Cairn's key holds a PoP
+    # period from its Note Valuation Report, so the missing thing is the engine
+    # series — the #495 retraction, still standing. Contego's key holds no PoP
+    # at all, because grading its waterfall is outside epic #530, so "carries
+    # no line items" is true of it and saying so is not a regression of that
+    # retraction. Asserting each deal's own reason is what keeps a cell whose
+    # grade is right and whose reason is false from passing (#457/#471).
+    for ck in ("revenue_pop", "redemption_pop"):
+        cairn_reason = _cell(m, CLO_DEAL_ID, ck).reason.lower()
+        assert "engine series" in cairn_reason
+        assert "carries no" not in cairn_reason
+        assert "carries no" in _cell(m, CONTEGO_DEAL_ID, ck).reason.lower()
     for d in m.deals:
         if d.deal_id in GRADED_DEAL_IDS:
             continue
@@ -411,6 +462,77 @@ def test_committed_clo_answer_key_regenerates_from_its_report_fixtures() -> None
 
     regenerated = write_answer_key(key, base_dir=Path(mkdtemp()))
     assert regenerated.read_text(encoding="utf-8") == committed.read_text(encoding="utf-8")
+
+
+def test_committed_contego_answer_key_regenerates_from_its_report_fixtures() -> None:
+    """The same guard as Cairn's, over a second administrator — and that is #534.
+
+    A route is not demonstrated by a constructor being callable twice; it is
+    demonstrated by a second deal's committed bytes reproducing from a second
+    family's documents through the same call, with no engine module anywhere on
+    the path. An answer key inferred from the engine's own output would grade the
+    engine against itself and make every cell vacuously green, which is why this
+    file is regenerated rather than edited.
+
+    The shape check in front of the byte comparison earns the byte comparison:
+    a builder that had silently stopped reading one of the two reports, or had
+    quietly picked up a Priority of Payments this deal's trustee reports do not
+    state, would still match a file regenerated from that same broken builder.
+    So what the reports **do not** say is asserted alongside what they do."""
+    from clo_answer_key_source import (  # noqa: PLC0415
+        CONTEGO_REPORT_FIXTURES,
+        contego_key_from_reports,
+    )
+
+    from loanwhiz.primitives.reconciliation_answer_key import write_answer_key  # noqa: PLC0415
+
+    committed = answer_key_path(CONTEGO_DEAL_NAME)
+    assert committed.exists(), "the Contego answer key is not committed"
+
+    key = contego_key_from_reports()
+    assert len(key.periods) == len(CONTEGO_REPORT_FIXTURES)
+    for period in key.periods:
+        assert len(period.covenants) == CONTEGO_COVENANTS_PER_PERIOD
+        # A trustee report states no Priority of Payments and no pool
+        # statistics, so a period authored from one must claim neither.
+        assert not period.revenue_pop and not period.redemption_pop
+        assert period.available_revenue_funds is None
+        assert period.available_principal_funds is None
+        assert period.pool_stats == {}
+
+    regenerated = write_answer_key(key, base_dir=Path(mkdtemp()))
+    assert regenerated.read_text(encoding="utf-8") == committed.read_text(encoding="utf-8")
+
+
+def test_contego_publishes_no_undecided_coverage_test() -> None:
+    """Contego decides every test it states as a test — so its key excludes none.
+
+    The #481 rule is that a test published ``N/A`` is **excluded, not coerced**,
+    because ``passed`` is a ``bool`` and cannot express "did not apply". Cairn
+    exercises it: its Class F is stated ``N/A`` in every period and is absent
+    from its key. Contego does **not** exercise it, and recording that is the
+    point of this test — a reader who assumed the second deal re-proved the rule
+    would be wrong, and the rule's only live witness is still Cairn.
+
+    Asserted against the parsed summaries rather than the key, because the key
+    cannot distinguish "no test was N/A" from "the exclusion silently dropped
+    them all"; the summaries can, since an excluded test is present there."""
+    from clo_answer_key_source import contego_report_summaries  # noqa: PLC0415
+
+    from loanwhiz.primitives.collateral_schedule_parser import (  # noqa: PLC0415
+        CoverageTestOutcome,
+    )
+
+    summaries = contego_report_summaries()
+    assert summaries
+    for summary in summaries:
+        assert summary.coverage_tests, "a period parsed no coverage tests at all"
+        outcomes = {test.result for test in summary.coverage_tests}
+        assert outcomes == {CoverageTestOutcome.PASSED}, (
+            "Contego's published outcomes no longer all pass — the disclosure "
+            "in answer_keys/README.md and docs/data-card.md is now understated "
+            "and must be revised before this is made green"
+        )
 
 
 def test_clo_cells_revert_without_the_key() -> None:
@@ -777,7 +899,7 @@ def test_quality_matrix_endpoint_returns_graded_matrix_offline() -> None:
     # Offline + the three committed answer keys: GL-2024-1 (#429) and GL-2023-1
     # (#440) pass both PoP checks; Cairn CLO XVII (#481) passes covenants. The
     # honest verdict is those five cells, nothing fails, the rest not-applicable.
-    passed_cells = 2 * len(POP_GRADED_DEAL_IDS) + len(COVENANT_GRADED_DEAL_IDS)
+    passed_cells = 2 * len(POP_GRADED_DEAL_IDS) + len(COVENANT_PASSING_DEAL_IDS)
     assert body["tally"][GRADE_PASSED] == passed_cells
     assert body["tally"].get(GRADE_FAILED, 0) == 0
     assert body["tally"][GRADE_NOT_APPLICABLE] == len(body["cells"]) - passed_cells

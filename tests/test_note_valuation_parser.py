@@ -233,13 +233,26 @@ def test_a_missing_section_is_refused_not_reconciled_vacuously(monkeypatch) -> N
     check passes on nothing at all. Presence is therefore asserted separately,
     and this is the test that proves the assertion fires.
     """
+    import dataclasses
+
     import loanwhiz.primitives.note_valuation_parser as module
 
-    monkeypatch.setattr(
-        module,
-        "_SECTION_TITLES",
-        tuple(title for title in module._SECTION_TITLES if title != SECTION_PRINCIPAL_POP),
+    # Point the Principal PoP role at a title this report does not print. That
+    # is the post-#531 shape of the same defect: the section titles now come
+    # from the detected family, so "the router cannot find the section" means a
+    # family whose title is wrong for this document rather than a missing entry
+    # in a module-level tuple. The waterfall stays wired to the role, so the
+    # section routes to zero pages and parses zero steps — exactly the
+    # vacuously-reconciling empty result this check exists to catch.
+    layout = module._resolve_layout(module._split_pages(_text()))
+    misrouted = dataclasses.replace(
+        layout,
+        section_titles={
+            **layout.section_titles,
+            SECTION_PRINCIPAL_POP: "A Section This Report Does Not Print",
+        },
     )
+    monkeypatch.setattr(module, "_resolve_layout", lambda pages: misrouted)
 
     with pytest.raises(NoteValuationReconciliationError) as excinfo:
         parse_note_valuation_text(_text(), period_label=PERIOD_LABEL)
