@@ -1,10 +1,10 @@
 ---
 id: 2026-09-09-clo-live-deal-path
 title: "Make the live deal path serve the CLO: compliance, waterfall and comparison"
-status: decomposed
+status: filed
 created: 2026-09-09
 updated: 2026-09-09
-epics: []
+epics: [522]
 ---
 
 # Make the live deal path serve the CLO: compliance, waterfall and comparison
@@ -115,7 +115,7 @@ engine-computed and which are report-supplied.
 
 ## Decomposition
 
-### Epic: Make the live deal path serve the CLO   (umbrella #<N>)
+### Epic: Make the live deal path serve the CLO   (umbrella #522)
 
 - **Resolve a published applied coupon on the live structural path** — Give
   `_resolve_structural_config` a tier that reads the period's published all-in
@@ -137,4 +137,7 @@ engine-computed and which are report-supplied.
 
 ## Filed issues
 
-<Filled after filing.>
+- Epic "Make the live deal path serve the CLO" → umbrella **#522**
+  - #523 Resolve a published applied coupon on the live structural path — parallel, `liz:priority:1`
+  - #524 Decide and record which source a CLO's live series folds — sequential, after #523
+  - #525 Verify the three CLO screens against the published report — sequential, after #524
