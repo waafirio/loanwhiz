@@ -99,9 +99,11 @@ from loanwhiz.domain.trustee_report_families import (
     UnknownReportFamilyError,
 )
 from loanwhiz.domain.trustee_report_registry import (
+    SECTION_ACCRUAL_DETAIL,
     SECTION_ASSET_PART_I,
     SECTION_ASSET_PART_II,
     SECTION_ASSET_PART_III,
+    SECTION_ASSET_PART_IV,
     SECTION_CCC,
     SECTION_COUNTRY,
     SECTION_EXEC_SUMMARY,
@@ -157,6 +159,12 @@ _DETERMINISTIC_CONFIDENCE = 1.0
 #: evidence about who published it.
 _HEADER_LINES = 12
 _HEADER_PAGES = 3
+
+#: How much of a reflowed page's row-major line is read when routing it to a
+#: section. The line opens with the table's printed title and its column
+#: header; a window keeps a title quoted in a row's free text from claiming the
+#: page for another section.
+_REFLOWED_TITLE_WINDOW = 120
 
 
 def _resolve_layout(pages: list[list[str]]) -> DocumentLayout:
@@ -400,6 +408,23 @@ class CollateralAsset(BaseModel):
     flags: dict[str, bool] = Field(default_factory=dict)
     seniority: str | None = None
     sp_rating: str | None = None
+    fitch_rating: str | None = None
+    #: The report's quoted **price per 100 of par**, never a value. Named so
+    #: the unit is impossible to mistake: #470 is the correction of a column
+    #: that looked like a market value and was a price (``99.72``), wrong by
+    #: four orders of magnitude into the OC ratio. A price never reaches a
+    #: value column, and this field is why it does not have to.
+    market_price_pct: Decimal | None = None
+    #: How many purchase lots this asset was bought in, where the report
+    #: enumerates them. Not the population its concentration tables count —
+    #: that is :attr:`accrual_records` — and kept distinct because the two
+    #: differ (Contego: 256 lots, 212 accrual records, 177 assets).
+    purchase_lots: int | None = None
+    #: How many interest-accrual records this asset carries — one per rate
+    #: contract. This is the population a family whose ``CountGrain`` is
+    #: ``ACCRUAL_RECORD`` states its ``# of Assets`` counts over, so it is what
+    #: makes a stated count checkable at all.
+    accrual_records: int | None = None
 
     def flag(self, name: str) -> bool:
         """Return one Part III flag, defaulting to ``False`` when unparsed."""
@@ -452,6 +477,12 @@ class ReportAggregates(BaseModel):
     #: ``ACCRUAL_RECORD`` states its counts over — Contego's 212 against 177
     #: assets — so it is what that count must be reconciled against.
     accrual_record_count: int | None = None
+    #: Section key → how many asset rows that section carried. The asset count
+    #: has its own oracle for a family whose stated counts are not asset
+    #: counts: the sections that each enumerate the portfolio once must agree
+    #: with each other and with the tape. Without it a family like BNY Mellon
+    #: would have par checked and its asset count checked against nothing.
+    section_asset_counts: dict[str, int] = Field(default_factory=dict)
 
     def profile_test(self, prefix: str) -> ProfileTest | None:
         """Return the first profile test whose name starts with ``prefix``."""
@@ -483,7 +514,24 @@ class ScheduleDefects(BaseModel):
     balance_disagreement: int = 0
     identifiers_missing_from_part_i: int = 0
     identifiers_missing_from_part_ii: int = 0
+    identifiers_missing_from_part_iii: int = 0
+    identifiers_missing_from_part_iv: int = 0
+    identifiers_absent_from_the_anchor_section: int = 0
+    descriptions_without_an_obligor: int = 0
+    accrual_records_without_a_balance: int = 0
+    #: A section the parser could not read at all — distinct from a section
+    #: that read no rows, and from one the family declares unpublished. Three
+    #: different facts that an empty result renders identically (#494).
+    section_unreadable: int = 0
+    #: A stated market value that is not the stated par at the stated price.
+    #: One of the two columns is then not the quantity its header names, which
+    #: is #470 exactly, so it is counted rather than absorbed.
+    market_value_units: int = 0
     ccc_rows_unjoined: int = 0
+    #: The report publishes a distribution the tape cannot be grouped by,
+    #: because some asset lacks the attribute. Not a wrong number — a check
+    #: that could not run, which must not look like one that passed.
+    bucket_attribute_incomplete: int = 0
     #: Not a parse failure: the source document's own summary table disagrees
     #: with itself. Counted here so it is visible rather than silently absorbed.
     source_aggregate_inconsistent: int = 0
@@ -502,11 +550,28 @@ class ScheduleDefects(BaseModel):
     def blocking(self) -> int:
         """Defects that mean a row was lost, mis-joined or partly unread.
 
-        Excludes the two categories that leave every reconciled quantity
-        correct: an issuer name the source itself mangled, and a summary table
-        the source contradicts. Those are surfaced, not fatal.
+        Excludes the categories that leave every reconciled quantity correct:
+        an issuer name the source itself mangled, a summary table the source
+        contradicts, a description the source printed without its
+        ``obligor - facility`` separator, and a distribution the tape cannot be
+        grouped by. Those are surfaced, not fatal.
+
+        The last one is the #494 shape handled deliberately rather than by
+        silence: U.S. Bank publishes a rating stratification while only its CCC
+        bucket carries a rating, so that check genuinely cannot run. Refusing
+        the whole schedule for it would reject a tape whose every figure ties;
+        running it anyway would compare a full table against a partial tape and
+        report a divergence that is not one. It is counted and noted, so "this
+        check did not run" is visible instead of looking like "this check
+        passed".
         """
-        return self.total - self.unresolved_issuer_name - self.source_aggregate_inconsistent
+        return (
+            self.total
+            - self.unresolved_issuer_name
+            - self.source_aggregate_inconsistent
+            - self.descriptions_without_an_obligor
+            - self.bucket_attribute_incomplete
+        )
 
     def record(self, category: str, detail: str) -> None:
         """Increment ``category`` and keep a bounded, human-readable note."""
@@ -549,6 +614,11 @@ class CollateralSchedule(BaseModel):
     assets: list[CollateralAsset] = Field(default_factory=list)
     aggregates: ReportAggregates = Field(default_factory=ReportAggregates)
     defects: ScheduleDefects = Field(default_factory=ScheduleDefects)
+    #: What the report's own aggregate tables count beside the balance they
+    #: state, taken from the family record. Carried on the schedule because the
+    #: oracle needs it: comparing a stated count against the wrong population
+    #: is a check that cannot fail, which is worse than no check (#468).
+    count_grain: CountGrain = CountGrain.ASSET
 
     @property
     def total_principal_balance(self) -> Decimal:
@@ -677,6 +747,15 @@ def _page_section(lines: list[str], layout: DocumentLayout) -> str | None:
     # dot-leadered, so excluding those lines keeps it from being classified as
     # whichever section it happens to list first.
     head = " ".join(line for line in lines[:12] if ". . ." not in line)
+    # A reflowed page need not open with its title: Contego's Asset Information
+    # IV pages begin with a column-major stack of lot numbers, so the title is
+    # nowhere near the first twelve lines and the page would route to no
+    # section at all — 256 lot rows read as zero, which is the silence #494 is
+    # about. The row-major line carries the table's own title at its head, so
+    # that is where a reflowed page is asked.
+    reflowed = _reflowed_line(lines)
+    if reflowed is not None:
+        head = f"{head} {reflowed[:_REFLOWED_TITLE_WINDOW]}"
     for title in layout.titles:
         if title in head:
             return title
@@ -1056,15 +1135,30 @@ def _bny_part_iii_tail(aggregates: ReportAggregates) -> re.Pattern[str] | None:
     )
 
 
+#: The asset-type group labels ``Asset Information I`` prints between its loan
+#: block and its bond block. They sit in the row-major line immediately before
+#: the first row of each block, so the first row of a block carries one on the
+#: front of its description.
+_BNY_GROUP_LABELS = ("Loan ", "Bond ")
+
+
 def _split_description(description: str) -> tuple[str | None, str]:
     """Split BNY's ``<obligor> - <facility>`` description on its first dash.
 
     Unlike U.S. Bank's, this administrator prints a separator, so the split is
     exact rather than recovered — the obligor is what precedes the first
     ``" - "``. A description with no separator keeps the whole string as the
-    facility name and reports no obligor, rather than inventing one.
+    facility name and reports no obligor rather than inventing one.
+
+    A leading asset-type group label is removed first, and only when removing
+    it leaves a separator behind: an obligor genuinely named ``Loan …`` keeps
+    its name, because the strip has to earn itself on the row it is applied to.
     """
-    cleaned = _squash(description)
+    cleaned = _collapse(description)
+    for label in _BNY_GROUP_LABELS:
+        if cleaned.startswith(label) and " - " in cleaned[len(label) :]:
+            cleaned = cleaned[len(label) :]
+            break
     obligor, separator, facility = cleaned.partition(" - ")
     if not separator:
         return None, cleaned
@@ -1747,6 +1841,66 @@ def _parse_ccc(
 # ===========================================================================
 
 
+def _reflowed_schedule(
+    pages: list[list[str]],
+    layout: DocumentLayout,
+    *,
+    aggregates: ReportAggregates,
+    defects: ScheduleDefects,
+    deal_name: str | None,
+    reporting_date: str | None,
+    period_label: str,
+    strict: bool,
+) -> CollateralSchedule:
+    """The row-major parse path, for a family whose rows are not lines.
+
+    Same contract as the per-line path and the same refusal: the schedule is
+    reconciled against the report's own stated figures and never returned when
+    it does not tie.
+    """
+    assets = _bny_assets(pages, layout, aggregates, defects)
+    aggregates.accrual_record_count = sum(asset.accrual_records or 0 for asset in assets)
+    for section_key, name in (
+        (SECTION_ASSET_PART_I, "Asset Information I"),
+        (SECTION_ASSET_PART_II, "Asset Information II"),
+        (SECTION_ASSET_PART_III, "Asset Information III"),
+    ):
+        aggregates.section_asset_counts[name] = _section_identifier_count(
+            pages, layout, section_key
+        )
+
+    schedule = CollateralSchedule(
+        deal_name=deal_name,
+        period_label=period_label,
+        reporting_date=reporting_date,
+        assets=assets,
+        aggregates=aggregates,
+        defects=defects,
+        count_grain=layout.count_grain,
+    )
+    if strict:
+        reconciliation = reconcile_schedule(schedule)
+        if not reconciliation.ok or defects.blocking:
+            raise ScheduleReconciliationError(reconciliation, defects)
+    return schedule
+
+
+def _section_identifier_count(
+    pages: list[list[str]], layout: DocumentLayout, section_key: str
+) -> int:
+    """How many distinct asset identifiers one section carries.
+
+    Counted from the identifiers rather than from the rows the tail matched, on
+    purpose: this is the check that the *tail* did not quietly drop a row whose
+    columns it could not read. A count taken from the same match it is meant to
+    audit would agree with itself by construction (#511).
+    """
+    identifiers: set[str] = set()
+    for text in _section_row_texts(_pages_for(pages, layout, section_key), layout):
+        identifiers.update(found.group(1) for found in _EMBEDDED_IDENTIFIER_RE.finditer(text))
+    return len(identifiers)
+
+
 def parse_schedule_text(
     text: str,
     *,
@@ -1780,8 +1934,20 @@ def parse_schedule_text(
     ccc_pages = _pages_for(pages, layout, SECTION_CCC)
     if not (part_i_pages and part_ii_pages and part_iii_pages):
         raise ValueError(
-            "report is missing at least one Current Asset Characteristics section "
+            "report is missing at least one per-asset detail section "
             "(located by header, not page number)"
+        )
+
+    if layout.row_geometry is RowGeometry.REFLOWED_ROWS:
+        return _reflowed_schedule(
+            pages,
+            layout,
+            aggregates=aggregates,
+            defects=defects,
+            deal_name=deal_name,
+            reporting_date=reporting_date,
+            period_label=period_label,
+            strict=strict,
         )
 
     names = _parse_part_iii(part_iii_pages, layout, defects)
@@ -1834,6 +2000,223 @@ def parse_schedule_text(
     return schedule
 
 
+# ---------------------------------------------------------------------------
+# BNY Mellon — assembling the schedule
+# ---------------------------------------------------------------------------
+
+#: ``Asset Information II``'s three flag cells, in the order its header prints
+#: them, and ``Asset Information IV``'s eight. Named separately because they
+#: come off different sections at different grains: II is per asset, IV is per
+#: purchase lot, so IV's are folded across an asset's lots with ``any``.
+_BNY_PART_II_FLAGS: tuple[str, ...] = ("dip", "cov_lite", "pik")
+_BNY_PART_IV_FLAGS: tuple[str, ...] = (
+    "bridge_loan",
+    "swapped",
+    "non_discount",
+    "hedged_obligation",
+    "discount_obligation",
+    "deferring",
+    "current_pay",
+    "interest_rate_swap",
+)
+
+
+def _flag_cells(text: str, names: tuple[str, ...]) -> dict[str, bool]:
+    """Read a run of ``Yes``/``-`` cells into named flags."""
+    values = _FLAG_RE.findall(text)
+    return {name: value == "Yes" for name, value in zip(names, values, strict=False)}
+
+
+def _bny_assets(
+    pages: list[list[str]],
+    layout: DocumentLayout,
+    aggregates: ReportAggregates,
+    defects: ScheduleDefects,
+) -> list[CollateralAsset]:
+    """Assemble BNY's four asset sections into one row per asset.
+
+    ``Asset Information I`` is the anchor: it is the section that enumerates
+    the portfolio, one row per asset, and its identifiers are what every other
+    section is joined onto. An identifier present in a later section and absent
+    from I is recorded rather than added, and an asset missing from a later
+    section keeps ``None`` in that section's fields — an honest absence, never
+    a zero that reads as a fact.
+    """
+    part_i = {
+        identifier: (description, matched)
+        for identifier, description, matched in _reflowed_rows(
+            _pages_for(pages, layout, SECTION_ASSET_PART_I), layout, _BNY_PART_I_TAIL
+        )
+    }
+    part_ii = {
+        identifier: matched
+        for identifier, _, matched in _reflowed_rows(
+            _pages_for(pages, layout, SECTION_ASSET_PART_II), layout, _BNY_PART_II_TAIL
+        )
+    }
+    part_iii_tail = _bny_part_iii_tail(aggregates)
+    part_iii: dict[str, re.Match[str]] = {}
+    if part_iii_tail is None:
+        defects.record(
+            "section_unreadable",
+            "Asset Information III carries two free-text industry columns with "
+            "no delimiter after them, and the report's own industry tables — "
+            "the closed vocabulary that resolves those boundaries — parsed "
+            "empty, so the section is refused rather than cut at a guess",
+        )
+    else:
+        part_iii = {
+            identifier: matched
+            for identifier, _, matched in _reflowed_rows(
+                _pages_for(pages, layout, SECTION_ASSET_PART_III), layout, part_iii_tail
+            )
+        }
+
+    lots = _bny_lots(pages, layout)
+    accruals = _bny_accrual_records(pages, layout)
+    market_values = _bny_ccc_market_values(pages, layout, defects)
+
+    assets: list[CollateralAsset] = []
+    for identifier, (description, one) in part_i.items():
+        issuer_name, facility_name = _split_description(description)
+        if issuer_name is None:
+            defects.record("descriptions_without_an_obligor", identifier)
+        two = part_ii.get(identifier)
+        three = part_iii.get(identifier)
+        if two is None:
+            defects.record("identifiers_missing_from_part_ii", identifier)
+        if three is None and part_iii_tail is not None:
+            defects.record("identifiers_missing_from_part_iii", identifier)
+        country, lot_flags, lot_count = lots.get(identifier, (None, {}, 0))
+        if lot_count == 0:
+            defects.record("identifiers_missing_from_part_iv", identifier)
+        flags = dict(lot_flags)
+        if two is not None:
+            flags.update(_flag_cells(two.group("flags"), _BNY_PART_II_FLAGS))
+        assets.append(
+            CollateralAsset(
+                identifier=identifier,
+                issuer_name=issuer_name,
+                facility_name=facility_name,
+                principal_balance=Decimal(one.group("principal_balance").replace(",", "")),
+                asset_type=one.group("asset_type") or None,
+                maturity_date=one.group("maturity_date"),
+                seniority=one.group("seniority"),
+                market_price_pct=Decimal(one.group("market_price_pct")),
+                market_value=market_values.get(identifier),
+                currency=two.group("currency") if two is not None else None,
+                sp_rating=_bny_rating(three.group("sp_rating")) if three is not None else None,
+                fitch_rating=(
+                    _bny_rating(three.group("fitch_rating")) if three is not None else None
+                ),
+                sp_industry=_collapse(three.group("sp_industry")) if three is not None else None,
+                fitch_industry=(
+                    _collapse(three.group("fitch_industry")) if three is not None else None
+                ),
+                country=country,
+                flags=flags,
+                purchase_lots=lot_count or None,
+                accrual_records=accruals.get(identifier),
+            )
+        )
+
+    for identifier in set(part_ii) | set(part_iii):
+        if identifier not in part_i:
+            defects.record("identifiers_absent_from_the_anchor_section", identifier)
+    return assets
+
+
+def _bny_rating(cell: str) -> str | None:
+    """A rating cell, with this administrator's ``***`` read as *no rating*.
+
+    ``***`` is what BNY prints where an agency does not rate the asset. It is
+    not a rating and must never become one: returned as ``None`` so a consumer
+    asking "what does S&P say about this asset?" gets "nothing" rather than a
+    token that sorts, groups and compares like a rating band.
+    """
+    return None if cell == "***" else cell
+
+
+def _bny_lots(
+    pages: list[list[str]], layout: DocumentLayout
+) -> dict[str, tuple[str | None, dict[str, bool], int]]:
+    """Country, folded flags and lot count per asset, from ``Asset Information IV``.
+
+    This section is at **purchase-lot** grain, so an asset holds several rows.
+    Country is the same on every lot of an asset; the flags are folded with
+    ``any``, since an asset one of whose lots is a discount obligation is a
+    discount obligation. Country is read here rather than from Part II because
+    here a rating cell bounds it on the right — in Part II the next row's
+    obligor name follows it with no delimiter and no vocabulary to resolve
+    against, this administrator publishing no country table.
+    """
+    lots: dict[str, tuple[str | None, dict[str, bool], int]] = {}
+    for identifier, _, matched in _reflowed_rows(
+        _pages_for(pages, layout, SECTION_ASSET_PART_IV), layout, _BNY_PART_IV_TAIL
+    ):
+        country, flags, count = lots.get(identifier, (None, {}, 0))
+        folded = dict(flags)
+        for name, value in _flag_cells(matched.group("flags"), _BNY_PART_IV_FLAGS).items():
+            folded[name] = folded.get(name, False) or value
+        lots[identifier] = (country or _collapse(matched.group("country")), folded, count + 1)
+    return lots
+
+
+def _bny_accrual_records(pages: list[list[str]], layout: DocumentLayout) -> dict[str, int]:
+    """How many accrual records each asset carries.
+
+    This is the population BNY's aggregate tables count. Held per asset rather
+    than as one total because the *distribution* is what the per-bucket checks
+    need: a bucket's stated count is the accrual records of the assets in it,
+    while its stated balance is those assets' par. One table, two grains.
+    """
+    section = _pages_for(pages, layout, SECTION_ACCRUAL_DETAIL)
+    tail = _bny_accrual_tail(section, layout)
+    records: dict[str, int] = {}
+    for identifier, _, _ in _reflowed_rows(section, layout, tail):
+        records[identifier] = records.get(identifier, 0) + 1
+    return records
+
+
+def _bny_ccc_market_values(
+    pages: list[list[str]], layout: DocumentLayout, defects: ScheduleDefects
+) -> dict[str, Decimal]:
+    """Market values from ``CCC Obligations``, unit-checked against the price.
+
+    This is the one BNY table printing a market **price** and a market
+    **value** for the same asset, which makes the units checkable against the
+    document rather than against the parser's own arithmetic: the value must be
+    the par times the price over 100. #470 is the correction of a column that
+    looked like a market value and was a price (``99.72``), wrong by four
+    orders of magnitude into the OC ratio — so a divergence here is recorded as
+    a defect rather than absorbed.
+    """
+    values: dict[str, Decimal] = {}
+    for identifier, _, matched in _reflowed_rows(
+        _pages_for(pages, layout, SECTION_CCC), layout, _BNY_CCC_TAIL
+    ):
+        price = Decimal(matched.group("market_price_pct"))
+        value = Decimal(matched.group("market_value").replace(",", ""))
+        par = Decimal(matched.group("principal_balance").replace(",", ""))
+        implied = (par * price / Decimal(100)).quantize(Decimal("0.01"))
+        if abs(implied - value) > _MARKET_VALUE_TOLERANCE:
+            defects.record(
+                "market_value_units",
+                f"{identifier}: the report states market value {value} but "
+                f"par {par} at price {price} implies {implied}; one of the two "
+                "columns is not what its header says it is (#470)",
+            )
+        values[identifier] = value
+    return values
+
+
+#: How far a market value may sit from par x price / 100 before the units are
+#: in doubt. One cent per side of the rounding, which is the most a correctly
+#: derived value can differ by; anything larger is a different quantity, not a
+#: rounding.
+_MARKET_VALUE_TOLERANCE = Decimal("0.02")
+
+
 # ===========================================================================
 # The contract — reconcile the tape to the report's own stated totals
 # ===========================================================================
@@ -1845,16 +2228,39 @@ def _check(name: str, expected: Any, actual: Any) -> ReconciliationCheck:
     )
 
 
+def _count_weight(asset: CollateralAsset, grain: CountGrain) -> int:
+    """How much one asset contributes to a stated count, at the declared grain.
+
+    One, where the tables count assets. Where they count accrual records — one
+    per rate contract — an asset accruing under two contracts contributes two,
+    which is the whole of Contego's 212 against 177.
+    """
+    if grain is CountGrain.ACCRUAL_RECORD:
+        return asset.accrual_records or 0
+    return 1
+
+
 def _group_by(
-    assets: list[CollateralAsset], attribute: str
+    assets: list[CollateralAsset], attribute: str, grain: CountGrain = CountGrain.ASSET
 ) -> dict[str, tuple[Decimal, int]]:
+    """Balance and stated-count weight per bucket of one attribute.
+
+    The two are summed at **different grains on purpose**, because that is what
+    the document does: a BNY concentration table states a balance over assets
+    and a count over accrual records, in adjacent columns of one row. Summing
+    both at one grain reproduces the table's balance and contradicts its count,
+    or the reverse — never both (#484).
+    """
     grouped: dict[str, tuple[Decimal, int]] = {}
     for asset in assets:
         key = getattr(asset, attribute)
         if key is None:
             continue
         balance, count = grouped.get(key, (Decimal("0"), 0))
-        grouped[key] = (balance + asset.principal_balance, count + 1)
+        grouped[key] = (
+            balance + asset.principal_balance,
+            count + _count_weight(asset, grain),
+        )
     return grouped
 
 
@@ -1874,10 +2280,34 @@ def reconcile_schedule(schedule: CollateralSchedule) -> ScheduleReconciliation:
     """
     aggregates = schedule.aggregates
     assets = schedule.assets
+    defects = schedule.defects
     checks: list[ReconciliationCheck] = []
 
+    grain = schedule.count_grain
     if aggregates.asset_count is not None:
-        checks.append(_check("asset count", aggregates.asset_count, len(assets)))
+        if grain is CountGrain.ACCRUAL_RECORD:
+            # The stated count is not an asset count for this administrator,
+            # so it is checked against the population it actually describes.
+            # Contego states 212 against 177 assets at an identical balance:
+            # comparing it to the asset count would fail a correct parse, and
+            # quietly "fixing" that by dropping the check would leave par as
+            # the only oracle — and a row worth zero can go missing under par
+            # without moving it (#468).
+            checks.append(
+                _check(
+                    "accrual record count",
+                    aggregates.asset_count,
+                    sum(asset.accrual_records or 0 for asset in assets),
+                )
+            )
+        else:
+            checks.append(_check("asset count", aggregates.asset_count, len(assets)))
+
+    # The asset count then needs an oracle of its own, since no aggregate table
+    # states one. The sections that each enumerate the portfolio once must
+    # agree with each other and with the tape.
+    for section, stated in sorted(aggregates.section_asset_counts.items()):
+        checks.append(_check(f"asset count · {section}", len(assets), stated))
     if aggregates.aggregate_principal_balance is not None:
         checks.append(
             _check(
@@ -1887,11 +2317,28 @@ def reconcile_schedule(schedule: CollateralSchedule) -> ScheduleReconciliation:
             )
         )
 
-    for table, label in (("country", "country"), ("sp_industry", "S&P industry")):
+    for table, label in (
+        ("country", "country"),
+        ("sp_industry", "S&P industry"),
+        ("fitch_industry", "Fitch industry"),
+        ("sp_rating", "S&P rating"),
+    ):
         buckets: list[AggregateBucket] = getattr(aggregates, table)
         if not buckets:
             continue
-        grouped = _group_by(assets, table)
+        if any(getattr(asset, table) is None for asset in assets):
+            # The table exists but the tape cannot populate its attribute for
+            # every asset, so a per-bucket comparison would under-count every
+            # bucket and read as a divergence in the parse rather than as the
+            # gap it is. Recorded, never silently skipped (#494).
+            defects.record(
+                "bucket_attribute_incomplete",
+                f"the report publishes a {label} table but not every parsed "
+                f"asset carries a {table}, so its per-bucket distribution "
+                "cannot be checked",
+            )
+            continue
+        grouped = _group_by(assets, table, grain)
         trustworthy = table not in aggregates.inconsistent_tables
         for bucket in buckets:
             balance, count = grouped.get(bucket.label, (Decimal("0"), 0))

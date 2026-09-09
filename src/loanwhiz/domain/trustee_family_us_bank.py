@@ -28,6 +28,7 @@ from loanwhiz.domain.trustee_report_registry import (
     SECTION_EXEC_SUMMARY,
     SECTION_FITCH_INDUSTRY,
     SECTION_ACCRUAL_DETAIL,
+    SECTION_ASSET_PART_IV,
     SECTION_IC_DETAIL,
     SECTION_NV_DISTRIBUTION,
     SECTION_NV_EXECUTIVE,
@@ -90,6 +91,17 @@ _MONTHLY_ORDER_MARKERS = MappingProxyType(
 #: count accrual records rather than assets has to reconcile that count against
 #: this population; U.S. Bank's count is an asset count, so it needs no such
 #: page and declares the absence rather than leaving it unsaid (#494).
+#: Why U.S. Bank's monthly report carries no purchase-lot section. The lot
+#: grain is where BNY prints country and several obligation flags; U.S. Bank
+#: prints both on its per-asset pages, so nothing is lost by its absence and
+#: saying so keeps "does not publish" distinct from "the title is missing".
+_NO_LOT_DETAIL = (
+    "U.S. Bank prints no purchase-lot section. Its portfolio is enumerated "
+    "once per asset, and the country and obligation flags BNY carries at lot "
+    "grain appear on Current Asset Characteristics Parts II and III instead, "
+    "so there is no lot-level population in this document to read."
+)
+
 _NO_ACCRUAL_DETAIL = (
     "U.S. Bank prints no per-asset interest-accrual page. Each asset's rate "
     "basis, spread and index appear once on Current Asset Characteristics - "
@@ -128,7 +140,10 @@ US_BANK: TrusteeReportFamily = register_family(
                         }
                     ),
                     unpublished_sections=MappingProxyType(
-                        {SECTION_ACCRUAL_DETAIL: _NO_ACCRUAL_DETAIL}
+                        {
+                            SECTION_ACCRUAL_DETAIL: _NO_ACCRUAL_DETAIL,
+                            SECTION_ASSET_PART_IV: _NO_LOT_DETAIL,
+                        }
                     ),
                     furniture_prefixes=_MONTHLY_FURNITURE,
                     # Safe here only because every data row opens with an asset

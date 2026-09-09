@@ -99,6 +99,7 @@ SECTION_EXEC_SUMMARY = "executive_summary"
 SECTION_PAR_VALUE_DETAIL = "par_value_tests_detail"
 SECTION_IC_DETAIL = "interest_coverage_tests_detail"
 SECTION_ACCRUAL_DETAIL = "interest_accrual_detail"
+SECTION_ASSET_PART_IV = "asset_part_iv"
 
 # Section keys for DocumentKind.NOTE_VALUATION_REPORT.
 SECTION_NV_EXECUTIVE = "executive_summary"
@@ -128,6 +129,7 @@ REQUIRED_SECTION_KEYS: Mapping[DocumentKind, frozenset[str]] = MappingProxyType(
                 SECTION_PAR_VALUE_DETAIL,
                 SECTION_IC_DETAIL,
                 SECTION_ACCRUAL_DETAIL,
+                SECTION_ASSET_PART_IV,
             }
         ),
         DocumentKind.NOTE_VALUATION_REPORT: frozenset(
