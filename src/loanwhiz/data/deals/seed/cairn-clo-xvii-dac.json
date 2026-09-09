@@ -1508,5 +1508,63 @@
       "New York"
     ],
     "source": "Listing Particulars, Definitions — \"Payment Date\""
+  },
+  "note_day_counts": {
+    "A": {
+      "class_key": "A",
+      "basis": "act/360",
+      "unadjusted_payment_dates": false,
+      "condition": "6(e)(ii)",
+      "rate_type": "FLR",
+      "source": "Listing Particulars, Conditions — 6(e)(ii)"
+    },
+    "B-1": {
+      "class_key": "B-1",
+      "basis": "act/360",
+      "unadjusted_payment_dates": false,
+      "condition": "6(e)(ii)",
+      "rate_type": "FLR",
+      "source": "Listing Particulars, Conditions — 6(e)(ii)"
+    },
+    "B-2": {
+      "class_key": "B-2",
+      "basis": "30/360",
+      "unadjusted_payment_dates": true,
+      "condition": "6(e)(iii)",
+      "rate_type": "FXR",
+      "source": "Listing Particulars, Conditions — 6(e)(iii)"
+    },
+    "C": {
+      "class_key": "C",
+      "basis": "act/360",
+      "unadjusted_payment_dates": false,
+      "condition": "6(e)(ii)",
+      "rate_type": "FLR",
+      "source": "Listing Particulars, Conditions — 6(e)(ii)"
+    },
+    "D": {
+      "class_key": "D",
+      "basis": "act/360",
+      "unadjusted_payment_dates": false,
+      "condition": "6(e)(ii)",
+      "rate_type": "FLR",
+      "source": "Listing Particulars, Conditions — 6(e)(ii)"
+    },
+    "E": {
+      "class_key": "E",
+      "basis": "act/360",
+      "unadjusted_payment_dates": false,
+      "condition": "6(e)(ii)",
+      "rate_type": "FLR",
+      "source": "Listing Particulars, Conditions — 6(e)(ii)"
+    },
+    "F": {
+      "class_key": "F",
+      "basis": "act/360",
+      "unadjusted_payment_dates": false,
+      "condition": "6(e)(ii)",
+      "rate_type": "FLR",
+      "source": "Listing Particulars, Conditions — 6(e)(ii)"
+    }
   }
 }

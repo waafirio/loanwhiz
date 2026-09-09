@@ -89,3 +89,4 @@ the budget and re-running a non-deterministic extraction over everything else.
 Then check the result against a value another document states independently.
 
 Refs: #528
+Refs: #539 — same route, one Condition further out: the day-count fraction.

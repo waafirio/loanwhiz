@@ -73,11 +73,13 @@ REPORT_FIXTURES: tuple[tuple[str, str], ...] = (
 
 @pytest.fixture(scope="module")
 def prospectus_text() -> str:
-    """The committed excerpt of the Listing Particulars' two relevant definitions.
+    """The committed excerpt of the Listing Particulars.
 
     A verbatim slice of what ``pypdf`` extracts from the 420-page PDF — wrapped
     lines, stray intra-word spaces and all — so the parser is exercised against
-    the text it really sees rather than a tidied paraphrase.
+    the text it really sees rather than a tidied paraphrase. It carries the two
+    definitions this module needs; #539 appended the *Accrual Period* definition
+    and Condition 6(e), which the day-count parser reads from the same file.
     """
     return PROSPECTUS_FIXTURE.read_text(encoding="utf-8")
 

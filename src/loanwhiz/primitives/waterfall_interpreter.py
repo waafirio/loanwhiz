@@ -210,6 +210,19 @@ class TrancheFunds(BaseModel):
         and that default is a real answer ("nothing is deferred on this class"),
         exactly as ``pdl_balance``'s is — an absent *tranche* is the unknown, not
         an absent balance.
+    days_in_period:
+        This tranche's own day count for the period, overriding the deal-wide
+        ``WaterfallFunds.days_in_period`` when set (#539). ``None`` — the usual
+        case — means "no per-class convention was sourced for this tranche", and
+        the deal-wide count applies unchanged.
+
+        It exists because a day-count convention is a **per-class** fact, not a
+        per-deal one: Cairn CLO XVII issues Class B in two strips whose
+        Conditions state different bases, so B-1 accrues over the actual days
+        between two adjusted Payment Dates while B-2 accrues on 30/360 between
+        the two unadjusted ones. A single deal-level count cannot express that
+        at all. Only the *numerator* varies — every basis the Conditions state
+        divides by 360 — which is why this is a day count rather than a formula.
     """
 
     name: str = Field(..., description="Tranche name.")
@@ -217,6 +230,7 @@ class TrancheFunds(BaseModel):
     rate_pct: float | None = Field(default=None, ge=0.0)
     pdl_balance: float = Field(default=0.0, ge=0.0)
     deferred_interest_balance: float = Field(default=0.0, ge=0.0)
+    days_in_period: int | None = Field(default=None, gt=0)
 
 
 class WaterfallFunds(BaseModel):
@@ -262,7 +276,10 @@ class WaterfallFunds(BaseModel):
         ``not_evaluable`` rather than a zero fee — the distinction the silent-zero
         bug class turns on.
     days_in_period:
-        Day count for interest accrual (Act/360).
+        Deal-wide day count for interest accrual. A tranche carrying its own
+        ``TrancheFunds.days_in_period`` (a per-class convention sourced from the
+        deal's Conditions, #539) uses that instead; this remains the count for
+        every tranche that states none, and the base for fee accrual.
     sequential_pay:
         Whether the Sequential Pay Trigger is in effect this period. The default
         condition evaluator reads this; S5 may instead compute it. ``None``
@@ -562,7 +579,12 @@ def _canonical_recipient(name: str) -> RecipientType | None:
 
 
 def _accrued_interest(balance: float, rate_pct: float, days: int) -> float:
-    """Act/360 accrued interest: balance × (rate/100) / 360 × days."""
+    """Accrued interest: balance × (rate/100) / 360 × ``days``.
+
+    Every day-count basis the Conditions state divides by 360 — Act/360 and
+    30/360 alike — so the convention lives entirely in how ``days`` was counted,
+    never here. See :mod:`loanwhiz.extraction.day_count_parser`.
+    """
     return balance * (rate_pct / 100.0) / 360.0 * days
 
 
@@ -577,7 +599,7 @@ def _accrued_interest(balance: float, rate_pct: float, days: int) -> float:
 
 
 def _make_tranche_interest_need(tranche: str) -> NeedCalculator:
-    """Act/360 accrual over every strip of class ``tranche``; ``None`` if unanswerable.
+    """Coupon accrual over every strip of class ``tranche``; ``None`` if unanswerable.
 
     The recipient names a **class**, so the need is the sum of the accruals of
     the strips that class was issued in (:meth:`WaterfallFunds.tranche_strips`).
@@ -585,6 +607,10 @@ def _make_tranche_interest_need(tranche: str) -> NeedCalculator:
     why every single-strip deal is unchanged to the byte. A class sold in two —
     Cairn's Class B-1 floating and B-2 fixed, one published ``(H)`` step for both
     — is the sum of the two, and neither strip alone is the answer.
+
+    Each strip is counted on **its own** day-count basis where its Condition
+    states one (#539). The two strips above do not share a convention, so a sum
+    taken on one day count is wrong however the strips are resolved.
 
     Three cases refuse, and the whole point is that they stay three. A class with
     **no strips** is *unknown*, not zero: a step paying Class D interest in a deal
@@ -611,7 +637,19 @@ def _make_tranche_interest_need(tranche: str) -> NeedCalculator:
         for t in strips:
             if t.rate_pct is None:
                 return None
-            total += _accrued_interest(t.balance, t.rate_pct, funds.days_in_period)
+            # Each strip accrues on the day count ITS OWN Condition states, and
+            # only falls back to the deal-wide count when it states none (#539).
+            # This is where the class-resolution and the per-class convention
+            # meet: Cairn's Class B is one published step over a floating strip
+            # on Act/360 and a fixed strip on 30/360, so the sum is right only if
+            # each term is counted on its own basis. A deal whose strips share one
+            # convention carries no per-strip count and is unchanged to the byte.
+            days = (
+                t.days_in_period
+                if t.days_in_period is not None
+                else funds.days_in_period
+            )
+            total += _accrued_interest(t.balance, t.rate_pct, days)
         return total
 
     _need.__name__ = f"_need_{tranche}_interest"
