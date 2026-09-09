@@ -10,8 +10,8 @@ that omits it.
 Why a deterministic parser rather than the Docling pipeline (#528, #548)
 -----------------------------------------------------------------------
 The undertaking is *unreachable* through this repo's LLM extraction today.
-Cairn CLO XVII's committed glossary holds 27 terms whose initials run A, B, P
-and stop at ``Payment Date``; the whole R range — ``Retention Requirements``
+Cairn CLO XVII's committed glossary stops at ``Payment Date``, so the whole
+R range — ``Retention Requirements``
 included — is lost to the ``max_chars`` truncation #548 landed its coverage
 check for. Judged from that artefact alone the honest-looking conclusion is
 "the document does not state retention", which is false: the source states it
@@ -126,7 +126,7 @@ class RiskRetention:
 
     retainer: str
     retainer_capacity: str
-    method_letter: str
+    method_letter: RetentionMethodLetter
     level_pct: float
     level_basis: str
     instrument: str | None = None
@@ -188,7 +188,7 @@ class RiskRetention:
         return cls(
             retainer=str(raw["retainer"]),
             retainer_capacity=capacity,
-            method_letter=letter,
+            method_letter=letter,  # type: ignore[arg-type]
             level_pct=float(raw["level_pct"]),  # type: ignore[arg-type]
             level_basis=str(raw["level_basis"]),
             instrument=None if instrument is None else str(instrument),
@@ -236,6 +236,26 @@ _METHOD_WORDS: tuple[tuple[re.Pattern[str], str], ...] = (
 )
 
 
+def _locate_citation(collapsed: str) -> re.Match[str] | None:
+    """The Article 6(3) sub-paragraph citation, in either form, or ``None``.
+
+    This is the module's locator, and it earns the job by being *rare*:
+    ``Article 6(3)`` appears on exactly one page of each ~420-page document
+    surveyed, while the threshold figure and the retention vocabulary appear
+    throughout. Everything else is read relative to where this lands.
+    """
+    return _ARTICLE_DIRECT.search(collapsed) or _ARTICLE_INVERTED.search(collapsed)
+
+
+#: How far either side of the citation the method-in-words may be stated and
+#: still be describing *this* undertaking. Contego separates the two by roughly
+#: 500 characters within one sentence; the Regulation's own use of the same
+#: phrase elsewhere in the document is not a contradiction, it is a different
+#: subject, and treating it as one produced a false refusal on an unambiguous
+#: document.
+_METHOD_WORDS_SPAN = 800
+
+
 def parse_retention_method(text: str) -> str | None:
     """Return the Article 6(3) sub-paragraph letter the text cites, or ``None``.
 
@@ -256,13 +276,16 @@ def parse_retention_method(text: str) -> str | None:
             document rather than a lookup).
     """
     collapsed = _collapse(text)
-    match = _ARTICLE_DIRECT.search(collapsed) or _ARTICLE_INVERTED.search(collapsed)
+    match = _locate_citation(collapsed)
     if match is None:
         return None
     letter = match.group(1).lower()
 
+    near = collapsed[
+        max(0, match.start() - _METHOD_WORDS_SPAN) : match.end() + _METHOD_WORDS_SPAN
+    ]
     for pattern, worded in _METHOD_WORDS:
-        if pattern.search(collapsed) and worded != letter:
+        if pattern.search(near) and worded != letter:
             raise UnsourcedRetention(
                 f"the document names the {_METHOD_NAMES[worded]!r} method in "
                 f"words but cites Article 6(3)({letter}) "
@@ -285,6 +308,16 @@ _RETAINER_ANCHOR = re.compile(
     r"\s+(?:shall|will|has\s+agreed\s+to|agrees\s+to)\s+act\s+as\s+"
     r"(?:the\s+)?[Rr]etention\s+[Hh]older"
 )
+#: How far back from the anchor the entity may be stated. The name itself is
+#: capped at 80 characters, so this is generous; it exists to bound the search.
+_RETAINER_LOOKBEHIND = 240
+
+#: The undertaking runs from the designation to a little past the citation.
+#: Capacity, level and instrument are read from that span alone, so a capacity
+#: stated anywhere else in the document — the Issuer being an originator "for
+#: some other purpose" — is never attributed to whoever holds the retention.
+_SPAN_AFTER_CITATION = 1500
+
 #: The entity, right-anchored against the text preceding the anchor. The
 #: leading greedy ``.*`` is load-bearing: it forces the engine to take the
 #: **last** boundary that still reaches the end, which is the tightest one and
@@ -357,15 +390,37 @@ def parse_risk_retention(text: str) -> RiskRetention:
     collapsed = _collapse(text)
 
     letter = parse_retention_method(collapsed)
-    if letter is None:
+    citation = _locate_citation(collapsed)
+    if letter is None or citation is None:
         raise UnsourcedRetention(
             "the text cites no sub-paragraph of Article 6(3), so the retention "
             "method is unstated; a level without a method is not what the "
             "verification obligation asks for"
         )
 
-    anchor = _RETAINER_ANCHOR.search(collapsed)
-    tail = _RETAINER_TAIL.search(collapsed[: anchor.start()]) if anchor else None
+    # The designation that governs is the last one stated *before* the
+    # commitment, not the first in the document: a 420-page offering circular
+    # names its Retention Holder in the summary long before the section that
+    # binds it, and the earlier mention states no capacity or level. Choosing
+    # by proximity to the citation is what lets this read a whole document.
+    anchor = None
+    for candidate in _RETAINER_ANCHOR.finditer(collapsed):
+        if candidate.start() >= citation.end():
+            break
+        anchor = candidate
+
+    # The lookbehind is bounded, and not only for speed: the entity sits
+    # immediately before the verb in every document surveyed, so a wider window
+    # buys nothing and costs correctness. Unbounded, `_RETAINER_TAIL`'s greedy
+    # `.*` also backtracks over the whole prefix — handed a 420-page document it
+    # does not return.
+    tail = (
+        _RETAINER_TAIL.search(
+            collapsed[max(0, anchor.start() - _RETAINER_LOOKBEHIND) : anchor.start()]
+        )
+        if anchor
+        else None
+    )
     if tail is None:
         raise UnsourcedRetention(
             f"the text cites Article 6(3)({letter}) "
@@ -374,7 +429,14 @@ def parse_risk_retention(text: str) -> RiskRetention:
         )
     retainer = tail.group("name").strip(" .,;:")
 
-    capacity_match = _CAPACITY.search(collapsed)
+    # Every remaining limb is read from the undertaking's own span rather than
+    # from the whole text. A capacity found anywhere in a 420-page document is
+    # not this retainer's capacity — the Issuer being an originator "for some
+    # other purpose" would otherwise be attributed to whoever holds the
+    # retention, which is the inference this module exists to refuse.
+    span = collapsed[anchor.end() : citation.end() + _SPAN_AFTER_CITATION]
+
+    capacity_match = _CAPACITY.search(span)
     if capacity_match is None:
         raise UnsourcedRetention(
             f"the text names {retainer!r} as Retention Holder but states no "
@@ -383,7 +445,7 @@ def parse_risk_retention(text: str) -> RiskRetention:
         )
     capacity = re.sub(r"\s+", " ", capacity_match.group(1)).lower()
 
-    level_match = _LEVEL.search(collapsed)
+    level_match = _LEVEL.search(span)
     if level_match is None or level_match.group("basis") is None:
         raise UnsourcedRetention(
             f"the text states no retained level with a base for {retainer!r}; "
@@ -395,13 +457,13 @@ def parse_risk_retention(text: str) -> RiskRetention:
         level_pct = float(raw_num)
 
     instrument_match = _INSTRUMENT_PREFERRED.search(
-        collapsed
-    ) or _INSTRUMENT_FALLBACK.search(collapsed)
+        span
+    ) or _INSTRUMENT_FALLBACK.search(span)
 
     return RiskRetention(
         retainer=retainer,
         retainer_capacity=capacity,
-        method_letter=letter,
+        method_letter=letter,  # type: ignore[arg-type]
         level_pct=level_pct,
         level_basis=level_match.group("basis").strip(" .,;:"),
         instrument=instrument_match.group(1) if instrument_match else None,

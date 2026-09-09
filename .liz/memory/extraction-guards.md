@@ -41,5 +41,16 @@ instead "is four terms from a 420-page prospectus plausibly a glossary?" — no
 theory of the cause needed, and it catches the mechanism nobody has seen yet.
 
 Refs: #548
-Refs: #566 — same rule, on the retention undertaking: a section that did not
-arrive and a document that says nothing produce the same empty parse.
+Refs: #566 — same rule, on the retention undertaking.
+
+## 2026-09-09 · pitfall · #566
+
+Read every limb of a multi-limb fact from the span that states it, never by
+searching the document for each independently. Searched separately over one
+offering circular, "The Issuer is an originator for some other purpose" became
+the Retention Holder's capacity — the limb that makes a retention bind, borrowed
+from another party's sentence. Anchor on the rarest limb, take the governing
+designation as the last one before it, and read the rest from that span. A
+backwards scan with a greedy `.*` needs the same bound to terminate at all.
+
+Refs: #566

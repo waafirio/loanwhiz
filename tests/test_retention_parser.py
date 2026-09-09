@@ -19,8 +19,8 @@ deliberately not collapsed:
    a level and no method — confidently incomplete, which is the failure mode
    this epic exists to remove.
 3. **A section that did not arrive is distinguished from a document that says
-   nothing.** Cairn's committed glossary holds 27 terms, initials A, B, P, last
-   ``Payment Date``: the whole R range is lost to the ``max_chars`` truncation
+   nothing.** Cairn's committed glossary stops at ``Payment Date``, so the
+   whole R range is lost to the ``max_chars`` truncation
    #548 landed its coverage check for. Judged from that artefact the honest-
    looking conclusion is "this deal states no retention", and it is false.
    :func:`assess_retention` is what makes that a refusal rather than an absence.
@@ -38,6 +38,7 @@ from __future__ import annotations
 
 import json
 import re
+import time
 from pathlib import Path
 
 import pytest
@@ -235,6 +236,84 @@ def test_words_contradicting_the_citation_are_refused() -> None:
     )
     with pytest.raises(UnsourcedRetention, match="disagree"):
         parse_retention_method(text)
+
+
+# ---------------------------------------------------------------------------
+# 2b. The span: every limb belongs to *this* undertaking
+# ---------------------------------------------------------------------------
+#
+# The four tests below are the gap the first self-review found. Until they
+# existed every input was either a hand-sliced page or a short synthetic
+# string, so nothing exercised what happens when the parser is handed more
+# text than the undertaking — which is what a caller with a document actually
+# has.
+
+
+def test_the_undertaking_is_found_beside_the_generic_description() -> None:
+    """Both pages at once: the deal's commitment wins over the Regulation's prose.
+
+    Page 43 states the same five-per-cent. floor and names no retainer; page 282
+    states the undertaking. Handed both, the parser must return the second — a
+    reader that took the first match would report a level with no method.
+    """
+    both = CAIRN_FIXTURE.read_text(encoding="utf-8")
+    retention = parse_risk_retention(both)
+
+    assert retention.retainer == "The Investment Manager"
+    assert retention.method_letter == "d"
+    assert retention.level_basis == "the Aggregate Collateral Balance"
+
+
+def test_the_capacity_must_belong_to_the_retainer() -> None:
+    """A capacity stated of somebody else is not this retainer's capacity.
+
+    The capacity is what makes the retention *bind*, so taking it from an
+    unrelated sentence is the one inference this module must not make.
+    """
+    text = (
+        "The Issuer is an originator for some other purpose. Acme Holdings LLP "
+        "shall act as Retention Holder. It will retain a material net economic "
+        "interest of not less than five per cent. of the Aggregate Collateral "
+        "Balance in accordance with Article 6(3)(d)."
+    )
+    with pytest.raises(UnsourcedRetention, match="states no capacity"):
+        parse_risk_retention(text)
+
+
+def test_a_distant_method_word_does_not_contradict_the_citation() -> None:
+    """The Regulation naming a method elsewhere is a different subject.
+
+    Treating it as a contradiction refuses an unambiguous document, which is
+    the failure direction this surface is least allowed.
+    """
+    text = (
+        "The Regulation permits retention of the first loss tranche. "
+        + "Filler sentence. " * 200
+        + "Acme LLP shall act as Retention Holder. It qualifies as an "
+        "originator and will retain not less than five per cent. of the "
+        "Aggregate Collateral Balance in accordance with Article 6(3)(a)."
+    )
+    assert parse_risk_retention(text).method == "vertical slice"
+
+
+def test_a_document_sized_span_is_read_without_backtracking(
+    cairn_undertaking: str,
+) -> None:
+    """The undertaking is reachable inside a document, not only a slice of one.
+
+    Before the span was bound, the retainer search's greedy prefix backtracked
+    over everything ahead of it: on the real 420-page text this did not return
+    at all. The generous bound below separates "fast" from "hung" without
+    pinning a performance number.
+    """
+    padding = "The Retention Holder is discussed at length. " * 6000
+    started = time.monotonic()
+
+    retention = parse_risk_retention(padding + cairn_undertaking)
+
+    assert time.monotonic() - started < 15
+    assert retention.retainer == "The Investment Manager"
+    assert retention.method_letter == "d"
 
 
 # ---------------------------------------------------------------------------
