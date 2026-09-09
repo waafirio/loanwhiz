@@ -1,9 +1,17 @@
 """Note Valuation Report parser — the *liability* ground truth for a CLO.
 
-This module parses U.S. Bank's **Note Valuation Report** — the quarterly CLO
-report that publishes, on facing sections, an **Interest Priority of Payments**
-and a **Principal Priority of Payments** — into the *existing*
+This module parses a **Note Valuation Report** — the quarterly CLO report that
+publishes, on facing sections, an **Interest Priority of Payments** and a
+**Principal Priority of Payments** — into the *existing*
 :class:`~loanwhiz.primitives.notes_cash_parser.NotesCashPeriod` shape.
+
+It owns no layout. Which titles those sections print under, and what counts as
+page furniture, are properties of the **collateral administrator** that
+published the report, so they come from the family
+:mod:`loanwhiz.domain.trustee_report_registry` detects from the report's own
+header (#531). A report matching no registered family is refused rather than
+parsed as another's. The U.S. Bank examples below are the family LoanWhiz reads
+today, not an assumption this parser makes.
 
 Why it emits somebody else's model (epic #491)
 ----------------------------------------------
