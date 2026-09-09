@@ -153,6 +153,99 @@ def test_a_family_missing_a_required_section_is_refused_at_registration() -> Non
     assert registry.all() == (), "a refused family must not be half-registered"
 
 
+def _replace_monthly(family: TrusteeReportFamily, **changes) -> TrusteeReportFamily:
+    """*family* with its monthly layout altered — the shape these guards break."""
+    documents = dict(family.documents)
+    documents[DocumentKind.MONTHLY_REPORT] = dataclasses.replace(
+        documents[DocumentKind.MONTHLY_REPORT], **changes
+    )
+    return dataclasses.replace(family, documents=documents)
+
+
+def test_a_family_declaring_no_coverage_test_row_grammar_is_refused() -> None:
+    """#531's rule on the axis #534 found still un-generalised.
+
+    A family with no row grammar does not fail loudly: every coverage-test table
+    matches no header, parses no rows, and the cross-rendering check then agrees
+    that both renderings name the same empty set. The registered families are
+    shielded by their fixtures, so registration is the only point that can see
+    this for a document no test will ever hold.
+    """
+    registry = TrusteeReportFamilyRegistry()
+
+    with pytest.raises(ValueError) as excinfo:
+        registry.register(_replace_monthly(_complete_family(), coverage_row_markers={}))
+
+    message = str(excinfo.value)
+    assert "coverage_row_markers" in message
+    assert "vacuously" in message
+    assert registry.all() == (), "a refused family must not be half-registered"
+
+
+def test_a_row_grammar_naming_a_group_its_pattern_lacks_is_refused() -> None:
+    """The promise and the pattern are checked against each other, not assumed.
+
+    ``ratio_group`` names a group by string, so a typo is invisible until a real
+    row matches and the lookup raises — at parse time, on a document no fixture
+    holds. Registration is where the two halves can be compared for free.
+    """
+    registry = TrusteeReportFamilyRegistry()
+    typo = dataclasses.replace(_ROW_GRAMMAR, ratio_group="rat1o")
+
+    with pytest.raises(ValueError, match="rat1o"):
+        registry.register(
+            _replace_monthly(_complete_family(), coverage_row_markers={"H": typo})
+        )
+    assert registry.all() == ()
+
+
+def test_a_coverage_summary_section_with_no_printed_title_is_refused() -> None:
+    """Naming the wrong section removes the cross-check rather than breaking it.
+
+    The second rendering is what the coverage-test parse is checked against. A
+    section this family gives no title routes to no pages and states no tests,
+    so the check would compare the detail pages against an empty set and agree.
+    """
+    registry = TrusteeReportFamilyRegistry()
+
+    with pytest.raises(ValueError, match="coverage_summary_section"):
+        registry.register(
+            _replace_monthly(_complete_family(), coverage_summary_section="not_a_section")
+        )
+    assert registry.all() == ()
+
+
+def test_a_family_declaring_no_report_header_is_refused() -> None:
+    """A report parsed under the wrong deal name still reconciles.
+
+    Every oracle in the schedule parser asks whether the document agrees with
+    *itself*, so nothing downstream notices a header read by the wrong rule —
+    which is why the header patterns are declared and their absence refused.
+    """
+    registry = TrusteeReportFamilyRegistry()
+
+    with pytest.raises(ValueError, match="report_header"):
+        registry.register(_replace_monthly(_complete_family(), report_header=None))
+    assert registry.all() == ()
+
+
+def test_every_registered_family_declares_a_row_grammar_for_every_header() -> None:
+    """The live families satisfy the guard, over the real registry.
+
+    The refusals above drive hand-built families; this asserts the shipped ones
+    are not exempt, so a family added later without a grammar cannot pass by
+    never reaching a test that builds one.
+    """
+    for family in FAMILY_REGISTRY.all():
+        monthly = family.layout(DocumentKind.MONTHLY_REPORT)
+        assert monthly.coverage_row_markers, family.family_id
+        for marker, grammar in monthly.coverage_row_markers.items():
+            assert grammar.missing_groups() == [], f"{family.family_id}/{marker}"
+        assert monthly.coverage_summary_section in monthly.section_titles
+        assert monthly.report_header is not None
+        assert monthly.report_header.missing_groups() == []
+
+
 def test_every_required_section_is_individually_guarded() -> None:
     """No required section is exempt — dropping any one of them refuses.
 
