@@ -111,6 +111,40 @@ def test_a_verification_cites_the_document_it_was_read_from() -> None:
     assert "5.0%" in citation.excerpt or "5.0" in citation.excerpt
 
 
+def test_the_record_states_no_document_kind_it_did_not_check() -> None:
+    """Only one provenance claim reaches the reader, and it is the checked one.
+
+    ``RiskRetention.source`` renders as "Listing Particulars, Article 6(3)(d)"
+    for every deal — the document *kind* is a literal in the parser, never
+    checked against the registry. Carrying it beside the URL actually consulted
+    would give a compliance reader two provenance claims with only one
+    established, so it is dropped and ``SourceDocument`` is the single answer.
+    """
+    check = _only(_record(CAIRN_DEAL_ID).verified)
+
+    assert "source" not in check.detail
+    assert "Listing Particulars" not in json.dumps(check.detail)
+    # The citation the dropped string carried is not lost with it.
+    assert _only(check.citations).page_or_row == "Article 6(3)(d)"
+    assert check.source is not None
+    assert check.source.registry_slot == "prospectus_url"
+
+
+def test_the_detail_still_carries_every_fact_read_from_the_document() -> None:
+    """Dropping a rendering must not drop the facts — the negative twin."""
+    detail = _only(_record(CAIRN_DEAL_ID).verified).detail
+
+    assert set(detail) == {
+        "retainer",
+        "retainer_capacity",
+        "method_letter",
+        "method",
+        "level_pct",
+        "level_basis",
+        "instrument",
+    }
+
+
 def test_a_verified_check_still_carries_a_reason() -> None:
     """The reason is not a refusal-only field — a verification says what it established."""
     check = _only(_record(CAIRN_DEAL_ID).verified)

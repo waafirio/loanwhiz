@@ -85,6 +85,18 @@ PRIMITIVE_VERSION = "1.0.0"
 #: challenge a refusal needs to know which field was consulted.
 PROSPECTUS_SLOT = "prospectus_url"
 
+#: Keys of :meth:`RiskRetention.to_dict` that are *renderings*, not facts read
+#: from the document, and so must not reach a compliance reader as provenance.
+#:
+#: ``source`` is the one that matters: it renders as ``"Listing Particulars,
+#: Article 6(3)(d)"`` for **every** deal, because the document kind is a literal
+#: in the parser rather than something checked against the registry. This record
+#: already carries real provenance in :class:`SourceDocument` — the slot and the
+#: URL actually consulted — and two provenance claims where only one is
+#: established is precisely the confident wrongness the record exists to avoid.
+#: The Article citation itself is not lost: it is the citation's ``page_or_row``.
+_DERIVED_PROVENANCE: frozenset[str] = frozenset({"source"})
+
 # ---------------------------------------------------------------------------
 # Refusal vocabulary — closed, and imported by tests rather than transcribed.
 #
@@ -381,7 +393,7 @@ def _retention_check(
                 ),
             )
         ],
-        detail=retention.to_dict(),
+        detail={k: v for k, v in retention.to_dict().items() if k not in _DERIVED_PROVENANCE},
     )
 
 
