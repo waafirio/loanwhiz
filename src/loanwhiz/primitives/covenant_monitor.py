@@ -22,6 +22,7 @@ from typing import Any
 from pydantic import BaseModel, Field
 
 from loanwhiz.domain.esma_annex2 import locator_for
+from loanwhiz.extraction.assembler import _RESIDUAL_CLASS_NAMES
 from loanwhiz.extraction.taxonomy import coverage_metric_for, normalize_threshold_unit
 from loanwhiz.primitives.base import (
     AuditEntry,
@@ -183,20 +184,64 @@ _COVERAGE_METRIC_RE = re.compile(r"^class_([a-f])_(oc|ic)_ratio$")
 #: The class letter inside a ``DealState`` tranche name (``"class_b"``).
 _TRANCHE_CLASS_RE = re.compile(r"class[_\s]*([a-z])(?![a-z])")
 
+#: A **named residual** at the start of a ``DealState`` tranche name, on the
+#: assembler's own vocabulary (``_RESIDUAL_CLASS_NAMES``) so there is one
+#: spelling of "this tranche is the equity" rather than two that can drift.
+#:
+#: The word boundary is spelled ``(?:[_\s]|$)`` rather than ``\b`` on purpose:
+#: ``DealState`` names are the snake_case slugs ``capital_structure
+#: .engine_tranche_name`` produces (``"Subordinated Notes"`` →
+#: ``"subordinated_notes"``), and ``_`` is a word character, so ``\b`` never
+#: fires after ``subordinated`` in that slug. Accepting a space as well as an
+#: underscore mirrors ``_TRANCHE_CLASS_RE``'s own ``class[_\s]*``, so both
+#: regexes read a slug and a document label the same way.
+_TRANCHE_RESIDUAL_RE = re.compile(
+    r"^(?:" + "|".join(n.lower() for n in _RESIDUAL_CLASS_NAMES) + r")(?:[_\s]|$)"
+)
+
+#: Rank for a named residual: below **every** class letter, including the
+#: residual letters ``J``/``R``/``X``/``Z``, because a residual is defined by
+#: being last rather than by how it is spelled (#456).
+#:
+#: This is ``assembler._RESIDUAL_SENIORITY`` on the monitor's scale. The
+#: assembler scores ``letter * 100 + series`` so a multi-series stack orders
+#: ``A1 < A2 < B``; the monitor only ever compares whole classes, so its scale
+#: is the bare letter rank and the same sentinel is ``26`` rather than ``2600``.
+#: The shared half — *which names are residual* — is imported, not restated;
+#: only the scale differs, and a test pins the two in step.
+_RESIDUAL_RANK = ord("z") - ord("a") + 1
+
 
 def _tranche_class_rank(name: str) -> int | None:
     """0-based seniority rank for a tranche name, or ``None`` if unplaceable.
 
-    Mirrors ``extraction.assembler._seniority_for``: the class letter is the
-    rank (``A`` = 0, most senior), so the conventional named classes the repo's
-    note-class alphabet allows (``J`` junior, ``M`` mezzanine, ``R``/``X``/``Z``
-    residual) rank below the lettered ladder by construction, with no separate
-    table to keep in step.
+    Mirrors ``extraction.assembler._seniority_for``, and — since #549 — that
+    is a claim the code keeps rather than only asserts. Two branches, in the
+    assembler's order:
 
-    ``None`` means the name carries no class letter at all (``"senior_notes"``,
-    ``"mezz"``) — the caller must refuse to compute rather than drop it.
+    - A **named residual** (``"subordinated_notes"``, ``"equity_notes"``)
+      ranks :data:`_RESIDUAL_RANK`, below every letter. It carries no class
+      letter because it genuinely has none: it is the equity, junior to the
+      whole lettered ladder, so it is never in the notes at-or-senior to any
+      attachment point. Checked **first**, anchored at the start, exactly as
+      the assembler checks it — so ``"class_e_subordinated_notes"`` is still a
+      Class E tranche, not a residual, in both places.
+    - Otherwise the class letter is the rank (``A`` = 0, most senior), so the
+      conventional named classes the repo's note-class alphabet allows
+      (``J`` junior, ``M`` mezzanine, ``R``/``X``/``Z`` residual) rank below
+      the lettered ladder by construction, with no separate table to keep in
+      step.
+
+    ``None`` means the name carries neither a class letter nor a residual word
+    (``"senior_notes"``, ``"mezz"``) — the caller must refuse to compute rather
+    than drop it. Widening this function is how that guard gets lost, so the
+    residual branch adds a *vocabulary the assembler already ships*, never a
+    new spelling: a name neither branch recognises is still a refusal (#452).
     """
-    m = _TRANCHE_CLASS_RE.search(name.strip().lower())
+    cleaned = name.strip().lower()
+    if _TRANCHE_RESIDUAL_RE.match(cleaned):
+        return _RESIDUAL_RANK
+    m = _TRANCHE_CLASS_RE.search(cleaned)
     if m is None:
         return None
     return ord(m.group(1)) - ord("a")

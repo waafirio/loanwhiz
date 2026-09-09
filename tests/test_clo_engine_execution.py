@@ -236,21 +236,45 @@ class TestCoverageTestsResolveOntoTheStructuralMetrics:
         assert coverage["class_a_b_interest_coverage_ratio"] == "class_b_ic_ratio"
         assert len(coverage) == 8
 
-    def test_coverage_tests_refuse_at_the_placement_layer_on_the_real_stack(self, clo_deal):
-        """The *first* refusal is #452's tranche placement, not the missing threshold.
+    def test_coverage_tests_refuse_for_the_missing_threshold_not_the_equity_tranche(
+        self, clo_deal
+    ):
+        """The refusal names the reason that is actually true of this deal.
 
-        ``docs/data-card.md`` records that the coverage thresholds sit past the
-        definitions extractor's budget, so the tests cannot be quantified. True —
-        but on the real eight-class stack that is not the refusal that fires. The
-        equity tranche carries no class letter, so #452 refuses the whole metric
-        first (correctly: it will not narrow a denominator it cannot place).
-        Pinned because the two reasons are separately fixable, and reporting the
-        wrong one misdescribes what this deal needs.
+        Until #549 the first refusal was #452's tranche placement: the equity
+        tranche carries no class letter, so the whole metric was voided and the
+        deal was told to go find a class letter. But a named residual is not
+        unplaceable — it is *last*, which ``assembler._seniority_for`` has known
+        since #456 — and the real blocker is the one ``docs/data-card.md``
+        records: no threshold was captured. Pinned because the two reasons are
+        separately fixable, and reporting the wrong one misdescribes what this
+        deal needs.
+
+        The ratio itself is **not** yet a true overcollateralisation ratio: on
+        the report path ``pool_balance`` is the note-balance total, not the
+        collateral balance (`report_adapter.seed`). That is #550's, and it is
+        why no threshold may be wired onto this number yet.
         """
         statuses = _fold_one_period(clo_deal).trigger_evaluation.statuses
         oc = statuses["class_d_par_value_test"]
-        assert oc.metric_value is None
-        assert "subordinated_notes" in (oc.not_evaluable_reason or "")
+        assert oc.metric_value is not None, "the equity tranche no longer voids the metric"
+        assert "subordinated_notes" not in (oc.not_evaluable_reason or "")
+        assert "no quantified threshold" in (oc.not_evaluable_reason or "")
+        assert not oc.evaluable and not oc.is_triggered
+
+    def test_the_equity_tranche_changes_no_coverage_ratio(self, clo_deal):
+        """Placing the residual orders the stack; it must not move a number.
+
+        The equity is junior to every attachment point, so it enters no
+        coverage denominator. Removing it must therefore leave the whole ladder
+        byte-identical — the property that makes #549's placement safe rather
+        than a denominator quietly gaining or losing a tranche.
+        """
+        real = _fold_one_period(clo_deal).trigger_evaluation.statuses
+        without = _fold_one_period(clo_deal, include_equity=False).trigger_evaluation.statuses
+        for letter in ("c", "d", "e", "f"):
+            name = f"class_{letter}_par_value_test"
+            assert real[name].metric_value == without[name].metric_value, name
 
     def test_without_the_equity_tranche_the_oc_ladder_computes_then_refuses(self, clo_deal):
         """Counterfactual — evidence the metric itself is sound on a CLO stack.

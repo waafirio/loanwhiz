@@ -103,6 +103,7 @@ a code path, assert they agree over the real corpus: neither one's own tests can
 see the disagreement.
 
 Refs: #503
+Refs: #549 — a docstring claiming "mirrors X" was the unchecked half.
 
 ## 2026-09-08 · pitfall · #511
 

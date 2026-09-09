@@ -26,11 +26,13 @@ from loanwhiz.primitives.covenant_monitor import (
     TriggerDefinition,
     TriggerEvaluation,
     TriggerStatus,
+    _RESIDUAL_RANK,
     _canonical_metric,
     _compute_direction,
     _compute_proximity,
     _extract_metric,
     _is_triggered,
+    _tranche_class_rank,
     evaluate_triggers,
     to_canonical_threshold,
 )
@@ -1646,6 +1648,109 @@ class TestCoverageNotEvaluableNeverZero:
         assert out.active_triggers == []
         assert out.near_miss_triggers == []
         assert "NOT EVALUABLE" in out.summary
+
+
+class TestNamedResidualPlacement:
+    """A named residual is *placed*, not spelled — and below every letter.
+
+    ``subordinated_notes`` carries no class letter because it genuinely has
+    none: it is the equity. Before #549 the monitor read that as unplaceable
+    and voided every coverage test on the deal, blaming the tranche for a
+    threshold that was missing anyway. ``assembler._seniority_for`` had ranked
+    a named residual since #456 and the monitor's docstring claimed to mirror
+    it — these tests make that correspondence something the code keeps rather
+    than something a docstring asserts.
+    """
+
+    def test_named_residual_ranks_below_every_class_letter(self) -> None:
+        """Below *every* letter, including the residual letters J/R/X/Z.
+
+        A residual is defined by being last, not by how it is spelled, so
+        ranking it off its own first letter ("Subordinated" → ``S``) would put
+        it senior to Class X and Class Z — the bug #456 fixed in the assembler.
+        """
+        residual = _tranche_class_rank("subordinated_notes")
+        assert residual == _RESIDUAL_RANK
+        for letter in "abcdefghijklmnopqrstuvwxyz":
+            rank = _tranche_class_rank(f"class_{letter}")
+            assert rank is not None
+            assert rank < residual, f"class {letter.upper()} must outrank the residual"
+
+    def test_residual_vocabulary_is_the_assemblers(self) -> None:
+        """One spelling of "this tranche is the equity", not two that drift.
+
+        The monitor imports ``_RESIDUAL_CLASS_NAMES`` rather than restating it,
+        so this walks the assembler's own list and asserts both sides agree on
+        every member. A name added there and forgotten here reds this test.
+        """
+        from loanwhiz.extraction.assembler import (
+            _RESIDUAL_CLASS_NAMES,
+            _RESIDUAL_SENIORITY,
+            _seniority_for,
+        )
+
+        assert _RESIDUAL_CLASS_NAMES, "the shared vocabulary must not be empty"
+        for name in _RESIDUAL_CLASS_NAMES:
+            label = f"{name} Notes"
+            slug = f"{name.lower()}_notes"
+            assert _seniority_for(label) == _RESIDUAL_SENIORITY, label
+            assert _tranche_class_rank(slug) == _RESIDUAL_RANK, slug
+
+    def test_a_lettered_tranche_naming_the_residual_word_keeps_its_letter(self) -> None:
+        """The residual branch is anchored, exactly as the assembler's is.
+
+        ``class_e_subordinated_notes`` is a Class E tranche that happens to
+        carry the word; an unanchored match would demote it to the equity and
+        drop it out of every denominator at or senior to E.
+        """
+        assert _tranche_class_rank("class_e_subordinated_notes") == 4
+        # A word that merely starts the same is not the vocabulary either.
+        assert _tranche_class_rank("subordination_agreement") is None
+
+    def test_a_name_with_neither_letter_nor_residual_word_still_refuses(self) -> None:
+        """#452's guard is untouched — widening placement is how it gets lost."""
+        assert _tranche_class_rank("senior_notes") is None
+        assert _tranche_class_rank("mezz") is None
+
+    def test_the_residual_enters_no_coverage_denominator(self) -> None:
+        """The property that makes placing it safe: the ratio does not move.
+
+        A residual ranks below every attachment point, so it is never in the
+        notes at-or-senior to one. Adding it to the stack must therefore leave
+        every coverage ratio byte-identical — if it moved the number, placing
+        it would be shrinking or padding a denominator rather than ordering it.
+        """
+        without = DealState(
+            reporting_date="2026-04-30",
+            tranches=[
+                {"name": "class_a", "balance": 600_000_000.0, "pdl_balance": 0.0},
+                {"name": "class_b", "balance": 200_000_000.0, "pdl_balance": 0.0},
+            ],
+            pool_balance=1_000_000_000.0,
+            original_pool_balance=1_000_000_000.0,
+        )
+        with_residual = DealState(
+            reporting_date="2026-04-30",
+            tranches=[
+                {"name": "class_a", "balance": 600_000_000.0, "pdl_balance": 0.0},
+                {"name": "class_b", "balance": 200_000_000.0, "pdl_balance": 0.0},
+                {"name": "subordinated_notes", "balance": 150_000_000.0, "pdl_balance": 0.0},
+            ],
+            pool_balance=1_000_000_000.0,
+            original_pool_balance=1_000_000_000.0,
+        )
+        for metric in ("class_a_oc_ratio", "class_b_oc_ratio"):
+            bare = _extract_metric(
+                {}, metric, CovenantInput(periods=[{}], period_states=[without]), without
+            )
+            padded = _extract_metric(
+                {},
+                metric,
+                CovenantInput(periods=[{}], period_states=[with_residual]),
+                with_residual,
+            )
+            assert bare is not None
+            assert bare == padded, f"{metric} moved when the residual was added"
 
 
 class TestCoverageThresholdScale:

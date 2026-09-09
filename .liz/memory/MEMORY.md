@@ -42,6 +42,7 @@ triage by opening the entry, not by reading the line.
   - [2026-09-05 · decision · #452](#2026-09-05--decision--452) — keywords: classless default, senior class, positional metric, unmapped escape, alias row, LLM invents a position
   - [2026-09-05 · pitfall · #457](#2026-09-05--pitfall--457) — keywords: layered refusal, not_evaluable, documented cause, coverage threshold, equity tranche, unplaceable, counterfactual
   - [2026-09-08 · pitfall · #478](#2026-09-08--pitfall--478) — keywords: fixed field list, vacuous invariant, accessor default, series_invariants, chaining, non-negativity, derive from instance
+  - [2026-09-09 · pitfall · #549](#2026-09-09--pitfall--549) — keywords: _tranche_class_rank, _seniority_for, named residual, mirrors claim, unplaceable, subordinated_notes, wrong cause
 - [Extraction determinism & LLM caching](extraction-determinism.md) — keywords: classify_segments_llm, section router, determinism cache, prompt hash, force_refresh, sections_found, completeness_score, degrade-to-default
 - [Regulatory mapping tables (ESMA annexes, field codes, locators)](regulatory-mapping-tables.md) — keywords: AnnexField, extension field, code=None, field code, locator, ESMA RTS, annex numbering, CRPL, AUTL, RREL, borrowed code
   - [2026-09-06 · decision · #470](#2026-09-06--decision--470) — keywords: field identity, value conformance, NACE, NUTS-3, market price vs value, unit mismatch, obligor identifier, RTS vocabulary, derived tape
