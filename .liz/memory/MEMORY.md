@@ -11,7 +11,9 @@ triage by opening the entry, not by reading the line.
   - [2026-09-06 · gotcha · #471](#2026-09-06--gotcha--471) — keywords: grep-for-absence, banned substring, retracted wording, prose assertion, denial, false positive
   - [2026-09-08 · pitfall · #481](#2026-09-08--pitfall--481) — keywords: all-pass ground truth, never-fires mutant, graded cell bound, covenants_graded, published outcomes vary, answer key
   - [2026-09-08 · pattern · #495](#2026-09-08--pattern--495) — keywords: several documents, one constructor per document, merge_answer_keys, per-period assertion, answer key, PoP section
+  - [2026-09-08 · pitfall · #513](#2026-09-08--pitfall--513) — keywords: partly graded, skipped record, empty instance passes, all([]) is True, periods_skipped, free green, not-applicable kind
   - [2026-09-08 · pitfall · #496](#2026-09-08--pitfall--496) — keywords: steps_passed, tie-out gate, report-supplied, engine_computed_passed, unjoined label, sub-lettered rows, failing grade
+  - [2026-09-08 · pattern · #512](#2026-09-08--pattern--512) — keywords: series provider, answer key not a fold input, pool_stats, published input, checked ground truth, applied_rate
 - [Extraction guards & false-positive filters](extraction-guards.md)
   - [2026-09-02 · pitfall · #439](#2026-09-02--pitfall--439) — keywords: _CLASS_LETTERS, tranche, note class, Class J, Class O, false positive, guard, proxy range
   - [2026-09-05 · pitfall · #456](#2026-09-05--pitfall--456) — keywords: widening a guard, newly visible input, N/A cell, scavenged rating, Subordinated Notes, untested downstream
@@ -46,6 +48,7 @@ triage by opening the entry, not by reading the line.
   - [2026-09-06 · pitfall · #471](#2026-09-06--pitfall--471) — keywords: absent column, all-False mask, arrears breakdown, silent clean pool, degrade, no key not zero
   - [2026-09-08 · pattern · #493](#2026-09-08--pattern--493) — keywords: not_evaluable, layered refusal, paired assertion, unresolved coupon, rate_pct, silent zero, false green
   - [2026-09-08 · pitfall · #511](#2026-09-08--pitfall--511) — keywords: canonicalise both sides, membership test, ENGINE_COMPUTED_RECIPIENTS, mixed vocabulary, legacy spelling, unmapped leak, derived set
+  - [2026-09-08 · gotcha · #512](#2026-09-08--gotcha--512) — keywords: ReportAdapter, DEFAULT_TRANCHE_CLASSES, report path seed, tranche name lookup, per-class input, complete map reaches nothing
 - [Extracting tables from PDFs](pdf-table-extraction.md) — keywords: visitor_text, text matrix, tm[4], rotated table, extraction_mode layout, row boundary, continuation line, column order, pypdf
   - [2026-09-06 · pitfall · #469](#2026-09-06--pitfall--469) — keywords: extract_text(), extraction_mode="layout", visitor_text=, tm[4]
   - [2026-09-08 · pitfall · #494](#2026-09-08--pitfall--494) — keywords: page furniture, banner prefix, data row first, footer eats a row, numeric tail, prefix filter ordering

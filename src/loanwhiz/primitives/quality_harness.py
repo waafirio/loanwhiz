@@ -278,13 +278,27 @@ def _grade_pop_side(check_key: str, ctx: _DealGrading, *, side: str) -> GradedCe
     )
     all_passed = all(s.passed for s in sides)
     score = (passed_steps / total_steps) if total_steps else None
+    # `sides` comes from `recon.periods`, which is the GRADED set — a period the
+    # key's source document published no PoP for never appears there (#513). So
+    # every count here is over what was actually compared, and the skipped ones
+    # are reported beside them rather than folded into the denominator.
+    skipped = ctx.recon.periods_skipped
     evidence = {
         "periods_checked": len(sides),
         "periods_passed": periods_passed,
+        "periods_skipped": skipped,
         "steps_total": total_steps,
         "steps_passed": passed_steps,
         "max_abs_delta_eur": round(max_abs_delta, 4),
     }
+    # Stated on both branches: "reconciled across 1 period" of a four-period key
+    # is true and still misleading if the other three are never mentioned.
+    skipped_clause = (
+        f" {skipped} further period(s) of this key were not graded: the documents "
+        "they were authored from publish no Priority of Payments."
+        if skipped
+        else ""
+    )
     if all_passed:
         return GradedCell(
             check_key=check_key,
@@ -294,7 +308,7 @@ def _grade_pop_side(check_key: str, ctx: _DealGrading, *, side: str) -> GradedCe
             tolerance_eur=key.tolerance_eur,
             reason=(
                 f"Engine {side} distribution reconciled to the published PoP across "
-                f"{len(sides)} period(s), to EUR {key.tolerance_eur:.2f}."
+                f"{len(sides)} period(s), to EUR {key.tolerance_eur:.2f}.{skipped_clause}"
             ),
             evidence=evidence,
         )
@@ -307,7 +321,7 @@ def _grade_pop_side(check_key: str, ctx: _DealGrading, *, side: str) -> GradedCe
         reason=(
             f"Engine {side} distribution did not reconcile in "
             f"{len(sides) - periods_passed}/{len(sides)} period(s) "
-            f"(worst delta EUR {max_abs_delta:.2f})."
+            f"(worst delta EUR {max_abs_delta:.2f}).{skipped_clause}"
         ),
         evidence=evidence,
     )
@@ -704,9 +718,11 @@ def _reconcile_deal(
         return None, None, f"series provider error ({type(exc).__name__}): {exc}"
     if series is None:
         return None, None, "no committed offline engine series for this deal"
-    if not any(p.revenue_pop or p.redemption_pop for p in answer_key.periods):
+    if not answer_key.has_pop_section:
         # No PoP ground truth to reconcile; the series is still usable for pool-stat
-        # grading, so return it with a reason the PoP graders surface.
+        # grading, so return it with a reason the PoP graders surface. The predicate
+        # lives on the key itself (#513) so this and capability_matrix._has_pop_section
+        # cannot drift into disagreeing about what carries ground truth.
         return series, None, "answer key carries no Priority-of-Payments to reconcile"
     try:
         from loanwhiz.primitives.reconciliation_answer_key import (
