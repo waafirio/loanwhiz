@@ -277,10 +277,16 @@ def parse_retention_method(text: str) -> str | None:
     """
     collapsed = _collapse(text)
     match = _locate_citation(collapsed)
-    if match is None:
-        return None
-    letter = match.group(1).lower()
+    return None if match is None else _check_method_words(collapsed, match)
 
+
+def _check_method_words(collapsed: str, match: re.Match[str]) -> str:
+    """The cited letter, once the method named in words nearby is seen to agree.
+
+    Raises:
+        UnsourcedRetention: The words contradict the citation.
+    """
+    letter = match.group(1).lower()
     near = collapsed[
         max(0, match.start() - _METHOD_WORDS_SPAN) : match.end() + _METHOD_WORDS_SPAN
     ]
@@ -364,8 +370,8 @@ _INSTRUMENT_PREFERRED = re.compile(
 _INSTRUMENT_FALLBACK = re.compile(r"\b(Retention\s+Notes)\b")
 
 
-def parse_risk_retention(text: str) -> RiskRetention:
-    """Read the deal's own retention undertaking from offering-document text.
+def _read_undertaking(collapsed: str, citation: re.Match[str]) -> RiskRetention:
+    """Read one undertaking, anchored on ``citation``. See :func:`parse_risk_retention`.
 
     Every limb must be present. The undertaking is what binds a named entity in
     a recognised capacity to a named method at a stated level; a text carrying
@@ -373,30 +379,11 @@ def parse_risk_retention(text: str) -> RiskRetention:
     commitment, and the two are indistinguishable in a record that reports
     whichever limbs it happened to find.
 
-    Args:
-        text: Offering-document text, as ``pypdf`` extracts it. Give it the
-            retention section, not the whole prospectus: the generic
-            "Retention Requirements" discussion earlier in a CLO offering
-            circular states the five-per-cent. floor without naming any
-            retainer, and is correctly refused.
-
-    Returns:
-        The parsed :class:`RiskRetention`.
-
     Raises:
         UnsourcedRetention: Naming the limb that is absent, or the
             contradiction that made the reading unsafe.
     """
-    collapsed = _collapse(text)
-
-    letter = parse_retention_method(collapsed)
-    citation = _locate_citation(collapsed)
-    if letter is None or citation is None:
-        raise UnsourcedRetention(
-            "the text cites no sub-paragraph of Article 6(3), so the retention "
-            "method is unstated; a level without a method is not what the "
-            "verification obligation asks for"
-        )
+    letter = _check_method_words(collapsed, citation)
 
     # The designation that governs is the last one stated *before* the
     # commitment, not the first in the document: a 420-page offering circular
@@ -468,6 +455,56 @@ def parse_risk_retention(text: str) -> RiskRetention:
         level_basis=level_match.group("basis").strip(" .,;:"),
         instrument=instrument_match.group(1) if instrument_match else None,
     )
+
+
+def parse_risk_retention(text: str) -> RiskRetention:
+    """Read the deal's own retention undertaking from offering-document text.
+
+    Every limb must be present. The undertaking is what binds a named entity in
+    a recognised capacity to a named method at a stated level; a text carrying
+    only some of that is the Regulation being *described*, not this deal's
+    commitment, and the two are indistinguishable in a record reporting
+    whichever limbs it happened to find.
+
+    Accepts a whole document as readily as a hand-sliced section. Where the text
+    cites Article 6(3) more than once — a document may cite a sub-paragraph
+    while *describing* the Regulation, before committing to one — each citation
+    is tried in turn and the first that yields a complete undertaking wins.
+    Refusing on the first citation when a later one states the undertaking in
+    full would be a false refusal, which is the failure direction this surface
+    is least allowed.
+
+    Args:
+        text: Offering-document text, as ``pypdf`` extracts it.
+
+    Returns:
+        The parsed :class:`RiskRetention`.
+
+    Raises:
+        UnsourcedRetention: Naming the limb that is absent, or the
+            contradiction that made the reading unsafe. Where several citations
+            were tried, the first refusal is raised — it is the one describing
+            the passage that looked most like an undertaking.
+    """
+    collapsed = _collapse(text)
+    citations = list(_ARTICLE_DIRECT.finditer(collapsed)) or list(
+        _ARTICLE_INVERTED.finditer(collapsed)
+    )
+    if not citations:
+        raise UnsourcedRetention(
+            "the text cites no sub-paragraph of Article 6(3), so the retention "
+            "method is unstated; a level without a method is not what the "
+            "verification obligation asks for"
+        )
+
+    first_refusal: UnsourcedRetention | None = None
+    for citation in citations:
+        try:
+            return _read_undertaking(collapsed, citation)
+        except UnsourcedRetention as refusal:
+            first_refusal = first_refusal or refusal
+    assert first_refusal is not None
+    raise first_refusal
 
 
 # ===========================================================================

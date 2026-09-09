@@ -296,6 +296,27 @@ def test_a_distant_method_word_does_not_contradict_the_citation() -> None:
     assert parse_risk_retention(text).method == "vertical slice"
 
 
+def test_a_citation_in_the_generic_passage_does_not_shadow_the_undertaking() -> None:
+    """A document may cite a sub-paragraph while merely *describing* the rule.
+
+    Refusing on the first citation when a later one states the undertaking in
+    full is a false refusal — the failure direction this surface is least
+    allowed — so each citation is tried and the first complete one wins.
+    """
+    text = (
+        "An originator may retain under Article 6(3)(d) of the Securitisation "
+        "Regulations; the Issuer makes no such commitment in this section. "
+        + "Filler sentence. " * 50
+        + "Acme LLP shall act as Retention Holder. It qualifies as an "
+        '"originator" and will retain not less than five per cent. of the '
+        "Aggregate Collateral Balance in accordance with Article 6(3)(d)."
+    )
+    retention = parse_risk_retention(text)
+
+    assert retention.retainer == "Acme LLP"
+    assert retention.method_letter == "d"
+
+
 def test_a_document_sized_span_is_read_without_backtracking(
     cairn_undertaking: str,
 ) -> None:
