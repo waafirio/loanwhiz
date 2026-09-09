@@ -3700,6 +3700,41 @@ def test_green_lion_2024_1_cold_start_compliance():
     assert "trigger_statuses" in body
 
 
+def test_green_lion_2024_1_compliance_runs_on_the_dates_its_states_carry():
+    """#583's measured effect on the externally-validated deal, pinned by name.
+
+    GL-2024-1 registers one tape covering 2026-04-30 and folds a report-driven
+    series stating 2025-10-23, 2026-01-23 and 2026-04-23 (the period-0 seed
+    shares the first). #524's precedence rule sets that tape aside — and its own
+    contract says the periods it sets aside "stop being the *ledger* /waterfall
+    and /compliance fold". They were still this screen's whole axis, so the one
+    tape period was paired to the seed and rendered eighteen months from the
+    date it was shown under.
+
+    **No figure moved when the pairing was corrected; the dates they are stated
+    under did.** That is the finding, and it is pinned here rather than absorbed:
+    the tape's date is off the axis, the report's three dates are on it, and
+    every trigger reads exactly what it read before.
+    """
+    api_main._RECONSTRUCTION_MEMO.clear()
+    with patch("loanwhiz.api.main.DEAL_MODEL_SEED_DIR", _REAL_SEED_DIR):
+        resp = client.get("/deal/green-lion-2024-1/compliance")
+    assert resp.status_code == 200, resp.json()
+    body = resp.json()
+
+    periods = {s["period"] for s in body["trigger_statuses"]}
+    assert periods == {"2025-10-23", "2026-01-23", "2026-04-23"}
+    assert "2026-04-30" not in periods, "the set-aside tape date is not the axis (#524)"
+
+    readings: dict[str, set] = {}
+    for status in body["trigger_statuses"]:
+        readings.setdefault(status["trigger_name"], set()).add(status["metric_value"])
+    assert readings["class_a_pdl_trigger"] == {0.0}
+    assert readings["class_b_pdl_trigger"] == {0.0}
+    assert readings["reserve_fund_shortfall_trigger"] == {100.0}
+    assert body["active_triggers"] == ["reserve_fund_shortfall_trigger"]
+
+
 def test_green_lion_2024_1_cold_start_consults_no_green_lion_fallback():
     """The GL-2024-1 cold-start uses its own model, never the _GREEN_LION_* fallback.
 

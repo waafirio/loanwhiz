@@ -1116,7 +1116,23 @@ def deal_compliance(deal_id: str) -> dict:
     # (the same one /tape-analytics uses). Avoids re-normalising the deal's tapes
     # on every /compliance request — the returned dict shape is identical to
     # EsmaTapeOutput.model_dump().
-    periods = [_normalised_tape_output(tape["url"]) for tape in deal["tape_urls"]]
+    # #524 ranked a deal's sources; ``_set_aside_tape_periods`` names the periods
+    # that choice declines to fold, and its own contract already says what those
+    # periods stop being: "the *ledger* ``/waterfall`` and ``/compliance`` fold".
+    # They were still the axis this screen ran on — every period came from the
+    # tapes while every state came from the report those tapes yielded to, so no
+    # period had a state of its own date and every figure rendered under a date
+    # it is not stated as of. Dropping them here is the other half of #524, not a
+    # reversal of it: no precedence rank moves, and a deal that sets nothing
+    # aside keeps exactly the periods it had.
+    set_aside = set(_set_aside_tape_periods(deal))
+    periods = [
+        output
+        for output in (
+            _normalised_tape_output(tape["url"]) for tape in deal["tape_urls"]
+        )
+        if str(output.get("reporting_date")) not in set_aside
+    ]
     # Trigger set from the deal model's extracted triggers, falling back to the
     # monitor's defaults when the deal has no cached model or no extracted
     # triggers.
@@ -1127,9 +1143,10 @@ def deal_compliance(deal_id: str) -> dict:
     # reconstructed ``DealState`` carries that period's amortizing tranche
     # balances, PDLs, reserve, cumulative loss and pool factor — so the
     # proximity-across-periods series is a real, non-flat covenant curve rather
-    # than the flat one a constant scalar snapshot produced. The reconstructed
-    # ``states`` align one-to-one with the chronological tape ``periods``
-    # (period-0 seed + one closing state per transition).
+    # than the flat one a constant scalar snapshot produced. The monitor pairs
+    # each state to the period stating the same date; where the filter above
+    # leaves no tape period at all, ``periods=None`` makes the series supply its
+    # own dates, so the two sides are one series by construction.
     series = _reconstruct_series(deal_id, deal)
     covenant_input = CovenantInput.from_deal_states(
         series.states,
