@@ -536,6 +536,11 @@ def _parse_cairn_note_valuation(
     # family that prints it.
     numerator = parse_par_value_numerator_text(text)
     if numerator is not None:
+        # Narrowed from ``Decimal`` because every field on this model is a float
+        # and a lone exact one would be a shape nobody downstream expects. The
+        # parser keeps the exact value and reconciles it there; what crosses here
+        # is only ever divided into a percentage rounded to four places, so the
+        # ~1e-8 relative narrowing cannot reach a rendered digit.
         parsed_period.adjusted_collateral_principal_amount = float(numerator.stated_total)
     report = ParsedReport(
         deal_name=period.deal_name or deal_name,

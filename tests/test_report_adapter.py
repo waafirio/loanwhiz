@@ -509,12 +509,7 @@ def test_seed_pool_balance_falls_back_to_the_liability_total(
 def test_seed_prefers_a_stated_collateral_amount_over_the_liability_total(
     adapter: ReportAdapter, period: NotesCashPeriod
 ) -> None:
-    """A resolved Adjusted Collateral Principal Amount becomes the pool balance.
-
-    And ``original_pool_balance`` must not move with it: one is the pool at
-    closing, the other the collateral backing the notes today, and a seam that
-    set both from one figure would make the two indistinguishable downstream.
-    """
+    """A resolved Adjusted Collateral Principal Amount becomes the pool balance."""
     stated = 1_234_567_890.12
     with_collateral = dataclasses.replace(adapter, collateral_principal_amount=stated)
     seed = with_collateral.seed(period)
@@ -522,7 +517,39 @@ def test_seed_prefers_a_stated_collateral_amount_over_the_liability_total(
 
     assert seed.pool_balance == pytest.approx(stated)
     assert seed.pool_balance != pytest.approx(liability_total)
-    assert seed.original_pool_balance == pytest.approx(liability_total)
+
+
+def test_the_seeded_pool_factor_stays_at_par_whichever_figure_is_used(
+    adapter: ReportAdapter, period: NotesCashPeriod
+) -> None:
+    """The factor's denominator must be the same kind of quantity as its numerator.
+
+    ``pool_factor`` is ``pool_balance / original_pool_balance`` and is documented
+    as 1.0 at par. Seeding an asset-side collateral figure against the liability
+    total put Cairn above par — a pool larger than at closing, rendered on
+    ``/compare`` — because only one side of the comparison moved (#514). Both
+    seeds must sit at par, so the factor keeps meaning whichever figure resolved.
+    """
+    without = adapter.seed(period)
+    assert without.pool_balance == pytest.approx(without.original_pool_balance)
+
+    with_collateral = dataclasses.replace(
+        adapter, collateral_principal_amount=1_234_567_890.12
+    ).seed(period)
+    assert with_collateral.pool_balance == pytest.approx(
+        with_collateral.original_pool_balance
+    )
+
+
+def test_an_explicit_original_pool_balance_still_wins(
+    adapter: ReportAdapter, period: NotesCashPeriod
+) -> None:
+    """A caller holding the true closing balance overrides both fallbacks."""
+    seed = dataclasses.replace(
+        adapter, collateral_principal_amount=500.0, original_pool_balance=900.0
+    ).seed(period)
+    assert seed.pool_balance == pytest.approx(500.0)
+    assert seed.original_pool_balance == pytest.approx(900.0)
 
 
 def test_from_deal_model_carries_the_collateral_amount_onto_the_adapter(

@@ -2924,7 +2924,8 @@ def parse_par_value_numerator(pages: list[list[str]]) -> ParValueNumerator | Non
         for match in _SIGNED_MONEY_RE.finditer(line)
     ]
     label = _NUMERATOR_TOTAL_RE.search(lines[total_at])
-    assert label is not None  # located by the same regex above
+    if label is None:  # unreachable — the same pattern located this line above
+        return None
     stated = next(
         (
             _decimal(match.group(0))

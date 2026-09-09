@@ -356,28 +356,35 @@ class ReportAdapter:
         reserve_target = first_period.reserve_target or reserve_opening
 
         # The Notes & Cash *sections* state liabilities, not the asset pool
-        # balance; the report-path seed therefore falls back to the opening
-        # liability total as the pool/original-pool proxy. Callers with the true
-        # closing pool balance pass it as ``original_pool_balance``.
-        original_pool = (
-            self.original_pool_balance
-            if self.original_pool_balance is not None
-            else opening_total
-        )
-        # ...but the *document* may state an asset-side figure even when its
-        # Notes & Cash sections do not: a CLO trustee report prints the Adjusted
+        # balance — but the *document* may state an asset-side figure even when
+        # those sections do not: a CLO trustee report prints the Adjusted
         # Collateral Principal Amount on its Par Value Tests Detail page, and
         # that is the numerator its overcollateralisation tests actually divide
-        # (#550). Prefer it whenever the caller resolved one; the liability
-        # total remains the fallback, and the covenant monitor refuses to build
-        # a coverage ratio on that fallback rather than report notes over notes
-        # (#549). The two must stay distinguishable, so this is a separate field
-        # from ``original_pool_balance`` — that one is the *original* pool at
-        # closing, this one the *current* collateral backing the notes today.
+        # (#550). Prefer it whenever the caller resolved one; the opening
+        # liability total remains the fallback, and the covenant monitor refuses
+        # to build a coverage ratio on that fallback rather than report notes
+        # over notes (#549).
         pool_balance = (
             self.collateral_principal_amount
             if self.collateral_principal_amount is not None
             else opening_total
+        )
+        # ``original_pool_balance`` is the *factor and loss-rate denominator*,
+        # so it has to be the same KIND of quantity as ``pool_balance`` above:
+        # ``pool_factor`` is one divided by the other and is documented as 1.0 at
+        # par (``deal_state``). Seeding an asset figure against the liability
+        # total put Cairn's factor at 1.084 — a pool larger than at closing,
+        # rendered on ``/compare`` — which is #514's lesson exactly: the twin fed
+        # the other side of the same comparison and only one side moved. Falling
+        # back to ``pool_balance`` keeps the meaning this seam already had for
+        # every report-path deal (par at the seed, amortising after) whichever
+        # figure the seed resolved. A caller with the true closing pool balance
+        # still overrides it, which is the only way to get a factor that is
+        # genuinely relative to closing rather than to the seed.
+        original_pool = (
+            self.original_pool_balance
+            if self.original_pool_balance is not None
+            else pool_balance
         )
 
         citation = Citation(
