@@ -23,6 +23,7 @@ triage by opening the entry, not by reading the line.
   - [2026-09-05 · pitfall · #456](#2026-09-05--pitfall--456) — keywords: widening a guard, newly visible input, N/A cell, scavenged rating, Subordinated Notes, untested downstream
   - [2026-09-09 · pattern · #548](#2026-09-09--pattern--548) — keywords: output plausibility, glossary_coverage, implausible, max_chars, section orphaning, alphabetical cliff, cause-agnostic guard
 - [Extraction: locating the right section](extraction-section-routing.md) — keywords: descendant span, heading level, section number, Docling, has_payment_list, LLM router, empty result
+  - [2026-09-09 · pattern · #566](#2026-09-09--pattern--566) — keywords: Article 6(3), sub-paragraph citation, retention undertaking, generic description, surface form, threshold figure, named party
 - [Published figures & doc drift](published-figures.md) — keywords: stale tally, completeness_score, capability matrix, re-derive, stored metric, published figure
   - [2026-09-06 · pattern · #469](#2026-09-06--pattern--469) — keywords: reconcile to stated aggregates, self-describing report, per-bucket distribution, refuse on divergence, document contradicts itself, source defect
   - [2026-09-02 · pitfall · #441](#2026-09-02--pitfall--441) — keywords: completeness_score

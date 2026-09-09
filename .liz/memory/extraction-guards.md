@@ -41,3 +41,5 @@ instead "is four terms from a 420-page prospectus plausibly a glossary?" — no
 theory of the cause needed, and it catches the mechanism nobody has seen yet.
 
 Refs: #548
+Refs: #566 — same rule, on the retention undertaking: a section that did not
+arrive and a document that says nothing produce the same empty parse.
