@@ -42,3 +42,16 @@ report. Read `DealModel`'s fields before promising an "extracted-model path": a
 never have helped.
 
 Refs: #479
+
+## 2026-09-09 · pitfall · #532
+
+A **reset** deal publishes two offering documents describing two different
+capital structures, and the newer is not automatically the right one. Register
+the one on the same side of the reset as the reports that will be parsed
+against it: Contego CLO XI's Aug/Sep-2024 reports match its 29-Jun-2023 Listing
+Particulars, not the 19-Nov-2024 reset whose Class A-R is due 2038. Getting it
+wrong throws nothing — the cascade folds and every figure is silently wrong.
+Settle the pairing on a figure the two state differently (a reported coupon vs
+each document's margin); record the reason in the registry entry.
+
+Refs: #532

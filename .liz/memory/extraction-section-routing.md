@@ -15,3 +15,16 @@ flagged `has_payment_list=false` — routed on titles alone. Derive hierarchy fr
 the dotted heading number (`3.4.7.2.2` under `3.4.7.2`) when headings carry one.
 
 Refs: #438
+
+## 2026-09-09 · pitfall · #532
+
+A short-but-plausible extraction and a budget-truncated one present identically
+— a definitions map holding only the leading alphabetical range. Measure the
+section actually sent before blaming `definitions_graph.py`'s `max_chars`:
+Contego's was 3,255 chars against a 40,000 budget, so widening it fixes
+nothing. The loss is in `route_sections`, which ends a section at the next
+heading while Docling renders many defined terms *as* headings, orphaning the
+glossary into siblings. A second document losing facts at one stage by a second
+route means the defect is the stage trusting whatever it is handed.
+
+Refs: #532

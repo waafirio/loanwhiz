@@ -22,6 +22,7 @@ triage by opening the entry, not by reading the line.
   - [2026-09-05 · pitfall · #456](#2026-09-05--pitfall--456) — keywords: widening a guard, newly visible input, N/A cell, scavenged rating, Subordinated Notes, untested downstream
   - [2026-09-09 · pitfall · #531](#2026-09-09--pitfall--531) — keywords: per-family tables, registration-time validation, fixture asymmetry, vacuous reconciliation, section title list, coverage does not transfer, new family has no fixtures
 - [Extraction: locating the right section](extraction-section-routing.md) — keywords: descendant span, heading level, section number, Docling, has_payment_list, LLM router, empty result
+  - [2026-09-09 · pitfall · #532](#2026-09-09--pitfall--532) — keywords: max_chars, route_sections, definitions stub, alphabetical cliff, Docling heading per term, measure the section sent, same symptom different mechanism
 - [Published figures & doc drift](published-figures.md) — keywords: stale tally, completeness_score, capability matrix, re-derive, stored metric, published figure
   - [2026-09-06 · pattern · #469](#2026-09-06--pattern--469) — keywords: reconcile to stated aggregates, self-describing report, per-bucket distribution, refuse on divergence, document contradicts itself, source defect
   - [2026-09-02 · pitfall · #441](#2026-09-02--pitfall--441) — keywords: completeness_score
@@ -34,6 +35,7 @@ triage by opening the entry, not by reading the line.
   - [2026-09-08 · pitfall · #483](#2026-09-08--pitfall--483) — keywords: sha256(tape_url).json, _tape_analytics_period
   - [2026-09-08 · pitfall · #480](#2026-09-08--pitfall--480) — keywords: unobtainable, recorded limitation, wrong document, offering circular, trustee report, coverage-test threshold, glossary truncation, document set
   - [2026-09-08 · pattern · #479](#2026-09-08--pattern--479) — keywords: derive vs hand-write, reconcile against declared, projection_base, current_pool_balance, pool_balance_eur, latest tape, byte-identical output
+  - [2026-09-09 · pitfall · #532](#2026-09-09--pitfall--532) — keywords: reset, two offering documents, prospectus_url, pre-reset reports, capital structure mismatch, silently wrong, registration_note
 - [Registering a deal (deals.json)](deal-registration.md) — keywords: deals.json, notes_cash_report_urls, routing promise, registry key, asset_class, answer key invariant
   - [2026-09-08 · pitfall · #479](#2026-09-08--pitfall--479) — keywords: extracted-model path, prospectus extraction, DealModel fields, as-of-date fact, closing-date terms, config tier, projection_base
 - [Metrics computed over a capital structure](structural-metrics.md)
