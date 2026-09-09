@@ -186,6 +186,7 @@ def test_derived_payment_dates_match_the_dates_the_reports_state(
     Get a holiday wrong and one of these stops matching. March is excluded and
     handled separately below.
     """
+    checked: list[tuple[str, date]] = []
     for fixture, label in REPORT_FIXTURES:
         if label == "March 2025":
             continue
@@ -200,6 +201,18 @@ def test_derived_payment_dates_match_the_dates_the_reports_state(
         assert derived == stated_date, (
             f"{label}: schedule derives {derived}, report states {stated_date}"
         )
+        checked.append((label, stated_date))
+
+    # The control on the control: a loop over an empty or silently-shrunk fixture
+    # list passes while checking nothing, and "the calendar is right" and "I
+    # compared no dates" would then be the same green. Both distinct payment dates
+    # must have been reached.
+    assert [label for label, _ in checked] == [
+        "December 2024",
+        "January 2025",
+        "February 2025",
+    ]
+    assert {payment for _, payment in checked} == {date(2025, 1, 21), date(2025, 4, 22)}
 
 
 def test_the_march_report_states_a_payment_date_the_schedule_does_not_predict(

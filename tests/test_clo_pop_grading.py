@@ -872,15 +872,16 @@ def test_the_published_statements_carry_the_measured_result() -> None:
     rather than transcribed — it is the same constant the reconciliation above
     asserts, so a card quoting a stale number reds here.
 
-    **The figure checked is the fold gap, not the total (#511).** The cards were
-    written when the two were the same number. Since #511 the engine computes two
-    interest lines for itself, so its total remainder is ``REVENUE_SHORTFALL`` =
-    ``UNJOINED_REVENUE_ROWS_TOTAL + DAY_COUNT_SHORTFALL`` while the cards
-    still state only the first — which remains true of the rows they describe,
-    but understates the deal's gap. Restating them is #515's ("Re-grade the CLO
-    and record the verdict"); ``docs/**`` is outside #511's declared paths, and
-    editing the constant instead of the cards would have hidden the drift rather
-    than reported it.
+    **The figure checked is the fold gap, and since #528 it is the total again.**
+    The cards were written when the two were the same number. #511 split them: the
+    engine began computing two interest lines for itself and fell short on both,
+    so the remainder became ``UNJOINED_REVENUE_ROWS_TOTAL + DAY_COUNT_SHORTFALL``
+    while the cards stated only the first. #528 supplied the accrual period those
+    lines were short by, ``DAY_COUNT_SHORTFALL`` went to zero, and the two
+    quantities coincide once more — so the cards' figure is the whole gap rather
+    than an understatement of it. ``REVENUE_SHORTFALL`` is still written as the
+    sum, not collapsed, because that is what lets the day-count mechanism reopen
+    visibly if it ever regresses.
     """
     repo_root = Path(__file__).resolve().parents[1]
     shortfall = f"{UNJOINED_REVENUE_ROWS_TOTAL:,.2f}"
