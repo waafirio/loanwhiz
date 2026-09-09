@@ -114,6 +114,16 @@ NO_SOURCE_DOCUMENT = (
     "for a retention undertaking"
 )
 
+#: An offering document is registered but **no extracted model is committed**
+#: for this deal, so the document has not been read at all. Distinct from the
+#: next one, which is a statement about a reading that did happen: a reason
+#: covering both would claim a model exists and lacks the undertaking, which is
+#: a wider claim than the input encodes (#457).
+NO_COMMITTED_MODEL = (
+    "no extracted model is committed for this deal, so the registered offering "
+    "document has not been read for a retention undertaking"
+)
+
 #: An offering document is registered and its extracted model carries no
 #: undertaking, with nothing on record saying the extraction was cut short.
 #: The absence is a fact about *this reading of that document*, and the sentence
@@ -150,7 +160,7 @@ NO_DOCUMENT_DATE = (
 #: Everything the record refuses to say, as one set. Tests assert membership
 #: against this rather than against a transcribed sentence.
 REFUSAL_VOCABULARY: frozenset[str] = frozenset(
-    {NO_SOURCE_DOCUMENT, NOT_READ_FROM_DOCUMENT, ABSENCE_UNPROVEN}
+    {NO_SOURCE_DOCUMENT, NO_COMMITTED_MODEL, NOT_READ_FROM_DOCUMENT, ABSENCE_UNPROVEN}
 )
 
 
@@ -352,7 +362,15 @@ def _retention_check(
             source=None,
         )
 
-    block = model.risk_retention if model is not None else None
+    if model is None:
+        return DueDiligenceCheck(
+            check=CHECK_RISK_RETENTION,
+            outcome="not-established",
+            reason=f"{NO_COMMITTED_MODEL} ({source.registry_slot}: {source.url})",
+            source=source,
+        )
+
+    block = model.risk_retention
     if block is None:
         reason = ABSENCE_UNPROVEN if _extraction_recorded_a_gap(model) else NOT_READ_FROM_DOCUMENT
         return DueDiligenceCheck(

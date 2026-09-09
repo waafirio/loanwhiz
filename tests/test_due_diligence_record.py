@@ -39,6 +39,7 @@ from loanwhiz.primitives.due_diligence import (
     ABSENCE_UNPROVEN,
     CHECK_RISK_RETENTION,
     NO_DOCUMENT_DATE,
+    NO_COMMITTED_MODEL,
     NO_SOURCE_DOCUMENT,
     NOT_READ_FROM_DOCUMENT,
     REFUSAL_VOCABULARY,
@@ -225,6 +226,33 @@ def test_an_unregistered_document_refuses_differently_from_an_unread_one() -> No
     assert check.reason == NO_SOURCE_DOCUMENT
     assert check.source is None
     assert check.reason != NOT_READ_FROM_DOCUMENT
+
+
+def test_a_deal_with_no_committed_model_says_so_rather_than_blaming_the_model() -> None:
+    """Three absences, three sentences — none claiming more than its input encodes.
+
+    A deal whose document is registered but never extracted has no model to
+    lack an undertaking. Reusing the "the committed model carries no retention
+    undertaking" sentence here would assert a model exists, which is a wider
+    claim than the input supports (#457) and would send a reader to inspect an
+    artefact that was never produced.
+    """
+    check = _only(
+        assemble_due_diligence(
+            CONTEGO_DEAL_ID, DEAL_REGISTRY[CONTEGO_DEAL_ID], model=None
+        ).output.not_established
+    )
+
+    assert check.reason.startswith(NO_COMMITTED_MODEL)
+    assert not check.reason.startswith(NOT_READ_FROM_DOCUMENT)
+    # Still names the document, so the limitation stays re-askable (#480).
+    assert DEAL_REGISTRY[CONTEGO_DEAL_ID]["prospectus_url"] in check.reason
+    assert check.source is not None and check.source.read_at is None
+
+
+def test_the_three_document_backed_absences_are_three_distinct_sentences() -> None:
+    """Collapsing any pair would lose the action each one implies."""
+    assert len({NO_SOURCE_DOCUMENT, NO_COMMITTED_MODEL, NOT_READ_FROM_DOCUMENT}) == 3
 
 
 def test_a_truncated_extraction_makes_the_absence_unproven_not_absent() -> None:
