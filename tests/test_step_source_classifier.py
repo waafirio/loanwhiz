@@ -13,9 +13,21 @@ from __future__ import annotations
 
 import pytest
 
-from loanwhiz.primitives.step_source_classifier import (
+# `loanwhiz.primitives` must be imported before `loanwhiz.domain` — a
+# pre-existing base-branch import cycle (domain/__init__ -> provenance ->
+# primitives.base -> primitives/__init__ -> ... -> domain.rules) makes
+# `loanwhiz.domain` unimportable as the first loanwhiz import. Unrelated to
+# this change; the same skip is in `test_recipient_need_contract.py`.
+from loanwhiz.primitives.step_source_classifier import (  # isort: skip
+    _ENGINE_COMPUTED_CANONICAL,
     ENGINE_COMPUTED_RECIPIENTS,
+    _canonical_view,
     build_step_specs,
+)
+from loanwhiz.domain.rules import (  # isort: skip
+    CLO_RECIPIENT_SPELLINGS,
+    RECOGNISED_UNEVALUABLE_RECIPIENTS,
+    RecipientType,
 )
 
 
@@ -232,3 +244,173 @@ def test_report_adapter_consumes_shared_classifier() -> None:
     }
     assert overrides == {"swap_payment": 100.0}
     assert [s.priority for s in specs] == ["(a)", "(d)", "(k)"]
+
+
+# ---------------------------------------------------------------------------
+# one vocabulary — the recipient is canonicalised BEFORE it is classified (#511)
+#
+# An extracted step carries the *document's* spelling. Cairn CLO XVII's cascade
+# says ``class_a_notes_interest`` where the enum says ``class_a_interest``, and
+# testing the raw string sent every one of its steps to ``report-supplied``,
+# where its need was overwritten with the report's own figure. That is the
+# mechanism #496 measured: 52 steps "matching" a report they were copied from.
+# ---------------------------------------------------------------------------
+
+
+def test_clo_spelling_of_an_engine_recipient_classifies_as_engine() -> None:
+    """The headline: a CLO-spelled note-interest step is engine-computed.
+
+    Before #511 this was ``report-supplied`` with an override of 5_012_345.67 —
+    the report handed back its own figure as the engine's "computed" need.
+    """
+    steps = [_step("(A)", "class_a_notes_interest")]
+    _, overrides, source = build_step_specs(
+        steps,
+        residual_label="",
+        report_supplied_labels=frozenset(),
+        report_amounts={"(A)": 5_012_345.67},
+    )
+    assert source == {"class_a_notes_interest": "engine"}
+    # No override: the engine must compute this one, not be told the answer.
+    assert overrides == {}
+
+
+@pytest.mark.parametrize(
+    "spelling",
+    sorted(
+        s
+        for s, r in CLO_RECIPIENT_SPELLINGS.items()
+        if r.value in ENGINE_COMPUTED_RECIPIENTS
+    ),
+)
+def test_every_clo_spelling_of_a_computable_recipient_is_engine(spelling: str) -> None:
+    """Derived from the real spelling table, so it grows with the vocabulary."""
+    _, overrides, source = build_step_specs(
+        [_step("(A)", spelling)],
+        residual_label="",
+        report_supplied_labels=frozenset(),
+        report_amounts={"(A)": 1.0},
+    )
+    assert source == {spelling: "engine"}
+    assert overrides == {}
+
+
+@pytest.mark.parametrize(
+    "spelling",
+    ["class_a_pdl_replenishment", "class_b_pdl_replenishment", "reserve_account_replenishment"],
+)
+def test_legacy_spellings_still_classify_as_engine(spelling: str) -> None:
+    """The regression #511 had to avoid while fixing the CLO ones.
+
+    ``ENGINE_COMPUTED_RECIPIENTS`` is itself a mixed vocabulary: these members
+    are legacy spellings whose canonical forms (``class_*_pdl_cure``,
+    ``reserve_replenishment``) do NOT appear in it. Canonicalising only the
+    incoming recipient — and leaving the declaration unresolved — flips exactly
+    these three from ``engine`` to ``report-supplied``.
+    """
+    _, overrides, source = build_step_specs(
+        [_step("(e)", spelling)],
+        residual_label="",
+        report_supplied_labels=frozenset(),
+        report_amounts={"(e)": 42.0},
+    )
+    assert source == {spelling: "engine"}
+    assert overrides == {}
+
+
+def test_report_supplied_label_still_wins_over_a_canonicalised_recipient() -> None:
+    """The escape hatch survives canonicalisation.
+
+    A step the engine *could* compute but shouldn't stays honest — and now that
+    a CLO spelling reaches the engine branch at all, this is the only thing
+    holding it back.
+    """
+    _, overrides, source = build_step_specs(
+        [_step("(A)", "class_a_notes_interest")],
+        residual_label="",
+        report_supplied_labels=frozenset({"(A)"}),
+        report_amounts={"(A)": 777.0},
+    )
+    assert source == {"class_a_notes_interest": "report-supplied"}
+    assert overrides == {"class_a_notes_interest": 777.0}
+
+
+def test_recognised_unevaluable_recipient_stays_report_supplied() -> None:
+    """``unmapped`` must never leak into the engine branch.
+
+    ``_canonical_recipient`` answers ``RecipientType.unmapped`` for every string
+    in ``RECOGNISED_UNEVALUABLE_RECIPIENTS`` — the strings we recognise and have
+    decided the engine cannot place. Were ``unmapped`` a member of the canonical
+    set, all of them would classify ``engine`` at once.
+    """
+    unevaluable = "incentive_investment_management_fee"
+    assert unevaluable in RECOGNISED_UNEVALUABLE_RECIPIENTS
+    _, overrides, source = build_step_specs(
+        [_step("(Y)", unevaluable)],
+        residual_label="",
+        report_supplied_labels=frozenset(),
+        report_amounts={"(Y)": 55.0},
+    )
+    assert source == {unevaluable: "report-supplied"}
+    assert overrides == {unevaluable: 55.0}
+    assert RecipientType.unmapped not in _ENGINE_COMPUTED_CANONICAL
+
+
+def test_canonical_view_drops_unplaceable_and_undeclared_names() -> None:
+    """The derivation rule itself, on inputs the real declaration does not have.
+
+    No member of ``ENGINE_COMPUTED_RECIPIENTS`` resolves to ``unmapped`` today, so
+    asserting over the real set cannot tell the ``unmapped`` guard from its
+    absence. Feed the rule a set that does: every string in
+    ``RECOGNISED_UNEVALUABLE_RECIPIENTS`` collapses onto that one member, so
+    admitting it even once would make all of them engine-computed.
+    """
+    unplaceable = "purchase_of_substitute_collateral"
+    assert unplaceable in RECOGNISED_UNEVALUABLE_RECIPIENTS
+
+    view = _canonical_view(
+        frozenset({"class_a_interest", unplaceable, "no_such_recipient_anywhere"})
+    )
+    assert view == {RecipientType.class_a_interest}
+
+
+def test_unspelled_recipient_stays_report_supplied() -> None:
+    """A name nobody declared resolves to ``None`` and must not classify engine."""
+    _, overrides, source = build_step_specs(
+        [_step("(Z)", "amounts_referred_to_in_paragraph_qq")],
+        residual_label="",
+        report_supplied_labels=frozenset(),
+        report_amounts={"(Z)": 12.0},
+    )
+    assert source == {"amounts_referred_to_in_paragraph_qq": "report-supplied"}
+    assert overrides == {"amounts_referred_to_in_paragraph_qq": 12.0}
+
+
+def test_engine_computed_recipients_carries_no_clo_spelling() -> None:
+    """The shortcut #511 forbids, pinned.
+
+    Hand-widening the declaration with CLO spellings would fix the same symptom
+    while encoding a second vocabulary in a table that should only ever name
+    recipients the registry can compute — the whack-a-mole #503 removed. The fix
+    belongs at the comparison, not in the set.
+    """
+    assert ENGINE_COMPUTED_RECIPIENTS & set(CLO_RECIPIENT_SPELLINGS) == set()
+
+
+def test_returned_dicts_stay_keyed_by_the_raw_extracted_recipient() -> None:
+    """Only the membership test canonicalises; the keys do not.
+
+    ``waterfall_interpreter`` looks a step's override up by ``spec.recipient``,
+    which is the raw extracted string — re-keying these dicts to the canonical
+    name would silently detach every override from its step.
+    """
+    steps = [_step("(A)", "class_a_notes_interest"), _step("(H)", "hedge_payments")]
+    specs, overrides, source = build_step_specs(
+        steps,
+        residual_label="",
+        report_supplied_labels=frozenset(),
+        report_amounts={"(H)": 8.0},
+    )
+    assert set(source) == {"class_a_notes_interest", "hedge_payments"}
+    assert set(overrides) == {"hedge_payments"}
+    assert [s.recipient for s in specs] == ["class_a_notes_interest", "hedge_payments"]
