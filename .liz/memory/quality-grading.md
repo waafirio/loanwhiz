@@ -103,6 +103,7 @@ On a failing grade, pin the figures and change neither side: the gap is it.
 
 Refs: #496
 Refs: #514 — closing the join turned the vacuous pass into a visible failure.
+Refs: #538 — the tie-out itself goes blind where a residual sweep absorbs.
 
 ## 2026-09-08 · pattern · #512
 
@@ -141,3 +142,16 @@ twin feeds the *other* side of the assertion: if it does, the fix is one shared
 function, not two that agree.
 
 Refs: #514
+
+## 2026-09-09 · pitfall · #538
+
+A cascade with a residual sweep cannot report a step-level error in its total.
+The pot is fixed, so a step that over-claims is funded by starving the sweep
+beneath it and `distributed == available` still holds: the tie-out #496 asks for
+goes green at the exact moment two steps become wrong by equal and opposite
+amounts. Read a tie-out as "no money escaped", never as "every step is right",
+and keep `steps_passed` and the per-step deltas as the completeness check. When
+a gap does split this way, assert both deltas AND that they cancel — a later fix
+to one then reds the pair instead of silently re-balancing the total.
+
+Refs: #538
