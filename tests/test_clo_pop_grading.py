@@ -76,8 +76,12 @@ What the run says
       **unadjusted** Payment Dates. The seed carries the parsed bases per class;
       ``tests/test_day_count_parser.py`` holds the parse and its refusals.
 
-3. **Two lines of the cascade are genuinely engine-computed, and both now tie —
-   with every input sourced from a document rather than from the answer.**
+3. **Three lines of the cascade are genuinely engine-computed, and all three now
+   tie — with every input sourced from a document rather than from the answer.**
+   Classes A and C are shown first; Class B is the third and is shown below,
+   because it ties over two strips on two conventions. (This item read "two"
+   while its own body already named the third — #515 measured the count and
+   corrected the heading rather than the assertion.)
    Before #511 the membership test ran against the *raw* extracted recipient, so
    Cairn's ``class_a_notes_interest`` missed the set's ``class_a_interest`` and
    every step was classified ``report-supplied`` — its amount taken from the
@@ -1238,6 +1242,24 @@ RETRACTED_CLAIMS: tuple[tuple[str, tuple[str, ...]], ...] = (
             # present-tense claim that stopped being true.
             "raises on this key before comparing a figure",
             "the union's cadence, not any number in it, is what stands between",
+            # Retracted by #514/#538/#539, measured by #515: the row reconciles.
+            "and the interest row, run, does not reconcile",
+            "so not one line is",
+        ),
+    ),
+    # #515 added this file to the ban-list. Its Limitation 1 was the last
+    # committed surface still stating the pre-#514 result in the present tense,
+    # and nothing flagged it because no entry named it here — a card is only
+    # covered once it has a row, so adding the row IS the fix.
+    (
+        "docs/model-card.md",
+        (
+            "and it does not reconcile",
+            "no cairn line is engine-computed",
+            "(25%) undistributed",
+            # #492 brought Green Lion 2023-1's grade onto the matrix, so a
+            # transcribed "exactly one" has been false since.
+            "exactly one cell is validated",
         ),
     ),
 )
@@ -1271,8 +1293,11 @@ def test_the_published_statements_carry_the_measured_result() -> None:
     than the total. Pointing the cards at the total would now have them publish
     ``0.00`` for a cascade with two wrong steps in it, which is precisely the
     false green ``REVENUE_SHORTFALL``'s own comment warns about. Restating the
-    cards is #515's — ``docs/**`` is outside this issue's scope, and editing the
-    constant instead of the cards would hide drift rather than report it.
+    cards is #515's — it was outside this issue's scope, and editing the
+    constant instead of the cards would hide drift rather than report it. #515
+    has since done that restatement and added ``docs/model-card.md`` to the
+    table above, which was the last committed card still stating the pre-#514
+    result in the present tense with nothing to flag it.
     """
     repo_root = Path(__file__).resolve().parents[1]
     shortfall = f"{UNJOINED_REVENUE_ROWS_TOTAL:,.2f}"
@@ -1287,6 +1312,97 @@ def test_the_published_statements_carry_the_measured_result() -> None:
         # And it still states the result, so this cannot pass by deleting it.
         states_the_result = shortfall in prose
         assert states_the_result, (relative_path, shortfall)
+
+
+#: The cards that must state the Interest cascade's engine/report split. A card
+#: naming the grade without the split publishes "it reconciles" while hiding that
+#: most of what reconciled was the report compared with itself (#496).
+CARDS_STATING_THE_SPLIT: tuple[str, ...] = (
+    "README.md",
+    "docs/model-card.md",
+    "src/loanwhiz/data/deals/answer_keys/README.md",
+)
+
+
+def _collapsed(text: str) -> str:
+    """Prose with runs of whitespace flattened, so a wrapped line still matches."""
+    return re.sub(r"\s+", " ", text)
+
+
+def test_the_cards_state_the_split_as_a_figure_this_run_re_derives(
+    recon: ReconciliationReport,
+) -> None:
+    """Every count the cards publish is regenerated here, never transcribed.
+
+    #515's brief asks for the engine-computed / report-supplied split "as a
+    figure, not an adjective", and a figure written into four documents is four
+    places to drift. So the split is **derived from this run** and each card is
+    required to contain the derived sentence: change the engine's classification
+    and every card that still quotes the old number reds here, which is the
+    #492 lesson (a converged surface whose docs quote the old answer claims
+    worse) applied to a count rather than to a tally of cells.
+
+    The direction matters as much as the figure. A card may say the cascade
+    reconciles only while it also says how little of it was computed — 3 lines
+    of 29 in the Interest cascade, 3 of 52 across both — because "it
+    reconciles" and "the engine computes it" are different claims and this deal
+    is the one that made the difference visible.
+    """
+    period = recon.periods[0]
+    revenue, redemption = period.revenue, period.redemption
+    every_step = [*revenue.steps, *redemption.steps]
+
+    revenue_engine = [s for s in revenue.steps if s.source == "engine"]
+    revenue_reported = [s for s in revenue.steps if s.source != "engine"]
+    all_engine = [s for s in every_step if s.source == "engine"]
+    all_reported = [s for s in every_step if s.source != "engine"]
+    engine_money = sum(s.engine_amount for s in all_engine)
+    vacuous = [
+        s
+        for s in every_step
+        if abs(s.engine_amount) <= recon.tolerance_eur
+        and abs(s.report_amount) <= recon.tolerance_eur
+    ]
+
+    # The split is a real split: neither side is empty, or the sentence below
+    # would be true of a grade that computed nothing (#496) or of one with no
+    # report-supplied lines left to warn about.
+    assert revenue_engine and revenue_reported
+    assert len(all_engine) + len(all_reported) == len(every_step)
+
+    split = (
+        f"{len(revenue_engine)} of th",
+        f"{len(revenue.steps)} lines are engine-computed "
+        f"and {len(revenue_reported)} are report-supplied",
+    )
+    for relative_path in CARDS_STATING_THE_SPLIT:
+        prose = _collapsed(
+            (Path(__file__).resolve().parents[1] / relative_path).read_text(
+                encoding="utf-8"
+            )
+        )
+        missing = [fragment for fragment in split if fragment not in prose]
+        assert missing == [], (relative_path, missing)
+
+    # The data card carries the cross-cascade form and the money behind it,
+    # because that is where a reader meets what `validated` would mean here.
+    data_card = _collapsed(
+        (Path(__file__).resolve().parents[1] / "docs/data-card.md").read_text(
+            encoding="utf-8"
+        )
+    )
+    for fragment in (
+        f"{len(every_step)} steps are compared and **{len(all_engine)} are "
+        f"engine-computed; {len(all_reported)} are report-supplied**",
+        f"{len(all_engine)} lines carrying EUR {engine_money:,.2f} of the "
+        f"Interest cascade's EUR {revenue.available_funds:,.2f} pot",
+        f"{len(vacuous)} of the {len(every_step)} compare EUR 0.00 with EUR 0.00",
+    ):
+        assert fragment in data_card, fragment
+
+    # And the redemption cascade is named as proving nothing wherever it is
+    # counted, since all of its steps are in that vacuous set.
+    assert len(redemption.steps) == len([s for s in vacuous if s in redemption.steps])
 
 
 def test_both_sides_of_the_comparison_fold_the_report_the_same_way(
