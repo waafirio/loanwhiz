@@ -25,6 +25,7 @@ Usage
 from __future__ import annotations
 
 import json
+import logging
 import re
 from pathlib import Path
 
@@ -35,6 +36,12 @@ from pydantic import BaseModel
 from loanwhiz.config import GCP_LOCATION, GCP_PROJECT, MODEL_PRO
 from loanwhiz.extraction.definitions_graph import DefinitionsGraph
 from loanwhiz.extraction.section_router import Section, SectionMap
+from loanwhiz.extraction.truncation import Truncation, clip
+
+# This module had no logger at all before #548 — which is precisely why its
+# truncation was silent. The structural record on ``ExtractedWaterfall`` is the
+# real fix; the warning is the cheap half.
+logger = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
@@ -62,6 +69,12 @@ class ExtractedWaterfall(BaseModel):
     steps: list[WaterfallStep]
     source_section: str     # "Section 5.2" etc.
     extraction_confidence: float   # 0–1: real step-usability coverage (see _extraction_confidence)
+    # What the character budget discarded, if anything. This was the more
+    # dangerous of the two truncation sites: it had no warning at all, so a
+    # cascade cut mid-waterfall arrived looking like a shorter deal rather than
+    # a broken extraction (#548). Optional with a ``None`` default so every
+    # existing construction site and warm cache keeps working.
+    truncation: Truncation | None = None
 
 
 def _step_support(step: "WaterfallStep | dict") -> float:
@@ -389,6 +402,13 @@ def _waterfall_to_dict(waterfall: ExtractedWaterfall) -> dict:
         "waterfall_type": waterfall.waterfall_type,
         "source_section": waterfall.source_section,
         "extraction_confidence": waterfall.extraction_confidence,
+        # Written only when present, so a waterfall with nothing to report
+        # serialises to exactly the pre-#548 shape.
+        **(
+            {"truncation": waterfall.truncation.to_dict()}
+            if waterfall.truncation is not None
+            else {}
+        ),
         "steps": [
             {
                 "priority": step.priority,
@@ -424,6 +444,9 @@ def _waterfall_from_dict(data: dict) -> ExtractedWaterfall:
         steps=steps,
         source_section=data.get("source_section", ""),
         extraction_confidence=float(data.get("extraction_confidence", 0.0)),
+        # ``.get`` returning ``None`` is what lets a cache written before #548
+        # load unchanged rather than raising.
+        truncation=Truncation.from_dict(data.get("truncation")),
     )
 
 
@@ -515,7 +538,20 @@ def extract_waterfall(
                 f"Tried keywords: {keywords}"
             )
 
-    section_text = section.text[:max_chars]
+    section_text, truncation = clip(section.title, section.text, max_chars)
+    if truncation is not None:
+        # Previously a bare slice with nothing said. A Priority of Payments
+        # section over budget is cut MID-CASCADE, and a truncated cascade does
+        # not look broken — it looks like a shorter deal. Cairn CLO XVII's
+        # Interest cascade alone runs 29 steps (#548).
+        logger.warning(
+            "%s waterfall section truncated at %d of %d chars — the cascade is "
+            "ordered, so no step after %r was seen",
+            waterfall_type,
+            truncation.kept_chars,
+            truncation.original_chars,
+            truncation.last_line,
+        )
     section_name = _WATERFALL_SECTION_NAMES[waterfall_type]
 
     # Build definitions context block.
@@ -599,6 +635,7 @@ def extract_waterfall(
         steps=steps,
         source_section=source_section,
         extraction_confidence=extraction_confidence,
+        truncation=truncation,
     )
 
     # Cache to disk.

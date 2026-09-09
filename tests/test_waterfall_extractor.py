@@ -980,3 +980,128 @@ class TestGreenLionRedemptionWaterfall:
         self, waterfall: ExtractedWaterfall
     ) -> None:
         assert waterfall.extraction_confidence > 0.8
+
+
+# ---------------------------------------------------------------------------
+# Truncation record — the site that had no warning at all (#548)
+# ---------------------------------------------------------------------------
+#
+# `definitions_graph` at least logged. This one sliced silently, so a Priority
+# of Payments section over its 20,000-char budget was cut MID-CASCADE with
+# nothing said — and a truncated cascade does not look broken, it looks like a
+# shorter deal. Cairn CLO XVII's Interest cascade alone runs 29 steps.
+
+
+def _fake_gemini_response(step_count: int = 1):
+    fake_fc = MagicMock()
+    fake_fc.args = {
+        "steps": [
+            {
+                "priority": f"({chr(ord('a') + i)})",
+                "recipient": f"recipient_{i}",
+                "description": "Pay something.",
+                "amount_formula": "as accrued",
+                "condition": "",
+                "is_pari_passu": False,
+                "citation": {"document": "P", "page_or_row": "5.2", "excerpt": "e"},
+            }
+            for i in range(step_count)
+        ],
+        "source_section": "Section 5.2",
+    }
+    fake_part = MagicMock()
+    fake_part.function_call = fake_fc
+    fake_candidate = MagicMock()
+    fake_candidate.content.parts = [fake_part]
+    fake_response = MagicMock()
+    fake_response.candidates = [fake_candidate]
+    return fake_response
+
+
+def _long_pop_md(steps: int = 900) -> str:
+    body = "\n".join(
+        f"({chr(ord('a') + i % 26)}{i}) to pay item {i} of the cascade in full;"
+        for i in range(steps)
+    )
+    return f"## Revenue Priority of Payments\n\n{body}\n"
+
+
+class TestWaterfallTruncationRecord:
+    def _extract(self, max_chars: int, tmpdir: str):
+        from loanwhiz.extraction.section_router import route_sections
+
+        section_map = route_sections(_long_pop_md())
+        definitions = MagicMock()
+        definitions.resolve.return_value = None
+        definitions.resolve_all.return_value = {}
+
+        cache_file = Path(tmpdir) / "waterfall_trunc_revenue.json"
+        with patch("loanwhiz.extraction.waterfall_extractor.genai.Client") as client:
+            client.return_value.models.generate_content.return_value = (
+                _fake_gemini_response()
+            )
+            return extract_waterfall(
+                section_map=section_map,
+                definitions=definitions,
+                waterfall_type="revenue",
+                deal_name="trunc",
+                cache_path=str(cache_file),
+                max_chars=max_chars,
+            ), cache_file
+
+    def test_the_result_carries_the_truncation(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            waterfall, _ = self._extract(2_000, tmpdir)
+
+        assert waterfall.truncation is not None
+        assert waterfall.truncation.kept_chars == 2_000
+        assert waterfall.truncation.original_chars > 2_000
+        assert waterfall.truncation.discarded_fraction > 0.5
+        assert "Revenue Priority of Payments" in waterfall.truncation.section_title
+
+    def test_it_also_warns(self, caplog) -> None:
+        """The cheap half — this module had no logger at all before #548."""
+        import logging
+
+        with caplog.at_level(logging.WARNING), tempfile.TemporaryDirectory() as tmpdir:
+            self._extract(2_000, tmpdir)
+
+        assert any("truncated" in r.getMessage() for r in caplog.records), caplog.text
+
+    def test_an_untruncated_waterfall_reports_nothing(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            waterfall, _ = self._extract(10_000_000, tmpdir)
+
+        assert waterfall.truncation is None
+
+    def test_the_record_survives_the_disk_cache(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            waterfall, cache_file = self._extract(2_000, tmpdir)
+            assert cache_file.exists()
+            reloaded = _waterfall_from_dict(json.loads(cache_file.read_text()))
+
+        assert reloaded.truncation == waterfall.truncation
+
+
+class TestWaterfallCacheCompatibility:
+    def test_legacy_cache(self) -> None:
+        reloaded = _waterfall_from_dict(
+            {
+                "deal_name": "cairn",
+                "waterfall_type": "revenue",
+                "source_section": "Section 5.2",
+                "extraction_confidence": 0.7,
+                "steps": [],
+            }
+        )
+        assert reloaded.truncation is None
+
+    def test_a_waterfall_with_nothing_to_report_serialises_to_the_old_shape(self) -> None:
+        waterfall = ExtractedWaterfall(
+            deal_name="d",
+            waterfall_type="revenue",
+            steps=[],
+            source_section="Section 5.2",
+            extraction_confidence=0.0,
+        )
+        assert "truncation" not in _waterfall_to_dict(waterfall)

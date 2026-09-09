@@ -32,15 +32,16 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from loanwhiz.extraction.covenant_extractor import extract_covenants
-from loanwhiz.extraction.definitions_graph import extract_definitions
+from loanwhiz.extraction.definitions_graph import GlossaryCoverage, extract_definitions
 from loanwhiz.extraction.section_router import (
     SectionMap,
     resolve_sections,
     route_sections,
 )
+from loanwhiz.extraction.truncation import Truncation
 from loanwhiz.extraction.waterfall_extractor import extract_all_waterfalls
 
 
@@ -160,6 +161,44 @@ def _apply_definitions_links(
             trig["metric_terms"] = linked
 
 
+def _collect_truncations(definitions_graph: object, waterfalls: dict) -> list[dict]:
+    """Every truncation the sub-extractors reported, as metadata dicts.
+
+    ``stage`` names which extractor was cut, so a reader can tell a clipped
+    glossary from a cascade cut mid-waterfall without inspecting the section
+    title.
+
+    Deliberately defensive about the *shape* of what it is handed: the assembler
+    tests patch ``extract_definitions`` / ``extract_all_waterfalls`` with
+    ``MagicMock``s, whose attribute access invents an object rather than raising
+    ``AttributeError``. Requiring a real :class:`Truncation` keeps those mocks
+    producing an empty list instead of a mock leaking into a validated model.
+    """
+    collected: list[dict] = []
+
+    defs_truncation = getattr(definitions_graph, "truncation", None)
+    if isinstance(defs_truncation, Truncation):
+        collected.append({"stage": "definitions", **defs_truncation.to_dict()})
+
+    for waterfall_type, waterfall in (waterfalls or {}).items():
+        truncation = getattr(waterfall, "truncation", None)
+        if isinstance(truncation, Truncation):
+            collected.append(
+                {"stage": f"waterfall:{waterfall_type}", **truncation.to_dict()}
+            )
+
+    return collected
+
+
+def _coverage_dict(definitions_graph: object) -> dict | None:
+    """The definitions stage's self-assessment, or ``None`` when it has none.
+
+    Same ``isinstance`` guard, same reason as :func:`_collect_truncations`.
+    """
+    coverage = getattr(definitions_graph, "coverage", None)
+    return coverage.to_dict() if isinstance(coverage, GlossaryCoverage) else None
+
+
 # ---------------------------------------------------------------------------
 # Data models
 # ---------------------------------------------------------------------------
@@ -175,6 +214,14 @@ class DealModelMetadata(BaseModel):
     sections_found: list[str]
     completeness_score: float   # 0–1: real coverage of extracted content (see _completeness_score)
     cache_path: str
+    # Every section a character budget cut short on this run, one entry per
+    # affected extractor. This is the surface that makes truncation a fact a
+    # *caller* can see — the deal-model route, the demo summary and the data
+    # card all read metadata, and none of them read logs (#548).
+    truncations: list[dict] = Field(default_factory=list)
+    # The definitions stage's verdict on its own output; ``None`` when
+    # definitions were not extracted. Carries ``implausible`` and the reason.
+    glossary_coverage: dict | None = None
 
 
 class DealModel(BaseModel):
@@ -508,6 +555,8 @@ def extract_deal_model(
         covenants=serialised_covenants,
         term_keys=term_keys,
     )
+    truncations = _collect_truncations(definitions_graph, waterfalls)
+    glossary_coverage = _coverage_dict(definitions_graph)
     model = DealModel(
         metadata=DealModelMetadata(
             deal_name=deal_name,
@@ -517,6 +566,8 @@ def extract_deal_model(
             sections_found=sections_found,
             completeness_score=completeness,
             cache_path=str(cache_path),
+            truncations=truncations,
+            glossary_coverage=glossary_coverage,
         ),
         definitions={
             t: {
