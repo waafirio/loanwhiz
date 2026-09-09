@@ -1,0 +1,59 @@
+--- page 1 ---
+LEI :
+Disclaimer:This report is for informational purposes only, certain information included in the report is estimated, approximated or projected and the report
+is provided without any representations or warranties as to accuracy or completeness and that none of the Collateral Manager, the Issuer, the Trustee or
+the Collateral Administrator will have any liability for such estimates, approximations or projections. This document contains information that is
+confidential and is the property of BNY Mellon. It may not be copied, published or used, in whole or in part, for any purpose other than as expressly
+authorized by BNY Mellon.
+Contego CLO XI DAC
+COMPLIANCE REPORT
+As of 30-Aug-2024
+Client Service Manager Tomasz Filipczak +48 71 379 8874 Tomasz.Filipczak@bnymellon.com Disclaimer:This report is for informational purposes only, certain information included in the report is estimated, approximated or projected and the report  is provided without any representations or warranties as to accuracy or completeness and that none of the Collateral Manager, the Issuer, the Trustee or  the Collateral Administrator will have any liability for such estimates, approximations or projections. This document contains information that is  confidential and is the property of BNY Mellon. It may not be copied, published or used, in whole or in part, for any purpose other than as expressly  authorized by BNY Mellon. Contego CLO XI DAC COMPLIANCE REPORT As of 30-Aug-2024 LEI :  6354008HTD4GEZHRKR02 Collateral Manager Five Arrows Managers LLP
+6354008HTD4GEZHRKR02
+Client Service Manager
+Tomasz Filipczak
++48 71 379 8874
+Tomasz.Filipczak@bnymellon.com
+Collateral Manager
+Five Arrows Managers LLP
+--- page 2 ---
+Table of Contents
+Compliance Summary 3
+Compliance Tests 4
+Account Balances 7
+Par Value Tests 8
+Interest Coverage Tests 9
+Purchases and Sales 10
+Discretionary Reason for Sale 11
+Asset Information I 12
+Asset Information II 17
+Asset Information III 22
+Asset Information IV 28
+Interest Accrual Detail 35
+Principal Paydowns/Borrowings 42
+Weighted Average Coupon Calculation 43
+Minimum Weighted Average Spread Test 44
+S&P CDO Monitor Test 45
+CCC Obligations 46
+Defaulted Obligations 47
+Deferring Obligations 48
+Current Pay Obligations 49
+Corporate Rescue Loan Obligations 50
+Discount Obligations 51
+Long Dated Obligations 52
+Highest Applicable Haircut 53
+Collateral Enhancement Obligations 54
+Exchanged Securities 55
+Market Value Determination 56
+Top 10 Obligors 61
+Event of Default Par Ratio 62
+Hedge Transactions 63
+Rating Upgrades and Downgrades 64
+Restructured Assets 65
+Frequency Switch Event 66
+Participation Interest / Counterparty Information 67
+Risk Retention Confirmation 68
+Eligible Investments 69
+Transaction Parties 70
+Rating Concentrations 71
+Industry Concentrations 72

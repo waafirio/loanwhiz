@@ -1,0 +1,156 @@
+{
+  "format_version": 1,
+  "deal_id": "contego-clo-xi",
+  "deal_name": "Contego CLO XI DAC",
+  "tolerance_eur": 0.01,
+  "periods": [
+    {
+      "reporting_date": "2024-08-30",
+      "period_label": "August 2024",
+      "available_revenue_funds": null,
+      "available_principal_funds": null,
+      "revenue_pop": [],
+      "redemption_pop": [],
+      "covenants": [
+        {
+          "name": "class_a_b_par_value_test",
+          "threshold": 133.08,
+          "actual": 143.32,
+          "passed": true,
+          "note": "Class A/B Par Value Test; stated in Par Value Tests"
+        },
+        {
+          "name": "class_c_par_value_test",
+          "threshold": 124.54,
+          "actual": 132.27,
+          "passed": true,
+          "note": "Class C Par Value Test; stated in Par Value Tests"
+        },
+        {
+          "name": "class_d_par_value_test",
+          "threshold": 115.91,
+          "actual": 122.12,
+          "passed": true,
+          "note": "Class D Par Value Test; stated in Par Value Tests"
+        },
+        {
+          "name": "class_e_par_value_test",
+          "threshold": 110.63,
+          "actual": 115.83,
+          "passed": true,
+          "note": "Class E Par Value Test; stated in Par Value Tests"
+        },
+        {
+          "name": "reinvestment_par_value_test",
+          "threshold": 111.13,
+          "actual": 115.83,
+          "passed": true,
+          "note": "Reinvestment Par Value Test; stated in Par Value Tests"
+        },
+        {
+          "name": "class_a_b_interest_coverage_test",
+          "threshold": 120.0,
+          "actual": 174.2,
+          "passed": true,
+          "note": "Class A/B Interest Coverage Test; stated in Interest Coverage Tests"
+        },
+        {
+          "name": "class_c_interest_coverage_test",
+          "threshold": 110.0,
+          "actual": 156.65,
+          "passed": true,
+          "note": "Class C Interest Coverage Test; stated in Interest Coverage Tests"
+        },
+        {
+          "name": "class_d_interest_coverage_test",
+          "threshold": 105.0,
+          "actual": 137.0,
+          "passed": true,
+          "note": "Class D Interest Coverage Test; stated in Interest Coverage Tests"
+        },
+        {
+          "name": "class_e_interest_coverage_test",
+          "threshold": 100.5,
+          "actual": 124.43,
+          "passed": true,
+          "note": "Class E Interest Coverage Test; stated in Interest Coverage Tests"
+        }
+      ],
+      "pool_stats": {}
+    },
+    {
+      "reporting_date": "2024-09-30",
+      "period_label": "September 2024",
+      "available_revenue_funds": null,
+      "available_principal_funds": null,
+      "revenue_pop": [],
+      "redemption_pop": [],
+      "covenants": [
+        {
+          "name": "class_a_b_par_value_test",
+          "threshold": 133.08,
+          "actual": 143.33,
+          "passed": true,
+          "note": "Class A/B Par Value Test; stated in Par Value Tests"
+        },
+        {
+          "name": "class_c_par_value_test",
+          "threshold": 124.54,
+          "actual": 132.27,
+          "passed": true,
+          "note": "Class C Par Value Test; stated in Par Value Tests"
+        },
+        {
+          "name": "class_d_par_value_test",
+          "threshold": 115.91,
+          "actual": 122.13,
+          "passed": true,
+          "note": "Class D Par Value Test; stated in Par Value Tests"
+        },
+        {
+          "name": "class_e_par_value_test",
+          "threshold": 110.63,
+          "actual": 115.84,
+          "passed": true,
+          "note": "Class E Par Value Test; stated in Par Value Tests"
+        },
+        {
+          "name": "reinvestment_par_value_test",
+          "threshold": 111.13,
+          "actual": 115.84,
+          "passed": true,
+          "note": "Reinvestment Par Value Test; stated in Par Value Tests"
+        },
+        {
+          "name": "class_a_b_interest_coverage_test",
+          "threshold": 120.0,
+          "actual": 179.24,
+          "passed": true,
+          "note": "Class A/B Interest Coverage Test; stated in Interest Coverage Tests"
+        },
+        {
+          "name": "class_c_interest_coverage_test",
+          "threshold": 110.0,
+          "actual": 161.18,
+          "passed": true,
+          "note": "Class C Interest Coverage Test; stated in Interest Coverage Tests"
+        },
+        {
+          "name": "class_d_interest_coverage_test",
+          "threshold": 105.0,
+          "actual": 140.96,
+          "passed": true,
+          "note": "Class D Interest Coverage Test; stated in Interest Coverage Tests"
+        },
+        {
+          "name": "class_e_interest_coverage_test",
+          "threshold": 100.5,
+          "actual": 128.03,
+          "passed": true,
+          "note": "Class E Interest Coverage Test; stated in Interest Coverage Tests"
+        }
+      ],
+      "pool_stats": {}
+    }
+  ]
+}

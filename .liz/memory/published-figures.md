@@ -90,3 +90,18 @@ Then check the result against a value another document states independently.
 
 Refs: #528
 Refs: #539 — same route, one Condition further out: the day-count fraction.
+
+
+## 2026-09-09 · pitfall · #555
+
+Establish which population a stated count describes before reconciling against
+it — the balance beside it in the same table need not describe the same one.
+Contego's aggregate tables state 212 against a euro total its asset sections
+carry 177 identifiers for: the balance is at asset grain, the count is the
+interest-accrual row count, one per rate contract. Find the count's population
+by looking for a section whose row count equals it, and reconcile each figure
+against its own. A count checked against the wrong population cannot fail —
+worse than none, since par alone cannot see a dropped row worth zero (#468).
+
+Refs: #555
+
