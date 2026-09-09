@@ -160,3 +160,16 @@ that breaks is the measurement beginning to work, not a regression to tune away.
 Check *why* a number agrees before recording that it agrees.
 
 Refs: #511, #512, #521
+
+## 2026-09-09 · pattern · #539
+
+Ask what **scope** a document states a fact at, and attach it there. A convention
+can vary per class within one deal — Cairn states Act/360 for its floating notes
+and 30/360 for the one fixed strip of the *same* class — so a deal-level field
+cannot express it, and fails by averaging rather than erroring. Parse the scope
+too: read which limb and which classes each rule names, and bound the block at
+the next heading. The limb after a rule often enumerates every class for an
+unrelated purpose, so a block running to end-of-text spreads that rule over all
+of them while still looking like a clean parse.
+
+Refs: #539

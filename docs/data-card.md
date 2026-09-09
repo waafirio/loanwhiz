@@ -296,6 +296,57 @@ Valuation Report, and the case is pinned rather than silently handled. And the
 states nothing better, so every deal without a committed schedule — Green Lion
 included, which stays byte-identical — keeps the numbers it had.
 
+**#539: the day-count *fraction* is per class, and the Conditions state it.**
+#528 sourced the accrual period; it did not source the convention that period is
+counted on, and the engine applied one — Act/360 — to every class. #538 measured
+that this deal does not have one: Class B is issued in two strips under two
+conventions, so no deal-level setting can express it. The fraction sits in the
+*Conditions*, a section the definitions extractor never emits at all, so the same
+`pypdf` route recovers it: `extraction/day_count_parser.py` reads Condition 6(e)
+off the text layer, and the seed carries the result per class.
+
+| Class | Basis | Accrual Period measured over | Source |
+|---|---|---|---|
+| A, B-1, C, D, E, F | Actual days / 360 | Adjusted Payment Dates | Listing Particulars, Conditions — 6(e)(ii) |
+| B-2 | 360-day year of twelve 30-day months | **Unadjusted** Payment Dates | Listing Particulars, Conditions — 6(e)(iii) |
+
+Condition 6(e)(iii) states the fixed basis outright — *"Interest is calculated on
+the basis of a 360-day year consisting of 12 months of 30 days each"* — and the
+*Accrual Period* proviso states which Condition's dates go unadjusted; the parser
+reads which limb that proviso names rather than assuming it is the fixed one.
+**Nothing here was chosen because it made a published figure tie**: the residual
+#538 measured was used as neither a target, a check nor a bound, and had the
+Condition stated something else, that would have been the finding.
+
+**Two independent documents agree on which class is fixed.** The prospectus states
+a fixed day-count basis for Class B-2 alone; the Note Valuation Report separately
+prints Class B-2 as `FXR` where every other class is `FLR`, and
+`note_valuation_parser.stated_rate_types` captures that marking — previously
+discarded as furniture — so the two can be compared. They agree. A disagreement
+would be reported as a finding rather than reconciled, since choosing between two
+documents is not a parser's judgment to make.
+
+**Where the convention is not obtainable, it is refused rather than defaulted.**
+"12 months of 30 days each" names a *family* — 30/360 US, 30E/360 and 30E/360
+ISDA — whose members differ only when an endpoint is the 31st or the last day of
+February. Every Payment Date this deal states is the 18th, so all three agree
+everywhere the schedule reaches and no unstated pick is needed; an endpoint where
+they would diverge raises instead, because there the document genuinely has not
+decided. The same holds for a class stating no basis at all, and for an
+Unscheduled Payment Date, which has no unadjusted counterpart to measure between.
+
+**A deal stating no per-class convention is untouched.** Green Lion states none,
+so its seed carries no `note_day_counts`, every tranche keeps the deal-wide count,
+and its graded output stays byte-identical — asserted per seed rather than
+assumed.
+
+**What this does *not* change: Class B still refuses.** The recipient-to-tranche
+seam is a separate gap (#538): the cascade's `class_b_interest` looks up a tranche
+named `class_b` while this deal has `class_b_1`/`class_b_2`, so no tranche
+attaches and the step reports `not_evaluable`. The per-class bases are carried and
+correct on the tranches that exist; what they cannot do on their own is make a
+class with no tranche evaluate. Until that seam closes, `(H)` stays red.
+
 **What this does *not* change: on the deal's own state the monitor still reports
 every coverage test `not_evaluable`, and both of the reasons above still hold.**
 These figures are extracted and reconciled, not wired: nothing writes them onto
