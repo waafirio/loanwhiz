@@ -161,8 +161,12 @@ governance evidence:
 
 ## Tests
 
+A bare `pytest` from the repo root collects these — root `testpaths` lists
+`mcp/tests`. Without the SDK installed they **skip**; to actually run them:
+
 ```bash
-PYTHONPATH=src python3 -m pytest mcp/tests -m "not slow and not integration" -q
+pip install -e mcp          # brings in the pinned MCP SDK
+PYTHONPATH=src python3 -m pytest mcp/tests -q
 ```
 
 The smoke tests assert: the server lists exactly the exposed primitives as
@@ -170,9 +174,16 @@ tools, each with a valid typed input schema; a tool call returns a
 `PrimitiveResult` carrying the governance evidence; and the catalogue resource
 lists every registered primitive with honest reachability.
 
-> **These tests do not currently run in CI**, and had never executed: the `mcp`
-> SDK is not installed in the host app's environment and the root suite's
-> `testpaths` excludes `mcp/tests`. Issue #577 wires them up. The surface's
-> agreement with the endpoint is meanwhile covered by `tests/test_mcp_surface.py`
-> in the root suite, which imports this package without the SDK.
-```
+### Why the SDK is pinned below 2.0
+
+`server.py` calls the SDK's decorator API directly — `Server.list_tools()`,
+`call_tool()`, `read_resource()` — and those names moved in the 2.x line. The
+dependency was declared `mcp>=1.0`, which resolves to 2.2.0: `build_server()`
+raises `AttributeError: 'Server' object has no attribute 'list_tools'` and the
+whole surface is unbuildable from a fresh install. Nothing caught it, because
+`mcp/tests` is the only suite that exercises the server and it had never once
+executed — root `testpaths` excluded it, and this repo has no CI.
+
+`tests/test_mcp_dependency_pin.py` guards the bound. It runs in the **default**
+suite and needs no SDK, so the pin stays checked even where the tests above
+skip. Raise the bound only alongside the `server.py` rewrite 2.x requires.

@@ -77,3 +77,6 @@ triage by opening the entry, not by reading the line.
 - [Primitive registry population & catalogue surfaces](registry-population.md)
   - [2026-09-09 · pitfall · #574](#2026-09-09--pitfall--574) — keywords: import side effect, PRIMITIVE_MODULES, pkgutil.iter_modules, two importers, catalogue disagreement, ensure_all_registered
   - [2026-09-09 · gotcha · #574](#2026-09-09--gotcha--574) — keywords: process-global registry, in-process census, clean subprocess, backfilled gap, red-when survivor, surface before import
+- [What the default test invocation covers, and what dependency ranges promise](test-invocation-and-pinning.md)
+  - [2026-09-09 · pitfall · #577](#2026-09-09--pitfall--577) — keywords: testpaths, default invocation, unbounded range, mcp>=1.0, Server.list_tools, declared vs working dependency, suite that never ran
+  - [2026-09-09 · gotcha · #577](#2026-09-09--gotcha--577) — keywords: pytest prepend import mode, sys.path[0], __init__.py, shadowed tests package, collection error, collected count not failure count
