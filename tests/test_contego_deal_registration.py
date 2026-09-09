@@ -259,3 +259,109 @@ def test_contego_is_registered_but_not_modelable() -> None:
         _reconstruct_series(CONTEGO_DEAL_ID, DEAL_REGISTRY[CONTEGO_DEAL_ID])
     assert exc.value.status_code == 422
     assert CONTEGO_DEAL_ID in str(exc.value.detail)
+
+
+# ---------------------------------------------------------------------------
+# The committed seed — extracted from the pre-reset document, and honest about
+# what the extraction did not get.
+# ---------------------------------------------------------------------------
+
+
+def _seed():
+    from loanwhiz.api.main import _load_cached_deal_model
+
+    return _load_cached_deal_model(DEAL_REGISTRY[CONTEGO_DEAL_ID])
+
+
+def test_contego_seed_carries_the_pre_reset_capital_stack() -> None:
+    """The seed is the **2023** stack, and the sizes are the document's.
+
+    This is the reset guard at the seed layer rather than the registry layer,
+    and it is the one that would actually catch a bad re-extraction: swapping
+    `prospectus_url` to the reset and re-running would produce a well-formed
+    eight-class model whose Class A is EUR 310m of `Class A-R` due 2038. Every
+    downstream figure would compute. So the sizes are checked against the cover
+    page — EUR 380.6m across eight tranches, transcribed from the document, not
+    read back from the seed — and the reset's headline figure is excluded by
+    name. A partial parse still totals a plausible number, which is why the sum
+    is pinned rather than the tranche count alone.
+    """
+    model = _seed()
+    assert model is not None
+    tranches = model.tranche_structure
+    assert [t["name"] for t in tranches] == [
+        "Class A", "Class B-1", "Class B-2", "Class C",
+        "Class D", "Class E", "Class F", "Subordinated Notes",
+    ]
+    assert sum(t["size_eur"] for t in tranches) == 380_600_000.0
+    senior = tranches[0]
+    assert senior["size_eur"] == 228_700_000.0
+    # The reset's Class A-R. Its absence is the point of the whole registration.
+    assert senior["size_eur"] != 310_000_000.0
+    assert "-R" not in senior["name"]
+    seniorities = [t["seniority"] for t in tranches]
+    assert all(a < b for a, b in zip(seniorities, seniorities[1:])), seniorities
+
+
+def test_contego_seed_keeps_its_two_cascades_distinct() -> None:
+    """Interest and Principal are different cascades from different sections.
+
+    The failure mode worth pinning is not absence but COLLAPSE — both roles
+    resolving to one section, which is what happened on the Italian deal. This
+    deal is a live trap for reading collapse into a coincidence: both cascades
+    extracted to the *same number* of steps (37), so a reviewer glancing at the
+    counts could conclude they are one cascade twice. They are not, and the
+    source sections are what tell them apart.
+    """
+    model = _seed()
+    assert model is not None
+    revenue = model.waterfalls["revenue"]
+    redemption = model.waterfalls["redemption"]
+    assert revenue["source_section"] != redemption["source_section"]
+    assert "revenue" in revenue["source_section"].lower()
+    assert "redemption" in redemption["source_section"].lower()
+    assert revenue["steps"] != redemption["steps"]
+    assert len(revenue["steps"]) > 20 and len(redemption["steps"]) > 20
+
+
+def test_contego_seed_understates_the_glossary_and_the_card_says_why() -> None:
+    """The extraction captured a handful of defined terms out of hundreds.
+
+    Contego's Condition 1 (Definitions) reaches the definitions extractor as a
+    **3,255-character** fragment, so only terms in the leading alphabetical
+    range survive. That is *not* the 40k `max_chars` truncation that cost Cairn
+    its Payment Date schedule (#528): 3,255 is comfortably inside a 40,000
+    budget, so that guard never engaged here. Docling renders many of this
+    document's defined terms as markdown headings, and `route_sections` ends a
+    section at the next heading — so the glossary body became sibling sections
+    the extractor was never handed, `' Payment Date ' means:` among them.
+
+    Pinned as a **recorded limitation**, per #480: the sentence naming it must
+    name the document it is true of. The assertion is a bound rather than an
+    exact count so a better router is free to improve it — but it reds if the
+    shortfall is silently closed or silently worsened, and it reds if the data
+    card stops explaining it, which is what stops this becoming folklore.
+    """
+    model = _seed()
+    assert model is not None
+    # Far below a CLO glossary's real size — the recorded gap, not a baseline.
+    assert 0 < len(model.definitions) < 25
+    card = (DEALS_DATA_FILE.parents[3] / "docs" / "data-card.md").read_text(
+        encoding="utf-8"
+    )
+    assert "route_sections" in card, "the card must name the mechanism, not just the gap"
+    assert "3,255" in card, "the card must state the fragment size it is true of"
+
+
+def test_contego_seed_states_no_payment_schedule() -> None:
+    """No stated schedule is parsed for this deal, so the seed says so.
+
+    ``tests/test_payment_schedule_parser.py`` sweeps every committed seed except
+    Cairn's and requires exactly this, so an accidental non-null here would red
+    a file three directories away. Asserted at the source too, because that
+    sweep's failure message would not name Contego as the cause.
+    """
+    model = _seed()
+    assert model is not None
+    assert model.payment_schedule is None
+    assert model.note_day_counts is None

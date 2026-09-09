@@ -1,4 +1,4 @@
-# Data Card: LoanWhiz deal set (Green Lion 2026-1 + cross-jurisdiction deals + the first CLO)
+# Data Card: LoanWhiz deal set (Green Lion 2026-1 + cross-jurisdiction deals + two CLOs)
 
 > Governance artefact following FINOS AI Governance Framework templates.
 > See also: [docs/model-card.md](model-card.md) · [docs/governance.md](governance.md)
@@ -59,8 +59,8 @@ Green Lion 2026-1 is the headline demo deal, but the deal registry
 (`src/loanwhiz/data/deals.json`, merged over the in-code Green Lion default)
 carries deals across four jurisdictions and two asset classes. **The Dutch,
 Italian and Spanish RMBS deals the *unmodified* pipeline runs on end-to-end; the
-two CLOs are not: Cairn CLO XVII DAC is registered and extracted, and Contego
-CLO XI DAC is registered only.** That distinction is load-bearing and is kept everywhere
+two CLOs are not: both Cairn CLO XVII DAC and Contego CLO XI DAC are registered
+and extracted, and neither is graded against its own reports.** That distinction is load-bearing and is kept everywhere
 in this card: a registered deal has its documents sourced and its availability
 recorded; a deal that *runs* has been through the pipeline.
 This demonstrates the primitives are deal-agnostic — but
@@ -78,7 +78,7 @@ the per-cell source of truth; it reports the current tally itself.
 | **Leone Arancio RMBS 2023-1 S.r.l.** | Italy | Prospectus (real, Italian) + investor reports | **0.925** | Full waterfall (23/23/12 steps), 3 triggers, 3 note classes — A1 480m / A2 6,600m / J 920m | Pipeline ran; tranche sizes reconcile to the curated `deals.json` registry, but **no** Notes & Cash report is published, so no external validation is possible |
 | **Sol-Lion II RMBS Fondo de Titulización** | Spain | Prospectus (real, Spanish) + investor reports | **0.925** | Full waterfall (20/15/12 steps), 3 triggers, 8 note classes — A1–A6, B, C | Pipeline ran; tranche sizes reconcile to the curated `deals.json` registry, but **no** Notes & Cash report is published, so no external validation is possible |
 | **Cairn CLO XVII DAC** *(CLO — extracted, covenants graded, PoP ground truth committed, graded; the Interest cascade reconciles)* | Ireland | Listing Particulars (real, 420pp) + 3 monthly trustee reports (real) + Note Valuation Report (real, 83pp) | **1.0** | Full 8-class stack (A, B-1, B-2, C, D, E, F + Subordinated, EUR 404.1m), both Priorities of Payments as distinct cascades (29-step Interest / 23-step Principal / 26-step Post-Acceleration), 10 triggers of which 8 are per-class coverage tests, 25 definitions | **Executes and is graded on one row; not validated.** The seed folds through the shared `run_period` kernel with the deal's own cascades (#457). Since #481 an answer key **is** committed — authored from the trustee reports' stated coverage-test results, so `GET /quality-matrix` grades the `covenants` row `passed`. It is still **not** `validated`: since #492 that cell is earned by committed *data* — an answer key carrying a Priority-of-Payments section plus an offline engine series — rather than by a bespoke validation builder. #494 **parses** the Note Valuation Report's Interest and Principal Priorities of Payments and #495 committed them as the key's January 2025 period, so the first artifact exists; the cell refuses on the second, the offline engine series. **#496 ran that grade anyway and it did not reconcile — the finding, not a deferral.** Folded against the very document the key's PoP period was authored from, the deal's 29-step Interest cascade distributed EUR 5,434,911.93 of the report's stated EUR 7,255,062.35 available revenue and left EUR 1,820,150.42 undistributed. The pot was the report's own figure and no step was starved — `total_shortfall` was EUR 0.00 — so that was not an under-funded cascade but an incomplete one: the money had no step to go to. No step disagreed: the report prints its 62 rows against the cascade's 29 labels, 20 of them were joined by no step at all, and the eight of those that carry money (`(A)(i)`, `(A)(ii)`, `(H)(i)`, `(H)(ii)`, `(CC)(1)(a)`, two it re-letters bare `(a)`) accounted for the shortfall to the cent — so that failure was the tie-out, not a delta. Three of the 29 lines are genuinely engine-computed, and the rest are not: #511 resolved the recipient spelling so Class A and Class C interest are derived rather than handed the report's figure, #512 supplied their published applied rates and #528 the accrual period, so each is computed from tranche size x rate x a day count measured between two stated Payment Dates and reproduces its published figure (EUR 3,277,457.78 and EUR 415,004.33) with no report input on the engine's side. Every other step's amount is still taken from the report and compared to itself, and the Principal cascade reconciles on EUR 0.00 of available principal funds, which an engine that never paid anything would reproduce exactly. **The Interest cascade's own gaps are now closed, and each turned out to be a different thing.** #514 joined the 20 unmatched rows so every published cent reaches a step; #538 resolved Class B's recipient onto the two strips the class was issued in — its stack is spelled `class_b_1`/`class_b_2` while the report path seeded a canonical `class_b`, so no tranche had attached; and #539 sourced each strip's day-count fraction from Conditions 6(e)(ii)/(iii), which is what makes the sum right, since B-1 accrues over 95 actual days and B-2 over 90 on 30/360. All 29 steps now agree at the key's EUR 0.01 tolerance and `engine_computed_passed` reads 3. **The aggregate is not what earns that**: for one period the cascade's total tied perfectly while two steps were wrong by equal and opposite amounts, because the pot is fixed and the `(CC)` residual sweep absorbs any senior step's over-draw — so `steps_passed` and the per-step deltas are the signal, and the tie-out only corroborates them. Since #513 the grade is reachable through the committed key itself: the key unions four periods and only the one authored from the Note Valuation Report is foldable, so `reconcile_against_answer_key` grades that period and reports the other three not-applicable — the document behind them publishes no Priority of Payments — reaching the same figures through the key that #496 reached by bypassing it. A period skipped that way is not a period passed: it is excluded from the verdict and from both period counts, so this key cannot report three-quarters green for periods nothing compared. `tests/test_clo_pop_grading.py` holds every figure above; no answer key or engine module was changed to produce them. `covenant_monitoring`, `waterfall_execution` and — since #471 registered the derived tape — `tape_analytics` are `ran`; collateral reconciliation and engine validation stay `not-applicable`, each with a reason true of this deal. Collateral reconciliation stays refused because the deal registers no structural config, not because it has no tape. The coverage tests' required levels are extracted from the trustee reports (#480) and are **still not wired onto the deal model's triggers**, which carry `threshold: null` — so on the deal's own state the monitor still reports them not-evaluable. #481 did not change that; it supplies the published level *and* the published ratio from the answer key on the grading path only. A second reason the deal's own cascades did not evaluate has since been closed: every extracted step recipient now resolves to a canonical `RecipientType` (#503, pinned by `tests/test_clo_recipient_vocabulary.py`), which is what made the grade above runnable at all. See the limitation below |
-| **Contego CLO XI DAC** *(CLO — registered; extraction not yet run)* | Ireland | Listing Particulars (real, 415pp, **29-Jun-2023 — pre-reset**) + 2 BNY Mellon COMPLIANCE REPORTs (real, 74pp, Aug/Sep 2024) | **not yet extracted** | Nothing yet — no seed is committed | **Registered only; nothing extracted and nothing graded.** Its reports are BNY Mellon rather than Cairn's U.S. Bank, so nothing has parsed them yet (#533) and no answer key is authored (#534). `notes_cash_report_urls` is deliberately unset: the NOTE VALUATION REPORT is obtainable but that key is a routing promise this deal cannot yet keep. The **reset boundary** below is the load-bearing fact about this registration |
+| **Contego CLO XI DAC** *(CLO — registered and extracted; not graded)* | Ireland | Listing Particulars (real, 415pp, **29-Jun-2023 — pre-reset**) + 2 BNY Mellon COMPLIANCE REPORTs (real, 74pp, Aug/Sep 2024) | **0.85** | The full 8-class **2023** stack (A, B-1, B-2, C, D, E, F + Subordinated, EUR 380.6m), both Priorities of Payments as distinct 37-step cascades, 5 triggers of which 4 are per-class coverage tests — but only 4 defined terms, and no tranche ratings or coupons (see below) | **Extracted; nothing graded.** Its reports are BNY Mellon rather than Cairn's U.S. Bank, so nothing has parsed them yet (#533) and no answer key is authored (#534). `notes_cash_report_urls` is deliberately unset: the NOTE VALUATION REPORT is obtainable but that key is a routing promise this deal cannot yet keep. The **reset boundary** below is the load-bearing fact about this registration |
 
 ### Cairn CLO XVII DAC — what is and is not obtainable
 
@@ -643,9 +643,10 @@ apply to whichever tapes are synthetic.
 
 ### Contego CLO XI DAC — what is and is not obtainable
 
-The registry's **second** CLO, added by #532 (epic #530). **It is registered but
-not yet extracted** — the documents below are sourced and pinned, and no seed
-model is committed. It exists to answer a
+The registry's **second** CLO, added by #532 (epic #530). **The Listing
+Particulars have been extracted to a committed seed; its trustee reports have
+not been parsed, no ground truth is authored, and no capability cell is
+`validated`.** It exists to answer a
 question one specimen cannot: whether the platform's CLO capability is *general*
 or *fitted* to Cairn. It changes exactly one variable — the **collateral
 administrator**. Cairn's trustee reports are U.S. Bank; Contego's are **BNY
@@ -723,6 +724,48 @@ so setting it now would assert a promise this deal cannot keep. This is the same
 discipline Cairn's registration followed, and the same reason its own Note
 Valuation Report went unregistered from #455 until #495.
 
+**What the extraction gives, and the two things it does not.** The pipeline read
+the 415pp Listing Particulars to the whole eight-class stack — Class A through F
+plus the Subordinated Notes, **EUR 380,600,000**, matching the cover page to the
+euro — and to both Priorities of Payments as *distinct* cascades. Both happen to
+carry 37 steps, which is a coincidence worth naming: equal counts are what a
+collapsed extraction also looks like, and here the two resolve to different
+source sections and different step lists. That the stack is EUR 380.6m with a
+Class A of EUR 228.7m is also the seed-level proof that the **pre-reset**
+document was the one extracted; the reset's Class A-R is EUR 310m.
+
+Two gaps are recorded rather than papered over. **The seed carries no tranche
+ratings and no coupons** — every `rating` and `rate` is null — although the
+document states them on page 13 (Class A is `AAA(sf)` at 3-month EURIBOR +
+1.85%). **And the seed carries only four defined terms**: `Acceleration Notice`,
+`Accounts`, `Accrual Period`, `Adjusted Collateral Principal Amount` — the
+leading alphabetical range and nothing after it.
+
+**That second gap is *not* the 40k glossary truncation, and the distinction
+matters.** Cairn lost its Payment Date schedule and its per-class day-count
+Conditions to `definitions_graph.py`'s `max_chars=40_000` cutting an
+alphabetical range out of a long Definitions section (#480, recovered by #528
+and #539). Contego's definitions section reached that extractor as **3,255
+characters** — comfortably inside the 40,000 budget, so the truncation never
+engaged. The loss happened one step earlier, in `route_sections`: Docling
+renders many of this prospectus's defined terms as markdown *headings*
+(`' Payment Date ' means:`, `' Measurement Date ' means:`,
+`' Eligible Investment Minimum Rating ' means:`), and a section ends at the next
+heading — so `1. Definitions` stopped at the first of them and the rest of the
+glossary became sibling sections the extractor was never handed. The document's
+`INDEX OF DEFINED TERMS` is a 142,041-character term-to-page index, not the
+glossary body, so routing there would not help either.
+
+The consequence for anyone reading this as a truncation report: **raising
+`max_chars` would have changed nothing for this deal.** Two prospectuses have
+now lost glossary facts at the same stage by two different mechanisms that
+present identically — a short definitions map with an alphabetical cliff. The
+general defect is therefore not the size of the budget but that the definitions
+stage accepts whatever section it is handed without checking the result is
+plausibly a complete glossary. Naming the document each limitation is true of is
+the #480 discipline; naming the *mechanism* is what stops the next reader
+applying #528's fix to a deal it cannot help.
+
 **Not obtainable.** No machine-readable loan tape exists — CLOs are private
 securitisations, so no ESMA securitisation-repository filing is published for
 this deal. Loan-level collateral detail *is* published, as PDF tables inside the
@@ -731,10 +774,9 @@ through the existing `derived+trustee-report:` channel. `tape_urls` is therefore
 registered empty rather than absent — `api.main` subscripts the key directly, so
 an omitted key would 500 the deal-model route rather than read as "no tape".
 
-**What is NOT claimed.** This deal is **registered only**. No extraction has run,
-so no seed model is committed and every one of its capability cells is
-`not-applicable` with a reason. Nothing about it is parsed from its reports,
-graded, or `validated`. Whether its engine reconciles to its Note Valuation Report is the
+**What is NOT claimed.** The extraction has run and a seed is committed, but
+nothing about this deal is parsed from its reports, graded, or `validated`, and
+no capability cell claims otherwise. Whether its engine reconciles to its Note Valuation Report is the
 question #510 spent an epic answering for Cairn, and it is deliberately out of
 scope here.
 
