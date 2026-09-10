@@ -38,11 +38,11 @@ from types import SimpleNamespace
 
 import pytest
 
+from loanwhiz.api.main import capability_matrix
 from scripts.render_capability_tally import (
     GENERATED_DOCS,
     MARKER_END,
     MARKER_START,
-    _load_matrix,
     main,
     render,
 )
@@ -60,6 +60,7 @@ GUARDED_SURFACES: tuple[str, ...] = (
     "docs/quickstart.md",
     "docs/tape-ingestion.md",
     "presentation/loanwhiz-deck.json",
+    "presentation/build_deck.py",
     "web/app/(routes)/showcase/page.tsx",
     "web/components/capability-matrix-grid.tsx",
 )
@@ -85,6 +86,10 @@ _RETRACTED_CLAIMS: tuple[str, ...] = (
     "the validated tape-driven deal is",
     "is the only `validated` cell",
     "validated to the cent on one real deal",
+    # The deck asserted this of a deal whose engine-validation cell reads
+    # not-applicable: it has no committed answer key, so there is nothing for
+    # the engine to be reconciled against.
+    "validated on green lion 2026-1",
 )
 
 
@@ -247,7 +252,7 @@ def test_any_registered_deal_count_matches_the_registry() -> None:
     force a numeral into any document — it only requires that one written down
     is the right one, and it reds the day an eighth deal registers.
     """
-    live = len(_load_matrix().deals)
+    live = len(capability_matrix().deals)
     offenders: list[tuple[str, str]] = []
     for relative_path in GUARDED_SURFACES:
         for stated in re.findall(
