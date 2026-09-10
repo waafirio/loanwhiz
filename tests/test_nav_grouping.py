@@ -33,30 +33,17 @@ Two anchoring rules this file obeys, learned the hard way:
 
 from __future__ import annotations
 
-import re
-from pathlib import Path
-
 import pytest
 
-_REPO_ROOT = Path(__file__).resolve().parents[1]
-_NAV = _REPO_ROOT / "web" / "lib" / "nav.ts"
+from scripts.render_nav_sections import nav_source, parse_groups
 
-#: The declaration, not the prose. `nav.ts`'s docstring names every section in
-#: sentences; matching one of those would slice from the wrong offset.
-_LABEL_RE = re.compile(r'^\s*label: "(?P<label>[^"]+)",$', re.MULTILINE)
-
-#: One nav entry. Tolerant of the whitespace between its fields, deliberately:
-#: the rules here are about which section an entry sits in, and an entry the
-#: parser cannot see is an entry missing from its section. Pinned to the exact
-#: single-line form, a cosmetic rewrap would red every rule in this file at
-#: once — and a guard a reformat can red is a guard someone deletes
-#: (`.liz/memory/ui-surface-guards.md`, #568). The mutation table below still
-#: anchors on the literal lines, where an exact match is the point (#573).
-_ENTRY_RE = re.compile(
-    r'\{\s*title:\s*"(?P<title>[^"]+)",'
-    r'\s*href:\s*"(?P<href>[^"]+)",'
-    r'\s*icon:\s*(?P<icon>\w+),?\s*\}'
-)
+#: The parse lives in `scripts/render_nav_sections.py`, not here. #617 gave the
+#: grouping one reader so that these rules and the guard over the *documents*
+#: that describe the rail cannot disagree about what `nav.ts` says: a prose
+#: guard with its own private parser is a second definition of the thing this
+#: file exists to pin. The anchoring lessons the parser obeys — match
+#: `label: "X"` rather than the docstring's prose (#599), stay tolerant of
+#: whitespace between an entry's fields (#568) — are documented beside it.
 
 #: The sections, in the order a reader meets them: the deal, then what they
 #: hold, then the platform underneath both.
@@ -73,23 +60,13 @@ _HOLDER = (
 
 
 def _source() -> str:
-    return _NAV.read_text(encoding="utf-8")
+    return nav_source()
 
 
-def _groups(nav: str) -> list[tuple[str, list[tuple[str, str, str]]]]:
-    """``[(label, [(title, href, icon), ...]), ...]`` in declaration order.
-
-    Each group's slice runs from its own ``label:`` to the next one, and the
-    last to the array terminator — bounded on both sides, so no group's rule
-    can be satisfied by an entry belonging to another.
-    """
-    labels = list(_LABEL_RE.finditer(nav))
-    out: list[tuple[str, list[tuple[str, str, str]]]] = []
-    for i, match in enumerate(labels):
-        start = match.end()
-        end = labels[i + 1].start() if i + 1 < len(labels) else nav.index("\n];", start)
-        out.append((match.group("label"), _ENTRY_RE.findall(nav[start:end])))
-    return out
+#: ``[(label, [(title, href, icon), ...]), ...]`` in declaration order, each
+#: group's slice bounded on BOTH sides so no group's rule can be satisfied by an
+#: entry belonging to another. Shared with the prose guard (#617).
+_groups = parse_groups
 
 
 def _violations(nav: str) -> list[str]:
