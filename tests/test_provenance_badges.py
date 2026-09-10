@@ -245,18 +245,25 @@ _DEFAULTED_CHANNEL = re.compile(rf'(?:\?\?|\|\|)\s*"(?:{_CHANNEL_ALT})"')
 _QUOTED = re.compile(r'"([a-z_]+)"')
 
 
-def _union_members(api: str) -> set[str]:
+def _union_members(api: str) -> set[str] | None:
+    """The union's members, or ``None`` when the declaration is unreadable.
+
+    ``None`` rather than an assert, because these two feed a *rule* rather than
+    scope a slice: an unreadable declaration is a real finding about the code
+    under test, and a guard that raises where it could report turns a mutant
+    into an error — neither a pass nor a catch. The vacuity asserts above are
+    the opposite case and stay asserts: an empty slice is a finding about the
+    guard, not about the code.
+    """
     m = re.search(r"export type DataSource =([^;]+);", api)
-    assert m is not None, "the DataSource union is gone from lib/api.ts"
-    return set(_QUOTED.findall(m.group(1)))
+    return None if m is None else set(_QUOTED.findall(m.group(1)))
 
 
-def _enumerated_members(api: str) -> set[str]:
+def _enumerated_members(api: str) -> set[str] | None:
     m = re.search(
         r"export const DATA_SOURCES: readonly DataSource\[\] = \[([^\]]*)\]", api
     )
-    assert m is not None, "DATA_SOURCES is no longer exported from lib/api.ts"
-    return set(_QUOTED.findall(m.group(1)))
+    return None if m is None else set(_QUOTED.findall(m.group(1)))
 
 
 # ---------------------------------------------------------------------------
@@ -479,7 +486,14 @@ def _violations(sources: dict[str, str]) -> list[str]:
     # 18. A table total over a list that has itself lost a member is total over
     #     nothing. `DATA_SOURCES` is what orders the badges, so a member missing
     #     here disappears from every surface with no type error anywhere.
-    if _union_members(api) != _enumerated_members(api):
+    union, enumerated = _union_members(api), _enumerated_members(api)
+    if union is None or enumerated is None:
+        out.append(
+            "union-list-is-complete: the DataSource union or its exported "
+            "DATA_SOURCES list is unreadable in lib/api.ts, so nothing here "
+            "knows what set the tables above are supposed to be total over"
+        )
+    elif union != enumerated:
         out.append(
             "union-list-is-complete: DATA_SOURCES no longer enumerates every "
             "member of the DataSource union, so a channel silently renders on "
@@ -779,6 +793,16 @@ _MUTANTS: list[tuple[str, str, list[tuple[str, str]]]] = [
         "stop-the-waterfall-reading-its-deals-channels",
         "waterfall",
         [("        <ProvenanceBadges sources={dataSources} />\n", "")],
+    ),
+    (
+        "unexport-the-union-list-entirely",
+        "api",
+        [
+            (
+                "export const DATA_SOURCES: readonly DataSource[] = [",
+                "const DATA_SOURCES: readonly DataSource[] = [",
+            )
+        ],
     ),
     (
         "drop-synthetic-from-the-enumerated-union",
