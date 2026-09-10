@@ -67,3 +67,4 @@ exists per check. Ask of every check you add: which mutant reaches THIS one and
 no other?
 
 Refs: #613
+Refs: #617 — made mechanical: require a mutant whose ONLY violation is that check.
