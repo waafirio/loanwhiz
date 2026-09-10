@@ -60,7 +60,7 @@ zero, which would silently model an interest-free note.
 from __future__ import annotations
 
 import re
-from typing import Any, Iterable, Mapping
+from typing import Any, Iterable, Mapping, Sequence
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -70,6 +70,7 @@ __all__ = [
     "UnresolvableCapitalStructure",
     "engine_tranche_name",
     "numeric_rate_pct",
+    "resolve_strips",
     "senior_tranche_name",
 ]
 
@@ -91,6 +92,49 @@ def engine_tranche_name(document_name: str) -> str:
     here addresses the same tranche the engine folds.
     """
     return re.sub(r"[^a-z0-9]+", "_", document_name.lower()).strip("_")
+
+
+def resolve_strips(class_name: str, names: Sequence[str]) -> list[str]:
+    """The names in *names* that make up the class ``class_name``, in stack order.
+
+    **The one class-to-strips grammar (#538).** A recipient, a covenant or a
+    position names a **class**; an issuer sells that class in one or more
+    **strips**. Green Lion sells Class B whole, so ``class_b`` is one name and
+    this returns it alone. Cairn sells Class B in two — ``class_b_1`` floating
+    and ``class_b_2`` fixed — so ``class_b`` names nothing directly and the
+    class is exactly those two.
+
+    It lives here, on the module that already owns the engine's tranche-name
+    spelling (:func:`engine_tranche_name`), because two callers need it against
+    two different collections: :meth:`WaterfallFunds.tranche_strips` resolves it
+    over a period's funds, and :meth:`CapitalStructure.strips_for` over a deal's
+    stack. Both delegate here rather than carrying a regex apiece — a second
+    copy agrees on the day it is written and drifts silently afterwards (#549).
+
+    The grammar is the sub-series one :mod:`loanwhiz.extraction.assembler`
+    defines on the document side — a class letter followed by an optional series
+    **number** — read through the slug :func:`engine_tranche_name` produces.
+    Both committed spellings are covered: hyphenated ``"Class B-1"`` slugs to
+    ``class_b_1`` and joined ``"Class A1"`` to ``class_a1`` (#456).
+
+    **A lettered suffix is deliberately not a series.** A refinanced
+    ``"Class A-R"`` (``class_a_r``) replaces Class A rather than joining it, so
+    sweeping it in would double-count where both are present. A deal carrying
+    only ``class_a_r`` resolves ``class_a`` to nothing and the caller refuses.
+
+    **An exact match wins outright**, skipping the series scan: a name for the
+    class itself *is* the class, so a stack carrying both an aggregate
+    ``class_a`` row and its ``class_a_1``/``class_a_2`` components reports the
+    aggregate once instead of counting the class roughly twice.
+
+    Returns ``[]`` when the class was issued in no strip. That is the
+    **unknown** answer, and every caller must keep it distinct from a value of
+    zero (#493) — a position naming such a class is refused, not sized at nil.
+    """
+    if class_name in names:
+        return [class_name]
+    pattern = re.compile(rf"^{re.escape(class_name)}_?\d+$")
+    return [name for name in names if pattern.match(name)]
 
 
 def numeric_rate_pct(raw: Any) -> float | None:
@@ -327,6 +371,16 @@ class CapitalStructure(BaseModel):
             if tranche.name == name:
                 return tranche
         return None
+
+    def strips_for(self, class_name: str) -> list[TrancheSpec]:
+        """Every strip of the class ``class_name`` in this stack, senior → junior.
+
+        The stack-side half of :func:`resolve_strips`; see it for the grammar.
+        ``[]`` means the stack places no such class — the **unknown** answer a
+        caller must refuse on, never read as a zero-sized holding (#452/#493).
+        """
+        by_name = {tranche.name: tranche for tranche in self.tranches}
+        return [by_name[name] for name in resolve_strips(class_name, self.names)]
 
 
 def senior_tranche_name(capital_structure: Mapping[str, Any]) -> str | None:

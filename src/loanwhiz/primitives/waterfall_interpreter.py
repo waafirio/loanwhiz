@@ -69,6 +69,7 @@ from loanwhiz.domain.rules import (
     need_source_for,
     recipients_needing_calculator,
 )
+from loanwhiz.primitives.capital_structure import resolve_strips
 from loanwhiz.primitives.deal_state import TranchePayment, WaterfallResult
 
 # Small tolerance for floating-point comparisons (EUR amounts).
@@ -418,11 +419,21 @@ class WaterfallFunds(BaseModel):
         **unknown** answer, and every caller must keep it distinct from a need of
         zero — see :func:`_make_tranche_interest_need` (#493).
         """
-        exact = self.tranche(class_name)
-        if exact is not None:
-            return [exact]
-        pattern = re.compile(rf"^{re.escape(class_name)}_?\d+$")
-        return [t for t in self.tranches if pattern.match(t.name)]
+        selected = resolve_strips(class_name, [t.name for t in self.tranches])
+        if selected == [class_name]:
+            # Exact match. Resolved through ``self.tranche`` rather than by
+            # filtering, because this collection — unlike ``CapitalStructure``,
+            # whose builder refuses duplicates — does **not** enforce unique
+            # tranche names, and the pre-#571 code took the first bearer here.
+            exact = self.tranche(class_name)
+            return [] if exact is None else [exact]
+        # Series match. Filter the tranche list rather than indexing a
+        # ``{name: tranche}`` dict: a dict silently collapses two strips that
+        # share a name, and the need calculators SUM these, so a dropped
+        # duplicate under-states the class's need — an error that reads as
+        # health, never as a bug (#452).
+        picked = set(selected)
+        return [t for t in self.tranches if t.name in picked]
 
     @computed_field  # type: ignore[prop-decorator]
     @property
