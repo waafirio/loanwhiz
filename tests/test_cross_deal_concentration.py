@@ -26,7 +26,7 @@ from __future__ import annotations
 import pytest
 from fastapi.testclient import TestClient
 
-from loanwhiz.api.main import COMMITTED_SCHEDULE_FIXTURES, app
+from loanwhiz.api.main import COMMITTED_SCHEDULE_FIXTURES, _portfolio_for, app
 
 CAIRN = "cairn-clo-xvii"
 CONTEGO = "contego-clo-xi"
@@ -355,6 +355,38 @@ def test_the_committed_pair_is_what_the_endpoint_serves(client: TestClient) -> N
 def test_two_calls_return_the_same_figure(client: TestClient) -> None:
     """Deterministic: no network, no LLM, no clock in the request path."""
     assert _figure(client) == _figure(client)
+
+
+def test_the_schedules_are_parsed_once_rather_than_per_request(
+    client: TestClient,
+) -> None:
+    """The memo is wired into the handler, not merely available beside it.
+
+    Parsing both reports and re-resolving every obligor is a quarter-second of
+    CPU whose answer cannot differ between two requests on committed files.
+    Asserting the hit count rather than the elapsed time keeps this a statement
+    about wiring — "nothing ran the parser twice" and "the parser is not
+    reached at all" are different, and only the cache counters tell them apart.
+    """
+    _portfolio_for.cache_clear()
+    _figure(client)
+    first = _portfolio_for.cache_info()
+    assert first.misses == 1, "the first request must actually parse"
+    _figure(client, "country")
+    second = _portfolio_for.cache_info()
+    assert second.misses == 1, "a second axis must not re-parse the schedules"
+    assert second.hits == first.hits + 1
+
+
+def test_the_memo_is_keyed_on_the_fixtures_rather_than_on_nothing() -> None:
+    """A memo keyed on nothing would serve March's book for December's request."""
+    contego = (CONTEGO, "contego-clo-xi-august-2024.txt", "2024-08")
+    march = _portfolio_for(((CAIRN, "cairn-clo-xvii-march-2025.txt", "2025-03"), contego))
+    december = _portfolio_for(
+        ((CAIRN, "cairn-clo-xvii-december-2024.txt", "2024-12"), contego)
+    )
+    assert march.as_of_for(CAIRN).stated == STATED_DATES[CAIRN]
+    assert december.as_of_for(CAIRN).stated != STATED_DATES[CAIRN]
 
 
 def test_a_deal_with_no_committed_schedule_refuses_the_whole_figure(

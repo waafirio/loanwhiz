@@ -30,6 +30,7 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+from functools import lru_cache
 from datetime import date
 from decimal import Decimal
 from pathlib import Path
@@ -4706,6 +4707,29 @@ class CrossDealConcentration(BaseModel):
     obligor_disclosure: str
 
 
+@lru_cache(maxsize=4)
+def _portfolio_for(
+    fixtures: tuple[tuple[str, str, str], ...],
+) -> _xde.CrossDealPortfolio:
+    """Parse and join the named schedules. Memoised on the fixture tuple.
+
+    Parsing both reports and re-resolving every obligor costs a quarter of a
+    second of pure CPU, and the inputs are committed files that cannot change
+    under a running process — so repeating it per request is work with no
+    possible different answer. The same memo the tape-analytics path keeps
+    (``_TAPE_ANALYTICS_MEMO``), keyed on the fixtures rather than on nothing,
+    so a test that registers a different set still exercises the real parse.
+    """
+    schedules = {
+        deal: _parse_schedule_text(
+            (_SCHEDULE_FIXTURE_DIR / filename).read_text(encoding="utf-8"),
+            period_label=period_label,
+        )
+        for deal, filename, period_label in fixtures
+    }
+    return _xde.build_portfolio(schedules)
+
+
 def _committed_cross_deal_portfolio() -> _xde.CrossDealPortfolio:
     """Build the cross-deal portfolio from the committed schedule fixtures.
 
@@ -4713,12 +4737,13 @@ def _committed_cross_deal_portfolio() -> _xde.CrossDealPortfolio:
         HTTPException: 503 when a registered fixture is not on disk. The
             refusal names the deal and the file rather than serving the deals
             that happen to have parsed — a one-deal "cross-deal" figure is not
-            a smaller version of the answer, it is a different one.
+            a smaller version of the answer, it is a different one. Checked
+            here, outside the memo, so a fixture that goes missing is noticed
+            rather than served from a cache built when it was present.
     """
-    schedules = {}
+    fixtures = []
     for deal, (filename, period_label) in sorted(COMMITTED_SCHEDULE_FIXTURES.items()):
-        path = _SCHEDULE_FIXTURE_DIR / filename
-        if not path.is_file():
+        if not (_SCHEDULE_FIXTURE_DIR / filename).is_file():
             raise HTTPException(
                 status_code=503,
                 detail=(
@@ -4728,10 +4753,8 @@ def _committed_cross_deal_portfolio() -> _xde.CrossDealPortfolio:
                     f"it, so none is served."
                 ),
             )
-        schedules[deal] = _parse_schedule_text(
-            path.read_text(encoding="utf-8"), period_label=period_label
-        )
-    return _xde.build_portfolio(schedules)
+        fixtures.append((deal, filename, period_label))
+    return _portfolio_for(tuple(fixtures))
 
 
 def _share_pct(part: Decimal, whole: Decimal) -> float:
