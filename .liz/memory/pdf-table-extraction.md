@@ -80,3 +80,16 @@ a two-valued "which comes first" order: an enum cannot name one column among
 three, and one administrator's own two headers need not agree.
 
 Refs: #534
+
+## 2026-09-10 · pitfall · #600
+
+Decide what **closes** a row, not only what continues it. A grouper treating
+every non-identifier line as a wrapped remainder eats the section's own total
+line — which sits directly beneath the section's *last* row, so the damage lands
+on exactly one obligor per report, the alphabetically last one, and par still
+ties because the figure welded on was the report's own aggregate. Refuse a line
+that is nothing but a money amount: a continuation carries the overflow of a
+free-text cell, so it always carries text. Ask that only after the identifier
+test, so a data row is still classified on its own shape first.
+
+Refs: #600
