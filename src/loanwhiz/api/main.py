@@ -30,7 +30,9 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+from functools import lru_cache
 from datetime import date
+from decimal import Decimal
 from pathlib import Path
 from collections.abc import Callable, Mapping
 from typing import Any
@@ -73,6 +75,11 @@ from loanwhiz.primitives.capability_matrix import (
     CapabilityMatrix,
     build_capability_matrix,
 )
+from loanwhiz.primitives.collateral_schedule_parser import (
+    parse_schedule_text as _parse_schedule_text,
+)
+from loanwhiz.primitives import cross_deal_exposure as _xde
+from loanwhiz.primitives import industry_taxonomy as _industry_taxonomy
 from loanwhiz.primitives.quality_harness import (
     QualityMatrix,
     _default_series_provider,
@@ -4719,6 +4726,376 @@ def governance_pack(pack_id: str) -> GovernanceEvidencePackResponse:
             status_code=404, detail=f"Evidence pack {pack_id} not found"
         )
     return GovernanceEvidencePackResponse(**pack.model_dump())
+
+
+# --- cross-deal look-through concentration (#565, epic #560) ------------------
+# Self-contained block (fixtures + models + handler) for
+# GET /cross-deal-concentration — the surface for the figures #562/#563/#564
+# built as types.
+#
+# The point of the endpoint is what it refuses to net away. #564 encoded four
+# things that a screen can undo by accident, so all four are on the wire:
+#
+# 1. every bucket's proven/candidate/unresolved split, re-derived from #562's
+#    resolution rather than asserted here;
+# 2. an unresolved name is never netted anywhere — there is no residual bucket
+#    (#496/#514), and an asset the axis cannot place becomes `unattributed`, a
+#    different record kind, so no loop over `buckets` can pick it up;
+# 3. every contribution names its own deal's stated reporting date, and
+#    `dates_align` says on the face of the figure that the two committed
+#    schedules are as of different months;
+# 4. an industry axis names its taxonomy. `ExposureAxis` refuses to exist
+#    without one (#563), and `axis=industry` here reaches the API as a 400
+#    carrying that refusal rather than a silently-defaulted Fitch figure.
+#
+# Offline & deterministic: the two collateral schedules are read from the
+# committed fixtures below and parsed by `parse_schedule_text`, which reconciles
+# each report against its own stated aggregates (#469) and raises rather than
+# yielding a plausible-looking pool. No network, no LLM, no live tape fetch in
+# the request path. Reading `tests/fixtures/` from `src/` is the existing seam
+# for committed offline inputs — `report_extractor.COMMITTED_REPORT_FIXTURES`
+# and `reconciler._FIXTURE_DIR` take it too.
+
+#: Committed collateral-schedule fixtures, keyed by canonical deal id, as
+#: ``(filename, period_label)``. Pure data: registering a third deal's schedule
+#: is a line here, not new Python. A deal absent from this map has no offline
+#: schedule, which is a refusal rather than a partial figure.
+COMMITTED_SCHEDULE_FIXTURES: dict[str, tuple[str, str]] = {
+    "cairn-clo-xvii": ("cairn-clo-xvii-march-2025.txt", "2025-03"),
+    "contego-clo-xi": ("contego-clo-xi-august-2024.txt", "2024-08"),
+}
+
+_SCHEDULE_FIXTURE_DIR = (
+    Path(__file__).resolve().parents[3] / "tests" / "fixtures" / "collateral_schedule"
+)
+
+#: Query-parameter spelling → the axis it names. An industry spelling that does
+#: not name a taxonomy is deliberately present: it must reach `ExposureAxis` and
+#: be refused there (#563), not be quietly resolved to a default.
+_CONCENTRATION_AXES: dict[str, Callable[[], _xde.ExposureAxis]] = {
+    "fitch-industry": _xde.cross_deal_industry_axis,
+    "sp-industry": lambda: _xde.industry_axis(_industry_taxonomy.IndustryTaxonomy.sp),
+    "industry": lambda: _xde.ExposureAxis(kind=_xde.AxisKind.industry),
+    "country": _xde.country_axis,
+    "fitch-rating": lambda: _xde.rating_axis(_xde.RatingAgency.fitch),
+    "sp-rating": lambda: _xde.rating_axis(_xde.RatingAgency.sp),
+}
+
+
+class ConcentrationAxis(BaseModel):
+    """The axis a figure is expressed on — never omitted from the figure."""
+
+    kind: str
+    #: How the axis names itself, e.g. ``"Fitch industry"``. Rendered on every
+    #: industry figure because the same book concentrates differently on S&P.
+    label: str
+    taxonomy: str | None = None
+    agency: str | None = None
+
+
+class ConcentrationDealAsOf(BaseModel):
+    """One deal's stated reporting date, carried beside its contribution."""
+
+    deal: str
+    deal_name: str | None = None
+    reporting_date: str | None = None
+    period_label: str
+    #: What the deal's own report stated — its date if it published one, else
+    #: the period label. Never a date this platform chose.
+    stated: str
+
+
+class ConcentrationContribution(BaseModel):
+    """What one deal contributed to a bucket, as of that deal's own date."""
+
+    deal: str
+    as_of: str
+    balance: float
+    asset_count: int
+
+
+class ConcentrationSplit(BaseModel):
+    """A bucket's balance by obligor-resolution tier (#562). Never blended."""
+
+    proven_shared: float
+    candidate_proposed: float
+    unresolved: float
+
+
+class ConcentrationBucket(BaseModel):
+    """One bucket on the axis, with the residual that qualifies its share."""
+
+    label: str
+    published_spellings: list[str]
+    balance: float
+    asset_count: int
+    share_pct: float
+    split: ConcentrationSplit
+    per_deal: list[ConcentrationContribution]
+    reached_by_one_deal: bool
+    #: The primitive's own sentence for this bucket — the share, the axis, both
+    #: deals' dates and the tier split, as one line a reader cannot skip.
+    disclosure: str
+
+
+class ConcentrationUnattributed(BaseModel):
+    """Assets the axis cannot place. A different kind, never a bucket (#513)."""
+
+    reason: str
+    balance: float
+    asset_count: int
+    share_pct: float
+    per_deal: list[ConcentrationContribution]
+
+
+class ConcentrationTier(BaseModel):
+    """One obligor-resolution tier: how many names, and how much balance."""
+
+    tier: str
+    name_count: int
+    balance: float
+    share_pct: float
+
+
+class ConcentrationBounds(BaseModel):
+    """How many distinct obligors the deals hold — a range, never a point."""
+
+    lower: int
+    upper: int
+    is_exact: bool
+
+
+class CrossDealConcentration(BaseModel):
+    """Look-through concentration across the committed deals, residual included."""
+
+    axis: ConcentrationAxis
+    deals: list[str]
+    as_of: list[ConcentrationDealAsOf]
+    #: False on the committed pair. An aggregate that implies one as-of is a
+    #: figure nobody can reconcile back to either source.
+    dates_align: bool
+    currency: str | None = None
+    total_balance: float
+    asset_count: int
+    #: Distinct-obligor bounds. There is no point estimate on purpose (#562).
+    obligor_bounds: ConcentrationBounds
+    #: Names whose identity across the two books is NOT proven — the unresolved
+    #: tier plus the candidate-proposed one. The headline residual.
+    unproven_name_count: int
+    name_count: int
+    #: Share of balance sitting in those names.
+    not_proven_share_pct: float
+    tiers: list[ConcentrationTier]
+    #: Candidate links proposed but never applied — applying one would make the
+    #: distinct-obligor count a point estimate.
+    proposal_count: int
+    buckets: list[ConcentrationBucket]
+    unattributed: ConcentrationUnattributed
+    #: The primitive's own summary sentences, so the API and the screen say the
+    #: same thing rather than each paraphrasing the figure.
+    disclosure: str
+    obligor_disclosure: str
+
+
+@lru_cache(maxsize=4)
+def _portfolio_for(
+    fixtures: tuple[tuple[str, str, str], ...],
+) -> _xde.CrossDealPortfolio:
+    """Parse and join the named schedules. Memoised on the fixture tuple.
+
+    Parsing both reports and re-resolving every obligor costs a quarter of a
+    second of pure CPU, and the inputs are committed files that cannot change
+    under a running process — so repeating it per request is work with no
+    possible different answer. The same memo the tape-analytics path keeps
+    (``_TAPE_ANALYTICS_MEMO``), keyed on the fixtures rather than on nothing,
+    so a test that registers a different set still exercises the real parse.
+    """
+    schedules = {
+        deal: _parse_schedule_text(
+            (_SCHEDULE_FIXTURE_DIR / filename).read_text(encoding="utf-8"),
+            period_label=period_label,
+        )
+        for deal, filename, period_label in fixtures
+    }
+    return _xde.build_portfolio(schedules)
+
+
+def _committed_cross_deal_portfolio() -> _xde.CrossDealPortfolio:
+    """Build the cross-deal portfolio from the committed schedule fixtures.
+
+    Raises:
+        HTTPException: 503 when a registered fixture is not on disk. The
+            refusal names the deal and the file rather than serving the deals
+            that happen to have parsed — a one-deal "cross-deal" figure is not
+            a smaller version of the answer, it is a different one. Checked
+            here, outside the memo, so a fixture that goes missing is noticed
+            rather than served from a cache built when it was present.
+    """
+    fixtures = []
+    for deal, (filename, period_label) in sorted(COMMITTED_SCHEDULE_FIXTURES.items()):
+        if not (_SCHEDULE_FIXTURE_DIR / filename).is_file():
+            raise HTTPException(
+                status_code=503,
+                detail=(
+                    f"No committed collateral schedule for {deal}: expected "
+                    f"{filename}. A look-through figure over a subset of the "
+                    f"registered deals would understate every concentration in "
+                    f"it, so none is served."
+                ),
+            )
+        fixtures.append((deal, filename, period_label))
+    return _portfolio_for(tuple(fixtures))
+
+
+def _share_pct(part: Decimal, whole: Decimal) -> float:
+    """Percentage of *whole* that *part* is, at the two decimals #564 rounds to.
+
+    Quantised rather than left at full float precision so a tier share and a
+    bucket share on the same response are the same kind of number — the
+    primitive's own ``describe`` sentences quote two decimals.
+    """
+    if whole == 0:
+        return 0.0
+    return float((part / whole * 100).quantize(Decimal("0.01")))
+
+
+def _contributions(
+    per_deal: tuple[_xde.DealContribution, ...],
+) -> list[ConcentrationContribution]:
+    """Serialise contributions, each keeping its own deal's stated date."""
+    return [
+        ConcentrationContribution(
+            deal=c.deal,
+            as_of=c.as_of,
+            balance=float(c.balance),
+            asset_count=c.asset_count,
+        )
+        for c in per_deal
+    ]
+
+
+@app.get("/cross-deal-concentration", response_model=CrossDealConcentration)
+def cross_deal_concentration(
+    axis: str = Query(
+        "fitch-industry",
+        description=(
+            "Axis to express the figure on: fitch-industry, sp-industry, "
+            "country, fitch-rating, sp-rating. 'industry' names no taxonomy "
+            "and is refused."
+        ),
+    ),
+) -> CrossDealConcentration:
+    """Return look-through concentration across the committed CLOs.
+
+    Adds the committed collateral schedules together by obligor and by the
+    requested axis, and reports the three residuals #564 named beside the
+    figures rather than folded into them: the obligor residual (every bucket's
+    proven/candidate/unresolved split, and the distinct-obligor bounds), the
+    attribute residual (assets the axis cannot place, as `unattributed` rather
+    than an "Other" bucket), and the reporting-date residual (each
+    contribution's own stated date, plus `dates_align`).
+
+    Offline and deterministic — committed fixtures only, no network or LLM.
+    """
+    build = _CONCENTRATION_AXES.get(axis)
+    if build is None:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"Unknown axis {axis!r}. Known axes: "
+                f"{', '.join(sorted(_CONCENTRATION_AXES))}."
+            ),
+        )
+    try:
+        exposure_axis = build()
+    except ValueError as exc:
+        # #563: an industry axis without a taxonomy does not exist. The
+        # validator's own sentence is the response, so the API refuses for the
+        # reason the type refuses rather than a paraphrase of it.
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    portfolio = _committed_cross_deal_portfolio()
+    figure = _xde.aggregate_by_axis(portfolio, exposure_axis)
+    obligors = _xde.aggregate_by_obligor(portfolio)
+
+    tiers = [
+        ConcentrationTier(
+            tier=tier.value,
+            name_count=len(obligors.rows_in_tier(tier)),
+            balance=float(obligors.tier_balance(tier)),
+            share_pct=_share_pct(obligors.tier_balance(tier), obligors.total_balance),
+        )
+        for tier in _xde.ObligorTier
+    ]
+    unproven = sum(
+        t.name_count for t in tiers if t.tier != _xde.ObligorTier.proven_shared.value
+    )
+
+    return CrossDealConcentration(
+        axis=ConcentrationAxis(
+            kind=exposure_axis.kind.value,
+            label=exposure_axis.label,
+            taxonomy=(
+                exposure_axis.taxonomy.value if exposure_axis.taxonomy else None
+            ),
+            agency=exposure_axis.agency.value if exposure_axis.agency else None,
+        ),
+        deals=list(portfolio.deals),
+        as_of=[
+            ConcentrationDealAsOf(
+                deal=entry.deal,
+                deal_name=entry.deal_name,
+                reporting_date=entry.reporting_date,
+                period_label=entry.period_label,
+                stated=entry.stated,
+            )
+            for entry in portfolio.as_of
+        ],
+        dates_align=portfolio.dates_align,
+        currency=portfolio.currency,
+        total_balance=float(portfolio.total_principal_balance),
+        asset_count=portfolio.asset_count,
+        obligor_bounds=ConcentrationBounds(
+            lower=obligors.bounds.lower,
+            upper=obligors.bounds.upper,
+            is_exact=obligors.bounds.is_exact,
+        ),
+        unproven_name_count=unproven,
+        name_count=len(obligors.rows),
+        not_proven_share_pct=float(figure.not_proven_share),
+        tiers=tiers,
+        proposal_count=len(obligors.proposals),
+        buckets=[
+            ConcentrationBucket(
+                label=bucket.label,
+                published_spellings=list(bucket.published_spellings),
+                balance=float(bucket.balance),
+                asset_count=bucket.asset_count,
+                share_pct=float(figure.share(bucket)),
+                split=ConcentrationSplit(
+                    proven_shared=float(bucket.split.proven_shared),
+                    candidate_proposed=float(bucket.split.candidate_proposed),
+                    unresolved=float(bucket.split.unresolved),
+                ),
+                per_deal=_contributions(bucket.per_deal),
+                reached_by_one_deal=bucket.reached_by_one_deal,
+                disclosure=figure.describe_bucket(bucket),
+            )
+            for bucket in figure.buckets
+        ],
+        unattributed=ConcentrationUnattributed(
+            reason=figure.unattributed.reason.value,
+            balance=float(figure.unattributed.balance),
+            asset_count=figure.unattributed.asset_count,
+            share_pct=float(figure.unattributed_share),
+            per_deal=_contributions(figure.unattributed.per_deal),
+        ),
+        disclosure=figure.describe(),
+        obligor_disclosure=obligors.describe(),
+    )
+
+
+# --- end cross-deal look-through concentration (#565) ------------------------
 
 
 # ---------------------------------------------------------------------------

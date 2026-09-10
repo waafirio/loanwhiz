@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
 import { Database, FileText, ShieldCheck } from "lucide-react";
 
 import {
@@ -8,6 +8,9 @@ import {
   citationDataSource,
   getGovernance,
   type Citation,
+  type ConcentrationBucket,
+  type ConcentrationSplit,
+  type CrossDealConcentration,
   type DataSource,
   type DueDiligenceCheck,
   type DueDiligenceRecord,
@@ -25,7 +28,7 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import { Skeleton } from "@/components/ui/skeleton";
-import { formatPct } from "@/lib/format";
+import { formatCurrency, formatPct } from "@/lib/format";
 
 /**
  * Slide-over that renders one query's `GovernanceEvidencePack` — the
@@ -353,6 +356,210 @@ function CitationItem({ citation }: { citation: Citation }) {
 function formatTimestamp(ts: string): string {
   const d = new Date(ts);
   return Number.isNaN(d.getTime()) ? ts : d.toLocaleString();
+}
+
+/* -------------------------------------------------------------------------
+ * Look-through concentration disclosure (#565, epic #560)
+ *
+ * The provenance surface above answers "where did this number come from".
+ * This region answers the question #564 made answerable: "what could still
+ * move it". It lives here rather than in a parallel component because a
+ * reader who has learned to look for a disclosure block should find every
+ * kind of disclosure in the same shape.
+ *
+ * Four properties #564 encoded as types, which this must not undo:
+ *
+ *   1. Every bucket carries its proven/candidate/unresolved split, and the
+ *      three are rendered as three figures. They are never added together
+ *      into an "identified" total and never divided into a score: a grade
+ *      built out of two kinds is the number a reader treats as the
+ *      measurement (#549), and summing two kinds needs no division, so a ban
+ *      that only looks for a ratio does not catch it.
+ *   2. An unresolved name is never netted anywhere, including "Other". There
+ *      is no residual row in this file, and assets the axis cannot place
+ *      render as their own kind (`unattributed`) with their own label.
+ *   3. Every deal's own stated reporting date is shown. When they disagree —
+ *      they do, on the committed pair — the disagreement is a rendered line,
+ *      not a tooltip.
+ *   4. Every industry figure names its taxonomy, because the same book
+ *      concentrates differently on S&P than on Fitch (#563).
+ *
+ * NOTE for anyone extending this: `PackBody` above renders a provenance badge
+ * reading "direct ingestion" for a `derived` or `synthetic` source. That is a
+ * known defect belonging to the provenance epic, not copied here — the
+ * disclosure below reads its labels off the figure rather than off a binary.
+ * ------------------------------------------------------------------------- */
+
+/** How each obligor-resolution tier names itself, and what it means. */
+const TIER_LABELS: Record<string, string> = {
+  proven_shared: "Proven shared",
+  candidate_proposed: "Candidate (proposed, not applied)",
+  unresolved: "Unresolved",
+};
+
+function tierLabel(tier: string): string {
+  return TIER_LABELS[tier] ?? tier;
+}
+
+/**
+ * The headline residual: how much of the book's obligor identity is unproven,
+ * on the same surface as the concentration figures it qualifies.
+ *
+ * A buyer reading "3.2% exposure to Chemicals" needs to see, without clicking
+ * anything, that the names behind it may not be distinct. So the unproven-name
+ * count is a figure of the same weight as the shares, not a caption.
+ */
+export function ConcentrationDisclosure({
+  figure,
+}: {
+  figure: CrossDealConcentration;
+}) {
+  return (
+    <section className="space-y-3 rounded-lg border border-amber-500/40 bg-amber-500/5 px-4 py-3">
+      <div className="flex flex-wrap items-center gap-1.5">
+        <Badge variant="outline" className="font-normal">
+          <ShieldCheck className="mr-1 size-3" />
+          {figure.axis.label} axis
+        </Badge>
+        <Badge variant="destructive" className="font-normal">
+          {figure.unproven_name_count} of {figure.name_count} names unproven
+        </Badge>
+        <Badge variant="destructive" className="font-normal">
+          {formatPct(figure.not_proven_share_pct, 2)} of balance
+        </Badge>
+        <Badge variant="outline" className="font-normal">
+          Distinct obligors {figure.obligor_bounds.lower}&ndash;
+          {figure.obligor_bounds.upper}
+        </Badge>
+      </div>
+
+      <p className="text-sm">
+        Obligor identity could not be proven for{" "}
+        <strong>{figure.unproven_name_count}</strong> of the{" "}
+        {figure.name_count} names these deals hold between them. Every share
+        below is exact as a balance; the number of distinct borrowers behind it
+        is not. {figure.proposal_count} candidate link
+        {figure.proposal_count === 1 ? " is" : "s are"} proposed and none is
+        applied, which is why the obligor count is a range rather than a
+        figure.
+      </p>
+
+      {/* Each tier as its own figure. Never a sum, never a ratio: "1 of 7
+          verified" is a grade with no division in it, and it is still a
+          grade. */}
+      <dl className="grid grid-cols-[1fr_auto_auto] gap-x-4 gap-y-1 text-xs">
+        {figure.tiers.map((t) => (
+          <Fragment key={t.tier}>
+            <dt className="text-muted-foreground">{tierLabel(t.tier)}</dt>
+            <dd className="text-right tabular-nums">
+              {t.name_count} name{t.name_count === 1 ? "" : "s"}
+            </dd>
+            <dd className="text-right tabular-nums">
+              {formatCurrency(t.balance)} · {formatPct(t.share_pct, 2)}
+            </dd>
+          </Fragment>
+        ))}
+      </dl>
+
+      <ReportingDates figure={figure} />
+
+      {figure.unattributed.asset_count > 0 ? (
+        <p className="text-xs text-muted-foreground">
+          <strong className="text-foreground">
+            Unplaced by this axis: {formatCurrency(figure.unattributed.balance)}{" "}
+            ({formatPct(figure.unattributed.share_pct, 2)},{" "}
+            {figure.unattributed.asset_count} assets)
+          </strong>{" "}
+          — the report published no {figure.axis.label} value for these. They
+          are excluded from every bucket rather than collected into one, so no
+          share below is diluted by them.
+        </p>
+      ) : null}
+
+      <p className="text-xs text-muted-foreground italic">
+        {figure.disclosure}
+      </p>
+      <p className="text-xs text-muted-foreground italic">
+        {figure.obligor_disclosure}
+      </p>
+    </section>
+  );
+}
+
+/**
+ * Both deals' stated reporting dates, and — when they disagree — the fact
+ * that they do. An aggregate implying a single as-of is a figure nobody can
+ * reconcile back to either source, so the two dates render separately and the
+ * mismatch is stated in words.
+ */
+export function ReportingDates({ figure }: { figure: CrossDealConcentration }) {
+  return (
+    <div className="space-y-1">
+      <dl className="grid grid-cols-[1fr_auto] gap-x-4 text-xs">
+        {figure.as_of.map((d) => (
+          <Fragment key={d.deal}>
+            <dt className="text-muted-foreground">
+              {d.deal_name ?? d.deal} reported as of
+            </dt>
+            <dd className="text-right font-medium tabular-nums">{d.stated}</dd>
+          </Fragment>
+        ))}
+      </dl>
+      {figure.dates_align ? null : (
+        <p className="text-xs font-medium text-amber-700 dark:text-amber-400">
+          These reports are as of different dates. This figure adds them
+          together as published; it reconciles to neither source on its own.
+        </p>
+      )}
+    </div>
+  );
+}
+
+/**
+ * One bucket's tier split, for a row in the concentration table.
+ *
+ * Three figures, in tier order, each labelled. Deliberately not a single
+ * "proven %" — that would be a score over two kinds of thing, and the reader
+ * would treat it as the measurement.
+ */
+export function BucketSplit({ split }: { split: ConcentrationSplit }) {
+  return (
+    <dl className="grid grid-cols-[auto_1fr] gap-x-2 text-[11px] text-muted-foreground">
+      <dt>Proven</dt>
+      <dd className="text-right tabular-nums text-foreground">
+        {formatCurrency(split.proven_shared)}
+      </dd>
+      <dt>Candidate</dt>
+      <dd className="text-right tabular-nums text-foreground">
+        {formatCurrency(split.candidate_proposed)}
+      </dd>
+      <dt>Unresolved</dt>
+      <dd className="text-right tabular-nums text-foreground">
+        {formatCurrency(split.unresolved)}
+      </dd>
+    </dl>
+  );
+}
+
+/**
+ * One bucket's per-deal contributions, each stamped with its own deal's date.
+ * The date travels with the contribution because that is the only level at
+ * which it is true.
+ */
+export function BucketContributions({ bucket }: { bucket: ConcentrationBucket }) {
+  return (
+    <ul className="space-y-0.5 text-[11px] text-muted-foreground">
+      {bucket.per_deal.map((c) => (
+        <li key={c.deal} className="tabular-nums">
+          {c.deal} — {formatCurrency(c.balance)} ({c.asset_count} assets) as of{" "}
+          {c.as_of}
+        </li>
+      ))}
+      {bucket.reached_by_one_deal ? (
+        <li className="italic">Held by one deal only.</li>
+      ) : null}
+    </ul>
+  );
 }
 
 // ---------------------------------------------------------------------------

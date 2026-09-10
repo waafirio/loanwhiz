@@ -1048,6 +1048,205 @@ The control is parametrised alongside the CLO sets in
 
 ---
 
+### Which industry taxonomy a cross-deal figure is expressed in (#563)
+
+**Read this before registering a third deal.** Every `CollateralAsset` carries
+both an `sp_industry` and a `fitch_industry`, and the two are not
+interchangeable. Cairn's March 2025 report tests the same portfolio against both
+at the same limits and gets **11.36%** on S&P against **10.83%** on Fitch. So an
+industry concentration that does not name its taxonomy is not comparable to
+either figure the deal itself publishes — it is wrong, not merely imprecise.
+
+**The decision: a cross-deal industry concentration is expressed in Fitch.**
+S&P remains a per-deal axis and is deliberately *not* joined across deals. It is
+settled in one place, `src/loanwhiz/primitives/industry_taxonomy.py`
+(`CROSS_DEAL_TAXONOMY`), and `IndustryTaxonomy` is a required argument
+throughout, so a cross-deal figure cannot be built without naming its axis.
+
+**Why Fitch, given both are tied out.** Since #530 *both* taxonomies are
+reconciled per bucket against the report that published them (`_BUCKET_TABLES`
+in `collateral_schedule_parser`), on both deals, every period — so the
+acceptance oracle does not choose between them. The join does. The two deals'
+Fitch vocabularies canonicalise onto substantially one vocabulary, and the
+labels that do not join are genuine portfolio differences: Contego holds a
+utility Cairn does not, Cairn holds oil and gas Contego does not. Their S&P
+vocabularies do not join, because the deals published against **different GICS
+vintages** — Contego emits the post-2023 names (`Consumer staples distribution
+and retail`, `Financial services`), Cairn the pre-2023 ones (`Food & Staples
+Retailing`, `Diversified Financial Services`). Close to half the combined S&P
+vocabulary is unjoinable, and almost all of that is vintage drift rather than a
+real difference in holdings.
+
+That asymmetry runs one way. An unjoined pair holds one exposure apart in two
+buckets, so its reported concentration is **lower than the truth** — the book
+reads as more diversified than it is, which is the error that harms a buyer and
+looks like good news.
+
+**What is canonicalised, and what is refused.** The fold is orthographic only:
+case, diacritics, `&` versus `and`, punctuation, whitespace. It does not stem,
+singularise or fold spelling variants, and the seam raises rather than merging
+if two labels one table publishes ever collide — Cairn's December 2024 Fitch
+table prints both `Building and materials` and `Buildings and materials` as
+separate buckets, so that guard sits one plural-strip away from firing.
+
+Mapping *across GICS vintages* is refused outright. It needs a concordance this
+repo does not hold, and a similarity score dressed up as a mapping would under-
+and over-match with equal confidence. The pairs that a reader can see are
+related are named in `DECLINED_CROSS_VINTAGE_PAIRS` with the reason each is left
+alone — a refusal that is named can be reviewed and reversed; one that is silent
+cannot.
+
+**Nothing is folded into "Other."** A `TaxonomyJoin` is a *partition* of the
+canonical union — joined, left-only, right-only — enforced by the model, so
+there is no residual bucket for an unmappable category to disappear into. A
+bucket that absorbs the unknown is how a concentration understates itself
+(#496).
+
+**Regenerating this, rather than trusting the prose.** The vocabularies, the
+join and both percentages above are re-derived from the committed report
+fixtures by `tests/test_industry_taxonomy.py` — deliberately not transcribed as
+bucket counts here, because a number in prose goes stale in silence (#441). Run
+it to see the current vocabularies and the current unjoined set:
+
+```bash
+python -m pytest tests/test_industry_taxonomy.py
+```
+
+**What a third deal changes.** If it publishes S&P against a third vintage, the
+unjoined S&P set grows and this decision holds unchanged. If it publishes no
+Fitch table at all, that is the decision's first real test: the honest answer is
+a figure that reports the deals it *can* join and names the one it cannot, never
+a silent fallback to S&P.
+
+---
+
+### There is no cross-deal rating axis, and why one is still offered (#564)
+
+**Read this before quoting a cross-deal rating concentration.** #563 chose the
+industry axis by measuring which vocabulary actually joined. Measured the same
+way, **neither rating agency joins across the two committed deals** — so unlike
+`CROSS_DEAL_TAXONOMY` there is deliberately no `CROSS_DEAL_RATING_AGENCY`
+constant to reach for.
+
+The cause is coverage, not spelling. `sp_rating` and `fitch_rating` are
+populated only where a report publishes them, and Cairn's collateral schedule
+publishes no Fitch rating at all; its S&P ratings appear only for assets in the
+S&P CCC bucket, which is the one detail section that carries them. Contego
+publishes both far more widely. A combined rating figure is therefore one deal's
+rating distribution with the other deal's whole book sitting outside it.
+
+**A rating axis is still offered, and reports that hole at full size.**
+`cross_deal_exposure.rating_axis(agency)` builds the figure, and the balance it
+cannot place is returned in `UnattributedExposure` — a *different record kind*
+from `ExposureBucket`, so no loop over `buckets` can pick it up as though it
+were a holding. Inventing an `NR` or `Other` bucket to cover it would turn a
+coverage hole into a small, ignorable slice; a bucket label that reads as a
+residual is refused at construction. Percentages are taken over the **whole**
+book rather than over what was placed, because dividing by the attributed
+balance rescales every concentration upward in exact proportion to how much the
+report failed to publish.
+
+**Each axis folds its own labels, and a wrong fold raises rather than merging.**
+`industry_taxonomy.canonical_label` drops punctuation — which is what makes
+`Aerospace & Defense` and `Aerospace and defence` one bucket, and what would
+make `B`, `B+` and `B-` one bucket too, merging three notches into one and
+making the book read better than it is. So a rating axis folds case and
+whitespace only, and every fold is then proved injective over each deal's own
+published vocabulary before anything is summed. Contego publishes `B` and `B+`
+in one report, so the industry fold applied to its ratings raises instead of
+merging.
+
+**Currencies are never summed across.** Cairn prints `EUR` and Contego prints
+`Euro` — one currency, two spellings, and no orthographic rule turns one into
+the other. A small named alias table folds the spellings this repo has seen;
+anything unseen compares as published, so a genuine second currency and an
+unrecognised spelling both **raise**. That is the recoverable direction: a
+refusal is fixed by adding a line, whereas two currencies quietly added produce
+a number in no currency at all and nothing downstream can tell.
+
+**Regenerating this, rather than trusting the prose.** The coverage figures, the
+notch behaviour and the currency spellings are re-derived from the committed
+report fixtures by `tests/test_cross_deal_exposure.py` — deliberately not
+transcribed here as counts or percentages, because a number in prose goes stale
+in silence (#441):
+
+```bash
+python -m pytest tests/test_cross_deal_exposure.py
+```
+
+**What a third deal changes.** A deal publishing ratings across its whole book
+does not by itself make a cross-deal rating figure meaningful — what matters is
+the *intersection* of coverage. Re-run the suite and read the unattributed share
+before quoting one.
+
+---
+
+### Where a look-through concentration is read, and what it must show (#565)
+
+**Read this before quoting a combined concentration to anyone.** `GET
+/cross-deal-concentration` and the `/concentration` screen add the committed
+collateral schedules together on one axis. They are not a summary of the two
+reports; they are a third figure, and three different things can move any
+number in it. All three render beside the figure rather than under it:
+
+- **the obligor residual.** #562 resolves identity into three tiers that are
+  never blended, and on the committed pair most of the book's names are *not*
+  proven. So the count of unproven names is the first thing the screen renders,
+  in the same badges as the shares — not a footnote below them. #549's rule is
+  the reason: a refusal that keeps the value is not a refusal, and a share read
+  before its qualifier is read as a measurement.
+- **the attribute residual.** An asset whose axis value the report never
+  published is returned as `unattributed`, a different record kind, and the
+  screen renders it as its own line. There is no "Other" row for it, here or
+  anywhere (#496/#514).
+- **the reporting date.** Each contribution carries its own deal's stated date
+  and the response says `dates_align: false`. The screen prints both dates and,
+  when they disagree, says in words that the figure reconciles to neither
+  source on its own.
+
+**The axis is named on every industry figure**, because #563's decision only
+holds if it is visible: the response carries `axis.taxonomy`, and the screen
+names the axis in the card title and again in the column head, so a share
+copied out of the table carries the taxonomy with it.
+
+**What the web-layer guard actually proves.** `web/` has no JS test runner, so
+`tests/test_concentration_page.py` asserts the components' **source**, not
+their rendered output — the same trade `tests/test_capability_matrix.py`
+already makes. It is worth stating what that is *not*: it is not evidence that
+a browser paints any of this. What the file adds over an ordinary source ban is
+a mutant table that rewrites the real source and requires the guard to reject
+each rewrite, plus a check that no rule in it is unreached by some mutant. Two
+sibling epics shipped bans whose acceptance criteria passed while the banned
+thing was on screen; the first sweep here found two of the same shape in this
+guard and both are now closed.
+
+**This is not a claim about every provenance surface.** The web layer as a
+whole does *not* yet render each source kind's own disclosure sentence: the
+Pool and Waterfall pages render no synthetic badge, and the evidence pack's
+ingestion badge still reads "direct ingestion" for a `derived` or `synthetic`
+source. The concentration surface renders the figure's own sentences; the rest
+of the web layer is unchanged by this issue.
+
+**Regenerating this, rather than trusting the prose.** Every count and share
+above is deliberately left unwritten — the unproven-name count in particular,
+because the issue that commissioned this screen carried a transcribed figure
+that was wrong by an order of magnitude, which is exactly how a number in prose
+goes stale in silence (#441). Read the live figures instead:
+
+```bash
+python -m pytest tests/test_cross_deal_concentration.py tests/test_concentration_page.py
+curl -s 'http://localhost:8000/cross-deal-concentration?axis=fitch-industry' \
+  | python -c 'import json,sys; d=json.load(sys.stdin); print(d["obligor_disclosure"]); print(d["disclosure"])'
+```
+
+**What a third deal changes.** Registering one is a line in
+`COMMITTED_SCHEDULE_FIXTURES` (`src/loanwhiz/api/main.py`), not new Python. A
+deal with no committed schedule is refused rather than omitted: a look-through
+figure over a subset of the registered deals understates every concentration in
+it while looking exactly like a complete one.
+
+---
+
 ## IMPORTANT: Synthetic vs Real Data
 
 > **The loan-level data (loan tapes) in this dataset is SYNTHETIC.**

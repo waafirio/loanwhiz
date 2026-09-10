@@ -156,6 +156,7 @@ a gap does split this way, assert both deltas AND that they cancel — a later f
 to one then reds the pair instead of silently re-balancing the total.
 
 Refs: #538
+Refs: #564 — same rule for a bucket's obligor-tier split, not just a cascade.
 
 ## 2026-09-09 · pitfall · #515
 
@@ -208,6 +209,18 @@ asserting the symmetry that was expected.
 
 Refs: #535
 
+## 2026-09-10 · pitfall · #565
+
+A ban over source text is unfalsified until a mutant proves it fires, and the
+survivors keep the identifier while moving the render: a count demoted out of
+its `<Badge>` into prose below the figure, a block put behind `{false ? … :
+null}`. Both leave every grepped token in the file. Slice the element you mean
+(`<Badge>…</Badge>`, one `<dd>`) instead of grepping it, ban a literal
+condition, and assert every check is the one catching some mutant — a rule no
+mutant reaches has never been observed to fail.
+
+Refs: #565
+Refs: #562 — the same silence one layer down: a checker nothing calls.
 ## 2026-09-09 · pitfall · #567
 
 What an extractor *can* read and what the committed data *carries* are two

@@ -20,6 +20,7 @@ triage by opening the entry, not by reading the line.
   - [2026-09-09 · pitfall · #515](#2026-09-09--pitfall--515) — keywords: ENGINE_COMPUTED_RECIPIENTS, engine_computed_passed, allowlist bound, step_source_classifier, report-supplied, declaration not data
   - [2026-09-09 · pitfall · #525](#2026-09-09--pitfall--525) — keywords: control subject, blank cell count, StructuralCell.value, comparable scalar, defect premise, schema not deal, compare panel
   - [2026-09-09 · pitfall · #535](#2026-09-09--pitfall--535) — keywords: verified on one deal, re-measure per subject, second specimen, premise transfer, stopping point, 422 per deal, verification issue
+  - [2026-09-10 · pitfall · #565](#2026-09-10--pitfall--565) — keywords: source ban, surviving mutant, Badge slice, literal condition, decorative check, web guard, no JS runner
   - [2026-09-09 · pitfall · #567](#2026-09-09--pitfall--567) — keywords: extractor reach vs committed data, seed carries no block, due-diligence record, refuse by name, fixture proves the parser, registry consumer
 - [Extraction guards & false-positive filters](extraction-guards.md)
   - [2026-09-02 · pitfall · #439](#2026-09-02--pitfall--439) — keywords: _CLASS_LETTERS, tranche, note class, Class J, Class O, false positive, guard, proxy range
@@ -73,6 +74,9 @@ triage by opening the entry, not by reading the line.
   - [2026-09-09 · pitfall · #511](#2026-09-09--pitfall--511) — keywords: tie proves nothing, amount-recovered coupon, back-solved rate, report agrees with itself, circular reconciliation, input provenance, expect green to turn red
   - [2026-09-09 · pattern · #539](#2026-09-09--pattern--539) — keywords: fact scope, per-class not per-deal, day-count basis, TrancheFunds override, parse the scope, limb boundary, block runs to end-of-text, deal-level field averages
   - [2026-09-09 · pitfall · #549](#2026-09-09--pitfall--549) — keywords: refusal keeps the value, metric_value, not_evaluable, screen vs grade, numerator identity, exactly 100.00, notes over notes
+  - [2026-09-10 · decision · #563](#2026-09-10--decision--563) — keywords: candidate vocabularies, unjoined share, acceptance oracle, GICS vintage drift, orthographic fold, published table, injective
+  - [2026-09-10 · pitfall · #562](#2026-09-10--pitfall--562) — keywords: guard wiring, deletes its call, census, _assert_every_asset_placed, passes by finding nothing, lossy builder
+  - [2026-09-10 · pitfall · #564](#2026-09-10--pitfall--564) — keywords: canonical_label, rating notch, per-axis fold, injective, published vocabulary, B+ collapse
 - [Extracting tables from PDFs](pdf-table-extraction.md) — keywords: visitor_text, text matrix, tm[4], rotated table, extraction_mode layout, row boundary, continuation line, column order, pypdf
   - [2026-09-06 · pitfall · #469](#2026-09-06--pitfall--469) — keywords: extract_text(), extraction_mode="layout", visitor_text=, tm[4]
   - [2026-09-08 · pitfall · #494](#2026-09-08--pitfall--494) — keywords: page furniture, banner prefix, data row first, footer eats a row, numeric tail, prefix filter ordering
