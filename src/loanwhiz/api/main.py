@@ -1422,7 +1422,11 @@ def compare_deals(
         common_periods=common_periods,
         relative_value=scorecard,
         comparative_verdict=_compare.build_comparative_verdict(
-            scorecard, deal_refs, risk_summary, target_deal_id=target
+            scorecard,
+            deal_refs,
+            risk_summary,
+            performance_series,
+            target_deal_id=target,
         ),
         notes=notes,
     )
