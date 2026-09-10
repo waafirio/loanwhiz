@@ -18,24 +18,24 @@ Refs: #568
 
 ## 2026-09-10 · pattern · #599
 
-Pick a guard's region bounds by rule *class*. #568 ("slice to end-of-file —
-over-reach fails loudly") and #573 ("an EOF-reaching component slice lets a
-sibling satisfy the rule") are both right, about different rules. A positive
-rule about one component reads a **bounded** slice whose end anchor must be
-*found*, so a fallback to EOF asserts rather than passes. A ban reads whole
-files, written narrowly enough that over-reach cannot false-positive — match a
-quoted channel name inside a conditional, never the bare construct.
+The corpus now says both "slice to end-of-file" (#568) and "bound at the next
+declaration" (#573, `guard-mutation-tables.md`). Choose by rule *class*, not by
+the entry you read last. A **positive** rule — this component renders X — takes
+the bounded slice, because anything appended after the component satisfies it
+otherwise. A **ban** takes whole files, and is then written narrowly enough
+that over-reach cannot false-positive: match a quoted channel name inside a
+conditional, never the bare construct. A ban needing a region is written too
+loosely, which is the actual failure #568 was working around.
 
 Refs: #599
 
 ## 2026-09-10 · gotcha · #599
 
-A rule about one table must read *that table*, and its slicer must not be
-anchored on the text the rule tests. Greping a whole module for `  derived: `
-was answered by a second total table keyed on the same channels, so deleting
-the real label passed; re-anchoring the slice on `Record<DataSource, string>`
-then let a mutant rewriting that annotation delete the marker, and the guard
-raised instead of reporting — a crash in a mutant sweep is neither pass nor
-catch. Anchor on the declaration's name.
+Never anchor a slicer on text a rule *inside* that slice tests. Anchoring a
+label-table region on `Record<DataSource, string>` looked precise until the
+mutant rewriting that annotation deleted the marker: the slicer raised, so the
+sweep recorded an error rather than the violation — and a crash is neither a
+pass nor a catch. Anchor on the declaration's **name**, which no rule tests.
+Ask of every marker: which of my own mutants edits this line?
 
 Refs: #599

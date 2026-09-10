@@ -27,3 +27,4 @@ that a bound is real: write the mutant that strips the token from the
 component and re-supplies it from a decoy declared just after — it must red.
 
 Refs: #573
+Refs: #599 — re-derived independently; ui-surface-guards.md says when #568's opposite advice still holds.
