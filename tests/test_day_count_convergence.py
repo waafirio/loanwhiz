@@ -192,15 +192,35 @@ def test_a_refusal_keeps_no_day_count(bad_end):
     """#549: a refusal that keeps its value is not a refusal.
 
     The old code's failure mode was not that it refused badly — it was that it
-    returned 30, a number no caller could tell from a measured one. So the
-    assertion is that nothing numeric comes back at all, and in particular that
-    the refusal does not offer a fallback count beside the reason.
+    returned 30, a number no caller could tell from a measured one. Every
+    malformed shape here therefore has to leave *no* count behind: a rejected
+    date, an empty string, a date-shaped string naming a day that does not
+    exist, and prose.
     """
-    with pytest.raises(HTTPException) as excinfo:
+    with pytest.raises(HTTPException):
         _tape_period_days("act/360", DIVERGENT_START, bad_end)
 
-    assert "30 days" not in excinfo.value.detail
-    assert "defaulted" not in excinfo.value.detail.replace("not defaulted", "")
+
+def test_an_undecidable_thirty_360_endpoint_refuses_through_the_same_422():
+    """The contract's own refusal is a refusal of this boundary too.
+
+    ``thirty_360_days`` raises ``UnsourcedDayCount`` when an endpoint falls on
+    the 31st or the last day of February, because 30/360 US, 30E/360 and
+    30E/360 ISDA disagree there and a Condition saying "12 months of 30 days
+    each" names the family without naming the member. Re-raised as the same 422
+    carrying that reason, so every way this boundary can fail to establish a day
+    count fails the same way rather than one of them escaping as a 500.
+    """
+    with pytest.raises(HTTPException) as excinfo:
+        _tape_period_days("30/360", "2025-01-18", "2025-03-31")
+
+    assert excinfo.value.status_code == 422
+    assert "2025-03-31" in excinfo.value.detail
+    assert "disagree" in excinfo.value.detail
+
+    # Paired (#493): the same basis over an endpoint the variants agree on is
+    # evaluable, so this refuses the undecidable date and not 30/360 itself.
+    assert _tape_period_days("30/360", "2025-01-18", "2025-03-18") == 60
 
 
 # ---------------------------------------------------------------------------

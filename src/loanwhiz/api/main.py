@@ -54,6 +54,7 @@ from loanwhiz.extraction.assembler import (
 )
 from loanwhiz.extraction.day_count_parser import (
     DayCountBasis,
+    UnsourcedDayCount,
     accrual_days,
 )
 from loanwhiz.api import compare as _compare
@@ -2040,14 +2041,20 @@ def _tape_period_days(basis: DayCountBasis, prev_date: str, cur_date: str) -> in
         The day count ``basis`` produces for that period.
 
     Raises:
-        HTTPException: 422 naming the offending value, when either date is not a
-            parseable ISO date or when the period does not run forwards.
+        HTTPException: 422 naming the reason. Three reach it: either date not a
+            parseable ISO date, a period that does not run forwards, and the
+            contract's own ``UnsourcedDayCount`` — raised when a 30/360 endpoint
+            falls where 30/360 US, 30E/360 and 30E/360 ISDA disagree, so the
+            document names the family without naming the member. That third one
+            is a refusal too, and it carries its own reason, so it is re-raised
+            with that reason rather than escaping as an unhandled 500: every way
+            this boundary can fail to establish a day count fails the same way.
     """
     parsed: list[date] = []
     for label, raw in (("previous", prev_date), ("current", cur_date)):
         try:
             parsed.append(date.fromisoformat(raw))
-        except (TypeError, ValueError):
+        except (TypeError, ValueError) as exc:
             raise HTTPException(
                 status_code=422,
                 detail=(
@@ -2055,7 +2062,7 @@ def _tape_period_days(basis: DayCountBasis, prev_date: str, cur_date: str) -> in
                     "date, so this period's day count cannot be established. An "
                     "unestablished day count is refused, not defaulted (#601)."
                 ),
-            ) from None
+            ) from exc
 
     prev, cur = parsed
     if cur <= prev:
@@ -2067,7 +2074,10 @@ def _tape_period_days(basis: DayCountBasis, prev_date: str, cur_date: str) -> in
                 "An unestablished day count is refused, not defaulted (#601)."
             ),
         )
-    return accrual_days(basis, prev, cur)
+    try:
+        return accrual_days(basis, prev, cur)
+    except UnsourcedDayCount as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
 def _tape_is_first_hand(url: str) -> bool:
