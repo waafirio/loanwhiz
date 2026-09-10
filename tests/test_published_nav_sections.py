@@ -92,6 +92,7 @@ _REPO_ROOT = Path(__file__).resolve().parents[1]
 _SIDEBAR = "web/components/app-sidebar.tsx"
 _DECK = "presentation/loanwhiz-deck.json"
 _DUE_DILIGENCE = "web/app/(routes)/due-diligence/page.tsx"
+_NAV = "web/lib/nav.ts"
 
 #: Every committed surface that describes the rail's grouping. A grouping is
 #: only fixed once no copy of it disagrees, so this list is the fix's real
@@ -102,14 +103,25 @@ GUARDED_SURFACES: tuple[str, ...] = GENERATED_DOCS + (
     _SIDEBAR,
     _DECK,
     _DUE_DILIGENCE,
+    _NAV,
 )
 
-#: The declaration the sidebar's docstring sits above. Anchored on the
-#: component's **name**, which no rule here tests — never on text a rule
-#: inside the slice reads, or a mutant editing that text makes the slicer
-#: raise and the sweep records an error rather than the violation it found
+#: ``(surface, declaration)`` for every file whose **docstring** describes the
+#: rail in prose. Each is anchored on its declaration's **name**, which no rule
+#: here tests — never on text a rule inside the slice reads, or a mutant
+#: editing that text makes the slicer raise, and a guard that raises is
+#: recorded as an error rather than as the violation it found
 #: (`.liz/memory/ui-surface-guards.md`, #599).
-_SIDEBAR_DECL = "export function AppSidebar()"
+#:
+#: `nav.ts` is in this list even though it holds the definition: its docstring
+#: names all three sections in *sentences*, and prose beside a declaration goes
+#: stale exactly as readily as prose in another file. #613's
+#: `tests/test_nav_grouping.py` pins the declaration; nothing pinned the
+#: paragraph above it.
+_DOCSTRING_SURFACES: tuple[tuple[str, str], ...] = (
+    (_SIDEBAR, "export function AppSidebar()"),
+    (_NAV, "export const NAV_GROUPS"),
+)
 
 #: The deck slide that draws the rail, anchored on its kicker for the same
 #: reason: no check below reads the kicker.
@@ -225,23 +237,24 @@ def _violations(docs: dict[str, str], nav: str) -> list[str]:
                 "`PYTHONPATH=src python -m scripts.render_nav_sections --write`"
             )
 
-    # --- the sidebar's own docstring ------------------------------------
-    comment = _flatten(_doc_comment_above(docs[_SIDEBAR], _SIDEBAR_DECL))
-    named = set(_QUOTED_RE.findall(comment))
-    invented = sorted(named - set(labels))
-    forgotten = [label for label in labels if label not in named]
-    if invented:
-        out.append(
-            f"named-groups: {_SIDEBAR} names {invented}, which NAV_GROUPS does "
-            "not contain. A rail's own component describing a section that does "
-            "not exist is the defect this guard was built for"
-        )
-    elif forgotten:
-        out.append(
-            f"named-groups: {_SIDEBAR} does not name {forgotten}. Naming some "
-            "sections and not others is how the two-section description "
-            "survived a three-section rail"
-        )
+    # --- the docstrings that describe the rail in prose -------------------
+    for path, declaration in _DOCSTRING_SURFACES:
+        comment = _flatten(_doc_comment_above(docs[path], declaration))
+        named = set(_QUOTED_RE.findall(comment))
+        invented = sorted(named - set(labels))
+        forgotten = [label for label in labels if label not in named]
+        if invented:
+            out.append(
+                f"named-groups: {path} names {invented}, which NAV_GROUPS does "
+                "not contain. Describing a section that does not exist is the "
+                "defect this guard was built for"
+            )
+        elif forgotten:
+            out.append(
+                f"named-groups: {path} does not name {forgotten}. Naming some "
+                "sections and not others is how the two-section description "
+                "survived a three-section rail"
+            )
 
     # --- a surface's claim about which section it sits in -----------------
     for path, text in docs.items():
@@ -377,6 +390,14 @@ _MUTANTS: list[tuple[str, str, list[tuple[str, str]]]] = [
         ],
     ),
     (
+        # Stales the definition file's own paragraph while its declaration
+        # stays right — the narrowest form of this issue's defect, and the one
+        # #613's declaration-level test cannot see.
+        "let-the-definition-file-s-own-prose-go-stale",
+        _NAV,
+        [('*  - "Portfolio" — one reader', '*  - "Holdings" — one reader')],
+    ),
+    (
         # The issue's explicit proof: name a group that does not exist.
         "name-a-section-the-rail-does-not-have",
         _SIDEBAR,
@@ -470,7 +491,8 @@ def test_every_guarded_surface_is_present_and_carries_its_claim() -> None:
         assert text.strip(), f"{path} is empty — the guard would pass vacuously"
     for path in GENERATED_DOCS:
         assert MARKER_START in _read(path), f"{path} lost its nav-sections region"
-    assert _SIDEBAR_DECL in _read(_SIDEBAR)
+    for path, declaration in _DOCSTRING_SURFACES:
+        assert declaration in _read(path), f"{path} lost its docstring anchor"
     assert _DECK_KICKER in _read(_DECK)
 
 
