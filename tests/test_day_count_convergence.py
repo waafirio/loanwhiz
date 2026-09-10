@@ -629,6 +629,18 @@ EXPECTED_THIRTY_360_SITES = {
     "extraction/day_count.py": 2,
 }
 
+#: The **adjacent** spellings — a day count is not always written ``.days``.
+#: ``(end.toordinal() - start.toordinal())`` and ``(end - start).total_seconds()
+#: / 86400`` are the same quantity by another route, and the first two maps are
+#: structurally blind to both. Expected nowhere, including in ``day_count.py``:
+#: the one contract does not use them either, so any appearance is new.
+#:
+#: #599's lesson is that a guard's blind spot sits *adjacent* to what it sees,
+#: not far from it. ``timedelta(days=1)`` is deliberately NOT here — it is how
+#: ``payment_schedule_parser`` steps to the next business day, which is a walk
+#: and not a count, and banning it would make the census cry wolf.
+EXPECTED_ADJACENT_SITES: dict[str, int] = {}
+
 
 def _census(root: pathlib.Path):
     """Count day-count-shaped expressions per module under ``root``.
@@ -642,6 +654,7 @@ def _census(root: pathlib.Path):
     files = sorted(root.rglob("*.py"))
     actual: collections.Counter = collections.Counter()
     thirty: collections.Counter = collections.Counter()
+    adjacent: collections.Counter = collections.Counter()
     for path in files:
         tree = ast.parse(path.read_text(), filename=str(path))
         rel = path.relative_to(root).as_posix()
@@ -669,15 +682,22 @@ def _census(root: pathlib.Path):
                     ):
                         thirty[rel] += 1
                         break
-    return files, actual, thirty
+            if (
+                isinstance(node, ast.Call)
+                and isinstance(node.func, ast.Attribute)
+                and node.func.attr in ("toordinal", "total_seconds")
+            ):
+                adjacent[rel] += 1
+    return files, actual, thirty, adjacent
 
 
-def _violations(actual, thirty):
+def _violations(actual, thirty, adjacent):
     """Every module whose day-count site count differs from the literal map."""
     found = []
     for label, counted, expected in (
         ("actual-day", actual, EXPECTED_ACTUAL_DAY_SITES),
         ("30/360", thirty, EXPECTED_THIRTY_360_SITES),
+        ("adjacent-spelling", adjacent, EXPECTED_ADJACENT_SITES),
     ):
         for module in set(counted) | set(expected):
             if counted.get(module, 0) != expected.get(module, 0):
@@ -693,8 +713,8 @@ SRC_ROOT = pathlib.Path(day_count.__file__).resolve().parents[1]
 
 def test_census_finds_no_fourth_day_count_implementation():
     """Every day-count site in ``src/loanwhiz`` is one this file names."""
-    _, actual, thirty = _census(SRC_ROOT)
-    assert _violations(actual, thirty) == []
+    _, actual, thirty, adjacent = _census(SRC_ROOT)
+    assert _violations(actual, thirty, adjacent) == []
 
 
 def test_census_actually_scanned_the_tree_it_reports_on():
@@ -706,7 +726,7 @@ def test_census_actually_scanned_the_tree_it_reports_on():
     asserts it walked many modules AND positively located the known sites, either
     of which fails if the walk came back empty.
     """
-    files, actual, thirty = _census(SRC_ROOT)
+    files, actual, thirty, adjacent = _census(SRC_ROOT)
     assert len(files) > 1
     assert actual["extraction/day_count.py"] == 1
     assert thirty["extraction/day_count.py"] == 2
@@ -745,8 +765,8 @@ def _clean_tree(tmp_path):
 def test_census_control_a_clean_tree_reports_nothing(tmp_path):
     """The control. Without it, a census that always fired would 'catch' every
     mutant below while being worthless on the real tree."""
-    _, actual, thirty = _census(_clean_tree(tmp_path))
-    assert _violations(actual, thirty) == []
+    _, actual, thirty, adjacent = _census(_clean_tree(tmp_path))
+    assert _violations(actual, thirty, adjacent) == []
 
 
 def test_census_fires_on_a_fourth_implementation_in_a_new_module(tmp_path):
@@ -757,8 +777,8 @@ def test_census_fires_on_a_fourth_implementation_in_a_new_module(tmp_path):
         "primitives/settlement_helper.py",
         "def period_days(start, end):\n    return (end - start).days\n",
     )
-    _, actual, thirty = _census(tmp_path)
-    assert any("settlement_helper" in v for v in _violations(actual, thirty))
+    _, actual, thirty, adjacent = _census(tmp_path)
+    assert any("settlement_helper" in v for v in _violations(actual, thirty, adjacent))
 
 
 def test_census_fires_on_a_second_site_inside_an_allowlisted_module(tmp_path):
@@ -774,8 +794,8 @@ def test_census_fires_on_a_second_site_inside_an_allowlisted_module(tmp_path):
         "primitives/tranche_analytics.py",
         _CLEAN_ANALYTICS + "\n\ndef period_days(a, b):\n    return (b - a).days\n",
     )
-    _, actual, thirty = _census(tmp_path)
-    assert any("tranche_analytics" in v for v in _violations(actual, thirty))
+    _, actual, thirty, adjacent = _census(tmp_path)
+    assert any("tranche_analytics" in v for v in _violations(actual, thirty, adjacent))
 
 
 def test_census_fires_on_a_second_thirty_360_formula(tmp_path):
@@ -788,8 +808,8 @@ def test_census_fires_on_a_second_thirty_360_formula(tmp_path):
         "def bond_days(a, b):\n"
         "    return 360 * (b.year - a.year) + 30 * (b.month - a.month)\n",
     )
-    _, actual, thirty = _census(tmp_path)
-    assert any("fixed_leg" in v for v in _violations(actual, thirty))
+    _, actual, thirty, adjacent = _census(tmp_path)
+    assert any("fixed_leg" in v for v in _violations(actual, thirty, adjacent))
 
 
 def test_census_fires_when_the_one_implementation_is_deleted(tmp_path):
@@ -800,8 +820,8 @@ def test_census_fires_when_the_one_implementation_is_deleted(tmp_path):
     other test in this file is silently testing nothing.
     """
     _plant(tmp_path, "primitives/tranche_analytics.py", _CLEAN_ANALYTICS)
-    _, actual, thirty = _census(tmp_path)
-    assert any("extraction/day_count.py" in v for v in _violations(actual, thirty))
+    _, actual, thirty, adjacent = _census(tmp_path)
+    assert any("extraction/day_count.py" in v for v in _violations(actual, thirty, adjacent))
 
 
 # ---------------------------------------------------------------------------
@@ -875,3 +895,44 @@ def test_a_class_stating_its_own_basis_does_not_take_the_deal_wide_count():
     assert per_class["class_b_1"] == 95
     assert per_class["class_b_2"] == 90
     assert adapter._days_in_period(period) == 95
+
+
+def test_census_fires_on_a_day_count_spelled_without_dot_days(tmp_path):
+    """The adjacent spelling. A guard's blind spot sits next to what it sees.
+
+    ``(end.toordinal() - start.toordinal())`` is the same quantity as
+    ``(end - start).days`` and the first two shapes are structurally blind to it,
+    so a fourth implementation written this way would have walked past a census
+    that only knew the two spellings already in the tree (#599).
+    """
+    _clean_tree(tmp_path)
+    _plant(
+        tmp_path,
+        "primitives/ordinal_days.py",
+        "def period_days(start, end):\n"
+        "    return end.toordinal() - start.toordinal()\n",
+    )
+    _, actual, thirty, adjacent = _census(tmp_path)
+    assert any("ordinal_days" in v for v in _violations(actual, thirty, adjacent))
+
+
+def test_census_does_not_fire_on_a_business_day_walk(tmp_path):
+    """``timedelta(days=1)`` is a step, not a count — and stays unflagged.
+
+    ``payment_schedule_parser`` walks forward and backward a day at a time to
+    find the next Business Day. A census that flagged it would cry wolf on the
+    module it most needs to be trusted about, so the exclusion is deliberate and
+    pinned here rather than left as an accident of the patterns chosen.
+    """
+    _clean_tree(tmp_path)
+    _plant(
+        tmp_path,
+        "extraction/business_day_walk.py",
+        "from datetime import timedelta\n\n\n"
+        "def next_business_day(day, is_holiday):\n"
+        "    while is_holiday(day):\n"
+        "        day += timedelta(days=1)\n"
+        "    return day\n",
+    )
+    _, actual, thirty, adjacent = _census(tmp_path)
+    assert _violations(actual, thirty, adjacent) == []
