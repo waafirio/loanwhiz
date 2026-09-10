@@ -58,6 +58,7 @@ from loanwhiz.extraction.day_count_parser import (
     UnsourcedDayCount,
     accrual_days,
 )
+from loanwhiz.extraction.payment_schedule_parser import UnresolvableBusinessDay
 from loanwhiz.api import compare as _compare
 from loanwhiz.api import extraction_jobs as _extraction_jobs
 from loanwhiz.domain.inputs import PeriodInputs as CanonicalPeriodInputs
@@ -2538,7 +2539,16 @@ def _reconstruct_series_from_reports(deal_id: str, deal: dict) -> DealStateSerie
     adapter = ReportAdapter.from_deal_model(
         model, collateral_principal_amount=seed_collateral
     )
-    series = fold_report_series(model, report, adapter)
+    try:
+        series = fold_report_series(model, report, adapter)
+    except (UnsourcedDayCount, UnresolvableBusinessDay) as exc:
+        # The fold could not establish a day count for one of this report's
+        # periods. Both refusals carry their own reason, so they are re-raised
+        # with it rather than escaping as an unhandled 500 (#607) — the same
+        # treatment ``_tape_period_days`` gives ``UnsourcedDayCount`` on the API
+        # path (#601). Never defaulted: a caller cannot tell a guessed day count
+        # from a sourced one, so there is no honest number to fall back to.
+        raise _unestablished_day_count(deal_id, exc) from exc
     _RECONSTRUCTION_MEMO[memo_key] = series
     return series
 
@@ -2685,6 +2695,39 @@ def fold_report_series(
         current = result.closing_state
 
     return DealStateSeries(states=states, period_results=period_results)
+
+
+def _unestablished_day_count(deal_id: str, exc: Exception) -> HTTPException:
+    """A labelled 422 for a report period whose day count cannot be sourced (#607).
+
+    Sibling to :func:`_not_modelable_deal`, and deliberately a *different* refusal:
+    that one says no ledger could be selected for this deal at all, while this one
+    says the ledger resolved and a specific Accrual Period could not be measured.
+    Collapsing them would tell an operator to go looking for a missing report when
+    the report is present and it is the convention that is unstated.
+
+    Two causes reach it, and each already names itself, so the message carries the
+    original reason verbatim rather than paraphrasing it:
+
+    - ``UnsourcedDayCount`` — a 30/360 endpoint falling where 30/360 US, 30E/360
+      and 30E/360 ISDA disagree, i.e. the document names the family and not the
+      member.
+    - ``UnresolvableBusinessDay`` — a Payment Date outside the committed
+      business-day calendar, so the period's endpoints are not resolvable.
+
+    The alternative to refusing is accruing a period on a plausible count, which
+    is exactly what #493 and #549 forbid: a refusal that keeps its value is not a
+    refusal, and a defaulted day count is indistinguishable downstream from a
+    measured one.
+    """
+    return HTTPException(
+        status_code=422,
+        detail=(
+            f"Deal {deal_id!r} has a report period whose day count cannot be "
+            f"established: {exc}. An unestablished day count is refused, not "
+            "defaulted (#607)."
+        ),
+    )
 
 
 def _not_modelable_deal(deal_id: str, deal: dict | None = None) -> HTTPException:

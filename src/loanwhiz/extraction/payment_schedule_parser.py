@@ -71,6 +71,8 @@ import re
 from dataclasses import dataclass
 from datetime import date, timedelta
 
+from loanwhiz.extraction.day_count import DayCountBasis, accrual_days
+
 __all__ = [
     "BUSINESS_CENTRE_HOLIDAYS",
     "COVERED_YEARS",
@@ -684,19 +686,45 @@ def payment_date_on_or_after(schedule: PaymentDateSchedule, day: date) -> date:
     )
 
 
-def accrual_period_days(schedule: PaymentDateSchedule, payment: date) -> int:
-    """Days in the Accrual Period ending on ``payment``.
+def accrual_period_days(
+    basis: DayCountBasis, schedule: PaymentDateSchedule, payment: date
+) -> int:
+    """Days in the Accrual Period ending on ``payment``, on ``basis`` (#607).
 
     The deal's *Accrual Period* is "each successive period from and including each
-    Payment Date to, but excluding, the following Payment Date", so the count is
-    the plain difference between two actual Payment Dates — both of them stated
-    dates, neither derived from any published amount.
+    Payment Date to, but excluding, the following Payment Date", so this resolves
+    the period's two endpoints from the stated schedule — both of them dates the
+    prospectus names, neither derived from any published amount — and hands them
+    to :func:`~loanwhiz.extraction.day_count.accrual_days`, the one day-count
+    implementation in this repository. **Nothing here counts days itself.**
+
+    Until #607 it did, and hardcoded Act/360 while doing it. That is the same
+    defect #601 removed from the API path's ``_days_between``, and it is not
+    merely duplicative: #538 measured Cairn's Class B as two strips under two
+    different conventions — B-1 on the actual day count, B-2 on 30/360 — so a
+    day-count entrypoint that cannot be *asked* for a basis cannot express that
+    deal. Taking ``basis`` as an argument is what makes the second convention
+    sayable here; passing it explicitly at the call site is what keeps the
+    assumption visible rather than buried in this function's arithmetic.
+
+    Converging it needed the dependency inverted first —
+    :mod:`loanwhiz.extraction.day_count_parser` imports this module, so calling
+    ``accrual_days`` there would have closed a cycle. The primitive moved down
+    into :mod:`loanwhiz.extraction.day_count` instead.
 
     Args:
+        basis:    The day-count basis this period accrues on.
         schedule: The stated Payment Date schedule.
         payment:  The actual Payment Date the period ends on.
 
     Returns:
-        The Act/360 day count for that period.
+        The day count ``basis`` produces for that period.
+
+    Raises:
+        UnresolvableBusinessDay: If the preceding Payment Date cannot be resolved
+            within the committed calendar.
+        UnsourcedDayCount: If ``basis`` is 30/360 and an endpoint falls where the
+            30/360 variants disagree. Refused rather than defaulted — a caller
+            cannot tell a guessed count from a sourced one.
     """
-    return (payment - previous_payment_date(schedule, payment)).days
+    return accrual_days(basis, previous_payment_date(schedule, payment), payment)

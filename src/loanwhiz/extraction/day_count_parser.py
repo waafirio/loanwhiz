@@ -83,16 +83,32 @@ it: an endpoint where the variants would diverge raises
 :class:`UnsourcedDayCount`, because at that date the document genuinely does not
 say which member is meant, and guessing one would be the same back-solving this
 module exists to avoid.
+
+Where the counting itself lives
+-------------------------------
+``DayCountBasis``, ``UnsourcedDayCount``, ``thirty_360_days`` and ``accrual_days``
+were defined here until #607 and are now :mod:`loanwhiz.extraction.day_count`,
+re-exported below. They moved *down*, not sideways: this module imports
+:mod:`loanwhiz.extraction.payment_schedule_parser`, so the report path's
+``accrual_period_days`` could not call ``accrual_days`` here without closing an
+import cycle. The arithmetic depends on neither the Conditions text this module
+parses nor the calendar that one resolves, so a stdlib-only leaf module is where
+it belongs and both parsers now reach the same function object.
 """
 
 from __future__ import annotations
 
-import calendar
 import re
 from dataclasses import dataclass
 from datetime import date
 from typing import Literal
 
+from loanwhiz.extraction.day_count import (
+    DayCountBasis,
+    UnsourcedDayCount,
+    accrual_days,
+    thirty_360_days,
+)
 from loanwhiz.extraction.payment_schedule_parser import (
     PaymentDateSchedule,
     UnresolvableBusinessDay,
@@ -101,6 +117,12 @@ from loanwhiz.extraction.payment_schedule_parser import (
     scheduled_dates_in_year,
 )
 
+#: ``DayCountBasis``, ``UnsourcedDayCount``, ``accrual_days`` and
+#: ``thirty_360_days`` are re-exports from :mod:`loanwhiz.extraction.day_count`
+#: (#607), kept here because this module was their home and importers name them
+#: at this path. A re-export is the same object, not a copy: ``day_count_parser
+#: .accrual_days is day_count.accrual_days``, which is what keeps "one
+#: implementation" true rather than merely tidy.
 __all__ = [
     "ClassDayCount",
     "DayCountBasis",
@@ -111,24 +133,6 @@ __all__ = [
     "parse_unadjusted_condition",
     "thirty_360_days",
 ]
-
-
-#: The two bases Condition 6(e) states. Both divide by 360; they differ in the
-#: numerator only — ``act/360`` counts calendar days, ``30/360`` counts on a year
-#: of twelve 30-day months.
-DayCountBasis = Literal["act/360", "30/360"]
-
-
-class UnsourcedDayCount(ValueError):
-    """A class's day-count basis could not be read from the document.
-
-    Raised rather than defaulted, and deliberately never rescued by "the other
-    classes use X, so this one probably does too". A basis that is not stated is
-    not known, and #493's rule applies: the need reports ``not_evaluable`` naming
-    the unsourced convention rather than accruing on a plausible one. The whole
-    point of #539 is that the convention comes from the document; a fallback here
-    would quietly reintroduce the assumption it removes.
-    """
 
 
 @dataclass(frozen=True)
@@ -399,71 +403,6 @@ def parse_interest_day_counts(text: str) -> dict[str, ClassDayCount]:
                 rate_type="FXR" if basis == "30/360" else "FLR",
             )
     return day_counts
-
-
-# ===========================================================================
-# Counting days on a basis
-# ===========================================================================
-
-
-def _variant_sensitive(day: date) -> bool:
-    """Whether the 30/360 variants disagree about this endpoint.
-
-    30/360 US, 30E/360 and 30E/360 ISDA treat the 31st and the last day of
-    February differently; on every other date they agree exactly. A Condition
-    saying only "12 months of 30 days each" names the family, so a date where the
-    members diverge is a date the document does not decide.
-    """
-    if day.day == 31:
-        return True
-    return day.month == 2 and day.day == calendar.monthrange(day.year, 2)[1]
-
-
-def thirty_360_days(start: date, end: date) -> int:
-    """Days from ``start`` to ``end`` on a year of twelve 30-day months.
-
-    Args:
-        start: First day of the period (included).
-        end:   Day the period runs to (excluded).
-
-    Returns:
-        The 30/360 day count.
-
-    Raises:
-        UnsourcedDayCount: If either endpoint is one where the 30/360 variants
-            disagree — the 31st, or the last day of February. The Condition names
-            the family and not the member, so the answer is genuinely unstated
-            there and picking a member would be a guess.
-    """
-    for label, day in (("start", start), ("end", end)):
-        if _variant_sensitive(day):
-            raise UnsourcedDayCount(
-                f"the Accrual Period's {label} date {day.isoformat()} is one where "
-                "30/360 US, 30E/360 and 30E/360 ISDA disagree; the Condition states "
-                '"12 months of 30 days each" without naming which, so the day '
-                "count cannot be sourced for this period"
-            )
-    return (
-        360 * (end.year - start.year)
-        + 30 * (end.month - start.month)
-        + (end.day - start.day)
-    )
-
-
-def accrual_days(basis: DayCountBasis, start: date, end: date) -> int:
-    """Days in the period ``[start, end)`` on ``basis``.
-
-    Args:
-        basis: The stated day-count basis.
-        start: First day of the Accrual Period (included).
-        end:   Payment Date the period runs to (excluded).
-
-    Returns:
-        The day count that basis produces.
-    """
-    if basis == "act/360":
-        return (end - start).days
-    return thirty_360_days(start, end)
 
 
 def _scheduled_date_for(schedule: PaymentDateSchedule, payment: date) -> date:
