@@ -36,10 +36,10 @@ in the #276 engine collapse.
   Steps the taxonomy can't map degrade **honestly** to `unmapped` /
   `report_supplied` (prose retained, never executed) rather than being faked.
 - **Cross-jurisdiction execution.** The same primitives run end-to-end across
-  5 deals in 3 jurisdictions (Dutch / Italian / Spanish RMBS); see
+  every registered deal (Dutch / Italian / Spanish RMBS, plus the Irish CLOs); see
   `tests/test_cross_jurisdiction_cold_start.py` and
-  `tests/test_breadth_cross_jurisdiction.py`. A sixth deal — the Irish CLO
-  Cairn CLO XVII DAC — is extracted and **executes through the same
+  `tests/test_breadth_cross_jurisdiction.py`. The Irish CLO
+  Cairn CLO XVII DAC is extracted and **executes through the same
   `run_period` kernel**, with its own Interest and Principal cascades rather
   than the RMBS defaults; see `tests/test_clo_engine_execution.py`. It is
   validated against nothing, and the production ingestion path still refuses it
@@ -92,7 +92,7 @@ see what moved and check it.
 Accurate as of 2026-09-02 and verified against current code. None is a "TODO
 that's actually done"; each is a genuine present boundary.
 
-### 1. Extraction coverage is now high on every deal — coverage is not correctness, and only one deal is externally validated
+### 1. Extraction coverage is now high on every deal — coverage is not correctness, and external validation is far narrower than coverage
 The committed IT/ES seeds were re-extracted in #438/#439 and are no longer the
 pre-fix artifacts the old item 3 described. Measured from
 `src/loanwhiz/data/deals/seed/`:
@@ -119,12 +119,24 @@ distinct things are being counted, and only the last is external:
   375,800,000. This is a real independent check on the **capital structure**,
   and it is *internal* — a curated registry is not a published source.
 - **Externally validated** means reconciled to a deal's own published Notes &
-  Cash report. That is still **one deal**: Green Lion 2024-1 is the only
-  `validated` cell in `GET /capability-matrix` (live tally: 1 validated /
-  14 ran / 15 not-applicable, over 6 deal columns). Green Lion 2023-1 now has a committed
-  ground-truth answer key (#440), so `GET /quality-matrix` **grades two
-  deals** — both reconcile their revenue and redemption Priority of Payments
-  to the cent across all three published periods.
+  Cash report. Which deals clear that bar is stated by the matrix, in the
+  generated block below — this document used to assert it in prose and was
+  wrong (#602). Green Lion 2023-1 carries a committed ground-truth answer key
+  (#440) alongside 2024-1's, so `GET /quality-matrix` reconciles each one's
+  revenue and redemption Priority of Payments to the cent across all three
+  published periods, and since #492 the capability matrix derives its
+  `validated` cells from those same committed keys rather than from bespoke
+  per-deal Python.
+
+The tally below is **generated from the matrix**, never transcribed into it.
+This document, `README.md` and `presentation/loanwhiz-deck.json` each carried a
+different hand-written tally and none matched the system (#602). Regenerate with
+`PYTHONPATH=src python -m scripts.render_capability_tally --write`;
+`tests/test_published_capability_tally.py` reds if it drifts again.
+
+<!-- capability-tally:start -->
+`GET /capability-matrix` reports **2 validated / 24 ran / 9 not-applicable** over 7 registered deals × 5 capabilities = 35 cells. The validated cells are Green Lion 2023-1 B.V. and Green Lion 2024-1 B.V. (Netherlands), whose engines reproduce those deals' own published Priorities of Payments to the cent. Every other cell carries its own reason, and `ran` is not `validated`.
+<!-- capability-tally:end -->
 
 Leone Arancio and Sol-Lion II publish **no** Notes & Cash report, so no answer
 key can be authored for them without inventing one, and none is. The CLO is the
