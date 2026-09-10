@@ -277,6 +277,53 @@ def test_the_panel_says_what_each_series_rests_on(comparison: dict) -> None:
     )
 
 
+def test_the_flagship_pair_scores_because_contego_brings_evidence() -> None:
+    """The joint acceptance criterion for #614 and #615, pinned as one test.
+
+    #615 made ``comparative_verdict`` refuse the whole set when any deal
+    contributes no performance series or risk row — ``incomplete-set``, with the
+    winner, ranking and reasons emptied together — which left the flagship
+    Cairn/Contego pair with no verdict at all. #614 gives Contego a series, so
+    the pair scores again.
+
+    Both halves are asserted **in one test on purpose**: "it scores" alone would
+    also pass if someone weakened #615's guard, and that is the failure mode
+    worth catching. Removing the fixing has to put the refusal back, which is
+    only true while the verdict is answering to real evidence rather than to a
+    suppressed check.
+    """
+    import copy
+
+    from fastapi.testclient import TestClient
+
+    import loanwhiz.api.main as api_main
+
+    client = TestClient(api_main.app)
+    params = {"deals": f"{CAIRN},{CONTEGO}"}
+
+    scored = client.get("/compare", params=params).json()["comparative_verdict"]
+    assert scored["confidence"] == "scored"
+    assert scored["winner_deal_id"] in {CAIRN, CONTEGO}
+    assert set(scored["ranking"]) == {CAIRN, CONTEGO}
+    assert scored["reasons"], "a scored verdict states no reason"
+
+    saved = copy.deepcopy(api_main.DEALS[CONTEGO])
+    try:
+        del api_main.DEALS[CONTEGO]["synthetic_index_fixing"]
+        api_main._RECONSTRUCTION_MEMO.clear()
+        without = client.get("/compare", params=params).json()["comparative_verdict"]
+    finally:
+        api_main.DEALS[CONTEGO] = saved
+        api_main._RECONSTRUCTION_MEMO.clear()
+
+    assert without["confidence"] == "incomplete-set", (
+        "the verdict scores the pair even with Contego's evidence removed — the "
+        "set-completeness guard is answering to something other than evidence"
+    )
+    assert without["winner_deal_id"] is None
+    assert without["ranking"] == []
+
+
 def test_removing_the_synthetic_fixing_restores_the_coupon_refusal() -> None:
     """The falsification test: the fixing is load-bearing, not decorative.
 
