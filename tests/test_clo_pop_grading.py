@@ -1253,11 +1253,23 @@ RETRACTED_CLAIMS: tuple[tuple[str, tuple[str, ...]], ...] = (
             # steps agree. The ban names the tense, not the history.
             "grade anyway and it does not reconcile",
             "so the failure is the tie-out, not a delta",
+            # Retracted by #598: the count bounded an authored list, and the
+            # card said so in the present tense. The row still narrates that
+            # history ("that count was three until #598"), so the ban names the
+            # whole standing assertion rather than the numeral.
+            "three of the 29 lines are genuinely engine-computed",
+            "figure 3 bounds a declaration this repo authored",
+            "widening it is a change to the engine",
+            "26 of the 29 steps arrive carrying the report's figure",
         ),
     ),
     (
         "README.md",
-        ("no answer key is authored, so no cell of it is",),
+        (
+            "no answer key is authored, so no cell of it is",
+            # Retracted by #598.
+            "3 of those 29 lines are engine-computed and 26 are report-supplied",
+        ),
     ),
     (
         "src/loanwhiz/data/deals/answer_keys/README.md",
@@ -1272,6 +1284,11 @@ RETRACTED_CLAIMS: tuple[tuple[str, tuple[str, ...]], ...] = (
             # Retracted by #514/#538/#539, measured by #515: the row reconciles.
             "and the interest row, run, does not reconcile",
             "so not one line is",
+            # Retracted by #598: membership is derived, so no declaration
+            # bounds the count and no class is named as the stopping point.
+            "3 of the 29 lines are engine-computed",
+            "only `class_{a,b,c}_interest` are in",
+            "so the count of 3 bounds that declaration",
         ),
     ),
     # #515 added this file to the ban-list. Its Limitation 1 was the last
@@ -1287,6 +1304,9 @@ RETRACTED_CLAIMS: tuple[tuple[str, tuple[str, ...]], ...] = (
             # #492 brought Green Lion 2023-1's grade onto the matrix, so a
             # transcribed "exactly one" has been false since.
             "exactly one cell is validated",
+            # Retracted by #598.
+            "3 of those 29 lines are engine-computed and 26 are report-supplied",
+            "3 of those 29\nlines are engine-computed while 26 are report-supplied",
         ),
     ),
 )
