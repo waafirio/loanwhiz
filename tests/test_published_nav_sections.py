@@ -21,9 +21,14 @@ not a ranking: the deck's card bodies and the two ``.tsx`` docstrings carry
 editorial voice a generator would destroy, so they are guarded; the Markdown
 docs' grouping is pure membership, so it is generated.
 
-Six checks, and every one is reached by a mutant that reaches **no other**
+The checks below — ``_ALL_CHECKS`` is the list, not this sentence, because a
+transcribed count is the defect this whole module exists to stop. Every one is
+reached by a mutant that reaches **no other**
 (``.liz/memory/guard-mutation-tables.md`` #613 — a check no mutant reaches
-alone has never been observed to fail, and reads as coverage):
+alone has never been observed to fail, and reads as coverage), and the same
+rule is applied one granularity down: each accepted *phrasing* inside a check
+needs its own mutant too, since a check id can fire while an alternative
+inside it has never matched anything.
 
 * ``region-drift`` / ``region-missing`` — the generated regions equal what
   ``NAV_GROUPS`` says, and the fences are asserted **present** before anything
@@ -118,11 +123,19 @@ _PLACEMENT_RES = (
     re.compile(r"\"([^\"]+)\"\s+(?:group|section)\s+of\s+the\s+sidebar"),
 )
 
-#: A stated number of sections. Scoped to GUARDED_SURFACES, where "sections"
-#: can only mean the rail's.
+#: The nouns a count of the rail can be written against. "layers" is here
+#: because the deck said "Two layers, one product" before this issue, so a
+#: future editor reaching for that word must not slip the count past the check.
+#: Kept as data, not inlined, so :func:`test_every_accepted_count_noun_is_exercised`
+#: can require a mutant for each.
+_COUNT_NOUNS = ("sections", "layers")
+
+#: A stated number of sections. Scoped to GUARDED_SURFACES, where these nouns
+#: can only mean the rail's — measured repo-wide the same pattern matches 25+
+#: innocent uses (see the module docstring).
 _COUNT_RE = re.compile(
     r"(?<![\w-])(one|two|three|four|five|six|seven|eight|\d+)\s+"
-    r"(?:sidebar\s+)?(?:sections?|layers?)\b",
+    r"(?:sidebar\s+)?(?:" + "|".join(f"{n[:-1]}s?" for n in _COUNT_NOUNS) + r")\b",
     re.I,
 )
 
@@ -391,6 +404,26 @@ _MUTANTS: list[tuple[str, str, list[tuple[str, str]]]] = [
         ],
     ),
     (
+        # Exercises the `layers` noun — the deck's own pre-#617 wording, which
+        # nothing else in this table reaches.
+        "state-a-stale-count-against-the-old-noun",
+        _DECK,
+        [("Three sections, one product", "Two layers, one product")],
+    ),
+    (
+        # Exercises the second accepted placement phrasing. Written so the
+        # first pattern does NOT also match, or it would prove nothing about
+        # the second.
+        "refile-the-page-using-the-other-phrasing",
+        _DUE_DILIGENCE,
+        [
+            (
+                " * page sits in the sidebar's\n * \"Portfolio\" group and shares",
+                " * page sits in the\n * \"Platform & Governance\" group of the sidebar and shares",
+            )
+        ],
+    ),
+    (
         "let-a-deck-card-forget-an-entry",
         _DECK,
         [
@@ -472,6 +505,46 @@ def test_no_check_is_decorative() -> None:
     assert _ALL_CHECKS - alone == set(), (
         f"no mutant reaches these checks on their own, so nothing shows they "
         f"can be the check that fires: {sorted(_ALL_CHECKS - alone)}"
+    )
+
+
+def _mutated_corpora() -> list[dict[str, str]]:
+    docs = _corpus()
+    return [docs] + [_mutate(docs, path, edits) for _, path, edits in _MUTANTS]
+
+
+def test_no_placement_phrasing_is_decorative() -> None:
+    """Every accepted phrasing must be one some mutant actually trips.
+
+    :func:`test_no_check_is_decorative` works at check-id granularity, which is
+    too coarse to see an unused alternative *inside* a check: ``placement-claim``
+    fired on a mutant while its second pattern had never matched anything, on
+    the committed tree or in the table. An accepted phrasing nothing exercises
+    is an untested claim about English wearing a passing test's clothes.
+    """
+    seen = [False] * len(_PLACEMENT_RES)
+    for corpus in _mutated_corpora():
+        for i, pattern in enumerate(_PLACEMENT_RES):
+            if any(pattern.findall(_flatten(text)) for text in corpus.values()):
+                seen[i] = True
+    assert all(seen), (
+        f"these placement phrasings are matched by nothing, so nothing shows "
+        f"they work: {[p.pattern for p, ok in zip(_PLACEMENT_RES, seen) if not ok]}"
+    )
+
+
+def test_every_accepted_count_noun_is_exercised() -> None:
+    """Same rule for the count nouns: an unreached alternation is not coverage."""
+    seen = {noun: False for noun in _COUNT_NOUNS}
+    for corpus in _mutated_corpora():
+        for text in corpus.values():
+            for match in _COUNT_RE.finditer(_flatten(strip_regions(text))):
+                for noun in _COUNT_NOUNS:
+                    if noun[:-1] in match.group(0).lower():
+                        seen[noun] = True
+    assert all(seen.values()), (
+        f"no mutant states a count against these nouns, so the check has never "
+        f"been observed to read one: {sorted(n for n, ok in seen.items() if not ok)}"
     )
 
 
