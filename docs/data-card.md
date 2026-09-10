@@ -471,6 +471,58 @@ config shape). And per #457 below, the threshold gap is not even the refusal tha
 fires first. A reader taking this paragraph as "the coverage tests now evaluate"
 would be making exactly the inversion #457 warns about.
 
+**#566: the risk-retention undertaking is stated in full, and nothing in the
+pipeline could see it.** UK/EU Securitisation Regulation obliges an institutional
+investor to verify, *before* taking a position, that a named entity retains a
+material net economic interest of not less than 5% — and to say by **which**
+Article 6(3) method. Cairn's committed glossary stops at `Payment Date`, so the
+entire R range — `Retention Requirements`, `Retention Deficiency` — is on the far
+side of the same 40,000-character cut described above. Read from that artefact
+alone the honest-looking answer is "this deal states no retention", and it is
+false. The Listing Particulars state the undertaking on page 282:
+
+| Stated term | Value | Source |
+|---|---|---|
+| Retention Holder | The Investment Manager | Listing Particulars, "The Retention Holder and the Securitisation Regulations" |
+| Capacity | originator | same |
+| Method | **Article 6(3)(d)** — the first-loss tranche | same |
+| Level | not less than 5% of the Aggregate Collateral Balance | same |
+| Instrument | Subordinated Notes | same |
+
+**The locator is the citation, not the figure.** Searching this document for "5%"
+finds the *Regulation's* generic description first — it states the same
+five-per-cent. floor across four pages that name no retaining entity, 239 pages
+before the deal's own commitment. A record built from those pages would carry a
+level and no method, which is precisely what the obligation does not accept.
+`Article 6(3)` appears on exactly one page of the 420. So
+`extraction/retention_parser.py` keys on the sub-paragraph letter through a
+closed enum, and treats the method named in words as a cross-check: Cairn never
+writes "first loss tranche" at all, Contego CLO XI writes it *and* cites
+`Article 6(3)(d)`, and Leone Arancio writes `option 3 (a) of article 6` for a
+different method entirely. Where a document states both, they must agree; a
+contradiction is refused rather than tie-broken.
+
+**The retainer is recorded as the document designates it.** Cairn names "the
+Investment Manager", not a legal person; the back cover lists Cairn Loan
+Investments II LLP at the 62 Buckingham Gate address the retention section gives,
+which is how a reader closes the gap. The parser does not close it — substituting
+a legal name for the designation the document used is a cross-section inference,
+and it belongs beside the record as evidence rather than inside it as a fact.
+
+**A section that did not arrive is not a document that is silent.** Both produce
+the same empty parse, and only one is a fact about the deal, so `assess_retention`
+judges the *input* the way #548 taught the definitions stage to judge its output:
+text that mentions retention but cites no sub-paragraph, text too short to be a
+retention section, or a section flagged truncated, each returns `implausible`
+with a named cause. Run against Cairn's own truncated glossary it fires — which
+is the case that would otherwise have been recorded as an absence.
+
+**Contego is read but not seeded.** Its undertaking parses from a committed
+excerpt of the 29-Jun-2023 Listing Particulars — same method, different retainer
+(Five Arrows Global Loan Investments II PLC), level measured on the nominal value
+of the securitised exposures rather than the Aggregate Collateral Balance — but
+the deal is not registered on this branch, so no seed carries it.
+
 **#481 grades these outcomes without closing that gap, and the distinction is
 the whole of what it claims.** The published results are committed as an answer
 key and `GET /quality-matrix` grades the `covenants` row against them — but the
@@ -1019,6 +1071,18 @@ disclosure sentence, so a reader who never opens this card is still told. The
 prefix strips off before the file is fetched, so the pool figures are unchanged
 — re-running the normaliser across the re-identified tapes moved `data_source`
 and nothing else. See [`tape-ingestion.md`](tape-ingestion.md).
+
+**That claim holds for the API surfaces, not yet for the web ones (#568).**
+"Every provenance surface" above means the evidence pack, the capability matrix
+and the tape citation — the surfaces named in the paragraph before it, all of
+which read the tape's registered kind. The Next.js layer does not: the Pool and
+Waterfall pages render no synthetic badge at all, and the evidence pack sheet's
+own provenance badge resolves its text with a binary on `deeploans`, so a
+`derived` or `synthetic` source is labelled "direct ingestion" there — the one
+label #483 exists to prevent. The disclosure *sentence* beneath the badges is
+correct, because it reads the full label table; the badge above it is not. This
+is #484's open surface, recorded here rather than fixed in passing: a reader
+who trusts the sentence above should not conclude the screens say so too.
 
 ### The four fitted pools (#484)
 
