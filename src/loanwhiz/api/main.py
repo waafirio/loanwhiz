@@ -1362,7 +1362,19 @@ def compare_deals(
         # A projected series can rest on a stated rate or a generated one, and
         # only the second needs marking; resolving it here keeps the marking on
         # the same object the panel already reads.
-        synthetic_fixing = _series_rests_on_synthetic_rate(deal_id, ctx)
+        #
+        # Guarded because resolving it can REFUSE: a malformed
+        # ``synthetic_index_fixing`` raises a labelled 422. Unguarded, one
+        # deal's bad config would 422 the whole comparison and take every other
+        # deal's panel with it — the blast radius #572 ruled against. The
+        # refusal belongs to this deal's column, so it degrades to this deal's
+        # note, exactly as every other per-deal failure in this loop does.
+        synthetic_fixing: SyntheticIndexFixing | None = None
+        fixing_error: str | None = None
+        try:
+            synthetic_fixing = _series_rests_on_synthetic_rate(deal_id, ctx)
+        except HTTPException as exc:
+            fixing_error = str(exc.detail)
         rate_provenance: str | None = None
         if states:
             rate_provenance = "synthetic" if synthetic_fixing is not None else "stated"
@@ -1393,6 +1405,8 @@ def compare_deals(
             )
         if synthetic_fixing is not None and rate_provenance == "synthetic":
             note_parts.append(synthetic_fixing.disclosure)
+        if fixing_error is not None:
+            note_parts.append(fixing_error)
         ref_note: str | None = " ".join(note_parts) if note_parts else None
         if ref_note is not None:
             notes.append(f"{deal_id}: {ref_note}")
@@ -2068,6 +2082,19 @@ def _latest_tape_amort_schedule(deal: dict, months: int) -> list[float] | None:
     return pool_scheduled_principal_schedule(df, months)
 
 
+#: What the tape-driven collections leg needs to fold a period. A module
+#: constant rather than a local so the capability matrix's mirror
+#: (``capability_matrix._COLLECTIONS_LEG_KEYS``) can be asserted equal to it —
+#: a mirror is only safe while something checks it, which is the same contract
+#: ``_missing_structural_config`` already lives under.
+_COLLECTIONS_LEG_REQUIRED_KEYS = (
+    "class_a_balance",
+    "class_a_rate_pct",
+    "class_b_balance",
+    "class_c_balance",
+)
+
+
 def _collections_tranche_args(deal_id: str, capital_structure: dict) -> dict:
     """The tranche arguments ``CollectionsInput`` takes, or a labelled 422.
 
@@ -2082,13 +2109,10 @@ def _collections_tranche_args(deal_id: str, capital_structure: dict) -> dict:
     saying so; it never gets three of its classes silently selected, which would
     publish a waterfall computed over part of the deal.
     """
-    required = (
-        "class_a_balance",
-        "class_a_rate_pct",
-        "class_b_balance",
-        "class_c_balance",
-    )
-    missing = [key for key in required if capital_structure.get(key) is None]
+    missing = [
+        key for key in _COLLECTIONS_LEG_REQUIRED_KEYS
+        if capital_structure.get(key) is None
+    ]
     if missing:
         raise HTTPException(
             status_code=422,

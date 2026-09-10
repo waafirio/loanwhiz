@@ -277,6 +277,53 @@ def test_the_panel_says_what_each_series_rests_on(comparison: dict) -> None:
     )
 
 
+def test_a_malformed_fixing_degrades_one_column_not_the_whole_comparison() -> None:
+    """A refusal's blast radius matches what failed to resolve (#572).
+
+    Resolving a synthetic fixing can refuse — a malformed one raises a labelled
+    422 naming the deal and the key. That refusal belongs to **one deal's
+    column**. Raised out of the per-deal loop it would 422 the whole request and
+    take every other deal's panel with it, so Cairn's comparison would die
+    because Contego's registry entry is wrong.
+
+    Asserting the status code alone would not catch that: the endpoint answers
+    200 for plenty of reasons. What pins it is that the *other* deal still has
+    its series and that the broken deal carries the reason in its own note.
+    """
+    import copy
+
+    from fastapi.testclient import TestClient
+
+    import loanwhiz.api.main as api_main
+
+    client = TestClient(api_main.app)
+    saved = copy.deepcopy(api_main.DEALS[CONTEGO])
+    try:
+        api_main.DEALS[CONTEGO]["synthetic_index_fixing"] = {"index": "EURIBOR"}
+        api_main._RECONSTRUCTION_MEMO.clear()
+        response = client.get("/compare", params={"deals": f"{CAIRN},{CONTEGO}"})
+    finally:
+        api_main.DEALS[CONTEGO] = saved
+        api_main._RECONSTRUCTION_MEMO.clear()
+
+    assert response.status_code == 200, (
+        "one deal's malformed fixing refused the whole comparison: "
+        f"{response.text[:200]}"
+    )
+    payload = response.json()
+
+    series = {s["deal_id"] for s in payload["performance_series"]}
+    assert CAIRN in series, "the healthy deal lost its panel to the broken one"
+    assert CONTEGO not in series
+
+    refs = {d["deal_id"]: d for d in payload["deals"]}
+    assert refs[CONTEGO]["rate_provenance"] is None
+    note = refs[CONTEGO]["note"] or ""
+    assert "synthetic_index_fixing" in note, (
+        f"the degraded column does not name what failed to resolve: {note}"
+    )
+
+
 def test_the_flagship_pair_scores_because_contego_brings_evidence() -> None:
     """The joint acceptance criterion for #614 and #615, pinned as one test.
 
