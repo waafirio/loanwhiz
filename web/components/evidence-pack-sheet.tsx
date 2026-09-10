@@ -7,9 +7,12 @@ import {
   ApiError,
   citationDataSource,
   getGovernance,
+  type BookResponse,
   type Citation,
   type DataSource,
   type GovernanceEvidencePack,
+  type PositionField,
+  type PositionProvenance,
   type ToolCallRecord,
 } from "@/lib/api";
 import { Badge } from "@/components/ui/badge";
@@ -22,7 +25,7 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import { Skeleton } from "@/components/ui/skeleton";
-import { formatPct } from "@/lib/format";
+import { formatCurrency, formatPct } from "@/lib/format";
 
 /**
  * Slide-over that renders one query's `GovernanceEvidencePack` — the
@@ -350,4 +353,149 @@ function CitationItem({ citation }: { citation: Citation }) {
 function formatTimestamp(ts: string): string {
   const d = new Date(ts);
   return Number.isNaN(d.getTime()) ? ts : d.toLocaleString();
+}
+
+// ---------------------------------------------------------------------------
+// Holdings book (#573, epic #569) — what a position IS, and what the platform
+// could not resolve about it.
+//
+// This lives beside DATA_SOURCE_LABELS on purpose. That table is this file's
+// existing provenance vocabulary: a *total* Record mapping a provenance kind to
+// one human-readable sentence, in a voice that names the consequence rather
+// than the mechanism ("SYNTHETIC — generated, describes no real obligor").
+// A holding's provenance is a different union — it answers "does anybody hold
+// this", not "where was this tape read from" — so it gets its own total Record
+// rather than new members in that one, but the same shape and the same voice.
+// Building a second vocabulary somewhere else is what this region refuses.
+//
+// #484 is the failure being designed against: its synthetic pools are
+// correctly labelled in the *data*, and the Pool and Waterfall pages render no
+// badge, so a viewer sees generated collateral presented exactly like real
+// collateral. A qualifier a surface has to remember is one it can forget.
+// ---------------------------------------------------------------------------
+
+/**
+ * What a holding IS, per provenance kind — a total `Record`, like
+ * DATA_SOURCE_LABELS above and for the same reason: widening
+ * `PositionProvenance` is a compile error here until this table answers for the
+ * new member. A conditional would answer for it by accident, which is how the
+ * "direct ingestion" label above came to speak for a derived tape.
+ */
+const POSITION_PROVENANCE_LABELS: Record<PositionProvenance, string> = {
+  illustrative: "ILLUSTRATIVE — generated, nobody holds this",
+  client_stated: "Client-stated holding",
+};
+
+/**
+ * The provenance badge for one position.
+ *
+ * Rendered per position rather than once per screen. A book-level caveat is
+ * true of the book and says nothing about the row a reader is looking at, and a
+ * mixed book — one client-stated position among illustrative ones — would then
+ * carry a qualifier that is wrong for every row it does not apply to.
+ *
+ * `destructive` for a position nobody holds: the same weight the sheet already
+ * gives "Human review required", because "this is not anybody's exposure" is
+ * the same class of claim.
+ */
+export function PositionProvenanceBadge({
+  provenance,
+  describesARealHolding,
+}: {
+  provenance: PositionProvenance;
+  describesARealHolding: boolean;
+}) {
+  return (
+    <Badge
+      variant={describesARealHolding ? "secondary" : "destructive"}
+      className="font-normal"
+    >
+      <ShieldCheck className="mr-1 size-3" />
+      {POSITION_PROVENANCE_LABELS[provenance]}
+    </Badge>
+  );
+}
+
+/**
+ * The book's own status, rendered above the positions it qualifies.
+ *
+ * The disclosure sentences are the backend's, quoted verbatim — the same
+ * treatment `/showcase` gives `matrix.note`. `domain/position.py` is explicit
+ * that a surface must render `PositionProvenance.disclosure` rather than
+ * compose its own wording, so the claim cannot drift between views; composing
+ * a friendlier sentence here is exactly that drift. Every distinct disclosure
+ * is rendered, not the first: a book with two kinds of holding in it makes two
+ * different claims.
+ */
+export function BookDisclosure({ book }: { book: BookResponse }) {
+  return (
+    <div className="rounded-lg border border-destructive/30 bg-destructive/5 px-4 py-3">
+      <div className="flex flex-wrap items-center gap-1.5">
+        <Badge
+          variant={book.describes_a_real_holding ? "secondary" : "destructive"}
+          className="font-normal"
+        >
+          {book.describes_a_real_holding
+            ? "Every position is a stated holding"
+            : "ILLUSTRATIVE BOOK — nobody holds these positions"}
+        </Badge>
+      </div>
+      {book.disclosures.map((disclosure) => (
+        <p key={disclosure} className="mt-2 text-xs text-muted-foreground">
+          {disclosure}
+        </p>
+      ))}
+    </div>
+  );
+}
+
+/** Render one resolved figure in the units its field is quoted in. */
+function formatFactValue(field: string, value: number): string {
+  if (field === "balance") return formatCurrency(value);
+  if (field === "coupon") return formatPct(value, 2);
+  return `${value}`;
+}
+
+/**
+ * One fact about one position: the figure, or the refusal — at the same weight.
+ *
+ * #549's rule is that a refusal that keeps the value is not a refusal, and the
+ * corollary on a screen is that a refusal rendered as an empty cell is not one
+ * either: a reader takes a blank in a numeric column for zero. So a cell that
+ * could not resolve says so in a Badge, in the slot the figure would have
+ * occupied, and prints the backend's stated cause beneath it — the same two
+ * lines a resolved cell gets.
+ *
+ * The reason is body text, not a tooltip. `capability-matrix-grid.tsx` puts its
+ * cell reasons behind a hover, which suits a dense grid of states; here the
+ * reason IS the content of the cell, and a cause a reader has to discover by
+ * hovering has already lost to the figure beside it.
+ *
+ * `fact.value` is only reachable inside the `ran` branch — `PositionField` is a
+ * discriminated union, so the refusing half has `value: null` and there is
+ * nothing to coalesce.
+ */
+export function PositionFactCell({ fact }: { fact: PositionField }) {
+  if (fact.state === "ran") {
+    return (
+      <div className="space-y-1">
+        <span className="text-sm font-medium tabular-nums text-foreground">
+          {formatFactValue(fact.field, fact.value)}
+        </span>
+        <p className="text-xs leading-snug text-muted-foreground">
+          {fact.reason}
+        </p>
+      </div>
+    );
+  }
+  return (
+    <div className="space-y-1">
+      <Badge variant="destructive" className="font-normal">
+        Not resolved
+      </Badge>
+      <p className="text-xs leading-snug text-muted-foreground">
+        {fact.reason}
+      </p>
+    </div>
+  );
 }
