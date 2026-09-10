@@ -173,7 +173,12 @@ export interface Citation {
  */
 export type DataSource = "deeploans" | "direct" | "derived" | "synthetic";
 
-const DATA_SOURCES: readonly DataSource[] = [
+/**
+ * Every member of the union, in display order — exported because a surface
+ * that renders provenance must enumerate the channels rather than hardcode a
+ * subset. `web/components/provenance-badge.tsx` orders its badges off this.
+ */
+export const DATA_SOURCES: readonly DataSource[] = [
   "deeploans",
   "direct",
   "derived",

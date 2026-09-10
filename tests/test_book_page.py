@@ -118,10 +118,13 @@ _BADGE = re.compile(r"<Badge\b.*?</Badge>", re.S)
 _LITERAL_CONDITION = re.compile(r"\{\s*(?:true|false)\s*\?")
 
 #: A provenance label decided by a conditional rather than read from the total
-#: table. This is the exact defect still live in ``PackBody`` above the region
-#: (``src === "deeploans" ? "deeploans" : "direct"``), which labels a derived or
-#: synthetic tape as a direct ingestion. #565 left that one alone deliberately;
-#: this ban keeps the new region from growing its own copy of it.
+#: table. This was the exact defect live in ``PackBody`` above the region
+#: (``src === "deeploans" ? "deeploans" : "direct"``), which labelled a derived
+#: or synthetic tape as a direct ingestion; #565 left it alone deliberately and
+#: #599 converged it onto ``components/provenance-badge.tsx``. This ban still
+#: earns its place: it keeps the region from growing its own copy, and
+#: ``tests/test_provenance_badges.py`` bans the broader form — a quoted channel
+#: name inside a conditional — across the surfaces #599 owns.
 _PROVENANCE_CONDITIONAL = re.compile(r"provenance\s*(?:===|!==|\?)")
 
 #: Ways to coalesce a refused value into something printable. Each turns "the

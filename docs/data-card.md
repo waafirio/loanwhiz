@@ -1246,12 +1246,13 @@ sibling epics shipped bans whose acceptance criteria passed while the banned
 thing was on screen; the first sweep here found two of the same shape in this
 guard and both are now closed.
 
-**This is not a claim about every provenance surface.** The web layer as a
-whole does *not* yet render each source kind's own disclosure sentence: the
-Pool and Waterfall pages render no synthetic badge, and the evidence pack's
-ingestion badge still reads "direct ingestion" for a `derived` or `synthetic`
-source. The concentration surface renders the figure's own sentences; the rest
-of the web layer is unchanged by this issue.
+**This is not a claim about every provenance surface.** The concentration
+surface renders the figure's own sentences; the rest of the web layer is
+unchanged by this issue. Since then #599 has closed the gaps this paragraph
+used to name — the evidence pack's ingestion badge and the missing Pool and
+Waterfall badges — but a *badge* names a channel, which is less than a
+disclosure sentence. What the web layer does and does not say is stated where
+the synthetic tapes are described, below.
 
 **Regenerating this, rather than trusting the prose.** Every count and share
 above is deliberately left unwritten — the unproven-name count in particular,
@@ -1297,17 +1298,35 @@ prefix strips off before the file is fetched, so the pool figures are unchanged
 — re-running the normaliser across the re-identified tapes moved `data_source`
 and nothing else. See [`tape-ingestion.md`](tape-ingestion.md).
 
-**That claim holds for the API surfaces, not yet for the web ones (#568).**
-"Every provenance surface" above means the evidence pack, the capability matrix
-and the tape citation — the surfaces named in the paragraph before it, all of
-which read the tape's registered kind. The Next.js layer does not: the Pool and
-Waterfall pages render no synthetic badge at all, and the evidence pack sheet's
-own provenance badge resolves its text with a binary on `deeploans`, so a
-`derived` or `synthetic` source is labelled "direct ingestion" there — the one
-label #483 exists to prevent. The disclosure *sentence* beneath the badges is
-correct, because it reads the full label table; the badge above it is not. This
-is #484's open surface, recorded here rather than fixed in passing: a reader
-who trusts the sentence above should not conclude the screens say so too.
+**That claim holds for the API surfaces; the web layer badges, which is less
+(#568, #599).** "Every provenance surface" above means the *API* surfaces — the
+evidence-pack payload, the capability matrix and the tape citation — all of
+which read the tape's registered kind and render that kind's own disclosure
+sentence. The web components sharing those names are a different layer and are
+described below.
+
+The Next.js layer no longer contradicts them, which is what #599 changed and
+all it changed. Every web surface that renders an ingestion channel — the
+evidence pack's summary row and its per-citation badges, the Pool page and the
+Waterfall page — now resolves its text through one total label table
+(`web/components/provenance-badge.tsx`), so a `derived` or `synthetic` tape can
+no longer be badged "direct ingestion", the one label #483 exists to prevent.
+Pool and Waterfall previously rendered no badge at all (#484): Pool now marks
+each period from that period's own source, and Waterfall — whose payload
+carries no provenance — marks the cascade with the channels behind the deal's
+tapes. Where the channel cannot be resolved, and it often cannot (`data_source`
+is optional, and Waterfall's read is a second request that can fail), the badge
+says so rather than rendering nothing, because silence on those screens reads
+as an ordinary published tape.
+
+**What that is not.** A badge names how a tape *arrived*; the disclosure
+sentence — that the tape is not an Article 7(1)(a) filing, that nothing
+computed from it is evidence about a real pool — is quoted from the citation
+excerpt, and only the evidence pack renders it. A reader of the Pool or
+Waterfall screens is told, when the channel resolves, that the pool is
+synthetic; they are never shown that sentence. `tests/test_provenance_badges.py` asserts those components'
+**source**, not their rendered output, so it is evidence about what the code
+says and never that a browser painted it.
 
 ### The four fitted pools (#484)
 

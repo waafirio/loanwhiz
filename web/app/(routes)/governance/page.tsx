@@ -31,8 +31,9 @@ import { Input } from "@/components/ui/input";
  * loads the resulting `GovernanceEvidencePack`, and renders it inline (reusing
  * the same `PackBody` the chat slide-over uses): the aggregate + per-tool
  * confidence, the citation trail, the tool-call audit/reasoning trace,
- * `finos_compliant`, and the **data provenance** (deeploans vs direct) of every
- * tape the answer relied on. All values are honest — the evidence pack is
+ * `finos_compliant`, and the **ingestion channel** of every tape the answer
+ * relied on, named off the total table in `components/provenance-badge.tsx`
+ * rather than as a binary (#599). All values are honest — the evidence pack is
  * derived server-side from the actual run, not asserted here.
  */
 export default function GovernancePage() {
@@ -100,7 +101,7 @@ export default function GovernancePage() {
     <div className="space-y-6">
       <PageHeader
         title="Governance"
-        description="The auditable trail behind every agent answer — confidence, citations, the tool-call audit log, FINOS compliance, and data provenance (deeploans vs direct)."
+        description="The auditable trail behind every agent answer — confidence, citations, the tool-call audit log, FINOS compliance, and the ingestion channel behind each tape."
       />
 
       {/* What this surface is — the FINOS trust story, stated plainly. */}
@@ -127,14 +128,24 @@ export default function GovernancePage() {
             deduplicated citation trail, and a human-review flag below the 0.70
             threshold.
           </p>
+          {/* Names the channels off the same vocabulary the badges render
+              (#599). This used to describe provenance as a binary — deeploans
+              or "read directly from its source URL" — which taught a reader a
+              two-valued scheme directly above a badge reading "derived from a
+              source document". A page that explains a marking must not use an
+              older vocabulary than the marking. */}
           <p>
             Each tape citation also records its{" "}
             <span className="font-medium text-foreground">data provenance</span>{" "}
-            — whether the tape was ingested through the{" "}
+            — which of the platform&apos;s ingestion channels the tape arrived
+            through, named in full on every badge: the{" "}
             <span className="font-medium text-foreground">deeploans</span> ETL
-            backend (Algoritmica&apos;s open-source ESMA tool) or read directly
-            from its source URL — so the trust story extends all the way down to
-            where the data came from.
+            backend (Algoritmica&apos;s open-source ESMA tool), a direct read of
+            a published file, a tape derived from a source document that
+            publishes none, or a{" "}
+            <span className="font-medium text-foreground">synthetic</span> tape
+            that describes no real obligor — so the trust story extends all the
+            way down to where the data came from.
           </p>
         </CardContent>
       </Card>
