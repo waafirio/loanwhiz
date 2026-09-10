@@ -271,3 +271,46 @@ def register_primitive(
         return cls
 
     return decorator
+
+
+def ensure_all_registered() -> None:
+    """Import every primitive module so the registry holds every primitive.
+
+    Primitives register by import side effect: ``@register_primitive`` runs when
+    its module is imported, so the registry's contents are whatever the process
+    happens to have imported. Before #574 two callers each answered that with
+    their own hand-maintained list of module names — ``loanwhiz.api.main``'s
+    registration imports and the MCP catalogue's ``_PRIMITIVE_MODULES`` — and
+    the lists had drifted apart from each other and from the package, so one
+    registry described a different set of primitives to each consumer and
+    neither set was complete. A primitive was therefore invisible to a catalogue
+    unless someone remembered to add it in two places.
+
+    Walking the package removes the question. A module that registers a
+    primitive is in the registry because it exists, not because it was listed,
+    so ``GET /primitives`` and the MCP catalogue agree by construction.
+
+    Idempotent: ``import_module`` returns the already-imported module on later
+    calls, and the registry's duplicate-name guard means a module cannot
+    double-register. Safe to call on every request.
+
+    **A module that fails to import propagates, deliberately.** This widens the
+    blast radius of a broken primitive module: before #574 the REST app imported
+    a fixed handful, so a broken ``library-only`` module nothing reached was
+    invisible to it; now any import error here fails ``loanwhiz.api.main`` at
+    startup. That is the intended trade-off rather than an oversight. Swallowing
+    the error would drop the module from the catalogue silently — which is
+    precisely the invisibility this function exists to remove, and it would fail
+    in the one direction nobody checks: a primitive quietly absent reads as a
+    primitive that was never written. A loud startup failure names the broken
+    module; a silent skip names nothing.
+    """
+    import importlib
+    import pkgutil
+
+    import loanwhiz.primitives as primitives_package
+
+    for module in pkgutil.iter_modules(primitives_package.__path__):
+        if module.name.startswith("_"):
+            continue
+        importlib.import_module(f"loanwhiz.primitives.{module.name}")

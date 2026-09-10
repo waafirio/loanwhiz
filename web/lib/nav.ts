@@ -10,6 +10,7 @@ import {
   FileSearch,
   Grid3x3,
   GitCompareArrows,
+  Plug,
   type LucideIcon,
 } from "lucide-react";
 
@@ -62,6 +63,9 @@ export const NAV_GROUPS: NavGroup[] = [
       { title: "Validation", href: "/validation", icon: BadgeCheck },
       // Framework — the typed primitive-registry catalogue (#137).
       { title: "Framework", href: "/primitives", icon: Boxes },
+      // MCP — the primitives as a governed MCP server: which are exposed as
+      // callable tools, and the evidence a call's result carries (#575).
+      { title: "MCP", href: "/mcp", icon: Plug },
       // Governance — the FINOS evidence-pack / audit-trail / confidence /
       // model-risk + data-provenance (deeploans vs direct) surface (#239).
       { title: "Governance", href: "/governance", icon: Scale },
