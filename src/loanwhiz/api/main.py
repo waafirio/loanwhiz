@@ -52,6 +52,10 @@ from loanwhiz.extraction.assembler import (
     _slug,
     build_deal_rules,
 )
+from loanwhiz.extraction.day_count_parser import (
+    DayCountBasis,
+    accrual_days,
+)
 from loanwhiz.api import compare as _compare
 from loanwhiz.api import extraction_jobs as _extraction_jobs
 from loanwhiz.domain.inputs import PeriodInputs as CanonicalPeriodInputs
@@ -2003,19 +2007,67 @@ def _reconstruction_cache_path(memo_key: tuple[str, ...]) -> Path:
     return Path(RECONSTRUCTION_CACHE_DIR) / f"{digest}.json"
 
 
-def _days_between(prev_date: str, cur_date: str) -> int:
-    """Day count between two ISO reporting dates (Act/360 accrual basis).
+def _tape_period_days(basis: DayCountBasis, prev_date: str, cur_date: str) -> int:
+    """Days in the tape period ``[prev_date, cur_date)`` on ``basis`` (#601).
 
-    Used to derive each period's ``days_in_period`` from the tape cadence
-    (Green Lion's tapes are ~monthly). Falls back to 30 when either date is not
-    a parseable ISO date, so a malformed registry date degrades rather than
-    raising.
+    This is the API path's *boundary*, not a day-count implementation: it parses
+    the two ISO reporting dates the registry states and hands the count to
+    :func:`~loanwhiz.extraction.day_count_parser.accrual_days`, which is the one
+    day-count contract in this repo. Nothing here counts days itself.
+
+    Its predecessor ``_days_between`` did, and hardcoded Act/360 while doing it.
+    That is not merely duplicative: #538 measured Cairn's Class B as two strips
+    under two different conventions — B-1 on the actual day count and B-2 on
+    30/360 — and a day-count entrypoint that cannot be asked for a basis cannot
+    express that at all. Taking ``basis`` as an argument is what makes the second
+    convention sayable here; passing it explicitly at the call site is what keeps
+    the assumption visible instead of buried in a helper's arithmetic.
+
+    A date that will not parse, and a period that does not run forwards, are
+    **refused by name**. ``_days_between`` returned a plausible ``30`` for both,
+    which is exactly the silent fallback this platform refuses everywhere else:
+    #493 made ``rate_pct`` ``float | None`` rather than defaulting it to 0.0, and
+    #549's rule is that a refusal which keeps its value is not a refusal. A
+    caller cannot tell a defaulted 30 from a measured one, so there is no honest
+    number to return and this raises instead.
+
+    Args:
+        basis:     The day-count basis this period accrues on.
+        prev_date: ISO date the period runs from (included).
+        cur_date:  ISO date the period runs to (excluded).
+
+    Returns:
+        The day count ``basis`` produces for that period.
+
+    Raises:
+        HTTPException: 422 naming the offending value, when either date is not a
+            parseable ISO date or when the period does not run forwards.
     """
-    try:
-        delta = (date.fromisoformat(cur_date) - date.fromisoformat(prev_date)).days
-    except ValueError:
-        return 30
-    return delta if delta > 0 else 30
+    parsed: list[date] = []
+    for label, raw in (("previous", prev_date), ("current", cur_date)):
+        try:
+            parsed.append(date.fromisoformat(raw))
+        except (TypeError, ValueError):
+            raise HTTPException(
+                status_code=422,
+                detail=(
+                    f"Tape {label} reporting date {raw!r} is not a parseable ISO "
+                    "date, so this period's day count cannot be established. An "
+                    "unestablished day count is refused, not defaulted (#601)."
+                ),
+            ) from None
+
+    prev, cur = parsed
+    if cur <= prev:
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                f"Tape reporting dates {prev.isoformat()} -> {cur.isoformat()} do "
+                "not run forwards, so this period has no day count to establish. "
+                "An unestablished day count is refused, not defaulted (#601)."
+            ),
+        )
+    return accrual_days(basis, prev, cur)
 
 
 def _tape_is_first_hand(url: str) -> bool:
@@ -2212,7 +2264,14 @@ def _reconstruct_series_from_tapes(deal_id: str, deal: dict) -> DealStateSeries:
     for idx in range(1, len(tapes)):
         prev_tape = tapes[idx - 1]
         cur_tape = tapes[idx]
-        days = _days_between(prev_tape["date"], cur_tape["date"])
+        # The tape path's period is the deal-wide cadence between two tape
+        # reporting dates, and that cadence is an Act/360 count. It is named
+        # here rather than hidden inside the helper because a day-count basis
+        # is a per-class fact wherever a document states one per class (#539):
+        # the report path reads each Class's own basis off the Conditions via
+        # ``class_accrual_days``, and this path has one tape, one cadence, one
+        # stated convention. The count itself comes from ``accrual_days``.
+        days = _tape_period_days("act/360", prev_tape["date"], cur_tape["date"])
         collections_input = CollectionsInput(
             tape_file_url=cur_tape["url"],
             reporting_period=cur_tape["date"],
