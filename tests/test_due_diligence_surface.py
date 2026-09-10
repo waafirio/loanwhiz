@@ -271,25 +271,60 @@ def test_the_screen_says_it_is_not_the_deal_s_compliance() -> None:
     assert "covenant compliance" in region
 
 
-def test_the_route_is_reachable_and_sits_beside_governance() -> None:
-    """A screen nobody can navigate to renders nothing, correctly."""
+def test_the_route_is_reachable_and_sits_with_the_holder_surfaces() -> None:
+    """A screen nobody can navigate to renders nothing, correctly.
+
+    Asserted against the GROUP boundaries, not against a neighbour's position.
+    The first version of this compared route indices pairwise, which passes or
+    fails on the incidental ordering of entries this test has no opinion
+    about; the claim being made is which *group* each route sits in.
+
+    The claim itself changed in #613. This entry used to sit in "Platform &
+    Governance", and the comment above it in `nav.ts` argued it belonged
+    *beside Governance* rather than beside Compliance. The argument was right
+    and the filing was not: it is a reason for a holder's section, not a reason
+    to file a holder's surface under "Platform". So the route now sits in the
+    "Portfolio" section with the book and its concentration — and the
+    distinction it was protecting is unchanged, which is what the compliance
+    assertion below still pins.
+
+    Both bounds are asserted, not one. The holder section was inserted *above*
+    "Platform & Governance", so the old one-sided form — route index after the
+    platform label — would have kept passing while the claim it states had gone
+    false. A region guard that names only its near edge is the vacuous pass
+    `.liz/memory/ui-surface-guards.md` (#568) records.
+    """
     nav = _NAV.read_text(encoding="utf-8")
     assert '"/due-diligence"' in nav, "the due-diligence route is not in the sidebar"
 
-    # Asserted against the GROUP boundary, not against a neighbour's position.
-    # The first version of this compared route indices pairwise, which passes or
-    # fails on the incidental ordering of entries this test has no opinion
-    # about; the claim being made is which *group* each route sits in.
-    boundary = nav.index('label: "Platform & Governance"')
-    assert nav.index('"/compliance"') < boundary, (
+    # Anchored on the declaration (`label: "X"`), never the bare label: the
+    # file's docstring names every section in prose, and an anchor that matches
+    # prose resolves to an offset above the array entirely.
+    # Both markers asserted present BEFORE either is used to slice (#568): an
+    # index() on a marker that vanished raises, and a guard that raises is
+    # recorded as an error rather than as the violation it actually found.
+    for marker in ('label: "Portfolio"', 'label: "Platform & Governance"'):
+        assert marker in nav, f"{marker} is gone from the sidebar; this test's bounds no longer exist"
+    holder = nav.index('label: "Portfolio"')
+    platform = nav.index('label: "Platform & Governance"')
+    assert holder < platform, (
+        "the holder section moved below Platform & Governance, so the bounds "
+        "below no longer describe a region"
+    )
+
+    assert nav.index('"/compliance"') < holder, (
         "Compliance left the Deal Analytics group — it answers whether the DEAL "
         "is inside its covenants, a different question for a different reader"
     )
-    assert boundary < nav.index('"/due-diligence"'), (
-        "the due-diligence route left the Platform & Governance group; it now "
-        "sits beside the covenant screen it is deliberately not part of"
+    assert holder < nav.index('"/due-diligence"') < platform, (
+        "the due-diligence route left the holder's section; it now sits either "
+        "under the platform layer it is not part of, or beside the covenant "
+        "screen it is deliberately not part of"
     )
-    assert nav.index('"/governance"') < nav.index('"/due-diligence"')
+    assert platform < nav.index('"/governance"'), (
+        "Governance left the platform section; the two surfaces answer "
+        "different questions and this test's bounds assume they stay apart"
+    )
 
 
 def test_the_page_renders_the_record_for_the_selected_deal() -> None:
