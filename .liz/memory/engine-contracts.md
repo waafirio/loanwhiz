@@ -230,3 +230,16 @@ vocabulary — Contego prints `B` and `B+`, so the check fires on real data.
 Refs: #564
 Refs: #563 — the injectivity check this reuses, applied to a second axis.
 Refs: #568 — same rule on a screen: refusals render first, uncollapsed, unclamped.
+
+## 2026-09-10 · pitfall · #598
+
+A registered calculator is **necessary and not sufficient** for "the engine
+computed this": check some producer writes the field it reads. `fee_accrual`
+reads `fee_rates_pct`, `deferred_interest_balance` a tranche field
+`_funds_from_state` never writes — so one refuses `input_unavailable`, the other
+returns a confident `0.00` against a published `0.00`, and crediting the first
+drops the report figure its step is funded from. Derive membership from the need
+contract, bound it by what the funds-builder supplies, and assert that bound
+against the engine: an expectation read off the code's own constant can never red.
+
+Refs: #598
