@@ -14,6 +14,11 @@ import {
 
 import type { CompareDealRef, PerformanceSeries } from "@/lib/api";
 import {
+  SeriesBasisRow,
+  hasQualifiedBasis,
+  seriesLegendName,
+} from "@/components/compare/series-basis";
+import {
   Card,
   CardContent,
   CardHeader,
@@ -51,29 +56,19 @@ export function PerformancePanel({
   series: PerformanceSeries[];
   commonPeriods: string[];
 }) {
+  // Every legend name is marked from the total tables in `series-basis`, never
+  // from a condition here: a literal `=== "projected"` names one member and
+  // silently mislabels the rest, which is how this panel came to call a
+  // synthetic-rate series "reported" by omission (#614).
   const dealName = useMemo(
-    () =>
-      new Map(
-        deals.map((d) => [
-          d.deal_id,
-          d.performance_provenance === "projected"
-            ? `${d.deal_name} (projected)`
-            : d.deal_name,
-        ]),
-      ),
+    () => new Map(deals.map((d) => [d.deal_id, seriesLegendName(d)])),
     [deals],
   );
 
-  // Deals whose Panel-2 series is a canonical-model projection (not reported),
-  // so the overlay can label them projected-not-reported (#345).
-  const projectedNames = useMemo(
-    () =>
-      deals
-        .filter((d) => d.performance_provenance === "projected")
-        .map((d) => d.deal_name),
-    [deals],
-  );
-  const hasProjected = projectedNames.length > 0;
+  // Deals whose series is anything other than reported-on-a-stated-rate, so the
+  // panel can state each one's basis above the overlay (#345 for the projected
+  // half, #614 for the rate half).
+  const qualified = useMemo(() => deals.filter(hasQualifiedBasis), [deals]);
 
   // Build per-metric chart data: one row per reporting date, one column per deal.
   const chartsByMetric = useMemo(() => {
@@ -112,14 +107,20 @@ export function PerformancePanel({
         <CardTitle className="text-base">Performance / risk (overlaid)</CardTitle>
       </CardHeader>
       <CardContent className="space-y-8">
-        {hasProjected && (
+        {qualified.length > 0 && (
           <div className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900">
-            <span className="font-medium">Projected — not reported.</span>{" "}
-            {projectedNames.join(", ")}{" "}
-            {projectedNames.length === 1 ? "has" : "have"} no tape/report history;
-            the series shown {projectedNames.length === 1 ? "is" : "are"} a
-            forward projection from the canonical model (base case), not reported
-            performance.
+            <p className="mb-2 font-medium">
+              Not every series below is reported performance. What each one rests
+              on:
+            </p>
+            {/* One row per deal, rendered from inside the loop that marks them
+                (#575): a marking written once beside a list survives only until
+                someone adds an item. */}
+            <ul className="flex flex-col gap-2">
+              {qualified.map((d) => (
+                <SeriesBasisRow key={d.deal_id} deal={d} />
+              ))}
+            </ul>
           </div>
         )}
         {commonPeriods.length > 0 && (

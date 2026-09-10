@@ -879,10 +879,34 @@ export interface CompareDealRef {
    * canonical model's forward projection (projected-not-reported), or null when
    * no series is available.
    */
-  performance_provenance: "reported" | "projected" | null;
-  /** One-line honesty note when a panel is unavailable for this deal. */
+  performance_provenance: PerformanceProvenance | null;
+  /**
+   * Provenance of the senior coupon this deal's Panel-2 series rests on:
+   * "stated" when it came from a published or operator-declared rate,
+   * "synthetic" when it came from a committed synthetic index fixing (#614),
+   * or null when no series is available.
+   *
+   * Deliberately SEPARATE from `performance_provenance`, which says how the
+   * series was *built*. The two vary independently — Cairn CLO XVII is
+   * reported-on-a-stated-rate, Contego CLO XI projected-on-a-generated-one —
+   * and one enum could not express both without forcing a false choice
+   * between naming the construction and naming the assumption.
+   */
+  rate_provenance: RateProvenance | null;
+  /**
+   * One-line honesty note: why a panel is unavailable, or — when a panel IS
+   * available — what its series rests on. Carries the synthetic fixing's
+   * disclosure verbatim, so the tenor, the assumed value and the fact that no
+   * fixing is published reach the screen without the UI restating them.
+   */
   note: string | null;
 }
+
+/** How a compare Panel-2 series was built. Total; see PERFORMANCE_PROVENANCE_LABELS. */
+export type PerformanceProvenance = "reported" | "projected";
+
+/** What the coupon under a compare Panel-2 series came from. Total; see RATE_PROVENANCE_LABELS. */
+export type RateProvenance = "stated" | "synthetic";
 
 /** One deal's value for one aligned structural row (Panel 1 cell). */
 export interface StructuralCell {
