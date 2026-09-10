@@ -1222,7 +1222,7 @@ guard and both are now closed.
 
 **This is not a claim about every provenance surface.** The concentration
 surface renders the figure's own sentences; the rest of the web layer is
-unchanged by this issue. Since then #599 has closed the two gaps this paragraph
+unchanged by this issue. Since then #599 has closed the gaps this paragraph
 used to name — the evidence pack's ingestion badge and the missing Pool and
 Waterfall badges — but a *badge* names a channel, which is less than a
 disclosure sentence. What the web layer does and does not say is stated where
