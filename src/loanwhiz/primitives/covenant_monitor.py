@@ -308,6 +308,7 @@ def _resolve_coverage(
     input: "CovenantInput",
     letter: str,
     kind: str,
+    period_date: str | None = None,
 ) -> tuple[float | None, str | None]:
     """Compute an OC or IC ratio at one attachment point, on the percent scale.
 
@@ -345,6 +346,33 @@ def _resolve_coverage(
         return None, reason
 
     if kind == "oc":
+        # A collateral balance is an AS-OF-DATE fact, and the state this reads
+        # it from is paired to this period *positionally* by
+        # ``CovenantMonitor.execute``. That pairing holds only while a deal's
+        # states and its periods are the same series. They need not be: a deal
+        # whose series is folded from reports can be evaluated against periods
+        # taken from tapes, and #524 set three of Cairn's tape periods aside
+        # precisely because the two sources overlap on no period at all.
+        # Dividing one date's collateral balance by another date's notes yields
+        # a number with a real figure's provenance and no period's meaning —
+        # the same defect as the liability numerator below, one layer out. So
+        # it is refused rather than rounded past.
+        #
+        # Only the OC branch needs this today: the IC branch is blocked further
+        # out on ``interest_due_by_tranche`` being empty by contract, so no IC
+        # case reaches a date comparison. Widening it there would add an
+        # unreachable branch, not a protection.
+        if (
+            period_date is not None
+            and state.reporting_date is not None
+            and period_date != state.reporting_date
+        ):
+            return None, (
+                f"the collateral balance on this deal state is stated as of "
+                f"{state.reporting_date}, but this period is {period_date} — an "
+                f"overcollateralisation numerator from a different reporting "
+                f"date is not a measurement of this one"
+            )
         # The numerator must be a COLLATERAL balance. On the report path it is
         # not: ``report_adapter.seed`` sets ``pool_balance`` to the opening
         # liability total and says so — "the Notes & Cash report states
@@ -633,11 +661,14 @@ class CovenantInput(BaseInput):
     reserve_account_balance: float = 0.0
     reserve_account_target: float = 0.0
     original_pool_balance: float = 0.0
-    # Optional per-period canonical structural state (S1's ``DealState``). When
-    # provided — one entry per ``periods`` entry, same order — the monitor reads
-    # the structural metrics (PDL, reserve, cumulative loss, pool factor) from
-    # the matching ``DealState`` for that period instead of the single scalar
-    # fields above. This is what makes PDL/reserve a real, non-flat series
+    # Optional per-period canonical structural state (S1's ``DealState``). The
+    # monitor pairs these to ``periods`` on the reporting date each states
+    # itself as of — NOT by list position, and the two lists need neither the
+    # same length nor the same order. For a period that has a state of its own
+    # date, the monitor reads the structural metrics (PDL, reserve, cumulative
+    # loss, pool factor) from it instead of the single scalar fields above; a
+    # period with no such state is refused by name rather than borrowing a
+    # neighbour's. This is what makes PDL/reserve a real, non-flat series
     # rather than permanently 0 / 100% (the audit's structural-plumbing gap).
     # When absent the scalar fields are used (backward compatible).
     period_states: list[DealState] | None = None
@@ -674,21 +705,28 @@ class CovenantInput(BaseInput):
 
         ``periods`` (the ESMA-tape dicts) is optional — when omitted, a minimal
         period dict carrying the ``reporting_date`` and ``pool_balance_eur`` is
-        synthesised from each ``DealState`` so tape-sourced metrics
-        (``default_pct``) and the clean-up-call pool metric still resolve. The
-        ``original_pool_balance`` denominator is taken from the first state.
+        synthesised per DISTINCT state date so tape-sourced metrics
+        (``default_pct``) and the clean-up-call pool metric still resolve. One
+        period per date, not one per state: the period-0 seed shares its date
+        with the first closing state, and both would put that date on the screen
+        twice. The ``original_pool_balance`` denominator is taken from the first
+        state, which is that seed.
         """
         if not deal_states:
             return cls(periods=periods or [], triggers=triggers or [])
-        synthesised: list[dict[str, Any]] = []
-        for st in deal_states:
-            synthesised.append(
-                {
-                    "reporting_date": st.reporting_date,
-                    "pool_balance_eur": st.pool_balance,
-                    "cumulative_loss_rate_pct": st.cumulative_loss_rate_pct,
-                }
-            )
+        # One synthesised period per DISTINCT state date. The seed shares its
+        # date with the first closing state on every report-folded series, and
+        # emitting both put the same date on the screen twice: every trigger
+        # was reported twice and ``_build_summary`` subtracted the doubled
+        # not-evaluable count from a single trigger total, printing "-10 of 10".
+        synthesised: list[dict[str, Any]] = [
+            {
+                "reporting_date": st.reporting_date,
+                "pool_balance_eur": st.pool_balance,
+                "cumulative_loss_rate_pct": st.cumulative_loss_rate_pct,
+            }
+            for st in states_by_reporting_date(deal_states).values()
+        ]
         resolved_periods = periods if periods is not None else synthesised
         return cls(
             periods=resolved_periods,
@@ -725,6 +763,31 @@ class CovenantOutput(BaseModel):
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
+
+def states_by_reporting_date(states: list[DealState]) -> dict[str, DealState]:
+    """Index deal states by the date each one is stated as of.
+
+    A reconstructed series is a period-0 seed plus one closing state per
+    transition, so the seed and the first closing state can carry the **same**
+    reporting date — Cairn CLO XVII and Green Lion 2024-1 both do today. On
+    that collision prefer the state that actually recorded collections (the
+    period's closing state) over the seed, which states the position before the
+    period ran.
+
+    The same index with the same collision rule is already built by
+    ``quality_harness._grade_pool_statistics`` and by ``pool_pipeline_harness``.
+    This is the third site and the first on the monitor's own path; it is public
+    so those two can converge onto it rather than a fourth copy being written.
+    """
+    by_date: dict[str, DealState] = {}
+    for state in states:
+        existing = by_date.get(state.reporting_date)
+        if existing is None or (
+            existing.collections is None and state.collections is not None
+        ):
+            by_date[state.reporting_date] = state
+    return by_date
 
 
 def _compute_proximity(
@@ -858,7 +921,13 @@ def _extract_metric(
         # for the specific reason. With no ``DealState`` we fall through to the
         # period-dict lookup instead — a published report may carry the ratio
         # directly — and to an honest not-evaluable if it does not.
-        return _resolve_coverage(state, input, coverage.group(1), coverage.group(2))[0]
+        return _resolve_coverage(
+            state,
+            input,
+            coverage.group(1),
+            coverage.group(2),
+            period.get("reporting_date"),
+        )[0]
 
     # Generic tape metric — expected to live in the period dict directly
     # or nested under "arrears_breakdown" / "pool_stats". We look up BOTH the
@@ -898,6 +967,7 @@ def _metric_not_evaluable_reason(
     metric: str,
     input: CovenantInput,
     state: DealState | None,
+    period_date: str | None = None,
 ) -> str:
     """Why a metric could not be resolved — the specific reason where one exists.
 
@@ -911,10 +981,21 @@ def _metric_not_evaluable_reason(
     coverage = _COVERAGE_METRIC_RE.match(canonical)
     if coverage is not None and state is not None:
         _, reason = _resolve_coverage(
-            state, input, coverage.group(1), coverage.group(2)
+            state, input, coverage.group(1), coverage.group(2), period_date
         )
         if reason is not None:
             return f"metric '{metric}': {reason}"
+    if coverage is not None and state is None:
+        # A coverage ratio is computed from the deal state, so with no state for
+        # this period there is nothing to compute it from — a different fact
+        # from a state that was reconstructed and lacked an input, and worth
+        # saying, because the generic wording below sends the next reader
+        # looking for a missing figure rather than a missing period (#457).
+        return (
+            f"metric '{metric}': no deal state was reconstructed for this "
+            f"period, so neither the collateral balance nor the note balances "
+            f"it would be measured against are known for it"
+        )
     return (
         f"metric '{metric}' not resolvable from period data or structural state"
     )
@@ -954,7 +1035,7 @@ def _evaluate_one(
             direction="n/a",
             evaluable=False,
             not_evaluable_reason=_metric_not_evaluable_reason(
-                trigger.metric, input, state
+                trigger.metric, input, state, period.get("reporting_date")
             ),
         )
 
@@ -1260,13 +1341,23 @@ class CovenantMonitor(Primitive[CovenantInput, CovenantOutput]):
         # no point, so the trend skips over gaps rather than treating them as 0.
         proximity_history: dict[str, float | None] = {t.name: None for t in triggers}
 
-        for idx, period in enumerate(input.periods):
+        # Pair each period with the state stated as of the SAME date — never by
+        # list position. ``periods`` and ``period_states`` need not be one
+        # series: ``/compliance`` took its periods from a deal's tapes and its
+        # states from the reports those tapes yielded to, and #524 ranked those
+        # two sources knowing they overlap on no period at all. Pairing by index
+        # therefore rendered one date's figures under another date's heading.
+        #
+        # A period with no state of its own date pairs with ``None``, which
+        # ``_metric_not_evaluable_reason`` refuses by name. That refusal is the
+        # point: an unpaired period must read as "couldn't measure", never as a
+        # pass (#513), and ``CovenantOutput`` keeps ``unevaluable_triggers``
+        # separate from ``active_triggers`` precisely so it can.
+        states_by_date = states_by_reporting_date(input.period_states or [])
+
+        for period in input.periods:
             period_label = str(period.get("reporting_date", "unknown"))
-            state = (
-                input.period_states[idx]
-                if input.period_states is not None and idx < len(input.period_states)
-                else None
-            )
+            state = states_by_date.get(period_label)
 
             for trigger in triggers:
                 prior_prox = proximity_history[trigger.name]

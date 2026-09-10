@@ -30,7 +30,9 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+from functools import lru_cache
 from datetime import date
+from decimal import Decimal
 from pathlib import Path
 from collections import Counter
 from collections.abc import Callable, Mapping
@@ -61,6 +63,10 @@ from loanwhiz.primitives.collections_aggregator import (
     CollectionsInput,
 )
 from loanwhiz.primitives.base import Citation
+from loanwhiz.primitives.due_diligence import (
+    DueDiligenceRecord,
+    assemble_due_diligence,
+)
 from loanwhiz.primitives.capital_structure import (
     CapitalStructure,
     TrancheSpec,
@@ -74,6 +80,11 @@ from loanwhiz.primitives.capability_matrix import (
     CellState,
     build_capability_matrix,
 )
+from loanwhiz.primitives.collateral_schedule_parser import (
+    parse_schedule_text as _parse_schedule_text,
+)
+from loanwhiz.primitives import cross_deal_exposure as _xde
+from loanwhiz.primitives import industry_taxonomy as _industry_taxonomy
 from loanwhiz.primitives.quality_harness import (
     QualityMatrix,
     _default_series_provider,
@@ -137,19 +148,23 @@ from loanwhiz.primitives.waterfall_runner import (  # noqa: F401  (registration 
     WaterfallRunner,
 )
 
-# Import every primitive module so its @register_primitive decorator runs and the
-# PRIMITIVE_REGISTRY is fully populated for GET /primitives. Primitives register
-# on import; the four imported above (collections_aggregator, covenant_monitor,
-# esma_tape_normaliser, waterfall_runner) are already covered, so this pulls in
-# the rest (audit_logger, report_verifier). The duplicate-engine modules
-# (cashflow_projector, waterfall_state) were deleted in #276.
-# Imported for the registration side effect only — hence the noqa.
-from loanwhiz.primitives import (  # noqa: F401  (registration side effects)
-    audit_logger,
-    report_verifier,
+# Populate PRIMITIVE_REGISTRY for GET /primitives and GET /mcp/surface by
+# importing every module that registers a primitive. Registration is an import
+# side effect, so before #574 this was a hand-maintained list of module names —
+# and the MCP catalogue kept a second, different one. Neither was complete:
+# report_extractor and tranche_analytics register primitives that appeared in
+# no catalogue because no list named them. ensure_all_registered() walks the
+# package instead, so a primitive is catalogued because it exists.
+from loanwhiz.primitives.registry import ensure_all_registered
+from loanwhiz.primitives.reachability import (
+    PRIMITIVE_REACHABILITY,
+    is_exposed_as_tool,
+    reachability_of,
 )
 from loanwhiz.primitives.audit_logger import audit_result
 from loanwhiz.primitives.base import Primitive, PrimitiveResult
+
+ensure_all_registered()
 
 app = FastAPI(
     title="LoanWhiz API",
@@ -303,29 +318,19 @@ def _audit(primitive: Primitive, primitive_input: object, result: PrimitiveResul
 
 
 # ---------------------------------------------------------------------------
-# Primitive reachability (catalogue honesty, #197)
+# Primitive reachability (catalogue honesty, #197; single-sourced in #574)
 # ---------------------------------------------------------------------------
-# Not every registered primitive is reachable in the live path. The four data
-# primitives are "live": each is called by a REST endpoint AND exposed as a
-# LangGraph agent tool (loanwhiz.agent.tools). `audit_logger` is "live" because
-# the deal endpoints now record audit entries through it (see _audit above).
-# `report_verifier` is now "live" too (#320, epic #262): reached by the
-# `GET /deal/{id}/report-verification` endpoint AND the `verify_report` agent
-# tool, both of which diff the live folded distributions against the investor
-# report. `GET /primitives` surfaces this so nothing is
-# advertised as live that a judge can't reach. Unknown / future primitives
-# default to "library-only" (the conservative, honest default). The duplicate
-# engines cashflow_projector / multi_period_waterfall_runner were deleted in #276.
-_REACHABILITY_LIVE = "live"
-_REACHABILITY_LIBRARY_ONLY = "library-only"
-_PRIMITIVE_REACHABILITY: dict[str, str] = {
-    "esma_tape_normaliser": _REACHABILITY_LIVE,
-    "collections_aggregator": _REACHABILITY_LIVE,
-    "covenant_monitor": _REACHABILITY_LIVE,
-    "waterfall_runner": _REACHABILITY_LIVE,
-    "audit_logger": _REACHABILITY_LIVE,
-    "report_verifier": _REACHABILITY_LIVE,
-}
+# The map moved to loanwhiz.primitives.reachability, which owns what "live" and
+# "library-only" mean and why an unlisted primitive is library-only. It lives
+# there rather than here so the MCP package imports the same decision instead
+# of the hand-copied mirror it used to carry: the tool list a client gets, the
+# reachability GET /primitives renders and the surface GET /mcp/surface
+# describes are now one decision, not three that have to be kept equal.
+#
+# The re-export. Kept as a module-level name because
+# mcp/tests/test_server_smoke.py imports it from here by name; the endpoints
+# below ask reachability_of() / is_exposed_as_tool() rather than reading it.
+_PRIMITIVE_REACHABILITY = PRIMITIVE_REACHABILITY
 
 
 # ---------------------------------------------------------------------------
@@ -1123,7 +1128,23 @@ def deal_compliance(deal_id: str) -> dict:
     # (the same one /tape-analytics uses). Avoids re-normalising the deal's tapes
     # on every /compliance request — the returned dict shape is identical to
     # EsmaTapeOutput.model_dump().
-    periods = [_normalised_tape_output(tape["url"]) for tape in deal["tape_urls"]]
+    # #524 ranked a deal's sources; ``_set_aside_tape_periods`` names the periods
+    # that choice declines to fold, and its own contract already says what those
+    # periods stop being: "the *ledger* ``/waterfall`` and ``/compliance`` fold".
+    # They were still the axis this screen ran on — every period came from the
+    # tapes while every state came from the report those tapes yielded to, so no
+    # period had a state of its own date and every figure rendered under a date
+    # it is not stated as of. Dropping them here is the other half of #524, not a
+    # reversal of it: no precedence rank moves, and a deal that sets nothing
+    # aside keeps exactly the periods it had.
+    set_aside = set(_set_aside_tape_periods(deal))
+    periods = [
+        output
+        for output in (
+            _normalised_tape_output(tape["url"]) for tape in deal["tape_urls"]
+        )
+        if str(output.get("reporting_date")) not in set_aside
+    ]
     # Trigger set from the deal model's extracted triggers, falling back to the
     # monitor's defaults when the deal has no cached model or no extracted
     # triggers.
@@ -1134,9 +1155,10 @@ def deal_compliance(deal_id: str) -> dict:
     # reconstructed ``DealState`` carries that period's amortizing tranche
     # balances, PDLs, reserve, cumulative loss and pool factor — so the
     # proximity-across-periods series is a real, non-flat covenant curve rather
-    # than the flat one a constant scalar snapshot produced. The reconstructed
-    # ``states`` align one-to-one with the chronological tape ``periods``
-    # (period-0 seed + one closing state per transition).
+    # than the flat one a constant scalar snapshot produced. The monitor pairs
+    # each state to the period stating the same date; where the filter above
+    # leaves no tape period at all, ``periods=None`` makes the series supply its
+    # own dates, so the two sides are one series by construction.
     series = _reconstruct_series(deal_id, deal)
     covenant_input = CovenantInput.from_deal_states(
         series.states,
@@ -2426,15 +2448,27 @@ def _reconstruct_series_from_reports(deal_id: str, deal: dict) -> DealStateSerie
         raise _not_modelable_deal(deal_id, deal)
 
     try:
-        report = resolve_parsed_report(
+        parsed = resolve_parsed_report(
             deal_id, deal, cache_dir=REPORT_EXTRACTION_CACHE_DIR
-        ).to_notes_cash_report()
+        )
     except ReportUnavailable as exc:
         # No committed fixture, durable cache, or live report source resolved —
         # honest 422, not an empty cascade.
         raise _not_modelable_deal(deal_id, deal) from exc
+    report = parsed.to_notes_cash_report()
 
-    adapter = ReportAdapter.from_deal_model(model)
+    # The seed is period 0 (``ReportAdapter.to_inputs``), and periods are held
+    # oldest-first, so the seed's own reporting date is the one whose stated
+    # collateral numerator belongs on it. Taking any other period's would put a
+    # real figure against the wrong date, which is the failure this is meant to
+    # avoid, not a lesser version of it. ``None`` when the report states none —
+    # the adapter then seeds the liability proxy and the coverage tests refuse.
+    seed_collateral = (
+        parsed.periods[0].adjusted_collateral_principal_amount if parsed.periods else None
+    )
+    adapter = ReportAdapter.from_deal_model(
+        model, collateral_principal_amount=seed_collateral
+    )
     series = fold_report_series(model, report, adapter)
     _RECONSTRUCTION_MEMO[memo_key] = series
     return series
@@ -3438,9 +3472,12 @@ def primitives() -> list[PrimitiveCatalogueEntry]:
 
     Lists every registered SF primitive with its registry metadata
     (name/version/description/author/tags/class_name) and its typed input/output
-    JSON schemas, so the UI can render the framework's primitives. All primitive
-    modules are imported at module load so the registry is complete.
+    JSON schemas, so the UI can render the framework's primitives. The registry
+    is completed by walking the primitives package (#574), so every registered
+    primitive appears here — including those no endpoint reaches, which are
+    marked ``library-only`` rather than omitted.
     """
+    ensure_all_registered()
     catalogue = PRIMITIVE_REGISTRY.describe()
     entries: list[PrimitiveCatalogueEntry] = []
     for name, meta in catalogue.items():
@@ -3459,9 +3496,7 @@ def primitives() -> list[PrimitiveCatalogueEntry]:
                 author=meta["author"],
                 tags=meta["tags"],
                 class_name=meta["class_name"],
-                reachability=_PRIMITIVE_REACHABILITY.get(
-                    meta["name"], _REACHABILITY_LIBRARY_ONLY
-                ),
+                reachability=reachability_of(meta["name"]),
                 input_schema=input_schema,
                 output_schema=output_schema,
             )
@@ -3470,6 +3505,168 @@ def primitives() -> list[PrimitiveCatalogueEntry]:
 
 
 # --- end primitive registry catalogue (#135) ---------------------------------
+
+
+# --- MCP surface (#574, epic #570) -------------------------------------------
+# What the MCP server (mcp/, packaged separately) actually exposes as callable
+# tools, stated as a first-class surface rather than left to be inferred from
+# server.py. Everything here is DERIVED:
+#
+#   * membership  — the registry, completed by ensure_all_registered();
+#   * exposure    — is_exposed_as_tool(), the same predicate the MCP server
+#                   dispatches on, so this page cannot describe a tool list the
+#                   server does not serve;
+#   * schemas     — each primitive's own Pydantic describe();
+#   * governance  — the PrimitiveResult / Citation / AuditEntry models.
+#
+# Nothing here is a roster of tool names. A hand-maintained one is a second
+# mechanism for a fact the server already decides, and mcp/README.md's table was
+# exactly that: it went stale in both directions, marking a live primitive
+# library-only and listing two primitives that had been deleted.
+#
+# The server's own identity (its stdio name and catalogue resource URI) is
+# deliberately absent: those constants live in mcp/server.py, which cannot be
+# imported here without the MCP SDK, and typing them out would reintroduce the
+# transcription this endpoint exists to remove.
+
+
+class McpGovernanceField(BaseModel):
+    """One governance field carried by every MCP tool result."""
+
+    name: str = Field(..., description="Field name on the PrimitiveResult envelope.")
+    description: str = Field(
+        ..., description="The field's own documented meaning, read from the model."
+    )
+    fields: dict[str, str] = Field(
+        default_factory=dict,
+        description=(
+            "Sub-fields, when the governance field is itself structured "
+            "(citations, audit_entry) — name to documented meaning."
+        ),
+    )
+
+
+class McpSurfaceEntry(BaseModel):
+    """One registered primitive, and whether MCP exposes it as a callable tool."""
+
+    name: str = Field(..., description="Registered primitive name; the MCP tool name when exposed.")
+    version: str = Field(..., description="Primitive version (semver).")
+    description: str = Field(..., description="Registry description of the primitive.")
+    reachability: str = Field(
+        ..., description="'live' or 'library-only' — as GET /primitives reports it."
+    )
+    exposed_as_tool: bool = Field(
+        ...,
+        description=(
+            "Whether the MCP server advertises this primitive in tools/list. Decided "
+            "by the same predicate the server dispatches on, never by a separate list."
+        ),
+    )
+    not_exposed_reason: str | None = Field(
+        default=None,
+        description="Why the primitive is not callable as a tool; null when it is.",
+    )
+    input_schema: dict[str, Any] = Field(
+        default_factory=dict,
+        description=(
+            "The tool's inputSchema: the primitive's own typed Pydantic input model, "
+            "advertised verbatim. Present for every entry, so a library-only "
+            "primitive's contract is legible even though it is not callable."
+        ),
+    )
+    result_governance: list[McpGovernanceField] = Field(
+        default_factory=list,
+        description=(
+            "The evidence a call to this tool returns alongside its output. Empty "
+            "for a primitive that is not callable, which returns nothing at all."
+        ),
+    )
+
+
+_NOT_EXPOSED_REASON = (
+    "Registered and importable as library code, but reached by no REST endpoint "
+    "and no agent tool, so a client cannot reach the primitive itself. It is "
+    "listed here with its typed contract rather than omitted, and is not "
+    "advertised as callable."
+)
+
+
+def _result_governance() -> list[McpGovernanceField]:
+    """Describe the PrimitiveResult evidence pack from the models themselves.
+
+    Governance is *everything on the envelope except* ``output`` — derived by
+    difference rather than by naming the three fields, so a fourth evidence
+    field added to PrimitiveResult appears here without an edit.
+    """
+    from loanwhiz.primitives.base import AuditEntry, Citation, PrimitiveResult
+
+    structured: dict[str, type[BaseModel]] = {
+        "citations": Citation,
+        "audit_entry": AuditEntry,
+    }
+    described: list[McpGovernanceField] = []
+    for field_name, model_field in PrimitiveResult.model_fields.items():
+        if field_name == "output":
+            continue
+        nested = structured.get(field_name)
+        described.append(
+            McpGovernanceField(
+                name=field_name,
+                description=model_field.description or "",
+                fields=(
+                    {
+                        sub_name: sub_field.description or ""
+                        for sub_name, sub_field in nested.model_fields.items()
+                    }
+                    if nested is not None
+                    else {}
+                ),
+            )
+        )
+    return described
+
+
+@app.get("/mcp/surface", response_model=list[McpSurfaceEntry])
+def mcp_surface() -> list[McpSurfaceEntry]:
+    """Return the MCP server's tool surface, derived from the server's own logic.
+
+    One entry per registered primitive, in registry order, each stating whether
+    the MCP server exposes it as a callable tool, the typed input schema that
+    tool advertises, and — for the callable ones — the governance evidence a
+    call returns with its output: a confidence score, source citations, and a
+    structured audit entry (input hash, timestamp, duration). That evidence
+    travelling with the call is the point of serving the primitives over MCP at
+    all, so it is stated per tool rather than once in a preamble.
+
+    Reading this endpoint rather than counting its rows is deliberate: the
+    tallies transcribed into prose around this repo have gone stale in silence
+    more than once (#484, #492), so this returns the rows and states no total.
+    """
+    ensure_all_registered()
+    governance = _result_governance()
+    entries: list[McpSurfaceEntry] = []
+    for name, meta in PRIMITIVE_REGISTRY.describe().items():
+        registration = PRIMITIVE_REGISTRY.get(name)
+        input_schema: dict[str, Any] = {}
+        if registration is not None:
+            input_schema = registration.primitive_class.describe().input_schema
+        exposed = is_exposed_as_tool(meta["name"])
+        entries.append(
+            McpSurfaceEntry(
+                name=meta["name"],
+                version=meta["version"],
+                description=meta["description"],
+                reachability=reachability_of(meta["name"]),
+                exposed_as_tool=exposed,
+                not_exposed_reason=None if exposed else _NOT_EXPOSED_REASON,
+                input_schema=input_schema,
+                result_governance=governance if exposed else [],
+            )
+        )
+    return entries
+
+
+# --- end MCP surface (#574) --------------------------------------------------
 
 
 # --- cross-deal capability matrix (#241, C3 / epic #236) ---------------------
@@ -4822,3 +5019,411 @@ def book_view() -> BookResponse:
         disclosures=list(book.disclosures),
         positions=positions,
     )
+
+
+# --- cross-deal look-through concentration (#565, epic #560) ------------------
+# Self-contained block (fixtures + models + handler) for
+# GET /cross-deal-concentration — the surface for the figures #562/#563/#564
+# built as types.
+#
+# The point of the endpoint is what it refuses to net away. #564 encoded four
+# things that a screen can undo by accident, so all four are on the wire:
+#
+# 1. every bucket's proven/candidate/unresolved split, re-derived from #562's
+#    resolution rather than asserted here;
+# 2. an unresolved name is never netted anywhere — there is no residual bucket
+#    (#496/#514), and an asset the axis cannot place becomes `unattributed`, a
+#    different record kind, so no loop over `buckets` can pick it up;
+# 3. every contribution names its own deal's stated reporting date, and
+#    `dates_align` says on the face of the figure that the two committed
+#    schedules are as of different months;
+# 4. an industry axis names its taxonomy. `ExposureAxis` refuses to exist
+#    without one (#563), and `axis=industry` here reaches the API as a 400
+#    carrying that refusal rather than a silently-defaulted Fitch figure.
+#
+# Offline & deterministic: the two collateral schedules are read from the
+# committed fixtures below and parsed by `parse_schedule_text`, which reconciles
+# each report against its own stated aggregates (#469) and raises rather than
+# yielding a plausible-looking pool. No network, no LLM, no live tape fetch in
+# the request path. Reading `tests/fixtures/` from `src/` is the existing seam
+# for committed offline inputs — `report_extractor.COMMITTED_REPORT_FIXTURES`
+# and `reconciler._FIXTURE_DIR` take it too.
+
+#: Committed collateral-schedule fixtures, keyed by canonical deal id, as
+#: ``(filename, period_label)``. Pure data: registering a third deal's schedule
+#: is a line here, not new Python. A deal absent from this map has no offline
+#: schedule, which is a refusal rather than a partial figure.
+COMMITTED_SCHEDULE_FIXTURES: dict[str, tuple[str, str]] = {
+    "cairn-clo-xvii": ("cairn-clo-xvii-march-2025.txt", "2025-03"),
+    "contego-clo-xi": ("contego-clo-xi-august-2024.txt", "2024-08"),
+}
+
+_SCHEDULE_FIXTURE_DIR = (
+    Path(__file__).resolve().parents[3] / "tests" / "fixtures" / "collateral_schedule"
+)
+
+#: Query-parameter spelling → the axis it names. An industry spelling that does
+#: not name a taxonomy is deliberately present: it must reach `ExposureAxis` and
+#: be refused there (#563), not be quietly resolved to a default.
+_CONCENTRATION_AXES: dict[str, Callable[[], _xde.ExposureAxis]] = {
+    "fitch-industry": _xde.cross_deal_industry_axis,
+    "sp-industry": lambda: _xde.industry_axis(_industry_taxonomy.IndustryTaxonomy.sp),
+    "industry": lambda: _xde.ExposureAxis(kind=_xde.AxisKind.industry),
+    "country": _xde.country_axis,
+    "fitch-rating": lambda: _xde.rating_axis(_xde.RatingAgency.fitch),
+    "sp-rating": lambda: _xde.rating_axis(_xde.RatingAgency.sp),
+}
+
+
+class ConcentrationAxis(BaseModel):
+    """The axis a figure is expressed on — never omitted from the figure."""
+
+    kind: str
+    #: How the axis names itself, e.g. ``"Fitch industry"``. Rendered on every
+    #: industry figure because the same book concentrates differently on S&P.
+    label: str
+    taxonomy: str | None = None
+    agency: str | None = None
+
+
+class ConcentrationDealAsOf(BaseModel):
+    """One deal's stated reporting date, carried beside its contribution."""
+
+    deal: str
+    deal_name: str | None = None
+    reporting_date: str | None = None
+    period_label: str
+    #: What the deal's own report stated — its date if it published one, else
+    #: the period label. Never a date this platform chose.
+    stated: str
+
+
+class ConcentrationContribution(BaseModel):
+    """What one deal contributed to a bucket, as of that deal's own date."""
+
+    deal: str
+    as_of: str
+    balance: float
+    asset_count: int
+
+
+class ConcentrationSplit(BaseModel):
+    """A bucket's balance by obligor-resolution tier (#562). Never blended."""
+
+    proven_shared: float
+    candidate_proposed: float
+    unresolved: float
+
+
+class ConcentrationBucket(BaseModel):
+    """One bucket on the axis, with the residual that qualifies its share."""
+
+    label: str
+    published_spellings: list[str]
+    balance: float
+    asset_count: int
+    share_pct: float
+    split: ConcentrationSplit
+    per_deal: list[ConcentrationContribution]
+    reached_by_one_deal: bool
+    #: The primitive's own sentence for this bucket — the share, the axis, both
+    #: deals' dates and the tier split, as one line a reader cannot skip.
+    disclosure: str
+
+
+class ConcentrationUnattributed(BaseModel):
+    """Assets the axis cannot place. A different kind, never a bucket (#513)."""
+
+    reason: str
+    balance: float
+    asset_count: int
+    share_pct: float
+    per_deal: list[ConcentrationContribution]
+
+
+class ConcentrationTier(BaseModel):
+    """One obligor-resolution tier: how many names, and how much balance."""
+
+    tier: str
+    name_count: int
+    balance: float
+    share_pct: float
+
+
+class ConcentrationBounds(BaseModel):
+    """How many distinct obligors the deals hold — a range, never a point."""
+
+    lower: int
+    upper: int
+    is_exact: bool
+
+
+class CrossDealConcentration(BaseModel):
+    """Look-through concentration across the committed deals, residual included."""
+
+    axis: ConcentrationAxis
+    deals: list[str]
+    as_of: list[ConcentrationDealAsOf]
+    #: False on the committed pair. An aggregate that implies one as-of is a
+    #: figure nobody can reconcile back to either source.
+    dates_align: bool
+    currency: str | None = None
+    total_balance: float
+    asset_count: int
+    #: Distinct-obligor bounds. There is no point estimate on purpose (#562).
+    obligor_bounds: ConcentrationBounds
+    #: Names whose identity across the two books is NOT proven — the unresolved
+    #: tier plus the candidate-proposed one. The headline residual.
+    unproven_name_count: int
+    name_count: int
+    #: Share of balance sitting in those names.
+    not_proven_share_pct: float
+    tiers: list[ConcentrationTier]
+    #: Candidate links proposed but never applied — applying one would make the
+    #: distinct-obligor count a point estimate.
+    proposal_count: int
+    buckets: list[ConcentrationBucket]
+    unattributed: ConcentrationUnattributed
+    #: The primitive's own summary sentences, so the API and the screen say the
+    #: same thing rather than each paraphrasing the figure.
+    disclosure: str
+    obligor_disclosure: str
+
+
+@lru_cache(maxsize=4)
+def _portfolio_for(
+    fixtures: tuple[tuple[str, str, str], ...],
+) -> _xde.CrossDealPortfolio:
+    """Parse and join the named schedules. Memoised on the fixture tuple.
+
+    Parsing both reports and re-resolving every obligor costs a quarter of a
+    second of pure CPU, and the inputs are committed files that cannot change
+    under a running process — so repeating it per request is work with no
+    possible different answer. The same memo the tape-analytics path keeps
+    (``_TAPE_ANALYTICS_MEMO``), keyed on the fixtures rather than on nothing,
+    so a test that registers a different set still exercises the real parse.
+    """
+    schedules = {
+        deal: _parse_schedule_text(
+            (_SCHEDULE_FIXTURE_DIR / filename).read_text(encoding="utf-8"),
+            period_label=period_label,
+        )
+        for deal, filename, period_label in fixtures
+    }
+    return _xde.build_portfolio(schedules)
+
+
+def _committed_cross_deal_portfolio() -> _xde.CrossDealPortfolio:
+    """Build the cross-deal portfolio from the committed schedule fixtures.
+
+    Raises:
+        HTTPException: 503 when a registered fixture is not on disk. The
+            refusal names the deal and the file rather than serving the deals
+            that happen to have parsed — a one-deal "cross-deal" figure is not
+            a smaller version of the answer, it is a different one. Checked
+            here, outside the memo, so a fixture that goes missing is noticed
+            rather than served from a cache built when it was present.
+    """
+    fixtures = []
+    for deal, (filename, period_label) in sorted(COMMITTED_SCHEDULE_FIXTURES.items()):
+        if not (_SCHEDULE_FIXTURE_DIR / filename).is_file():
+            raise HTTPException(
+                status_code=503,
+                detail=(
+                    f"No committed collateral schedule for {deal}: expected "
+                    f"{filename}. A look-through figure over a subset of the "
+                    f"registered deals would understate every concentration in "
+                    f"it, so none is served."
+                ),
+            )
+        fixtures.append((deal, filename, period_label))
+    return _portfolio_for(tuple(fixtures))
+
+
+def _share_pct(part: Decimal, whole: Decimal) -> float:
+    """Percentage of *whole* that *part* is, at the two decimals #564 rounds to.
+
+    Quantised rather than left at full float precision so a tier share and a
+    bucket share on the same response are the same kind of number — the
+    primitive's own ``describe`` sentences quote two decimals.
+    """
+    if whole == 0:
+        return 0.0
+    return float((part / whole * 100).quantize(Decimal("0.01")))
+
+
+def _contributions(
+    per_deal: tuple[_xde.DealContribution, ...],
+) -> list[ConcentrationContribution]:
+    """Serialise contributions, each keeping its own deal's stated date."""
+    return [
+        ConcentrationContribution(
+            deal=c.deal,
+            as_of=c.as_of,
+            balance=float(c.balance),
+            asset_count=c.asset_count,
+        )
+        for c in per_deal
+    ]
+
+
+@app.get("/cross-deal-concentration", response_model=CrossDealConcentration)
+def cross_deal_concentration(
+    axis: str = Query(
+        "fitch-industry",
+        description=(
+            "Axis to express the figure on: fitch-industry, sp-industry, "
+            "country, fitch-rating, sp-rating. 'industry' names no taxonomy "
+            "and is refused."
+        ),
+    ),
+) -> CrossDealConcentration:
+    """Return look-through concentration across the committed CLOs.
+
+    Adds the committed collateral schedules together by obligor and by the
+    requested axis, and reports the three residuals #564 named beside the
+    figures rather than folded into them: the obligor residual (every bucket's
+    proven/candidate/unresolved split, and the distinct-obligor bounds), the
+    attribute residual (assets the axis cannot place, as `unattributed` rather
+    than an "Other" bucket), and the reporting-date residual (each
+    contribution's own stated date, plus `dates_align`).
+
+    Offline and deterministic — committed fixtures only, no network or LLM.
+    """
+    build = _CONCENTRATION_AXES.get(axis)
+    if build is None:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"Unknown axis {axis!r}. Known axes: "
+                f"{', '.join(sorted(_CONCENTRATION_AXES))}."
+            ),
+        )
+    try:
+        exposure_axis = build()
+    except ValueError as exc:
+        # #563: an industry axis without a taxonomy does not exist. The
+        # validator's own sentence is the response, so the API refuses for the
+        # reason the type refuses rather than a paraphrase of it.
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    portfolio = _committed_cross_deal_portfolio()
+    figure = _xde.aggregate_by_axis(portfolio, exposure_axis)
+    obligors = _xde.aggregate_by_obligor(portfolio)
+
+    tiers = [
+        ConcentrationTier(
+            tier=tier.value,
+            name_count=len(obligors.rows_in_tier(tier)),
+            balance=float(obligors.tier_balance(tier)),
+            share_pct=_share_pct(obligors.tier_balance(tier), obligors.total_balance),
+        )
+        for tier in _xde.ObligorTier
+    ]
+    unproven = sum(
+        t.name_count for t in tiers if t.tier != _xde.ObligorTier.proven_shared.value
+    )
+
+    return CrossDealConcentration(
+        axis=ConcentrationAxis(
+            kind=exposure_axis.kind.value,
+            label=exposure_axis.label,
+            taxonomy=(
+                exposure_axis.taxonomy.value if exposure_axis.taxonomy else None
+            ),
+            agency=exposure_axis.agency.value if exposure_axis.agency else None,
+        ),
+        deals=list(portfolio.deals),
+        as_of=[
+            ConcentrationDealAsOf(
+                deal=entry.deal,
+                deal_name=entry.deal_name,
+                reporting_date=entry.reporting_date,
+                period_label=entry.period_label,
+                stated=entry.stated,
+            )
+            for entry in portfolio.as_of
+        ],
+        dates_align=portfolio.dates_align,
+        currency=portfolio.currency,
+        total_balance=float(portfolio.total_principal_balance),
+        asset_count=portfolio.asset_count,
+        obligor_bounds=ConcentrationBounds(
+            lower=obligors.bounds.lower,
+            upper=obligors.bounds.upper,
+            is_exact=obligors.bounds.is_exact,
+        ),
+        unproven_name_count=unproven,
+        name_count=len(obligors.rows),
+        not_proven_share_pct=float(figure.not_proven_share),
+        tiers=tiers,
+        proposal_count=len(obligors.proposals),
+        buckets=[
+            ConcentrationBucket(
+                label=bucket.label,
+                published_spellings=list(bucket.published_spellings),
+                balance=float(bucket.balance),
+                asset_count=bucket.asset_count,
+                share_pct=float(figure.share(bucket)),
+                split=ConcentrationSplit(
+                    proven_shared=float(bucket.split.proven_shared),
+                    candidate_proposed=float(bucket.split.candidate_proposed),
+                    unresolved=float(bucket.split.unresolved),
+                ),
+                per_deal=_contributions(bucket.per_deal),
+                reached_by_one_deal=bucket.reached_by_one_deal,
+                disclosure=figure.describe_bucket(bucket),
+            )
+            for bucket in figure.buckets
+        ],
+        unattributed=ConcentrationUnattributed(
+            reason=figure.unattributed.reason.value,
+            balance=float(figure.unattributed.balance),
+            asset_count=figure.unattributed.asset_count,
+            share_pct=float(figure.unattributed_share),
+            per_deal=_contributions(figure.unattributed.per_deal),
+        ),
+        disclosure=figure.describe(),
+        obligor_disclosure=obligors.describe(),
+    )
+
+
+# --- end cross-deal look-through concentration (#565) ------------------------
+
+
+# ---------------------------------------------------------------------------
+# Investor due-diligence record (#568, epic #561)
+#
+# Beside governance, NOT beside compliance. ``/deal/{id}/compliance`` answers
+# whether the *deal* sits inside its structural covenants; this answers whether
+# the *holder's* retention verification is documented. A deal can pass every
+# covenant with its retention unestablished, and the reverse — so the two
+# surfaces stay separate and share no vocabulary (see
+# ``primitives/due_diligence.py``'s module docstring).
+# ---------------------------------------------------------------------------
+
+
+@app.get("/deal/{deal_id}/due-diligence", response_model=DueDiligenceRecord)
+def deal_due_diligence(deal_id: str) -> DueDiligenceRecord:
+    """Return one deal's due-diligence record — what was verified, and what was not.
+
+    Reads the deal's registry entry and its **cached** extracted model, exactly
+    as ``/deal/{id}/model`` does, and never triggers a cold extraction (that
+    runs Docling for ~10min). A deal with no committed model is not an error
+    here: :func:`~loanwhiz.primitives.due_diligence.assemble_due_diligence`
+    answers it with a ``not-established`` check naming the document that was
+    *not* read, which is the honest answer and the one this surface exists to
+    render. Returning 500 or an empty body would turn a documented refusal into
+    a broken screen.
+
+    The response is the record itself rather than the wrapping
+    ``PrimitiveResult``: the record's ``confidence`` is always 1.0 (a
+    deterministic read of committed data — "a refusal is a certain refusal"),
+    so surfacing it beside a refusal would be the #549 failure this whole
+    screen is built to avoid, a number rendered next to "could not establish"
+    and read as the measurement.
+    """
+    deal = _require_deal(deal_id)
+    model = _load_cached_deal_model(deal)
+    result = assemble_due_diligence(deal_id, deal, model=model)
+    return result.output

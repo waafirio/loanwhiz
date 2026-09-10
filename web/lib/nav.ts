@@ -7,9 +7,12 @@ import {
   Boxes,
   BadgeCheck,
   Scale,
+  FileSearch,
   Grid3x3,
   GitCompareArrows,
   BookOpen,
+  Layers3,
+  Plug,
   type LucideIcon,
 } from "lucide-react";
 
@@ -65,9 +68,23 @@ export const NAV_GROUPS: NavGroup[] = [
       { title: "Validation", href: "/validation", icon: BadgeCheck },
       // Framework — the typed primitive-registry catalogue (#137).
       { title: "Framework", href: "/primitives", icon: Boxes },
+      // MCP — the primitives as a governed MCP server: which are exposed as
+      // callable tools, and the evidence a call's result carries (#575).
+      { title: "MCP", href: "/mcp", icon: Plug },
       // Governance — the FINOS evidence-pack / audit-trail / confidence /
       // model-risk + data-provenance (deeploans vs direct) surface (#239).
       { title: "Governance", href: "/governance", icon: Scale },
+      // Look-through concentration — true single-name / sector exposure across
+      // the CLOs a holder owns, with the unresolved obligor set rendered
+      // rather than netted away (#565, epic #560).
+      { title: "Concentration", href: "/concentration", icon: Layers3 },
+      // Due diligence — the per-deal UK-SR risk-retention record: what was
+      // verified from which document, and what was not (#568, epic #561).
+      // Beside Governance on purpose. "Compliance", in the Deal Analytics
+      // group above, answers whether the DEAL is inside its covenants; this
+      // answers whether the HOLDER's verification is documented. Two questions,
+      // two readers — the separation is the point, so do not merge the entries.
+      { title: "Due Diligence", href: "/due-diligence", icon: FileSearch },
     ],
   },
 ];

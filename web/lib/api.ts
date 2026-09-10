@@ -648,6 +648,53 @@ export function getPrimitives(): Promise<PrimitiveCatalogueEntry[]> {
 }
 
 // ---------------------------------------------------------------------------
+// MCP tool surface  —  GET /mcp/surface  (#574)
+// (Which registered primitives the MCP server exposes as callable tools, each
+// tool's typed input schema, and the governance evidence a call's result
+// carries. The server's own `is_exposed_as_tool()` decides exposure, so the
+// described surface cannot drift from the dispatched one.)
+// ---------------------------------------------------------------------------
+
+/**
+ * One field of the `PrimitiveResult` evidence pack — mirrors
+ * `McpGovernanceField` in `src/loanwhiz/api/main.py`.
+ *
+ * The endpoint derives these by *difference* (everything on the envelope
+ * except `output`), so a fourth evidence field added to `PrimitiveResult`
+ * arrives here with no edit on either side. `fields` carries the sub-fields
+ * of a structured member (`citations`, `audit_entry`) and is empty otherwise.
+ */
+export interface McpGovernanceField {
+  name: string;
+  description: string;
+  fields: Record<string, string>;
+}
+
+/**
+ * One primitive on the MCP surface — mirrors `McpSurfaceEntry` in
+ * `src/loanwhiz/api/main.py`.
+ *
+ * `exposed_as_tool` is the server's own dispatch predicate, not a second
+ * opinion about it. An unexposed primitive keeps its typed contract and gains
+ * `not_exposed_reason`; it carries no `result_governance`, because it returns
+ * nothing.
+ */
+export interface McpSurfaceEntry {
+  name: string;
+  version: string;
+  description: string;
+  reachability?: "live" | "library-only";
+  exposed_as_tool: boolean;
+  not_exposed_reason: string | null;
+  input_schema: JsonSchema;
+  result_governance: McpGovernanceField[];
+}
+
+export function getMcpSurface(): Promise<McpSurfaceEntry[]> {
+  return request<McpSurfaceEntry[]>("/mcp/surface");
+}
+
+// ---------------------------------------------------------------------------
 // Engine validation  —  GET /deal/{deal_id}/validation  (#212, V6)
 // (engine_validation_harness → EngineValidationReport: the engine-vs-published
 // Notes & Cash Priority of Payments reconciliation, to the cent, with honest
@@ -1011,4 +1058,208 @@ export interface BookResponse {
 
 export function getBook(): Promise<BookResponse> {
   return request<BookResponse>("/book");
+}
+
+// ---------------------------------------------------------------------------
+// Cross-deal look-through concentration  —  GET /cross-deal-concentration
+// ---------------------------------------------------------------------------
+
+/**
+ * The axis a concentration figure is expressed on. `label` is what the figure
+ * calls itself ("Fitch industry") and is not optional anywhere it renders: the
+ * same book concentrates differently on S&P than on Fitch (#563), so a share
+ * quoted without its taxonomy is not comparable to anything.
+ */
+export interface ConcentrationAxis {
+  kind: string;
+  label: string;
+  taxonomy: string | null;
+  agency: string | null;
+}
+
+/**
+ * One deal's own stated reporting date. The two committed CLOs report as of
+ * different months, so this is per-deal rather than one figure-level as-of.
+ */
+export interface ConcentrationDealAsOf {
+  deal: string;
+  deal_name: string | null;
+  reporting_date: string | null;
+  period_label: string;
+  /** What the deal's own report stated — never a date the platform chose. */
+  stated: string;
+}
+
+/** What one deal contributed, as of that deal's own date. */
+export interface ConcentrationContribution {
+  deal: string;
+  as_of: string;
+  balance: number;
+  asset_count: number;
+}
+
+/**
+ * A bucket's balance by obligor-resolution tier (#562). The three are never
+ * blended and never summed into a single "identified" figure: the balance is
+ * exact whichever tier it sits in, but the number of distinct borrowers behind
+ * it is not.
+ */
+export interface ConcentrationSplit {
+  proven_shared: number;
+  candidate_proposed: number;
+  unresolved: number;
+}
+
+export interface ConcentrationBucket {
+  label: string;
+  published_spellings: string[];
+  balance: number;
+  asset_count: number;
+  share_pct: number;
+  split: ConcentrationSplit;
+  per_deal: ConcentrationContribution[];
+  reached_by_one_deal: boolean;
+  /** The backend's own sentence for this bucket — rendered, not paraphrased. */
+  disclosure: string;
+}
+
+/**
+ * Assets the axis cannot place, because the report never published the value.
+ * A distinct record kind, not a bucket — there is no "Other" row to absorb it
+ * (#496/#514), and nothing that loops over `buckets` can pick it up.
+ */
+export interface ConcentrationUnattributed {
+  reason: string;
+  balance: number;
+  asset_count: number;
+  share_pct: number;
+  per_deal: ConcentrationContribution[];
+}
+
+/** One obligor-resolution tier: how many names, and how much balance. */
+export interface ConcentrationTier {
+  tier: string;
+  name_count: number;
+  balance: number;
+  share_pct: number;
+}
+
+/**
+ * Distinct-obligor bounds. There is deliberately no single number: a point
+ * estimate has to assume something about what was not proved, and assuming
+ * every unresolved name is distinct is the assumption that makes a book look
+ * diversified.
+ */
+export interface ConcentrationBounds {
+  lower: number;
+  upper: number;
+  is_exact: boolean;
+}
+
+/** Look-through concentration across the committed CLOs, residuals included. */
+export interface CrossDealConcentration {
+  axis: ConcentrationAxis;
+  deals: string[];
+  as_of: ConcentrationDealAsOf[];
+  /** False on the committed pair — the two reports are months apart. */
+  dates_align: boolean;
+  currency: string | null;
+  total_balance: number;
+  asset_count: number;
+  obligor_bounds: ConcentrationBounds;
+  /** Names whose identity across the two books is NOT proven. */
+  unproven_name_count: number;
+  name_count: number;
+  not_proven_share_pct: number;
+  tiers: ConcentrationTier[];
+  proposal_count: number;
+  buckets: ConcentrationBucket[];
+  unattributed: ConcentrationUnattributed;
+  disclosure: string;
+  obligor_disclosure: string;
+}
+
+/** The axes the backend serves, in the order the screen offers them. */
+export const CONCENTRATION_AXES = [
+  "fitch-industry",
+  "sp-industry",
+  "country",
+  "fitch-rating",
+  "sp-rating",
+] as const;
+
+export type ConcentrationAxisKey = (typeof CONCENTRATION_AXES)[number];
+
+/** Fetch the look-through concentration figure on one axis. */
+export function getCrossDealConcentration(
+  axis: ConcentrationAxisKey,
+): Promise<CrossDealConcentration> {
+  return request<CrossDealConcentration>(
+    `/cross-deal-concentration?axis=${encodeURIComponent(axis)}`,
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Investor due-diligence record  —  GET /deal/{id}/due-diligence  (#568, #561)
+//
+// Mirrors `loanwhiz.primitives.due_diligence.DueDiligenceRecord`. Two lists,
+// deliberately NOT one list with an outcome flag: an empty graded collection
+// satisfies every aggregate over it, so "verified nothing" and "had nothing to
+// verify" would render identically and the unestablished fraction would read
+// as free green (#513). The split is the contract — keep it in the types so a
+// consumer cannot flatten it back by accident.
+//
+// The vocabulary is `verified` / `not-established`, NOT the capability
+// matrix's `validated` / `ran` / `not-applicable`. Those answer "did the
+// primitive run, and was its output reconciled?" — a question about this
+// platform. These answer "is the regulatory fact established?" — a question
+// about the deal's documents. Sharing the words would invite reading one as
+// the other.
+// ---------------------------------------------------------------------------
+
+/** The outcomes a due-diligence check can reach. Closed, mirroring the backend. */
+export type CheckOutcome = "verified" | "not-established";
+
+/**
+ * The document a check was answered from, and the two dates that differ.
+ *
+ * `read_at` is when LoanWhiz read the document. `document_date` is when the
+ * document itself is dated — a different fact, and one no registry field
+ * carries today, so it arrives `null` with `document_date_reason` saying why.
+ * Rendering the first where the second belongs is the mistake the reason field
+ * exists to prevent; the UI must show the reason, never substitute `read_at`.
+ */
+export interface DueDiligenceSource {
+  registry_slot: string;
+  url: string;
+  read_at: string | null;
+  document_date: string | null;
+  document_date_reason: string;
+  /** The registry's `registration_note`, where the entry carries one. */
+  registry_note: string | null;
+}
+
+/** One regulatory question asked of one deal, and the answer or the refusal. */
+export interface DueDiligenceCheck {
+  check: string;
+  outcome: CheckOutcome;
+  /** Mandatory and non-empty on BOTH outcomes — the backend refuses a blank. */
+  reason: string;
+  source: DueDiligenceSource | null;
+  citations: Citation[];
+  detail: Record<string, unknown>;
+}
+
+/** One deal's record: what was established, and what was not, as two kinds. */
+export interface DueDiligenceRecord {
+  deal_id: string;
+  deal_name: string;
+  verified: DueDiligenceCheck[];
+  not_established: DueDiligenceCheck[];
+}
+
+export function getDueDiligence(dealId: string): Promise<DueDiligenceRecord> {
+  return request<DueDiligenceRecord>(
+    `/deal/${encodeURIComponent(dealId)}/due-diligence`,
+  );
 }

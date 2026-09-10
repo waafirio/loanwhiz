@@ -1,4 +1,4 @@
-# Data Card: LoanWhiz deal set (Green Lion 2026-1 + cross-jurisdiction deals + the first CLO)
+# Data Card: LoanWhiz deal set (Green Lion 2026-1 + cross-jurisdiction deals + two CLOs)
 
 > Governance artefact following FINOS AI Governance Framework templates.
 > See also: [docs/model-card.md](model-card.md) · [docs/governance.md](governance.md)
@@ -12,7 +12,7 @@ the pipeline reads its Listing Particulars to a canonical deal model (#456), and
 since #481 its trustee reports' published coverage-test results are committed as
 an answer key, so `GET /quality-matrix` grades that one row against figures the
 engine did not compute. That is a graded row, not a validated cell — see
-[the CLO's own section](#cairn-clo-xvii-dac--what-is-and-is-not-obtainable). See [The full deal set](#the-full-deal-set--6-registered-deals-5-that-run)
+[the CLO's own section](#cairn-clo-xvii-dac--what-is-and-is-not-obtainable). See [The full deal set](#the-full-deal-set--what-is-registered-and-what-runs)
 for the honest per-deal breakdown. "Runs on" is not "validated against": the only deal validated
 to the cent against external published actuals is **Green Lion 2024-1** (a
 second, **Green Lion 2023-1**, is graded to the cent against a committed answer
@@ -41,7 +41,7 @@ two different stale tallies in this repo's own docs did before #484.
 
 Green Lion 2026-1 (~EUR 1bn pool) reports **3 monthly ESMA Annex 2 tapes** from `Algoritmica/green-lion-2026` — **February, March, and April 2026** — each with a matching real investor report. **January 2026 (`202601`) is an intentional gap** in the chronology.
 
-> **Separate deals are not interchangeable.** `Algoritmica/green-lion-2024-2025` (~EUR 139bn pool, ~130× this deal) and the real ING `green-lion-2023-1` / `green-lion-2024-1` deals are **different deals**, not Green Lion 2026-1's pre-history. Their loan tapes are **not** chained into this deal's `tape_urls` — doing so would splice unrelated pools. Green Lion 2023-1 and 2024-1 are registered as their own deals (see [The full deal set](#the-full-deal-set--6-registered-deals-5-that-run)); 2024-1 is the engine's to-the-cent validation target against its own published Notes & Cash report.
+> **Separate deals are not interchangeable.** `Algoritmica/green-lion-2024-2025` (~EUR 139bn pool, ~130× this deal) and the real ING `green-lion-2023-1` / `green-lion-2024-1` deals are **different deals**, not Green Lion 2026-1's pre-history. Their loan tapes are **not** chained into this deal's `tape_urls` — doing so would splice unrelated pools. Green Lion 2023-1 and 2024-1 are registered as their own deals (see [The full deal set](#the-full-deal-set--what-is-registered-and-what-runs)); 2024-1 is the engine's to-the-cent validation target against its own published Notes & Cash report.
 
 > **These are period snapshots, not a longitudinal panel.** The three tapes are
 > **re-sampled each period** — loan identifiers do not persist across months
@@ -53,13 +53,14 @@ Green Lion 2026-1 (~EUR 1bn pool) reports **3 monthly ESMA Annex 2 tapes** from 
 
 ---
 
-## The full deal set — 6 registered deals, 5 that run
+## The full deal set — what is registered, and what runs
 
 Green Lion 2026-1 is the headline demo deal, but the deal registry
 (`src/loanwhiz/data/deals.json`, merged over the in-code Green Lion default)
-carries **six deals across four jurisdictions and two asset classes**. **Five of
-them the *unmodified* pipeline runs on end-to-end; the sixth — Cairn CLO XVII DAC
-— is registered only.** That distinction is load-bearing and is kept everywhere
+carries deals across four jurisdictions and two asset classes. **The Dutch,
+Italian and Spanish RMBS deals the *unmodified* pipeline runs on end-to-end; the
+two CLOs are not: both Cairn CLO XVII DAC and Contego CLO XI DAC are registered
+and extracted, and neither is graded against its own reports.** That distinction is load-bearing and is kept everywhere
 in this card: a registered deal has its documents sourced and its availability
 recorded; a deal that *runs* has been through the pipeline.
 This demonstrates the primitives are deal-agnostic — but
@@ -77,6 +78,7 @@ the per-cell source of truth; it reports the current tally itself.
 | **Leone Arancio RMBS 2023-1 S.r.l.** | Italy | Prospectus (real, Italian) + investor reports | **0.925** | Full waterfall (23/23/12 steps), 3 triggers, 3 note classes — A1 480m / A2 6,600m / J 920m | Pipeline ran; tranche sizes reconcile to the curated `deals.json` registry, but **no** Notes & Cash report is published, so no external validation is possible |
 | **Sol-Lion II RMBS Fondo de Titulización** | Spain | Prospectus (real, Spanish) + investor reports | **0.925** | Full waterfall (20/15/12 steps), 3 triggers, 8 note classes — A1–A6, B, C | Pipeline ran; tranche sizes reconcile to the curated `deals.json` registry, but **no** Notes & Cash report is published, so no external validation is possible |
 | **Cairn CLO XVII DAC** *(CLO — extracted, covenants graded, PoP ground truth committed, graded; the Interest cascade reconciles)* | Ireland | Listing Particulars (real, 420pp) + 3 monthly trustee reports (real) + Note Valuation Report (real, 83pp) | **1.0** | Full 8-class stack (A, B-1, B-2, C, D, E, F + Subordinated, EUR 404.1m), both Priorities of Payments as distinct cascades (29-step Interest / 23-step Principal / 26-step Post-Acceleration), 10 triggers of which 8 are per-class coverage tests, 25 definitions | **Executes and is graded on one row; not validated.** The seed folds through the shared `run_period` kernel with the deal's own cascades (#457). Since #481 an answer key **is** committed — authored from the trustee reports' stated coverage-test results, so `GET /quality-matrix` grades the `covenants` row `passed`. It is still **not** `validated`: since #492 that cell is earned by committed *data* — an answer key carrying a Priority-of-Payments section plus an offline engine series — rather than by a bespoke validation builder. #494 **parses** the Note Valuation Report's Interest and Principal Priorities of Payments and #495 committed them as the key's January 2025 period, so the first artifact exists; the cell refuses on the second, the offline engine series. **#496 ran that grade anyway and it did not reconcile — the finding, not a deferral.** Folded against the very document the key's PoP period was authored from, the deal's 29-step Interest cascade distributed EUR 5,434,911.93 of the report's stated EUR 7,255,062.35 available revenue and left EUR 1,820,150.42 undistributed. The pot was the report's own figure and no step was starved — `total_shortfall` was EUR 0.00 — so that was not an under-funded cascade but an incomplete one: the money had no step to go to. No step disagreed: the report prints its 62 rows against the cascade's 29 labels, 20 of them were joined by no step at all, and the eight of those that carry money (`(A)(i)`, `(A)(ii)`, `(H)(i)`, `(H)(ii)`, `(CC)(1)(a)`, two it re-letters bare `(a)`) accounted for the shortfall to the cent — so that failure was the tie-out, not a delta. Three of the 29 lines are genuinely engine-computed, and the rest are not: #511 resolved the recipient spelling so Class A and Class C interest are derived rather than handed the report's figure, #512 supplied their published applied rates and #528 the accrual period, so each is computed from tranche size x rate x a day count measured between two stated Payment Dates and reproduces its published figure (EUR 3,277,457.78 and EUR 415,004.33) with no report input on the engine's side. Every other step's amount is still taken from the report and compared to itself, and the Principal cascade reconciles on EUR 0.00 of available principal funds, which an engine that never paid anything would reproduce exactly. **The Interest cascade's own gaps are now closed, and each turned out to be a different thing.** #514 joined the 20 unmatched rows so every published cent reaches a step; #538 resolved Class B's recipient onto the two strips the class was issued in — its stack is spelled `class_b_1`/`class_b_2` while the report path seeded a canonical `class_b`, so no tranche had attached; and #539 sourced each strip's day-count fraction from Conditions 6(e)(ii)/(iii), which is what makes the sum right, since B-1 accrues over 95 actual days and B-2 over 90 on 30/360. All 29 steps now agree at the key's EUR 0.01 tolerance and `engine_computed_passed` reads 3. **The aggregate is not what earns that**: for one period the cascade's total tied perfectly while two steps were wrong by equal and opposite amounts, because the pot is fixed and the `(CC)` residual sweep absorbs any senior step's over-draw — so `steps_passed` and the per-step deltas are the signal, and the tie-out only corroborates them. Since #513 the grade is reachable through the committed key itself: the key unions four periods and only the one authored from the Note Valuation Report is foldable, so `reconcile_against_answer_key` grades that period and reports the other three not-applicable — the document behind them publishes no Priority of Payments — reaching the same figures through the key that #496 reached by bypassing it. A period skipped that way is not a period passed: it is excluded from the verdict and from both period counts, so this key cannot report three-quarters green for periods nothing compared. `tests/test_clo_pop_grading.py` holds every figure above; no answer key or engine module was changed to produce them. `covenant_monitoring`, `waterfall_execution` and — since #471 registered the derived tape — `tape_analytics` are `ran`; collateral reconciliation and engine validation stay `not-applicable`. **One of those reasons is no longer true of this deal (#525).** The `waterfall_execution` cell still reads "the per-deal endpoints cannot yet serve this deal, whose registered period source cannot be folded into a series without the structural configuration it does not register"; both halves are now false — the endpoints serve and the series folds by the report path, which needs none of that configuration. It is recorded here rather than corrected: the fix is in `capability_matrix.py`, outside the issue that measured it. The `collateral_reconciliation` reason is unaffected and stays accurate, because pool-state reconstruction from the tape genuinely does need those fields. Collateral reconciliation stays refused because the deal registers no structural config, not because it has no tape. The coverage tests' required levels are extracted from the trustee reports (#480) and are **still not wired onto the deal model's triggers**, which carry `threshold: null` — so on the deal's own state the monitor still reports them not-evaluable. #481 did not change that; it supplies the published level *and* the published ratio from the answer key on the grading path only. A second reason the deal's own cascades did not evaluate has since been closed: every extracted step recipient now resolves to a canonical `RecipientType` (#503, pinned by `tests/test_clo_recipient_vocabulary.py`), which is what made the grade above runnable at all. **#525 graded what the three live screens render, and the split is the finding rather than the serving.** `GET /deal/cairn-clo-xvii/compliance` and `/waterfall` both answer 200 where they answered a labelled 422, and the CLO now appears in `/compare`'s `performance_series` with a real `latest_period` of 2025-01-08. The waterfall screen renders the Note Valuation Report's January 2025 period: a 29-step Interest cascade over the report's stated EUR 7,255,062.35 of available revenue, and **every one of those 29 steps agrees with the document's own published rows to the cent**, with no published row left off the screen. That number is worth much less than it looks. Measured at the live path's own input seam — `PeriodInputs.revenue_step_sources` and the override map the report adapter builds — **26 of the 29 steps arrive carrying the report's figure as an override and hand it back**, so their agreement is true by construction and is the document reconciling with itself. **3 arrive with no override**: Class A `(G)`, Class B `(H)` and Class C `(J)` interest, computed from each class's size, its published applied rate and a day count measured between two stated Payment Dates, reproducing EUR 3,277,457.78, EUR 644,398.50 and EUR 415,004.33 with no report input on the engine's side. Those three are the only non-circular comparisons either screen supports. The Principal cascade still renders an EUR 0.00 pot, which an engine that paid nothing would reproduce exactly. **The compliance screen serves a refusal, not a measurement.** It renders 10 triggers across 3 trustee-report periods and **evaluates none of them** — every status is `evaluable: false` with a stated cause, and no metric or threshold is rendered — so the 200 conveys no compliance information for this deal. That cause is #549's. **The two screens also describe different points in the deal's life**: the waterfall folds the Note Valuation Report's single period, compliance runs over the trustee reports' periods, and the two sets are disjoint — which is also why `/compare` returns an empty `common_periods` for this deal against any comp, and why its performance series is flat across the one date it has. **The comparison panel's blank cells were not a CLO defect.** #522 counted 46 of 55 structural rows blank for this deal and expected the coupon work to fill them; it did not, because there was nothing there to fill. The CLO holds a populated cell on the large majority of those rows — more of them than Green Lion does, 8 tranches to 3 — and what the count was measuring is a null `value`, the per-deal comparable scalar, which is null on every waterfall and qualitative-trigger row **for every deal including both externally validated Dutch RMBS**. Those rows render the step's priority letter and its basis, and per-period amounts live on the waterfall screen instead. `tests/test_clo_live_screens.py` holds every figure in this paragraph, including the 3/26 split and the absence of an override on the three; no engine, seed, answer key or endpoint was changed to produce them. See the limitation below |
+| **Contego CLO XI DAC** *(CLO — registered and extracted; not graded)* | Ireland | Listing Particulars (real, 415pp, **29-Jun-2023 — pre-reset**) + 2 BNY Mellon COMPLIANCE REPORTs (real, 74pp, Aug/Sep 2024) | **0.85** | The full 8-class **2023** stack (A, B-1, B-2, C, D, E, F + Subordinated, EUR 380.6m), both Priorities of Payments as distinct 37-step cascades, 5 triggers of which 4 are per-class coverage tests — but only 4 defined terms, and no tranche ratings or coupons (see below) | **Extracted; nothing graded.** Its reports are BNY Mellon rather than Cairn's U.S. Bank, so nothing has parsed them yet (#533) and no answer key is authored (#534). `notes_cash_report_urls` is deliberately unset: the NOTE VALUATION REPORT is obtainable but that key is a routing promise this deal cannot yet keep. The **reset boundary** below is the load-bearing fact about this registration |
 
 ### Cairn CLO XVII DAC — what is and is not obtainable
 
@@ -469,6 +471,58 @@ config shape). And per #457 below, the threshold gap is not even the refusal tha
 fires first. A reader taking this paragraph as "the coverage tests now evaluate"
 would be making exactly the inversion #457 warns about.
 
+**#566: the risk-retention undertaking is stated in full, and nothing in the
+pipeline could see it.** UK/EU Securitisation Regulation obliges an institutional
+investor to verify, *before* taking a position, that a named entity retains a
+material net economic interest of not less than 5% — and to say by **which**
+Article 6(3) method. Cairn's committed glossary stops at `Payment Date`, so the
+entire R range — `Retention Requirements`, `Retention Deficiency` — is on the far
+side of the same 40,000-character cut described above. Read from that artefact
+alone the honest-looking answer is "this deal states no retention", and it is
+false. The Listing Particulars state the undertaking on page 282:
+
+| Stated term | Value | Source |
+|---|---|---|
+| Retention Holder | The Investment Manager | Listing Particulars, "The Retention Holder and the Securitisation Regulations" |
+| Capacity | originator | same |
+| Method | **Article 6(3)(d)** — the first-loss tranche | same |
+| Level | not less than 5% of the Aggregate Collateral Balance | same |
+| Instrument | Subordinated Notes | same |
+
+**The locator is the citation, not the figure.** Searching this document for "5%"
+finds the *Regulation's* generic description first — it states the same
+five-per-cent. floor across four pages that name no retaining entity, 239 pages
+before the deal's own commitment. A record built from those pages would carry a
+level and no method, which is precisely what the obligation does not accept.
+`Article 6(3)` appears on exactly one page of the 420. So
+`extraction/retention_parser.py` keys on the sub-paragraph letter through a
+closed enum, and treats the method named in words as a cross-check: Cairn never
+writes "first loss tranche" at all, Contego CLO XI writes it *and* cites
+`Article 6(3)(d)`, and Leone Arancio writes `option 3 (a) of article 6` for a
+different method entirely. Where a document states both, they must agree; a
+contradiction is refused rather than tie-broken.
+
+**The retainer is recorded as the document designates it.** Cairn names "the
+Investment Manager", not a legal person; the back cover lists Cairn Loan
+Investments II LLP at the 62 Buckingham Gate address the retention section gives,
+which is how a reader closes the gap. The parser does not close it — substituting
+a legal name for the designation the document used is a cross-section inference,
+and it belongs beside the record as evidence rather than inside it as a fact.
+
+**A section that did not arrive is not a document that is silent.** Both produce
+the same empty parse, and only one is a fact about the deal, so `assess_retention`
+judges the *input* the way #548 taught the definitions stage to judge its output:
+text that mentions retention but cites no sub-paragraph, text too short to be a
+retention section, or a section flagged truncated, each returns `implausible`
+with a named cause. Run against Cairn's own truncated glossary it fires — which
+is the case that would otherwise have been recorded as an absence.
+
+**Contego is read but not seeded.** Its undertaking parses from a committed
+excerpt of the 29-Jun-2023 Listing Particulars — same method, different retainer
+(Five Arrows Global Loan Investments II PLC), level measured on the nominal value
+of the securitised exposures rather than the Aggregate Collateral Balance — but
+the deal is not registered on this branch, so no seed carries it.
+
 **#481 grades these outcomes without closing that gap, and the distinction is
 the whole of what it claims.** The published results are committed as an answer
 key and `GET /quality-matrix` grades the `covenants` row against them — but the
@@ -758,6 +812,439 @@ carries neither, and a reader resolves a default for an absent key exactly as
 ESMA-format ingestion path; the same synthetic-vs-real and snapshot caveats below
 apply to whichever tapes are synthetic.
 
+### Contego CLO XI DAC — what is and is not obtainable
+
+The registry's **second** CLO, added by #532 (epic #530). **The Listing
+Particulars have been extracted to a committed seed, its trustee reports are now
+parsed (#533/#555) and a ground-truth answer key is committed (#534) — but the
+deal is not graded against that key and no capability cell is `validated`.** It
+exists to answer a question one specimen cannot: whether the platform's CLO
+capability is *general* or *fitted* to Cairn. It changes exactly one variable — the **collateral
+administrator**. Cairn's trustee reports are U.S. Bank; Contego's are **BNY
+Mellon**, whose documents open with a Client Service Manager block and a
+disclaimer rather than a `Global Corporate Trust www.usbank.com/clo` header.
+
+Deal identity: an Irish *designated activity company*, registered number 730521,
+collateral manager **Five Arrows Managers LLP** (a Rothschild & Co company),
+trustee **BNY Mellon Corporate Trustee Services Limited**, collateral
+administrator **The Bank of New York Mellon S.A./N.V., Dublin Branch**, listed on
+**Euronext Dublin** under issuer 29975.
+
+#### The reset boundary — why this deal is registered against its *older* document
+
+**This is the load-bearing fact about this registration, and it generalises.**
+Euronext publishes **two** Listing Particulars for this issuer:
+
+| Listing Particulars | Date | Pages | Capital stack | Registered? |
+|---|---|---|---|---|
+| Original | **29-Jun-2023** | 415 | Class A EUR 228.7m at 3mE+1.85%, Classes A–F + Subordinated, **due 2035** | **Yes — `prospectus_url`** |
+| **Reset** | 19-Nov-2024 | 421 | Class **A-R** EUR 310m, Classes A-R–F-R + Subordinated, **due 2038** | **No — deliberately** |
+
+Every trustee report the exchange publishes for this deal is from **August and
+September 2024** — *before* the reset. So the **2023** document is the one that
+describes the capital structure those reports report on, and it is the one
+registered.
+
+Registering the newer, more obvious-looking document would have produced a seed
+whose tranches, coupons and coverage tests belong to a **different stack** than
+the reports later parsed against it. The failure mode is what makes this worth a
+section rather than a commit message: **every downstream figure would have been
+confidently wrong rather than visibly broken.** Nothing would have thrown. The
+coverage tests would have computed, the cascade would have folded, and the
+numbers would have been meaningless.
+
+An independent cross-check confirms the pairing rather than assuming it: the
+reports state a Class A coupon of **5.41%**, and the 2023 document's Class A pays
+**3-month EURIBOR + 1.85%** — which at the ~3.56% EURIBOR of August 2024 is
+exactly 5.41%. The reset's Class A-R margin does not reconcile with that figure.
+The document and the reports agree because they are from the same side of the
+boundary.
+
+**The generalisable rule, for the next registrant:** a CLO that has been reset
+has two offering documents describing two different capital structures, and the
+newer one is not automatically the right one. Pair the offering document with the
+side of the reset the *reports* sit on, and record which side that is. This is
+the same hazard that disqualified **Nassau Euro CLO II** as a candidate for this
+epic — there the Feb-2025 Listing Particulars is the reset stack while both
+available payment reports predate it, with no pre-reset document published to
+pair them with, so the deal is not registrable without handling the boundary.
+The reason is carried in the registry entry's `registration_note` as well as
+here, because the next person to touch this deal meets `deals.json` first.
+
+**Obtainable — free, unauthenticated, no portal account.** Each document below is
+a plain object on Euronext Dublin's public document store, verified
+`206 application/pdf` with no login:
+
+| Document | Pages | As-of | Registry key |
+|---|---|---|---|
+| Listing Particulars (**pre-reset**) | 415 | 29 Jun 2023 | `prospectus_url` |
+| BNY Mellon COMPLIANCE REPORT | 74 | 30 Aug 2024 | `investor_report_urls` |
+| BNY Mellon COMPLIANCE REPORT | 74 | 30 Sep 2024 | `investor_report_urls` |
+| Listing Particulars (**reset**) | 421 | 19 Nov 2024 | **none — see above** |
+| **NOTE VALUATION REPORT** | 86 | pmt date 20 Aug 2024 | **none — see below** |
+
+**The NOTE VALUATION REPORT is obtainable and deliberately not registered.** It
+is the PoP-bearing document — the CLO analogue of an RMBS Notes & Cash report —
+and it is exactly the document `notes_cash_report_urls` exists to point at. That
+key is a *routing promise*, not a URL slot: `_reconstruct_series` dispatches on
+it and
+`test_answer_keys_exist_exactly_where_published_ground_truth_does` treats its
+presence as an assertion that a **PoP-bearing answer key exists for the deal**.
+No parser has read a BNY Mellon report yet (#533) and no key is authored (#534),
+so setting it now would assert a promise this deal cannot keep. This is the same
+discipline Cairn's registration followed, and the same reason its own Note
+Valuation Report went unregistered from #455 until #495.
+
+**What the extraction gives, and the two things it does not.** The pipeline read
+the 415pp Listing Particulars to the whole eight-class stack — Class A through F
+plus the Subordinated Notes, **EUR 380,600,000**, matching the cover page to the
+euro — and to both Priorities of Payments as *distinct* cascades. Both happen to
+carry 37 steps, which is a coincidence worth naming: equal counts are what a
+collapsed extraction also looks like, and here the two resolve to different
+source sections and different step lists. That the stack is EUR 380.6m with a
+Class A of EUR 228.7m is also the seed-level proof that the **pre-reset**
+document was the one extracted; the reset's Class A-R is EUR 310m.
+
+Two gaps are recorded rather than papered over. **The seed carries no tranche
+ratings and no coupons** — every `rating` and `rate` is null — although the
+document states them on page 13 (Class A is `AAA(sf)` at 3-month EURIBOR +
+1.85%). **And the seed carries only four defined terms**: `Acceleration Notice`,
+`Accounts`, `Accrual Period`, `Adjusted Collateral Principal Amount` — the
+leading alphabetical range and nothing after it.
+
+**That second gap is *not* the 40k glossary truncation, and the distinction
+matters.** Cairn lost its Payment Date schedule and its per-class day-count
+Conditions to `definitions_graph.py`'s `max_chars=40_000` cutting an
+alphabetical range out of a long Definitions section (#480, recovered by #528
+and #539). Contego's definitions section reached that extractor as **3,255
+characters** — comfortably inside the 40,000 budget, so the truncation never
+engaged. The loss happened one step earlier, in `route_sections`: Docling
+renders many of this prospectus's defined terms as markdown *headings*
+(`' Payment Date ' means:`, `' Measurement Date ' means:`,
+`' Eligible Investment Minimum Rating ' means:`), and a section ends at the next
+heading — so `1. Definitions` stopped at the first of them and the rest of the
+glossary became sibling sections the extractor was never handed. The document's
+`INDEX OF DEFINED TERMS` is a 142,041-character term-to-page index, not the
+glossary body, so routing there would not help either.
+
+The consequence for anyone reading this as a truncation report: **raising
+`max_chars` would have changed nothing for this deal.** Two prospectuses have
+now lost glossary facts at the same stage by two different mechanisms that
+present identically — a short definitions map with an alphabetical cliff. The
+general defect is therefore not the size of the budget but that the definitions
+stage accepts whatever section it is handed without checking the result is
+plausibly a complete glossary. Naming the document each limitation is true of is
+the #480 discipline; naming the *mechanism* is what stops the next reader
+applying #528's fix to a deal it cannot help.
+
+**Not obtainable.** No machine-readable loan tape exists — CLOs are private
+securitisations, so no ESMA securitisation-repository filing is published for
+this deal. Loan-level collateral detail *is* published, as PDF tables inside the
+trustee reports, but that is not an Annex tape. #555 derived one from those
+tables through the existing `derived+trustee-report:` channel, so `tape_urls`
+now carries one URI per published period. It was registered **empty** rather
+than absent at #532, before the reports could be read — `api.main` subscripts
+the key directly, so an omitted key would 500 the deal-model route rather than
+read as "no tape".
+
+**What is NOT claimed.** The extraction has run, a seed is committed, the
+reports parse and a key is authored — but nothing about this deal is **graded**
+or `validated`, and no capability cell claims otherwise. Whether its engine reconciles to its Note Valuation Report is the
+question #510 spent an epic answering for Cairn, and it is deliberately out of
+scope here.
+
+#### What the second CLO exposed — general capability vs fitted specimen (#535)
+
+This is the question the deal was registered to answer, and the answer is
+**mixed**. Recorded here as measured; the figures behind each claim are
+re-derived at test time in `tests/test_two_clo_comparison.py`, not transcribed
+into this prose.
+
+**What was general — worked on Contego unchanged, having been built for Cairn.**
+Every one of these was written against the first CLO and read the second with no
+edit; epic #530's diff touches none of them:
+
+- **The cross-deal comparison itself** (`api/compare.py` and the `/compare`
+  handler). Both CLOs align in one panel and every seniority rank of both
+  eight-class stacks carries a real balance.
+- **Capital-stack alignment.** The tranche rows placed Contego's stack from its
+  extracted seed with no new mapping, despite different class sizes and a
+  different residual.
+- **The committed-seed route.** `_load_cached_deal_model` served Contego's model
+  from `data/deals/seed/` exactly as it serves Cairn's.
+- **The answer-key registry.** Contego's key resolved through the existing
+  constructor — `answer_keys/README.md` records that nothing in
+  `from_trustee_liability_summaries` changed to accept a second deal.
+- **The derived-tape channel.** `derived+trustee-report:` carried Contego's
+  tapes with no new scheme.
+- **The refusal machinery.** Where an input was missing the engine declined by
+  name rather than borrowing another deal's figure (below).
+
+**What was fitted — needed changing before Contego could be read at all.** All
+of it sits in the report-reading layer, and this is the honest measure of how
+much of the CLO support was a specimen:
+
+- **Both report parsers had to be generalised onto a family-detected dispatch**
+  (#531). One administrator's layout had been a module constant.
+- **Row geometry** (#533). BNY emits one row-major line per page with the
+  identifier mid-row; U.S. Bank emits one asset per line. The family had to be
+  able to declare `RowGeometry` and `IdentifierPosition`.
+- **Stated-count grain** (#555). BNY's `# of Assets` columns are computed at
+  **interest-accrual grain** while its balance columns are at **asset grain** —
+  more accrual records than assets. Par tied to the euro; the count did not, and
+  the family now declares what its stated count counts.
+- **Coverage-test row grammar** (#534). #555's row reader matched **zero** BNY
+  coverage rows, and BNY's two headers disagree about which column is the ratio:
+  the Compliance Tests table's first percentage is the *prior* period's outcome.
+  Reading it as the current one grades every test against last month's figure —
+  real, in range, right type, silently wrong.
+- **Section declarations.** A family had to be able to declare a section it does
+  not publish, and to route two tables printed under one shared title.
+
+**What Contego does that Cairn does not, and how the platform handled it.**
+
+- **A redemption ladder.** Contego's model states a principal cascade with its
+  own expense steps and a reserve replenishment; Cairn's does not. Conversely
+  Cairn carries per-class interest, deferred-interest and coverage-test-cure
+  steps and per-class OC/IC triggers that Contego's extraction did not yield.
+  The panel **aligned the rows and marked the absent cells absent** rather than
+  coercing either deal onto a sentinel — the differences run in both directions
+  and are asserted in both directions, so flattening either reds.
+- **A reset.** Euronext publishes two Listing Particulars for this issuer, and
+  every published trustee report is pre-reset, so the deal is registered against
+  the **older** document (above). Cairn posed no such choice.
+- **It stops short of the live screens.** Contego reaches the structural panel
+  but not the performance panel: it has no reconstructable series, so no
+  `latest_period`, and `/deal/contego-clo-xi/compliance` and `/waterfall` return
+  422 where Cairn's return 200. The cause is specific and worth naming — the
+  seed places every class of the stack but gives each a **null coupon**, so the
+  engine refuses on a missing `class_a_rate_pct` rather than falling back to
+  another deal's rate. The comparison keeps the deal in the set with
+  `has_performance: false` and a note saying why, so the gap reads as a refusal
+  rather than as an all-clear. Curing it needs a coupon sourced from the Listing
+  Particulars; it is not a defect in the CLO support that #522 built.
+
+**Two limits this second deal does not lift.**
+
+1. **Contego is keyed but not graded.** Its `covenants` cell is
+   `not-applicable` because no name BNY prints matches a trigger its extracted
+   seed carries — #481's taxonomy gap, met again across *every* test of the
+   deal. #534 deliberately kept "carries a committed key" and "whose cell
+   passes" as two sets rather than withholding real ground truth to protect a
+   green number, and the cell asserts its unmatched names rather than its grade.
+2. **The second key does not improve on the first's disclosure.** Every coverage
+   test Contego's key carries is `Passed` in both periods, exactly as Cairn's
+   are, so a monitor that reported nothing as breached would match all of them.
+   `answer_keys/README.md` states it plainly: two all-passing keys mean the gap
+   is **attested twice rather than closed once**. Two keys are not broader
+   coverage than one.
+
+**One thing that is not a CLO finding.** A null `value` on a waterfall or
+qualitative-trigger row is a property of the comparison schema, not of either
+CLO: `StructuralCell.value` is a cross-deal comparable scalar that a cascade
+step has for *no* deal, including both externally validated Dutch RMBS (#525).
+The control is parametrised alongside the CLO sets in
+`tests/test_clo_live_screens.py`, so the claim is checked rather than asserted.
+
+---
+
+### Which industry taxonomy a cross-deal figure is expressed in (#563)
+
+**Read this before registering a third deal.** Every `CollateralAsset` carries
+both an `sp_industry` and a `fitch_industry`, and the two are not
+interchangeable. Cairn's March 2025 report tests the same portfolio against both
+at the same limits and gets **11.36%** on S&P against **10.83%** on Fitch. So an
+industry concentration that does not name its taxonomy is not comparable to
+either figure the deal itself publishes — it is wrong, not merely imprecise.
+
+**The decision: a cross-deal industry concentration is expressed in Fitch.**
+S&P remains a per-deal axis and is deliberately *not* joined across deals. It is
+settled in one place, `src/loanwhiz/primitives/industry_taxonomy.py`
+(`CROSS_DEAL_TAXONOMY`), and `IndustryTaxonomy` is a required argument
+throughout, so a cross-deal figure cannot be built without naming its axis.
+
+**Why Fitch, given both are tied out.** Since #530 *both* taxonomies are
+reconciled per bucket against the report that published them (`_BUCKET_TABLES`
+in `collateral_schedule_parser`), on both deals, every period — so the
+acceptance oracle does not choose between them. The join does. The two deals'
+Fitch vocabularies canonicalise onto substantially one vocabulary, and the
+labels that do not join are genuine portfolio differences: Contego holds a
+utility Cairn does not, Cairn holds oil and gas Contego does not. Their S&P
+vocabularies do not join, because the deals published against **different GICS
+vintages** — Contego emits the post-2023 names (`Consumer staples distribution
+and retail`, `Financial services`), Cairn the pre-2023 ones (`Food & Staples
+Retailing`, `Diversified Financial Services`). Close to half the combined S&P
+vocabulary is unjoinable, and almost all of that is vintage drift rather than a
+real difference in holdings.
+
+That asymmetry runs one way. An unjoined pair holds one exposure apart in two
+buckets, so its reported concentration is **lower than the truth** — the book
+reads as more diversified than it is, which is the error that harms a buyer and
+looks like good news.
+
+**What is canonicalised, and what is refused.** The fold is orthographic only:
+case, diacritics, `&` versus `and`, punctuation, whitespace. It does not stem,
+singularise or fold spelling variants, and the seam raises rather than merging
+if two labels one table publishes ever collide — Cairn's December 2024 Fitch
+table prints both `Building and materials` and `Buildings and materials` as
+separate buckets, so that guard sits one plural-strip away from firing.
+
+Mapping *across GICS vintages* is refused outright. It needs a concordance this
+repo does not hold, and a similarity score dressed up as a mapping would under-
+and over-match with equal confidence. The pairs that a reader can see are
+related are named in `DECLINED_CROSS_VINTAGE_PAIRS` with the reason each is left
+alone — a refusal that is named can be reviewed and reversed; one that is silent
+cannot.
+
+**Nothing is folded into "Other."** A `TaxonomyJoin` is a *partition* of the
+canonical union — joined, left-only, right-only — enforced by the model, so
+there is no residual bucket for an unmappable category to disappear into. A
+bucket that absorbs the unknown is how a concentration understates itself
+(#496).
+
+**Regenerating this, rather than trusting the prose.** The vocabularies, the
+join and both percentages above are re-derived from the committed report
+fixtures by `tests/test_industry_taxonomy.py` — deliberately not transcribed as
+bucket counts here, because a number in prose goes stale in silence (#441). Run
+it to see the current vocabularies and the current unjoined set:
+
+```bash
+python -m pytest tests/test_industry_taxonomy.py
+```
+
+**What a third deal changes.** If it publishes S&P against a third vintage, the
+unjoined S&P set grows and this decision holds unchanged. If it publishes no
+Fitch table at all, that is the decision's first real test: the honest answer is
+a figure that reports the deals it *can* join and names the one it cannot, never
+a silent fallback to S&P.
+
+---
+
+### There is no cross-deal rating axis, and why one is still offered (#564)
+
+**Read this before quoting a cross-deal rating concentration.** #563 chose the
+industry axis by measuring which vocabulary actually joined. Measured the same
+way, **neither rating agency joins across the two committed deals** — so unlike
+`CROSS_DEAL_TAXONOMY` there is deliberately no `CROSS_DEAL_RATING_AGENCY`
+constant to reach for.
+
+The cause is coverage, not spelling. `sp_rating` and `fitch_rating` are
+populated only where a report publishes them, and Cairn's collateral schedule
+publishes no Fitch rating at all; its S&P ratings appear only for assets in the
+S&P CCC bucket, which is the one detail section that carries them. Contego
+publishes both far more widely. A combined rating figure is therefore one deal's
+rating distribution with the other deal's whole book sitting outside it.
+
+**A rating axis is still offered, and reports that hole at full size.**
+`cross_deal_exposure.rating_axis(agency)` builds the figure, and the balance it
+cannot place is returned in `UnattributedExposure` — a *different record kind*
+from `ExposureBucket`, so no loop over `buckets` can pick it up as though it
+were a holding. Inventing an `NR` or `Other` bucket to cover it would turn a
+coverage hole into a small, ignorable slice; a bucket label that reads as a
+residual is refused at construction. Percentages are taken over the **whole**
+book rather than over what was placed, because dividing by the attributed
+balance rescales every concentration upward in exact proportion to how much the
+report failed to publish.
+
+**Each axis folds its own labels, and a wrong fold raises rather than merging.**
+`industry_taxonomy.canonical_label` drops punctuation — which is what makes
+`Aerospace & Defense` and `Aerospace and defence` one bucket, and what would
+make `B`, `B+` and `B-` one bucket too, merging three notches into one and
+making the book read better than it is. So a rating axis folds case and
+whitespace only, and every fold is then proved injective over each deal's own
+published vocabulary before anything is summed. Contego publishes `B` and `B+`
+in one report, so the industry fold applied to its ratings raises instead of
+merging.
+
+**Currencies are never summed across.** Cairn prints `EUR` and Contego prints
+`Euro` — one currency, two spellings, and no orthographic rule turns one into
+the other. A small named alias table folds the spellings this repo has seen;
+anything unseen compares as published, so a genuine second currency and an
+unrecognised spelling both **raise**. That is the recoverable direction: a
+refusal is fixed by adding a line, whereas two currencies quietly added produce
+a number in no currency at all and nothing downstream can tell.
+
+**Regenerating this, rather than trusting the prose.** The coverage figures, the
+notch behaviour and the currency spellings are re-derived from the committed
+report fixtures by `tests/test_cross_deal_exposure.py` — deliberately not
+transcribed here as counts or percentages, because a number in prose goes stale
+in silence (#441):
+
+```bash
+python -m pytest tests/test_cross_deal_exposure.py
+```
+
+**What a third deal changes.** A deal publishing ratings across its whole book
+does not by itself make a cross-deal rating figure meaningful — what matters is
+the *intersection* of coverage. Re-run the suite and read the unattributed share
+before quoting one.
+
+---
+
+### Where a look-through concentration is read, and what it must show (#565)
+
+**Read this before quoting a combined concentration to anyone.** `GET
+/cross-deal-concentration` and the `/concentration` screen add the committed
+collateral schedules together on one axis. They are not a summary of the two
+reports; they are a third figure, and three different things can move any
+number in it. All three render beside the figure rather than under it:
+
+- **the obligor residual.** #562 resolves identity into three tiers that are
+  never blended, and on the committed pair most of the book's names are *not*
+  proven. So the count of unproven names is the first thing the screen renders,
+  in the same badges as the shares — not a footnote below them. #549's rule is
+  the reason: a refusal that keeps the value is not a refusal, and a share read
+  before its qualifier is read as a measurement.
+- **the attribute residual.** An asset whose axis value the report never
+  published is returned as `unattributed`, a different record kind, and the
+  screen renders it as its own line. There is no "Other" row for it, here or
+  anywhere (#496/#514).
+- **the reporting date.** Each contribution carries its own deal's stated date
+  and the response says `dates_align: false`. The screen prints both dates and,
+  when they disagree, says in words that the figure reconciles to neither
+  source on its own.
+
+**The axis is named on every industry figure**, because #563's decision only
+holds if it is visible: the response carries `axis.taxonomy`, and the screen
+names the axis in the card title and again in the column head, so a share
+copied out of the table carries the taxonomy with it.
+
+**What the web-layer guard actually proves.** `web/` has no JS test runner, so
+`tests/test_concentration_page.py` asserts the components' **source**, not
+their rendered output — the same trade `tests/test_capability_matrix.py`
+already makes. It is worth stating what that is *not*: it is not evidence that
+a browser paints any of this. What the file adds over an ordinary source ban is
+a mutant table that rewrites the real source and requires the guard to reject
+each rewrite, plus a check that no rule in it is unreached by some mutant. Two
+sibling epics shipped bans whose acceptance criteria passed while the banned
+thing was on screen; the first sweep here found two of the same shape in this
+guard and both are now closed.
+
+**This is not a claim about every provenance surface.** The web layer as a
+whole does *not* yet render each source kind's own disclosure sentence: the
+Pool and Waterfall pages render no synthetic badge, and the evidence pack's
+ingestion badge still reads "direct ingestion" for a `derived` or `synthetic`
+source. The concentration surface renders the figure's own sentences; the rest
+of the web layer is unchanged by this issue.
+
+**Regenerating this, rather than trusting the prose.** Every count and share
+above is deliberately left unwritten — the unproven-name count in particular,
+because the issue that commissioned this screen carried a transcribed figure
+that was wrong by an order of magnitude, which is exactly how a number in prose
+goes stale in silence (#441). Read the live figures instead:
+
+```bash
+python -m pytest tests/test_cross_deal_concentration.py tests/test_concentration_page.py
+curl -s 'http://localhost:8000/cross-deal-concentration?axis=fitch-industry' \
+  | python -c 'import json,sys; d=json.load(sys.stdin); print(d["obligor_disclosure"]); print(d["disclosure"])'
+```
+
+**What a third deal changes.** Registering one is a line in
+`COMMITTED_SCHEDULE_FIXTURES` (`src/loanwhiz/api/main.py`), not new Python. A
+deal with no committed schedule is refused rather than omitted: a look-through
+figure over a subset of the registered deals understates every concentration in
+it while looking exactly like a complete one.
+
 ---
 
 ## IMPORTANT: Synthetic vs Real Data
@@ -783,6 +1270,18 @@ disclosure sentence, so a reader who never opens this card is still told. The
 prefix strips off before the file is fetched, so the pool figures are unchanged
 — re-running the normaliser across the re-identified tapes moved `data_source`
 and nothing else. See [`tape-ingestion.md`](tape-ingestion.md).
+
+**That claim holds for the API surfaces, not yet for the web ones (#568).**
+"Every provenance surface" above means the evidence pack, the capability matrix
+and the tape citation — the surfaces named in the paragraph before it, all of
+which read the tape's registered kind. The Next.js layer does not: the Pool and
+Waterfall pages render no synthetic badge at all, and the evidence pack sheet's
+own provenance badge resolves its text with a binary on `deeploans`, so a
+`derived` or `synthetic` source is labelled "direct ingestion" there — the one
+label #483 exists to prevent. The disclosure *sentence* beneath the badges is
+correct, because it reads the full label table; the badge above it is not. This
+is #484's open surface, recorded here rather than fixed in passing: a reader
+who trusts the sentence above should not conclude the screens say so too.
 
 ### The four fitted pools (#484)
 
@@ -971,7 +1470,7 @@ The dataset is **not intended** for:
 
 | Limitation | Description |
 |---|---|
-| **Two validated deals of six** | The pipeline *runs* on 5 of the 6 registered deals; **Green Lion 2024-1** and **Green Lion 2023-1** are validated to the cent against their own published Notes & Cash reports — the only `validated` capability cells, and both Dutch RMBS. Since #492 that cell is earned by committed data (an answer key carrying a Priority-of-Payments section, plus an offline engine series) rather than by bespoke Python, which is what made 2023-1's long-standing to-the-cent grade legible as validation. **Cairn CLO XVII** is additionally graded by `GET /quality-matrix` on its published coverage-test outcomes (#481) — a different check, against a different kind of document, and not a to-the-cent reconciliation. Its to-the-cent reconciliation was run separately (#496) and **fails**, which is why the count of validated deals is two rather than three. Every other cell is `ran` or `not-applicable` — outputs there are unvalidated and do not generalise without re-validation, and no non-Dutch and no non-RMBS deal is validated at all. |
+| **Only two deals are validated** | The pipeline *runs* on the RMBS deals; both CLOs are registered and extracted only. **Green Lion 2024-1** and **Green Lion 2023-1** are validated to the cent against their own published Notes & Cash reports — the only `validated` capability cells, and both Dutch RMBS. Since #492 that cell is earned by committed data (an answer key carrying a Priority-of-Payments section, plus an offline engine series) rather than by bespoke Python, which is what made 2023-1's long-standing to-the-cent grade legible as validation. **Cairn CLO XVII** is additionally graded by `GET /quality-matrix` on its published coverage-test outcomes (#481) — a different check, against a different kind of document, and not a to-the-cent reconciliation. Its to-the-cent reconciliation was run separately (#496) and **fails**, which is why the count of validated deals is two rather than three. Every other cell is `ran` or `not-applicable` — outputs there are unvalidated and do not generalise without re-validation, and no non-Dutch and no non-RMBS deal is validated at all. |
 | **Coverage without external truth on the non-English deals** | Extraction on the Italian (Leone Arancio) and Spanish (Sol-Lion II) prospectuses now reaches 0.925 completeness with a full waterfall on both — this card's earlier "≈ 0.38 / ≈ 0.30, no waterfall" described pre-#438/#439 seeds. Neither deal publishes a Notes & Cash report, so neither can ever be graded against published actuals without inventing ground truth. High coverage on these two is not evidence that their numbers are right. |
 | **Ungraded PDL / reserve proximity** | Principal-deficiency-ledger and reserve-account proximity are computed and surfaced, but the Green Lion keys carry empty `covenants` and `pool_stats` for every period and the CLO key carries coverage tests only, so those checks grade `not-applicable` for every deal and no PDL or reserve check key exists. A flat or zero proximity there means "not evaluable from current inputs", not "healthy". |
 | **Two asset classes are extracted; only one is validated** | The pipeline now reads both RMBS (Dutch, Italian, Spanish) and a CLO (Cairn CLO XVII DAC). Extraction is not validation, and neither is grading one row. The CLO's committed key now carries a published-report Priority of Payments too (#495), and #496 reconciled the engine against it: it did **not** tie out — the Interest cascade was short EUR 1,820,150.42 of the report's stated available revenue, the published rows no cascade step joined. That gap is now closed (#514/#538/#539) and all 29 Interest steps agree, three of them from the deal model alone. **This still is not validation of the deal.** One cascade of one period of one document reconciles; the Principal cascade ties on EUR 0.00 and proves nothing, 26 of the 29 agreeing lines are report figures compared against themselves, and the per-deal endpoints still refuse this deal. CMBS, US RMBS, ABS and other asset classes are not represented at all. |

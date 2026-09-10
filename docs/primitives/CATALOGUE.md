@@ -31,10 +31,13 @@ any core framework code — only the primitive file and its test file need to be
 > Pydantic input; calling it runs `execute()` and returns the full
 > `PrimitiveResult` envelope — output **plus** the governance evidence pack
 > (confidence, citations, audit entry). A `primitives://catalogue` resource
-> lists all 8 registered primitives (live + `library-only`) with honest
+> lists every registered primitive (live + `library-only`) with honest
 > reachability, so a third party can consume the framework over MCP without
 > rewriting any primitive. `library-only` primitives appear in the catalogue
-> resource but are not advertised as callable tools.
+> resource but are not advertised as callable tools. `GET /mcp/surface` states
+> that surface directly — which primitives are callable, their input schemas,
+> and the governance each tool result carries. Read the tally from there rather
+> than from this page: the count transcribed here went stale (#574).
 
 ---
 
@@ -368,19 +371,31 @@ The PR body must include:
 
 ## 3. Primitive Catalogue
 
-All primitives currently tracked in the framework. Status key:
-- **implemented** — class exists in `src/`, tests pass.
-- **in-progress** — issue open, implementation not yet merged.
+**The catalogue is served, not listed here.** Three endpoints render it live
+from `PRIMITIVE_REGISTRY`, which is populated by walking the primitives package
+(#574) — so a primitive appears because it exists, not because someone
+remembered to add a row:
 
-| Name | Version | Status | Description | Input (key fields) | Output (key fields) | Tags |
-|---|---|---|---|---|---|---|
-| `esma_tape_normaliser` | 0.1.0 | in-progress | Normalise an ESMA loan-level CSV tape into pool-level analytics: weighted-average rate, arrears breakdown, EPC/geo/rate-type distributions. Multi-annex schema detection (Annex 2–8). | `tape_path: str`, `annex: int \| None` | `pool_balance: float`, `wac: float`, `arrears_buckets: dict`, `epc_distribution: dict`, `field_coverage: float` | `esma`, `tape`, `pool-analytics` |
-| `waterfall_runner` | 0.1.0 | in-progress | Execute an extracted deal waterfall (from `deal_model.json`) against monthly tape collections. Produces computed distributions per tranche per period with a full audit trace. | `waterfall: list[WaterfallStep]`, `collections: MonthlyCollections` | `distributions: list[TrancheDist]`, `period: str`, `residual: float` | `cashflow`, `waterfall` |
-| `covenant_monitor` | 0.1.0 | in-progress | Check pool tape metrics against prospectus trigger thresholds. Tracks proximity (% of threshold) and flags breaches and near-misses with citations to prospectus definitions. | `triggers: list[Trigger]`, `tape_metrics: PoolMetrics`, `period: str` | `compliance: list[TriggerStatus]`, `breach_count: int`, `near_miss_count: int` | `compliance`, `covenant`, `trigger` |
-| `report_verifier` | 0.1.0 | in-progress | Compare waterfall-computed distributions against investor report actuals. Flags line-item discrepancies (match/mismatch/delta). Confidence degraded when report parsing is incomplete. | `computed: list[TrancheDist]`, `reported: list[ReportLine]`, `period: str` | `verification: list[VerificationLine]`, `match_rate: float` | `verification`, `reporting` |
-| `cashflow_projector` | 0.1.0 | in-progress | Project forward cashflows under base and stress scenarios (e.g. 2× default rate, rate shift). Uses `waterfall_runner` internally. Produces 12-month projections per tranche, scenario comparison. | `deal_model: DealModel`, `scenarios: list[Scenario]`, `horizon_months: int` | `projections: dict[str, list[TrancheDist]]`, `scenario_labels: list[str]` | `cashflow`, `projection`, `stress` |
-| `audit_logger` | 0.1.0 | implemented | Wrap any primitive call with provenance metadata: input hash, output, confidence score, citations, timestamp, model version, human-review flag. Follows FINOS AI Governance Framework patterns for replayable traces. | `primitive: Primitive`, `input: BaseInput`, `review_threshold: float` | `result: PrimitiveResult`, `flagged_for_review: bool`, `trace_id: str` | `governance`, `audit`, `finos` |
-| `collections_aggregator` | 0.1.0 | in-progress | Aggregate per-loan tape rows into period-level waterfall inputs: total interest, principal, prepayments, recoveries, defaults — bucketed by period. Used to bridge raw ESMA tape output to `waterfall_runner` input. | `tape_rows: list[LoanRow]`, `period: str` | `collections: MonthlyCollections`, `loan_count: int`, `coverage: float` | `esma`, `tape`, `aggregation`, `waterfall` |
+| Where | What it answers |
+|---|---|
+| `GET /primitives` | Every registered primitive: name, version, description, author, tags, class, `reachability`, and its typed input/output JSON schemas. |
+| `GET /mcp/surface` | Which of them the MCP server exposes as callable tools, each tool's input schema, and the governance evidence its result carries. |
+| `primitives://catalogue` | The same catalogue as an MCP resource, for a consumer already speaking MCP. |
+
+This section used to hold a hand-maintained table of primitives and their
+status. It is not corrected here, because a corrected table is the same
+mechanism with a fresher timestamp. What it had become is the argument: it
+listed `cashflow_projector`, deleted in #276; it marked as `in-progress`
+primitives that were implemented, registered and reachable from live endpoints;
+and it omitted every primitive added after it was last edited. A reader could
+not have learned from it which primitives exist, which are callable, or what
+any of them returns — all three of which the endpoints above answer as of the
+moment you ask.
+
+The per-primitive design notes that table tried to carry now live with the
+primitives themselves: each class's docstring and its `describe()` schemas are
+what the endpoints render, so there is one place to read and one place to
+change.
 
 ---
 

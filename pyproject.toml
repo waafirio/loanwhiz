@@ -43,7 +43,14 @@ where = ["src"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
-testpaths = ["tests"]
+# Both suites, because there is no CI in this repo: whatever a bare `pytest`
+# does not run is not checked by anything. mcp/tests was excluded here and so
+# never executed once -- which is how the MCP server came to be unbuildable
+# against its own declared SDK range without a single test noticing (#577).
+# mcp/tests skips itself, loudly, when the MCP SDK is absent (see
+# mcp/tests/test_server_smoke.py); tests/test_mcp_dependency_pin.py holds the
+# bound unconditionally, so the guard does not depend on the SDK being present.
+testpaths = ["tests", "mcp/tests"]
 # The offline suite is the default. `slow` and `integration` (below) mark the 77
 # tests that need live credentials or network; without this line a bare `pytest`
 # ran them, and with no ADC they do not fail fast — they hang until each call's

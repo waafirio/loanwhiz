@@ -44,6 +44,7 @@ from loanwhiz.config import DEAL_REGISTRY
 
 _GREEN_LION_DEAL_ID = "green-lion-2026-1"
 _CLO_DEAL_ID = "cairn-clo-xvii"
+_CONTEGO_DEAL_ID = "contego-clo-xi"
 
 #: A stack whose senior class states a genuinely numeric coupon.
 _RESOLVED_STRUCTURE = {
@@ -348,8 +349,11 @@ class TestRefusalNotFallback:
     def test_the_registered_resolve_refuse_set_is_unchanged(self) -> None:
         """Adding a tier moved no deal across the line.
 
-        The same three deals project and the same three refuse as before #479 —
-        the change is which key the refusal *names*, not who refuses.
+        The same deals project and the same refuse as before #479 — the change
+        is which key the refusal *names*, not who refuses. Registering a deal
+        (#532 added Contego) joins the refusing side and never the resolving
+        one: a registration states no capital structure, so the partition below
+        is what stops a later change quietly promoting one.
         """
         resolved, refused = set(), set()
         for deal_id, ctx in DEAL_REGISTRY.items():
@@ -365,7 +369,12 @@ class TestRefusalNotFallback:
             "leone-arancio-2023-1",
             "sol-lion-ii",
         }
-        assert refused == {"green-lion-2023-1", "green-lion-2024-1", _CLO_DEAL_ID}
+        assert refused == {
+            "green-lion-2023-1",
+            "green-lion-2024-1",
+            _CLO_DEAL_ID,
+            _CONTEGO_DEAL_ID,
+        }
 
     def test_the_clo_refuses_by_its_coupon_rather_than_by_projection_base(self) -> None:
         """Cairn's ``/project`` refusal names the thing actually missing.

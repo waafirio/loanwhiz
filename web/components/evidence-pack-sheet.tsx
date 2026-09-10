@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
 import { Database, FileText, ShieldCheck } from "lucide-react";
 
 import {
@@ -9,7 +9,13 @@ import {
   getGovernance,
   type BookResponse,
   type Citation,
+  type ConcentrationBucket,
+  type ConcentrationSplit,
+  type CrossDealConcentration,
   type DataSource,
+  type DueDiligenceCheck,
+  type DueDiligenceRecord,
+  type DueDiligenceSource,
   type GovernanceEvidencePack,
   type PositionField,
   type PositionProvenance,
@@ -497,5 +503,390 @@ export function PositionFactCell({ fact }: { fact: PositionField }) {
         {fact.reason}
       </p>
     </div>
+  );
+}
+
+/* -------------------------------------------------------------------------
+ * Look-through concentration disclosure (#565, epic #560)
+ *
+ * The provenance surface above answers "where did this number come from".
+ * This region answers the question #564 made answerable: "what could still
+ * move it". It lives here rather than in a parallel component because a
+ * reader who has learned to look for a disclosure block should find every
+ * kind of disclosure in the same shape.
+ *
+ * Four properties #564 encoded as types, which this must not undo:
+ *
+ *   1. Every bucket carries its proven/candidate/unresolved split, and the
+ *      three are rendered as three figures. They are never added together
+ *      into an "identified" total and never divided into a score: a grade
+ *      built out of two kinds is the number a reader treats as the
+ *      measurement (#549), and summing two kinds needs no division, so a ban
+ *      that only looks for a ratio does not catch it.
+ *   2. An unresolved name is never netted anywhere, including "Other". There
+ *      is no residual row in this file, and assets the axis cannot place
+ *      render as their own kind (`unattributed`) with their own label.
+ *   3. Every deal's own stated reporting date is shown. When they disagree —
+ *      they do, on the committed pair — the disagreement is a rendered line,
+ *      not a tooltip.
+ *   4. Every industry figure names its taxonomy, because the same book
+ *      concentrates differently on S&P than on Fitch (#563).
+ *
+ * NOTE for anyone extending this: `PackBody` above renders a provenance badge
+ * reading "direct ingestion" for a `derived` or `synthetic` source. That is a
+ * known defect belonging to the provenance epic, not copied here — the
+ * disclosure below reads its labels off the figure rather than off a binary.
+ * ------------------------------------------------------------------------- */
+
+/** How each obligor-resolution tier names itself, and what it means. */
+const TIER_LABELS: Record<string, string> = {
+  proven_shared: "Proven shared",
+  candidate_proposed: "Candidate (proposed, not applied)",
+  unresolved: "Unresolved",
+};
+
+function tierLabel(tier: string): string {
+  return TIER_LABELS[tier] ?? tier;
+}
+
+/**
+ * The headline residual: how much of the book's obligor identity is unproven,
+ * on the same surface as the concentration figures it qualifies.
+ *
+ * A buyer reading "3.2% exposure to Chemicals" needs to see, without clicking
+ * anything, that the names behind it may not be distinct. So the unproven-name
+ * count is a figure of the same weight as the shares, not a caption.
+ */
+export function ConcentrationDisclosure({
+  figure,
+}: {
+  figure: CrossDealConcentration;
+}) {
+  return (
+    <section className="space-y-3 rounded-lg border border-amber-500/40 bg-amber-500/5 px-4 py-3">
+      <div className="flex flex-wrap items-center gap-1.5">
+        <Badge variant="outline" className="font-normal">
+          <ShieldCheck className="mr-1 size-3" />
+          {figure.axis.label} axis
+        </Badge>
+        <Badge variant="destructive" className="font-normal">
+          {figure.unproven_name_count} of {figure.name_count} names unproven
+        </Badge>
+        <Badge variant="destructive" className="font-normal">
+          {formatPct(figure.not_proven_share_pct, 2)} of balance
+        </Badge>
+        <Badge variant="outline" className="font-normal">
+          Distinct obligors {figure.obligor_bounds.lower}&ndash;
+          {figure.obligor_bounds.upper}
+        </Badge>
+      </div>
+
+      <p className="text-sm">
+        Obligor identity could not be proven for{" "}
+        <strong>{figure.unproven_name_count}</strong> of the{" "}
+        {figure.name_count} names these deals hold between them. Every share
+        below is exact as a balance; the number of distinct borrowers behind it
+        is not. {figure.proposal_count} candidate link
+        {figure.proposal_count === 1 ? " is" : "s are"} proposed and none is
+        applied, which is why the obligor count is a range rather than a
+        figure.
+      </p>
+
+      {/* Each tier as its own figure. Never a sum, never a ratio: "1 of 7
+          verified" is a grade with no division in it, and it is still a
+          grade. */}
+      <dl className="grid grid-cols-[1fr_auto_auto] gap-x-4 gap-y-1 text-xs">
+        {figure.tiers.map((t) => (
+          <Fragment key={t.tier}>
+            <dt className="text-muted-foreground">{tierLabel(t.tier)}</dt>
+            <dd className="text-right tabular-nums">
+              {t.name_count} name{t.name_count === 1 ? "" : "s"}
+            </dd>
+            <dd className="text-right tabular-nums">
+              {formatCurrency(t.balance)} · {formatPct(t.share_pct, 2)}
+            </dd>
+          </Fragment>
+        ))}
+      </dl>
+
+      <ReportingDates figure={figure} />
+
+      {figure.unattributed.asset_count > 0 ? (
+        <p className="text-xs text-muted-foreground">
+          <strong className="text-foreground">
+            Unplaced by this axis: {formatCurrency(figure.unattributed.balance)}{" "}
+            ({formatPct(figure.unattributed.share_pct, 2)},{" "}
+            {figure.unattributed.asset_count} assets)
+          </strong>{" "}
+          — the report published no {figure.axis.label} value for these. They
+          are excluded from every bucket rather than collected into one, so no
+          share below is diluted by them.
+        </p>
+      ) : null}
+
+      <p className="text-xs text-muted-foreground italic">
+        {figure.disclosure}
+      </p>
+      <p className="text-xs text-muted-foreground italic">
+        {figure.obligor_disclosure}
+      </p>
+    </section>
+  );
+}
+
+/**
+ * Both deals' stated reporting dates, and — when they disagree — the fact
+ * that they do. An aggregate implying a single as-of is a figure nobody can
+ * reconcile back to either source, so the two dates render separately and the
+ * mismatch is stated in words.
+ */
+export function ReportingDates({ figure }: { figure: CrossDealConcentration }) {
+  return (
+    <div className="space-y-1">
+      <dl className="grid grid-cols-[1fr_auto] gap-x-4 text-xs">
+        {figure.as_of.map((d) => (
+          <Fragment key={d.deal}>
+            <dt className="text-muted-foreground">
+              {d.deal_name ?? d.deal} reported as of
+            </dt>
+            <dd className="text-right font-medium tabular-nums">{d.stated}</dd>
+          </Fragment>
+        ))}
+      </dl>
+      {figure.dates_align ? null : (
+        <p className="text-xs font-medium text-amber-700 dark:text-amber-400">
+          These reports are as of different dates. This figure adds them
+          together as published; it reconciles to neither source on its own.
+        </p>
+      )}
+    </div>
+  );
+}
+
+/**
+ * One bucket's tier split, for a row in the concentration table.
+ *
+ * Three figures, in tier order, each labelled. Deliberately not a single
+ * "proven %" — that would be a score over two kinds of thing, and the reader
+ * would treat it as the measurement.
+ */
+export function BucketSplit({ split }: { split: ConcentrationSplit }) {
+  return (
+    <dl className="grid grid-cols-[auto_1fr] gap-x-2 text-[11px] text-muted-foreground">
+      <dt>Proven</dt>
+      <dd className="text-right tabular-nums text-foreground">
+        {formatCurrency(split.proven_shared)}
+      </dd>
+      <dt>Candidate</dt>
+      <dd className="text-right tabular-nums text-foreground">
+        {formatCurrency(split.candidate_proposed)}
+      </dd>
+      <dt>Unresolved</dt>
+      <dd className="text-right tabular-nums text-foreground">
+        {formatCurrency(split.unresolved)}
+      </dd>
+    </dl>
+  );
+}
+
+/**
+ * One bucket's per-deal contributions, each stamped with its own deal's date.
+ * The date travels with the contribution because that is the only level at
+ * which it is true.
+ */
+export function BucketContributions({ bucket }: { bucket: ConcentrationBucket }) {
+  return (
+    <ul className="space-y-0.5 text-[11px] text-muted-foreground">
+      {bucket.per_deal.map((c) => (
+        <li key={c.deal} className="tabular-nums">
+          {c.deal} — {formatCurrency(c.balance)} ({c.asset_count} assets) as of{" "}
+          {c.as_of}
+        </li>
+      ))}
+      {bucket.reached_by_one_deal ? (
+        <li className="italic">Held by one deal only.</li>
+      ) : null}
+    </ul>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Investor due-diligence record (#568, epic #561)
+//
+// Extends this file rather than standing beside it: the evidence-pack surface
+// already carries `CitationItem` and the badge vocabulary, and a parallel
+// component would be a second place for a citation to render differently.
+//
+// **The known gap this file still has, stated rather than built over.** #484
+// committed synthetic pools labelled correctly *in the data*, and the Pool and
+// Waterfall pages still render no synthetic badge; `PackBody` above still
+// resolves its provenance badge to "direct ingestion" for a `derived` or
+// `synthetic` source, because the badge text is a binary on `deeploans`. That
+// is not fixed here — it is #484's surface, not this one — and nothing below
+// depends on it. It is recorded so the next reader does not mistake this
+// component's correctness for the file's.
+//
+// **Refusals render at the same weight as verifications.** #549's rule is that
+// a refusal which keeps the value is not a refusal: `not_evaluable` protects
+// the *grade*, not the screen. Applied here, that means the not-established
+// section renders FIRST, in the same card, at the same heading level, with its
+// full reason — never collapsed, never truncated, never behind a disclosure
+// widget, and never reduced to a ratio. An evidence file showing five green
+// items and hiding two unestablished ones is worse than one showing nothing,
+// because a compliance officer will sign it.
+//
+// Guarded by `tests/test_due_diligence_surface.py`, which asserts this file's
+// SOURCE — `web/` has no JS test runner, so the guard cannot assert rendered
+// output. That is the same trade `tests/test_capability_matrix.py` already
+// makes to reach `page-states.tsx`, and it is a real limit: a guard over source
+// cannot see what a browser paints.
+// ---------------------------------------------------------------------------
+
+/**
+ * One deal's due-diligence record.
+ *
+ * Counting is per-kind and never a ratio. "1 of 7 verified" is a grade, and a
+ * grade is what invites a reader to treat the remainder as rounding error;
+ * "Not established (6)" and "Verified (1)" are two facts, and the first is on
+ * screen first.
+ */
+export function DueDiligenceBody({ record }: { record: DueDiligenceRecord }) {
+  return (
+    <div className="space-y-5">
+      <section className="space-y-1">
+        <h2 className="text-sm font-medium">{record.deal_name}</h2>
+        <p className="text-xs text-muted-foreground">
+          What UK Securitisation Regulation risk-retention verification this
+          platform could establish for this deal from the documents it holds,
+          and what it could not. This is not the deal&rsquo;s covenant
+          compliance, which is a different question for a different reader.
+        </p>
+      </section>
+
+      {/* Not established FIRST and unconditionally — see the header note. The
+          empty case still renders its heading, so "nothing was refused" and
+          "the section is missing" cannot look the same. */}
+      <section className="space-y-2">
+        <h3 className="text-sm font-medium">
+          Not established{" "}
+          <span className="text-muted-foreground">
+            ({record.not_established.length})
+          </span>
+        </h3>
+        {record.not_established.length === 0 ? (
+          <p className="text-sm text-muted-foreground">
+            Every check below was established from a registered document.
+          </p>
+        ) : (
+          <ul className="space-y-2">
+            {record.not_established.map((check) => (
+              <CheckItem key={check.check} check={check} />
+            ))}
+          </ul>
+        )}
+      </section>
+
+      <Separator />
+
+      <section className="space-y-2">
+        <h3 className="text-sm font-medium">
+          Verified{" "}
+          <span className="text-muted-foreground">
+            ({record.verified.length})
+          </span>
+        </h3>
+        {record.verified.length === 0 ? (
+          <p className="text-sm text-muted-foreground">
+            No check on this deal established its fact.
+          </p>
+        ) : (
+          <ul className="space-y-2">
+            {record.verified.map((check) => (
+              <CheckItem key={check.check} check={check} />
+            ))}
+          </ul>
+        )}
+      </section>
+    </div>
+  );
+}
+
+/** Human labels for the check keys. Falls back to the raw key — an unlabelled
+ *  check must still render, because a check that renders as nothing is
+ *  indistinguishable from one that was never asked. */
+const CHECK_LABELS: Record<string, string> = {
+  risk_retention: "Risk retention (UK SR Article 6)",
+};
+
+/**
+ * One check, whichever outcome it reached — the SAME component for both, so
+ * the two sections cannot drift into different weights. Only the badge differs.
+ */
+function CheckItem({ check }: { check: DueDiligenceCheck }) {
+  const established = check.outcome === "verified";
+  return (
+    <li className="rounded-lg border bg-background px-3 py-2">
+      <div className="flex items-start justify-between gap-2">
+        <p className="text-sm font-medium">
+          {CHECK_LABELS[check.check] ?? check.check}
+        </p>
+        <Badge
+          variant={established ? "secondary" : "destructive"}
+          className="shrink-0 font-normal"
+        >
+          {established ? "Verified" : "Not established"}
+        </Badge>
+      </div>
+      {/* The reason renders in full on BOTH outcomes. On a refusal it names the
+          document that was looked in, which is what makes the limitation
+          re-askable of a document this reading did not reach. Clamping it would
+          hide exactly that. */}
+      <p className="mt-1 text-xs text-muted-foreground">{check.reason}</p>
+      {check.source ? <SourceLine source={check.source} /> : null}
+      {check.citations.length > 0 ? (
+        <ul className="mt-2 space-y-2">
+          {check.citations.map((c, i) => (
+            <CitationItem key={i} citation={c} />
+          ))}
+        </ul>
+      ) : null}
+    </li>
+  );
+}
+
+/**
+ * The document a check was answered from.
+ *
+ * `read_at` and `document_date` are two different facts and are labelled as
+ * two different facts. `read_at` is LoanWhiz's own clock — the label says so —
+ * and it is NEVER rendered in the document-date row: no registry field carries
+ * a publication date, so that row shows `document_date_reason` instead. Passing
+ * our read time off as the document's date would be confident wrongness of
+ * exactly the kind this record exists to avoid.
+ */
+function SourceLine({ source }: { source: DueDiligenceSource }) {
+  return (
+    <dl className="mt-2 grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 text-[11px] text-muted-foreground">
+      <dt>Document read</dt>
+      <dd className="font-mono break-all text-foreground">{source.url}</dd>
+      <dt>Registry field</dt>
+      <dd className="font-mono text-foreground">{source.registry_slot}</dd>
+      <dt>Read by LoanWhiz</dt>
+      <dd className="text-foreground">
+        {source.read_at ? formatTimestamp(source.read_at) : "not read"}
+      </dd>
+      <dt>Document date</dt>
+      <dd className="text-foreground">
+        {source.document_date ?? (
+          <span className="italic">{source.document_date_reason}</span>
+        )}
+      </dd>
+      {source.registry_note ? (
+        <>
+          <dt>Registry note</dt>
+          <dd className="text-foreground">{source.registry_note}</dd>
+        </>
+      ) : null}
+    </dl>
   );
 }

@@ -1566,5 +1566,15 @@
       "rate_type": "FLR",
       "source": "Listing Particulars, Conditions — 6(e)(ii)"
     }
+  },
+  "risk_retention": {
+    "retainer": "The Investment Manager",
+    "retainer_capacity": "originator",
+    "method_letter": "d",
+    "method": "first-loss tranche",
+    "level_pct": 5.0,
+    "level_basis": "the Aggregate Collateral Balance",
+    "instrument": "Subordinated Notes",
+    "source": "Listing Particulars, Article 6(3)(d)"
   }
 }

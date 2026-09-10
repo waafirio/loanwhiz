@@ -43,6 +43,18 @@ never have helped.
 
 Refs: #479
 
+## 2026-09-09 · pitfall · #532
+
+A **reset** deal publishes two offering documents describing two different
+capital structures, and the newer is not automatically the right one. Register
+the one on the same side of the reset as the reports that will be parsed
+against it: Contego CLO XI's Aug/Sep-2024 reports match its 29-Jun-2023 Listing
+Particulars, not the 19-Nov-2024 reset whose Class A-R is due 2038. Getting it
+wrong throws nothing — the cascade folds and every figure is silently wrong.
+Settle the pairing on a figure the two state differently (a reported coupon vs
+each document's margin); record the reason in the registry entry.
+
+Refs: #532
 ## 2026-09-09 · decision · #524
 
 Ranking two sources for one deal answers *precedence*, never *coverage* — and
@@ -55,6 +67,7 @@ the rule itself. `_set_aside_tape_periods` is the shape: empty when nothing was
 displaced, so "folds everything" and "narrowed" stay distinguishable.
 
 Refs: #524
+Refs: #583 — the consumer half: /compliance still folded the set-aside periods.
 
 ## 2026-09-09 · pitfall · #523
 
@@ -67,3 +80,16 @@ the splice, so the symptom reads as "my provenance edit did not work" rather
 than as a lossy splice, and the wrong thing gets rewritten.
 
 Refs: #523
+
+## 2026-09-10 · pitfall · #583
+
+Naming what a precedence rule displaced is half the job — grep that name's
+readers. #524 returned `_set_aside_tape_periods` and said those periods "stop
+being the *ledger* `/waterfall` and `/compliance` fold", but its only reader
+was a 422 message, so `/compliance` kept folding them: periods from the
+set-aside tapes, states from the report they yielded to, paired by list
+position. Downstream of a precedence rule the fix is usually to consume what
+the rule already returns, not to add a rank — then pair two independently
+sourced lists on a fact each states, and refuse the unpaired by name.
+
+Refs: #583

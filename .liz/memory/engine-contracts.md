@@ -52,6 +52,7 @@ jurisdiction-native labels may resolve to no calculator, so the deal that
 motivated the fix can be the one it does not change.
 
 Refs: #493
+Refs: #535 — same rule at the API refusal: a bare 422 outlived its cause.
 ## 2026-09-08 · pitfall · #478
 
 Grep an untyped dict shape's **key names**, not a mapper's function name,
@@ -215,3 +216,43 @@ render alike, so "I could not resolve this" reads as "nothing to report".
 
 Refs: #572
 Refs: #494 — the same conflation, between a missing section and a clean one.
+## 2026-09-10 · decision · #563
+
+Joining two sources on one of several candidate vocabularies, choose the axis by
+**measuring the unjoined share on each**, never by which has the better
+acceptance oracle — two CLOs tie out S&P *and* Fitch per bucket, so the oracle
+discriminated nothing while the joins differed threefold. Classify the residue:
+**vintage drift** (GICS 2023 renamed `Food & Staples Retailing`) means the axis
+is wrong, genuine absence means it is right. Fold orthography only, and prove it
+injective over each **published table**, not your examples — Cairn's December
+Fitch table prints `Building and materials` beside `Buildings and materials`.
+
+Refs: #563
+Refs: #562 — same fold, opposite failure: `B.V.` vs `BV` split one borrower.
+
+## 2026-09-10 · pitfall · #562
+
+A guard that passes by **finding nothing** needs a test that deletes its
+*call*, not only one that calls it. Every census test here invoked
+`_assert_every_asset_placed` directly, so the file still passed with the
+builder's invocation removed — "the checker found nothing" and "nothing ran
+the checker" are one silence. Assert the wiring where they differ: make the
+builder emit a lossy result and require it to raise. #478 says put the check
+*in* the builder; this is how you know it is still plugged in.
+
+Refs: #562
+Refs: #478 — the guard this one keeps wired.
+
+## 2026-09-10 · pitfall · #564
+
+What counts as orthography is axis-dependent — never reuse another axis's fold.
+`industry_taxonomy.canonical_label` strips punctuation, right for `Aerospace &
+Defense` and catastrophic for ratings: `B`, `B+` and `B-` all fold to `b`,
+merging three notches and making a book read better than it is. Punctuation is
+presentation in an industry name and the *datum* in a rating notch. Give each
+axis its own fold, then prove it injective over each deal's own published
+vocabulary — Contego prints `B` and `B+`, so the check fires on real data.
+
+Refs: #564
+Refs: #563 — the injectivity check this reuses, applied to a second axis.
+Refs: #568 — same rule on a screen: refusals render first, uncollapsed, unclamped.

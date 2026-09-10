@@ -15,6 +15,7 @@ disagreed with the output they themselves committed (0.93 vs 0.925). Hit the
 endpoint or recompute — authoritative once is not true now.
 
 Refs: #441
+Refs: #565 — an issue body's own count, off by an order of magnitude.
 
 ## 2026-09-06 · pattern · #469
 
@@ -103,3 +104,30 @@ habit the guard exists to break. Narrowing buys silence and re-opens the hole on
 level upstream, where nothing is watching.
 
 Refs: #571
+
+## 2026-09-09 · pitfall · #555
+
+Establish which population a stated count describes before reconciling against
+it — the balance beside it in the same table need not describe the same one.
+Contego's aggregate tables state 212 against a euro total its asset sections
+carry 177 identifiers for: the balance is at asset grain, the count is the
+interest-accrual row count, one per rate contract. Find the count's population
+by looking for a section whose row count equals it, and reconcile each figure
+against its own. A count checked against the wrong population cannot fail —
+worse than none, since par alone cannot see a dropped row worth zero (#468).
+
+Refs: #555
+
+
+## 2026-09-10 · pitfall · #550
+
+Before accepting that a figure lives only in documents your path excludes, look
+in the one your path already reads. A CLO's overcollateralisation numerator was
+filed as unreachable — stated only in trustee reports #524 routed off the live
+series — yet the Note Valuation Report that series folds prints it on its own
+Par Value Tests Detail page. A scarcity premise is a claim about the whole
+registered document set; check it against that set, not the documents the issue
+names. Then read the total the report states and tie it to the components above
+it: the adjacent aggregate is the near-miss, one line away and three points high.
+
+Refs: #550

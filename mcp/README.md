@@ -42,39 +42,40 @@ agent receives not just the answer but the evidence to trust (or escalate) it.
 
 ## What's exposed: `live` vs `library-only`
 
-Consistent with the host app's `GET /primitives` reachability map, only the
-**`live`** (endpoint-reachable) primitives are exposed as **callable tools**.
-The **`library-only`** primitives are registered and importable but reached by
-no endpoint or agent tool in the host app — they are surfaced honestly in the
-catalogue resource (with their schemas and reachability) but **not** advertised
-as callable tools. Nothing is shown as reachable that a consumer can't actually
-reach.
+Only the **`live`** (endpoint-reachable) primitives are exposed as **callable
+tools**. The **`library-only`** primitives are registered and importable but
+reached by no endpoint or agent tool in the host app — they are surfaced
+honestly in the catalogue resource, with their schemas and reachability, but
+**not** advertised as callable. Nothing is shown as reachable that a consumer
+can't actually reach.
 
-| Primitive | Reachability | MCP tool? |
-|---|---|---|
-| `esma_tape_normaliser` | `live` | ✅ |
-| `collections_aggregator` | `live` | ✅ |
-| `covenant_monitor` | `live` | ✅ |
-| `waterfall_runner` | `live` | ✅ |
-| `audit_logger` | `live` | ✅ |
-| `cashflow_projector` | `library-only` | catalogue only |
-| `report_verifier` | `library-only` | catalogue only |
-| `multi_period_waterfall_runner` | `library-only` | catalogue only |
+**For the current surface, read `GET /mcp/surface`** — which primitives are
+exposed as tools, each tool's typed input schema, and the governance fields its
+result carries. This README used to print that as a table; it drifted, and
+badly. It marked `report_verifier` `library-only` after #320 made it live, and
+listed `cashflow_projector` and `multi_period_waterfall_runner`, both deleted
+in #276. A reader trusting it would have believed the server exposed fewer
+tools than it does, and that primitives which no longer exist were still
+catalogued. It is not replaced with a corrected table here, because a corrected
+table is the same mechanism with a later timestamp (#574).
 
-> The reachability map lives in `loanwhiz_primitives_mcp/reachability.py`, a
-> small mirror of `loanwhiz.api.main._PRIMITIVE_REACHABILITY`. A test
-> (`tests/test_server_smoke.py::test_reachability_map_matches_api`) asserts the
-> two stay equal, so the catalogue can never silently lie about reachability.
+> The decision lives once, in `loanwhiz.primitives.reachability`:
+> `is_exposed_as_tool()` is what `server.py` filters its registrations through,
+> what `catalogue.live_tool_names()` answers from, and what `GET /mcp/surface`
+> asks. `loanwhiz_primitives_mcp/reachability.py` re-exports it rather than
+> mirroring it, so the tool list and every description of it are one fact.
 
 ## MCP surface
 
 - **Tools** — one per `live` primitive. Each advertises the primitive's typed
   Pydantic input JSON schema (`inputSchema`); calling it validates the
   arguments, runs `execute()`, and returns the serialised `PrimitiveResult`.
-- **Resource** — `primitives://catalogue`: the full JSON catalogue of *all 8*
-  registered primitives (live + library-only) with name/version/description/
+- **Resource** — `primitives://catalogue`: the full JSON catalogue of every
+  registered primitive (live + library-only) with name/version/description/
   author/tags, reachability, and input/output JSON schemas. Lets a consumer
-  introspect the whole framework, not just the callable tools.
+  introspect the whole framework, not just the callable tools. The registry is
+  completed by walking the primitives package, so a primitive is catalogued
+  because it exists rather than because a list names it (#574).
 
 ## Running the server
 
@@ -160,12 +161,29 @@ governance evidence:
 
 ## Tests
 
+A bare `pytest` from the repo root collects these — root `testpaths` lists
+`mcp/tests`. Without the SDK installed they **skip**; to actually run them:
+
 ```bash
-PYTHONPATH=src python3 -m pytest mcp/tests -m "not slow and not integration" -q
+pip install -e mcp          # brings in the pinned MCP SDK
+PYTHONPATH=src python3 -m pytest mcp/tests -q
 ```
 
-The smoke tests assert: the server lists exactly the `live` primitives as tools,
-each with a valid typed input schema; a tool call returns a `PrimitiveResult`
-carrying the governance evidence; the catalogue resource lists all 8 primitives
-with honest reachability; and the reachability mirror matches the host API's map.
-```
+The smoke tests assert: the server lists exactly the exposed primitives as
+tools, each with a valid typed input schema; a tool call returns a
+`PrimitiveResult` carrying the governance evidence; and the catalogue resource
+lists every registered primitive with honest reachability.
+
+### Why the SDK is pinned below 2.0
+
+`server.py` calls the SDK's decorator API directly — `Server.list_tools()`,
+`call_tool()`, `read_resource()` — and those names moved in the 2.x line. The
+dependency was declared `mcp>=1.0`, which resolves to 2.2.0: `build_server()`
+raises `AttributeError: 'Server' object has no attribute 'list_tools'` and the
+whole surface is unbuildable from a fresh install. Nothing caught it, because
+`mcp/tests` is the only suite that exercises the server and it had never once
+executed — root `testpaths` excluded it, and this repo has no CI.
+
+`tests/test_mcp_dependency_pin.py` guards the bound. It runs in the **default**
+suite and needs no SDK, so the pin stays checked even where the tests above
+skip. Raise the bound only alongside the `server.py` rewrite 2.x requires.
