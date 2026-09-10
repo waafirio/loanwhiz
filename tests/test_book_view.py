@@ -299,3 +299,32 @@ def test_an_unplaceable_book_is_a_labelled_422_not_a_partial_book():
 
     assert resp.status_code == 422
     assert "class_z" in resp.json()["detail"]
+
+
+def test_a_strip_the_stack_cannot_supply_twice_refuses_rather_than_counting_it_once():
+    """Membership is not multiplicity — the #571 case, from the serving side.
+
+    Two strips issued under one name is precisely what #571 measured. A control
+    that asks "does the stack have *a* strip by that name" answers yes and the
+    balance quietly counts one, which is the under-statement that reads as
+    health. It must compare how many.
+    """
+    structure = capital_structures()["cairn-clo-xvii"]
+    position = Position(
+        deal_id="cairn-clo-xvii",
+        tranche="class_b",
+        strips=("class_b_1", "class_b_1"),
+        size=1.0,
+        as_of=date(2026, 4, 30),
+        provenance=PositionProvenance.ILLUSTRATIVE,
+    )
+
+    _, missing = api_main._strips_present(position, structure)
+    assert missing == ["class_b_1"]
+
+    with patch.object(api_main, "_load_book", return_value=_book_of(position)):
+        body = _get_book()
+
+    balance = _cell(body["positions"][0], "balance")
+    assert balance["state"] == "not-applicable"
+    assert balance["value"] is None

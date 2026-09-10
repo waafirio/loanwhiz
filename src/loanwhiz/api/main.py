@@ -32,6 +32,7 @@ import json
 import logging
 from datetime import date
 from pathlib import Path
+from collections import Counter
 from collections.abc import Callable, Mapping
 from typing import Any
 
@@ -4643,13 +4644,22 @@ def _strips_present(
     The collection is **filtered**, never indexed through a ``{name: spec}``
     dict: a class issued in two strips under one name would collapse to one
     (#571), and the strips are summed, so the holding would silently
-    under-state. A name the stack lacks is *reported*, never skipped — a
-    dropped strip makes a short book read as a complete one.
+    under-state. A strip the stack cannot supply is *reported*, never skipped —
+    a dropped strip makes a short book read as a complete one.
+
+    Multiplicity is compared, not just membership. Two strips issued under one
+    name is exactly the case #571 measured, so "the stack has *a* strip by that
+    name" is the wrong question: a position resolving to that name twice while
+    the stack carries it once must refuse, not silently count it once.
     """
-    wanted = set(position.strips)
-    specs = [spec for spec in structure.tranches if spec.name in wanted]
-    present = {spec.name for spec in structure.tranches}
-    missing = [name for name in position.strips if name not in present]
+    declared = Counter(position.strips)
+    available = Counter(spec.name for spec in structure.tranches)
+    specs = [spec for spec in structure.tranches if spec.name in declared]
+    missing = list(
+        dict.fromkeys(
+            name for name in position.strips if available[name] < declared[name]
+        )
+    )
     return specs, missing
 
 
@@ -4743,8 +4753,8 @@ def _position_facts(
     specs, missing = _strips_present(position, structure)
     if missing:
         reason = (
-            f"{position.deal_id}'s capital structure carries no strip named "
-            f"{', '.join(missing)}, which {position.tranche} resolved to"
+            f"{position.deal_id}'s capital structure does not supply every "
+            f"strip {position.tranche} resolved to — {', '.join(missing)}"
         )
         return [_refused_cell(field, reason) for field in BOOK_POSITION_FIELDS]
 
