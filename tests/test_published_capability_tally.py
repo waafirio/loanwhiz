@@ -212,6 +212,21 @@ def test_no_validated_cell_renders_as_a_refusal_not_an_empty_sentence() -> None:
     assert "Deal A" not in out
 
 
+def test_a_backslash_in_a_deal_name_does_not_break_the_write(tmp_path: Path) -> None:
+    """`--write` must substitute the sentence literally, escapes and all.
+
+    Deal names are registry data an operator edits. Passed to `re.sub` as a
+    replacement *string*, a name containing `\\1` or `\\g` raises `re.error` and
+    the write fails — or worse, resolves to a group and writes something else.
+    """
+    from scripts.render_capability_tally import _fill
+
+    hostile = r"Deal \1 (a.k.a. C:\group) — 2 validated"
+    out = _fill(f"{MARKER_START}\nold\n{MARKER_END}", hostile)
+    assert hostile in out
+    assert out.startswith(MARKER_START) and out.rstrip().endswith(MARKER_END)
+
+
 def test_the_checker_reds_on_a_hand_edited_region(tmp_path: Path) -> None:
     """A number changed by hand is caught — the `red-when` for the whole fix.
 

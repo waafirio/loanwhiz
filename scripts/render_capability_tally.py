@@ -130,10 +130,16 @@ def _region(text: str) -> str | None:
 
 
 def _fill(text: str, sentence: str) -> str:
-    """Replace the region's contents, leaving the fences and the rest alone."""
+    """Replace the region's contents, leaving the fences and the rest alone.
+
+    The replacement is a **callable**, not a string: ``re.sub`` parses a string
+    replacement for escapes, so a deal name carrying a backslash — registry data
+    an operator edits — would raise ``re.error`` or silently mangle the write.
+    A callable's return is substituted literally.
+    """
     return re.sub(
         re.escape(MARKER_START) + r".*?" + re.escape(MARKER_END),
-        f"{MARKER_START}\n{sentence}\n{MARKER_END}",
+        lambda _: f"{MARKER_START}\n{sentence}\n{MARKER_END}",
         text,
         flags=re.S,
     )
