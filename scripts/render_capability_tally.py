@@ -82,22 +82,12 @@ def render(matrix=None) -> str:
     test enforces — a figure a reader can check against the endpoint, rather
     than one they have to trust.
     """
-    matrix = matrix or _load_matrix()
+    matrix = _load_matrix() if matrix is None else matrix
     tally = matrix.tally
-    validated = sorted(
-        {
-            next(d.deal_name for d in matrix.deals if d.deal_id == cell.deal_id)
-            for cell in matrix.cells
-            if cell.state == "validated"
-        }
-    )
-    jurisdictions = sorted(
-        {
-            d.jurisdiction
-            for d in matrix.deals
-            if d.deal_id in {c.deal_id for c in matrix.cells if c.state == "validated"}
-        }
-    )
+    validated_ids = {c.deal_id for c in matrix.cells if c.state == "validated"}
+    validated_deals = [d for d in matrix.deals if d.deal_id in validated_ids]
+    validated = sorted(d.deal_name for d in validated_deals)
+    jurisdictions = sorted({d.jurisdiction for d in validated_deals})
     counts = (
         f"**{tally['validated']} validated / {tally['ran']} ran / "
         f"{tally['not-applicable']} not-applicable**"
