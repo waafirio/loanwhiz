@@ -280,6 +280,13 @@ _EMBEDDED_IDENTIFIER_RE = re.compile(rf"(?<![A-Z0-9])({_IDENTIFIER})(?=\D|$)")
 #: A comma-grouped money amount with exactly two decimals.
 # ``MONEY`` now lives on the registry, where a family's own row grammar can
 # reach it; re-exported here because this module's callers import it from here.
+
+#: The same token, allowed a leading minus. Only the par value tests' numerator
+#: block needs it: that block *subtracts* principal proceeds and the defaulted /
+#: discount adjustments, and the sign is load-bearing — dropped, the numerator
+#: reads high by their whole magnitude. ``MONEY`` itself stays unsigned because
+#: every other table on these reports states magnitudes.
+SIGNED_MONEY = rf"-?{MONEY}"
 _MONEY_RE = re.compile(MONEY)
 
 #: The two renderings. The same trustee produces these reports two ways: some
@@ -452,6 +459,35 @@ class ProfileTest(BaseModel):
     name: str
     numerator: Decimal
     denominator: Decimal
+
+
+class ParValueNumerator(BaseModel):
+    """The overcollateralisation numerator, as Par Value Tests Detail composes it.
+
+    A par value test divides the *Adjusted Collateral Principal Amount* — an
+    asset-side figure — by the outstanding balance of one note class and
+    everything senior to it. The report does not merely state that numerator: it
+    prints the components it is the sum of, and then prints the total. Both are
+    kept, because together they are an acceptance oracle that neither is alone
+    (:func:`reconcile_liability_summary` ties them).
+
+    It is **not** :attr:`ReportAggregates.aggregate_principal_balance`. Principal
+    proceeds and the defaulted / discount adjustments sit between the two, so
+    substituting one for the other silently overstates every ratio built on it.
+    """
+
+    components: list[Decimal] = Field(
+        default_factory=list,
+        description="Every figure the report sums, in printed order, signed as printed.",
+    )
+    stated_total: Decimal = Field(
+        ..., description='The total the report prints beneath them ("Total for A").'
+    )
+
+    @property
+    def components_total(self) -> Decimal:
+        """Sum of the printed components — what :attr:`stated_total` must equal."""
+        return sum(self.components, Decimal("0"))
 
 
 class ReportAggregates(BaseModel):
@@ -2697,6 +2733,12 @@ class ReportLiabilitySummary(BaseModel):
     stated_total_balance: Decimal | None = None
     stated_total_periodic_interest: Decimal | None = None
 
+    #: The asset-side numerator the par value tests divide, as the detail page
+    #: states and composes it. ``None`` when the report states no such block —
+    #: a different fact from a numerator of zero, and one the caller must
+    #: refuse on rather than substitute a liability total for.
+    par_value_numerator: ParValueNumerator | None = None
+
     #: Whether this summary passed :func:`reconcile_liability_summary`. Recorded
     #: by the parser, which is the only thing that knows; **not** a claim any
     #: caller can make. It defaults to ``False`` because a summary that has not
@@ -2835,6 +2877,96 @@ def _parse_coverage_tests(
     return results
 
 
+#: The numerator block's own heading, on its own line in every layout seen.
+_NUMERATOR_HEADING_RE = re.compile(r"^\s*NUMERATOR\s*$")
+#: The label the report prints the summed numerator under. "A" is the block
+#: letter the CALCULATION column refers to ("A/B", "A/C", ...), not a note class.
+_NUMERATOR_TOTAL_RE = re.compile(r"Total for A:")
+_SIGNED_MONEY_RE = re.compile(SIGNED_MONEY)
+
+
+def parse_par_value_numerator(pages: list[list[str]]) -> ParValueNumerator | None:
+    """The par value tests' numerator: its printed components and stated total.
+
+    ``pages`` must be the **Par Value Tests Detail** pages only (what
+    :func:`_pages_for` returns for that section). The Interest Coverage Tests
+    Detail page prints a ``NUMERATOR`` block of its own, over interest proceeds
+    rather than collateral principal; reading that one here would put an
+    interest figure where an asset balance belongs, and it would still tie out
+    against its own components, so the oracle would not catch it. Scoping by
+    section is what prevents that, not a check.
+
+    Returns ``None`` when the section states no numerator block — a different
+    fact from a numerator of zero, and one for the caller to refuse on.
+
+    Layout-tolerant by construction: extracted text renders this block either
+    one component per line or with every component run together on one, so the
+    components are read as *every signed money token between the heading and
+    the total* rather than by matching a label per line. The labels are not
+    lost — the sum of what is read is checked against the total the report
+    prints for it, which no partial read can satisfy.
+    """
+    lines = [line for page in pages for line in page]
+    start = next(
+        (i for i, line in enumerate(lines) if _NUMERATOR_HEADING_RE.match(line)), None
+    )
+    if start is None:
+        return None
+    total_at = next(
+        (i for i in range(start + 1, len(lines)) if _NUMERATOR_TOTAL_RE.search(lines[i])),
+        None,
+    )
+    if total_at is None:
+        return None
+    components = [
+        _decimal(match.group(0))
+        for line in lines[start + 1 : total_at]
+        for match in _SIGNED_MONEY_RE.finditer(line)
+    ]
+    label = _NUMERATOR_TOTAL_RE.search(lines[total_at])
+    if label is None:  # unreachable — the same pattern located this line above
+        return None
+    stated = next(
+        (
+            _decimal(match.group(0))
+            for text in [lines[total_at][label.end() :], *lines[total_at + 1 :]]
+            if (match := _SIGNED_MONEY_RE.search(text))
+        ),
+        None,
+    )
+    if stated is None:
+        return None
+    return ParValueNumerator(components=components, stated_total=stated)
+
+
+def parse_par_value_numerator_text(text: str) -> ParValueNumerator | None:
+    """:func:`parse_par_value_numerator` over a whole report's extracted text.
+
+    The section split is done here so callers outside this module never reach
+    for the private page helpers — and so "which pages count" stays one
+    decision. The section itself is routed by the family's own layout, so a
+    report is only ever searched where that family prints its par value tests.
+
+    Both of a U.S. Bank issuer's document kinds are accepted, which is the
+    point: the Note Valuation Report a deal's live series folds carries the
+    same Par Value Tests Detail page as the monthly reports do, so a deal can
+    gain a real numerator without any period changing hands.
+
+    The block's own spelling is still U.S. Bank's. BNY Mellon's reports state
+    no ``NUMERATOR`` line and no ``Total for A`` (measured: neither Contego
+    fixture contains either), so this returns ``None`` for them — a refusal,
+    which is what the caller must do with an unavailable numerator anyway,
+    rather than a figure read in a guessed shape. Promote the two literals onto
+    :class:`DocumentLayout` when a second family is found to print the block;
+    doing it now would be declaring a vocabulary no registered family speaks.
+    """
+    pages = _split_pages(text)
+    if not pages:
+        return None
+    layout = _resolve_layout(pages)
+    return parse_par_value_numerator(_pages_for(pages, layout, SECTION_PAR_VALUE_DETAIL))
+
+
 def _parse_stated_totals(
     pages: list[list[str]], layout: DocumentLayout
 ) -> tuple[Decimal | None, Decimal | None]:
@@ -2943,6 +3075,9 @@ def parse_liability_summary_text(
         ),
         stated_total_balance=stated_balance,
         stated_total_periodic_interest=stated_interest,
+        par_value_numerator=(
+            parse_par_value_numerator(par_value_pages) if par_value_pages else None
+        ),
     )
     summary._section_titles = dict(layout.section_titles)
     if strict:
@@ -2967,6 +3102,10 @@ def reconcile_liability_summary(summary: ReportLiabilitySummary) -> ScheduleReco
       quietly absent from the result;
     - and for each, the two renderings agree on the required level, the current
       level and the outcome — despite stating them in opposite column order.
+
+    A fifth, when the report states one: the par value numerator's printed
+    components sum to the total printed beneath them. That is what makes a
+    partially-read numerator a refusal rather than an understatement.
     """
     checks: list[ReconciliationCheck] = []
 
@@ -2984,6 +3123,15 @@ def reconcile_liability_summary(summary: ReportLiabilitySummary) -> ScheduleReco
                 "stated total periodic interest",
                 summary.stated_total_periodic_interest,
                 summary.total_periodic_interest,
+            )
+        )
+
+    if summary.par_value_numerator is not None:
+        checks.append(
+            _check(
+                "par value numerator components sum to its stated total",
+                summary.par_value_numerator.stated_total,
+                summary.par_value_numerator.components_total,
             )
         )
 

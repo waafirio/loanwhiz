@@ -37,6 +37,7 @@ triage by opening the entry, not by reading the line.
   - [2026-09-08 · pitfall · #484](#2026-09-08--pitfall--484) — keywords: balance share, count share, generated population, per-bucket draw, stratification, arrears bucket, rendered axis
   - [2026-09-02 · pitfall · #441](#2026-09-02--pitfall--441) — keywords: completeness_score
   - [2026-09-09 · pattern · #528](#2026-09-09--pattern--528) — keywords: back-solved input, read past the extractor, max_chars truncation, pypdf text layer, stated schedule, deterministic parser, cross-check against another document
+  - [2026-09-10 · pitfall · #550](#2026-09-10--pitfall--550) — keywords: scarcity premise, document already folded, Par Value Tests Detail, overcollateralisation numerator, aggregate_principal_balance, stated total, components tie-out
   - [2026-09-09 · pitfall · #555](#2026-09-09--pitfall--555) — keywords: stated count population, count grain, accrual record, asset grain, aggregate table, two populations, cannot fail
 - [Registering a deal (deals.json)](deal-registration.md) — keywords: deals.json, notes_cash_report_urls, routing promise, registry key, asset_class, answer key invariant
   - [2026-09-05 · pitfall · #455](#2026-09-05--pitfall--455) — keywords: notes_cash_report_urls, _reconstruct_series
@@ -45,6 +46,7 @@ triage by opening the entry, not by reading the line.
   - [2026-09-08 · pattern · #479](#2026-09-08--pattern--479) — keywords: derive vs hand-write, reconcile against declared, projection_base, current_pool_balance, pool_balance_eur, latest tape, byte-identical output
   - [2026-09-09 · pitfall · #532](#2026-09-09--pitfall--532) — keywords: reset, two offering documents, prospectus_url, pre-reset reports, capital structure mismatch, silently wrong, registration_note
   - [2026-09-09 · decision · #524](#2026-09-09--decision--524) — keywords: precedence vs coverage, _set_aside_tape_periods, _tapes_yield_to_reports, first_hand, derived tape outranked, narrowed series, disjoint periods
+  - [2026-09-10 · pitfall · #583](#2026-09-10--pitfall--583) — keywords: displaced periods, _set_aside_tape_periods consumer, positional pairing, reporting date join, period axis, unpaired refused, precedence consumer
   - [2026-09-09 · pitfall · #523](#2026-09-09--pitfall--523) — keywords: _splice_periods, provenance sidecar dropped, committed fixtures, resolve_parsed_report, ParsedReport, assert at the computing seam
 - [Registering a deal (deals.json)](deal-registration.md) — keywords: deals.json, notes_cash_report_urls, routing promise, registry key, asset_class, answer key invariant
   - [2026-09-08 · pitfall · #479](#2026-09-08--pitfall--479) — keywords: extracted-model path, prospectus extraction, DealModel fields, as-of-date fact, closing-date terms, config tier, projection_base

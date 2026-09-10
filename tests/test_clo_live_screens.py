@@ -282,42 +282,54 @@ def test_the_three_computed_steps_reproduce_their_published_figures(
 
 
 def test_compliance_screen_serves_but_evaluates_no_trigger(client: TestClient) -> None:
-    """The compliance screen renders a refusal, not a measurement.
+    """The compliance screen renders its ratios but still evaluates no trigger.
 
-    Every trigger it carries is ``evaluable: false`` with a stated cause, and no
-    metric or threshold is rendered at all. That is the honest shape — a screen
-    reporting ratios it could not compute would be the failure — but it means
-    the 200 conveys no compliance information for this deal. The cause is
-    #549's to resolve and is deliberately not touched here.
+    The *cause* has moved twice. It was the numerator: the seed's pool balance
+    was the note total, so every ratio was notes over notes (#549 refused the
+    value as well as the verdict). #550 made the numerator real. Then it was the
+    pairing: the periods came from the trustee-report tapes while the state came
+    from the January report, so no period had a state of its own date and the
+    figure was withheld rather than rendered under a date it is not stated as of.
+
+    #583 fixed the pairing, and the five par value ratios now render. What is
+    left is the last honest gap: none of these coverage tests carries a
+    quantified threshold, so there is nothing to compare the ratio against. A
+    rendered metric beside ``evaluable: false`` and a stated cause is the right
+    shape for that — the ratio is a measurement, the verdict is not available.
     """
     body = client.get(f"/deal/{CLO_DEAL_ID}/compliance").json()
     statuses = body["trigger_statuses"]
 
     assert statuses, "the compliance screen rendered no trigger statuses"
     assert not [s for s in statuses if s["evaluable"]]
-    assert not [s for s in statuses if s["metric_value"] is not None]
     assert not [s for s in statuses if s["threshold"] is not None]
+    # The par value tests now carry a real, own-dated measurement.
+    assert [s for s in statuses if s["metric_value"] is not None]
     # A refusal must say why; a silent null is the thing this guards against.
     assert all(s["not_evaluable_reason"] for s in statuses)
     assert not body["active_triggers"] and not body["near_miss_triggers"]
     assert body["unevaluable_triggers"]
 
 
-def test_the_two_screens_report_on_periods_that_do_not_overlap(
+def test_the_two_screens_now_report_on_the_same_period(
     client: TestClient, rendered_waterfall: dict
 ) -> None:
-    """Cairn's two document sources share no period, and the screens show it.
+    """Cairn's two screens describe the same point in the deal's life.
 
-    The waterfall folds the Note Valuation Report's single published period;
-    compliance runs over the trustee reports' periods. Neither set contains the
-    other's date, so the two screens describe different points in the deal's
-    life while sitting side by side in the same UI. Recorded, not corrected.
+    They did not. The waterfall folded the Note Valuation Report's single
+    published period while compliance ran over the trustee reports' periods, so
+    two screens sitting side by side in one UI described different dates — the
+    #524 disjointness, one layer out, recorded here rather than corrected.
+
+    #583 corrected it at the source named in #524's own contract: the periods it
+    sets aside "stop being the *ledger* /waterfall and /compliance fold", and
+    compliance was still folding them. With them dropped, both screens fold the
+    January report and agree on its date.
     """
     compliance_periods = {
         s["period"] for s in client.get(f"/deal/{CLO_DEAL_ID}/compliance").json()["trigger_statuses"]
     }
-    assert compliance_periods
-    assert rendered_waterfall["reporting_period"] not in compliance_periods
+    assert compliance_periods == {rendered_waterfall["reporting_period"]}
 
 
 def test_compare_renders_the_clo_but_shares_no_period_with_a_comp(
@@ -428,3 +440,143 @@ def test_no_waterfall_row_carries_a_numeric_value_for_any_deal(
         if c.get("present") and c.get("label")
     ]
     assert labelled, "cascade rows rendered no labels either — genuinely blank"
+
+
+# ---------------------------------------------------------------------------
+# The numerator is real; what still blocks the screen is the period split (#550)
+# ---------------------------------------------------------------------------
+
+
+def test_the_seed_carries_the_collateral_numerator_the_report_states() -> None:
+    """End to end: the figure on the report's own page reaches the deal state.
+
+    ``399,984,890.74`` is the total the January 2025 Note Valuation Report
+    prints under its Par Value Tests Detail numerator — the same document the
+    live series folds, which is why sourcing it moved no period and left #524's
+    precedence decision untouched. The pool balance must be that figure and not
+    the note total, which is what made the ratio an identity before.
+    """
+    from loanwhiz.api.main import DEAL_REGISTRY, _reconstruct_series
+
+    series = _reconstruct_series(CLO_DEAL_ID, DEAL_REGISTRY[CLO_DEAL_ID])
+    seed = series.states[0]
+    note_total = sum(t.balance for t in seed.tranches)
+
+    assert seed.reporting_date == "2025-01-08"
+    assert seed.pool_balance == pytest.approx(399_984_890.74)
+    assert seed.pool_balance != pytest.approx(note_total)
+
+
+def test_the_seed_numerator_reproduces_the_published_par_value_ratios() -> None:
+    """What the numerator is worth: the report's own five ratios, to the cent.
+
+    Computed off the seed's own tranche balances, so this exercises the same
+    numerator and denominators a coverage test would — the arithmetic the screen
+    would render if its periods had states of their own date.
+    """
+    from decimal import Decimal
+
+    from loanwhiz.api.main import DEAL_REGISTRY, _reconstruct_series
+
+    seed = _reconstruct_series(CLO_DEAL_ID, DEAL_REGISTRY[CLO_DEAL_ID]).states[0]
+    balances = {t.name: t.balance for t in seed.tranches}
+    published = {
+        ("class_a", "class_b_1", "class_b_2"): "139.08",
+        ("class_a", "class_b_1", "class_b_2", "class_c"): "128.74",
+        ("class_a", "class_b_1", "class_b_2", "class_c", "class_d"): "118.62",
+        ("class_a", "class_b_1", "class_b_2", "class_c", "class_d", "class_e"): "112.86",
+        (
+            "class_a",
+            "class_b_1",
+            "class_b_2",
+            "class_c",
+            "class_d",
+            "class_e",
+            "class_f",
+        ): "108.40",
+    }
+    for classes, expected in published.items():
+        denominator = sum(balances[name] for name in classes)
+        ratio = (
+            Decimal(str(seed.pool_balance)) / Decimal(str(denominator)) * 100
+        ).quantize(Decimal("0.01"))
+        assert str(ratio) == expected, f"{classes} computed {ratio}, report states {expected}"
+
+
+def test_the_compliance_refusal_names_the_threshold_it_does_not_have(
+    client: TestClient,
+) -> None:
+    """The refusal must name its real cause, or it misdirects the next reader.
+
+    Three times now this screen has refused for a reason that was not the
+    deal's (#457, #549, and the as-of-date mismatch #550 recorded). The par
+    value tests no longer lack a numerator, and no longer lack a state of the
+    period being evaluated — #583 pairs each period to the state stating the
+    same date, and for this deal that leaves the one period the report covers.
+
+    What they lack now is a quantified threshold, and the reason has to say so.
+    A ratio against no required level is a measurement without a verdict, which
+    is why the metric renders while ``evaluable`` stays false.
+    """
+    statuses = client.get(f"/deal/{CLO_DEAL_ID}/compliance").json()["trigger_statuses"]
+    par_value = [s for s in statuses if "par_value" in s["trigger_name"]]
+    assert par_value, "the deal's par value tests are on the screen"
+
+    for status in par_value:
+        reason = status["not_evaluable_reason"] or ""
+        assert status["metric_value"] is not None, "the ratio is a real measurement"
+        assert status["threshold"] is None
+        assert "threshold" in reason, f"the cause is the missing threshold: {reason}"
+        # Each superseded cause would be the false cause all over again.
+        assert "#550" not in reason and "notes over notes" not in reason
+        assert "not a measurement of this one" not in reason
+        assert "no deal state was reconstructed" not in reason
+
+
+def test_every_compliance_period_carries_a_state_of_its_own_date(
+    client: TestClient,
+) -> None:
+    """The pairing invariant, stated on the live deal (#583).
+
+    ``/compliance`` drew its periods from the tapes and its states from the
+    report those tapes yielded to, and #524 had already established the two
+    overlap on no date at all — so every figure rendered under a date it is not
+    stated as of. The screen now runs only on periods that have a state.
+    """
+    statuses = client.get(f"/deal/{CLO_DEAL_ID}/compliance").json()["trigger_statuses"]
+    periods = {s["period"] for s in statuses}
+
+    assert periods == {"2025-01-08"}, f"expected the report's own date, got {periods}"
+    # The dates #524 set aside are the tapes', and are not this screen's axis.
+    assert not (periods & {"2024-12-16", "2025-02-18", "2025-03-18"})
+
+
+def test_the_par_value_ratios_render_the_figures_the_report_publishes(
+    client: TestClient,
+) -> None:
+    """The five published ratios reach the screen, under the date they are stated as of.
+
+    #550 parsed the numerator and reproduced these exactly, but the screen could
+    not show them: the only periods on the axis belonged to other documents. The
+    pairing was the last thing between a correct numerator and a rendered ratio.
+    """
+    published = {
+        "class_a_b_par_value_test": 139.08,
+        "class_c_par_value_test": 128.74,
+        "class_d_par_value_test": 118.62,
+        "class_e_par_value_test": 112.86,
+        "class_f_par_value_test": 108.40,
+    }
+    statuses = client.get(f"/deal/{CLO_DEAL_ID}/compliance").json()["trigger_statuses"]
+    rendered = {
+        s["trigger_name"]: s["metric_value"]
+        for s in statuses
+        if s["trigger_name"] in published
+    }
+
+    assert set(rendered) == set(published), "all five par value tests are on the screen"
+    for name, expected in published.items():
+        assert rendered[name] is not None, f"{name} rendered no ratio"
+        assert round(rendered[name], 2) == expected, (
+            f"{name} rendered {rendered[name]}, the report publishes {expected}"
+        )

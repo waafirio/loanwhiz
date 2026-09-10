@@ -56,6 +56,9 @@ from loanwhiz.primitives.base import (
     Primitive,
     PrimitiveResult,
 )
+from loanwhiz.primitives.collateral_schedule_parser import (
+    parse_par_value_numerator_text,
+)
 from loanwhiz.primitives.note_valuation_parser import parse_note_valuation_text
 from loanwhiz.primitives.notes_cash_parser import (
     NoteClassBalance,
@@ -164,6 +167,17 @@ class ParsedReportPeriod(BaseModel):
         default=None, description="Reserve drawings taken this period (EUR)."
     )
     pool_balance: float | None = Field(default=None, description="Pool / portfolio balance (EUR).")
+    adjusted_collateral_principal_amount: float | None = Field(
+        default=None,
+        description=(
+            "Adjusted Collateral Principal Amount — the asset-side figure the "
+            "report's own Par Value Tests Detail states as the "
+            "overcollateralisation numerator. Distinct from ``pool_balance``: "
+            "principal proceeds and the defaulted / discount adjustments sit "
+            "between them. None when the report states none, which is a "
+            "different fact from zero."
+        ),
+    )
     # available funds + the actual PoP the report published
     available_revenue: float | None = Field(default=None, description="Total available revenue funds (EUR).")
     available_principal: float | None = Field(default=None, description="Total available principal funds (EUR).")
@@ -514,6 +528,20 @@ def _parse_cairn_note_valuation(
     t0 = time.perf_counter()
     period = parse_note_valuation_text(text, period_label=deal_name, strict=True)
     parsed_period = _notes_cash_period_to_parsed(period)
+    # The same document states the par value tests' numerator on its own detail
+    # page. Read here rather than in ``parse_note_valuation_text`` because it is
+    # an *asset*-side figure and that parser's contract is the liability actuals;
+    # reading it from the text we already hold costs nothing and keeps one
+    # reader of the block (``collateral_schedule_parser``) for every report
+    # family that prints it.
+    numerator = parse_par_value_numerator_text(text)
+    if numerator is not None:
+        # Narrowed from ``Decimal`` because every field on this model is a float
+        # and a lone exact one would be a shape nobody downstream expects. The
+        # parser keeps the exact value and reconciles it there; what crosses here
+        # is only ever divided into a percentage rounded to four places, so the
+        # ~1e-8 relative narrowing cannot reach a rendered digit.
+        parsed_period.adjusted_collateral_principal_amount = float(numerator.stated_total)
     report = ParsedReport(
         deal_name=period.deal_name or deal_name,
         report_type="notes_and_cash",
