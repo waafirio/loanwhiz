@@ -42,14 +42,24 @@ count.
 
 from __future__ import annotations
 
+import ast
+import collections
+import pathlib
 from datetime import date
+from types import SimpleNamespace
 
 import pytest
 from fastapi import HTTPException
 
 from loanwhiz.api.main import _tape_period_days
-from loanwhiz.extraction import day_count_parser
-from loanwhiz.extraction.day_count_parser import accrual_days
+from loanwhiz.extraction import day_count, day_count_parser, payment_schedule_parser
+from loanwhiz.extraction.day_count_parser import ClassDayCount, accrual_days
+from loanwhiz.extraction.payment_schedule_parser import (
+    PaymentDateSchedule,
+    accrual_period_days,
+    previous_payment_date,
+)
+from loanwhiz.primitives.report_adapter import ReportAdapter
 
 #: A period whose two bases genuinely disagree. 2024-11-18 -> 2025-02-18 is 92
 #: actual days (30 + 31 + 31) and 90 on a year of twelve 30-day months. Both
@@ -361,25 +371,6 @@ def test_a_malformed_registry_date_refuses_the_reconstruction(monkeypatch, tmp_p
 # import cycle; the primitive moved down into ``loanwhiz.extraction.day_count``,
 # which imports no loanwhiz module at all, and both parsers now reach it.
 
-from datetime import date as _date  # noqa: E402  (section-local, after the header)
-
-import ast  # noqa: E402
-import collections  # noqa: E402
-import pathlib  # noqa: E402
-from types import SimpleNamespace  # noqa: E402
-
-from loanwhiz.extraction import day_count, payment_schedule_parser  # noqa: E402
-from loanwhiz.extraction.day_count_parser import ClassDayCount  # noqa: E402
-from loanwhiz.extraction.day_count_parser import (  # noqa: E402
-    UnsourcedDayCount as _ParserUnsourcedDayCount,
-)
-from loanwhiz.extraction.payment_schedule_parser import (  # noqa: E402
-    PaymentDateSchedule,
-    accrual_period_days,
-    previous_payment_date,
-)
-from loanwhiz.primitives.report_adapter import ReportAdapter  # noqa: E402
-
 #: The one deal whose report path this issue changes.
 CLO_DEAL_ID = "cairn-clo-xvii"
 
@@ -388,7 +379,7 @@ CLO_DEAL_ID = "cairn-clo-xvii"
 #: #601's divergent period on the report path's own entrypoint. Cairn's own
 #: schedule pays January/April/July/October, on which no period lands here.
 DIVERGENT_SCHEDULE = PaymentDateSchedule(
-    day_of_month=18, months=(2, 5, 8, 11), commencing=_date(2024, 2, 18)
+    day_of_month=18, months=(2, 5, 8, 11), commencing=date(2024, 2, 18)
 )
 
 #: A schedule paying the **31st**, where the 30/360 family's members disagree.
@@ -396,7 +387,7 @@ DIVERGENT_SCHEDULE = PaymentDateSchedule(
 #: reach the refusal below — which is itself worth pinning: the refusal exists
 #: for the deal this repo does not yet hold, and an untested one is a guess.
 VARIANT_SENSITIVE_SCHEDULE = PaymentDateSchedule(
-    day_of_month=31, months=(1, 3, 5, 7), commencing=_date(2024, 1, 31)
+    day_of_month=31, months=(1, 3, 5, 7), commencing=date(2024, 1, 31)
 )
 
 
@@ -433,8 +424,8 @@ def test_the_report_boundary_can_be_asked_for_thirty_360():
     surviving implementations agree on Act/360 would prove nothing — they always
     did agree there, and it passes on the unfixed code too.
     """
-    payment = _date(2025, 2, 18)
-    assert previous_payment_date(DIVERGENT_SCHEDULE, payment) == _date(2024, 11, 18)
+    payment = date(2025, 2, 18)
+    assert previous_payment_date(DIVERGENT_SCHEDULE, payment) == date(2024, 11, 18)
 
     assert (
         accrual_period_days("30/360", DIVERGENT_SCHEDULE, payment)
@@ -450,9 +441,9 @@ def test_the_report_boundary_can_be_asked_for_thirty_360():
 @pytest.mark.parametrize(
     "payment",
     [
-        _date(2025, 2, 18),  # the divergent period
-        _date(2024, 11, 18),  # a period where the bases agree
-        _date(2025, 5, 18),  # a period whose payment date rolls off a weekend
+        date(2025, 2, 18),  # the divergent period
+        date(2024, 11, 18),  # a period where the bases agree
+        date(2025, 5, 18),  # a period whose payment date rolls off a weekend
     ],
 )
 def test_the_report_boundary_counts_through_the_one_contract(basis, payment):
@@ -476,7 +467,7 @@ def test_the_report_path_reaches_the_same_function_object():
     """
     assert payment_schedule_parser.accrual_days is day_count.accrual_days
     assert day_count_parser.accrual_days is day_count.accrual_days
-    assert _ParserUnsourcedDayCount is day_count.UnsourcedDayCount
+    assert day_count_parser.UnsourcedDayCount is day_count.UnsourcedDayCount
 
 
 def test_the_inverted_dependency_has_no_cycle():
@@ -570,7 +561,7 @@ def test_the_report_fold_turns_an_unsourced_day_count_into_a_named_422(monkeypat
     deal = main.DEAL_REGISTRY[CLO_DEAL_ID]
 
     with pytest.raises(day_count.UnsourcedDayCount) as raised:
-        day_count.thirty_360_days(_date(2025, 1, 31), _date(2025, 3, 31))
+        day_count.thirty_360_days(date(2025, 1, 31), date(2025, 3, 31))
     real_refusal = raised.value
 
     monkeypatch.setattr(main, "_RECONSTRUCTION_MEMO", {})
@@ -849,7 +840,7 @@ def test_the_deal_wide_count_is_the_basis_condition_6_e_ii_states():
 
     (period,) = report.periods
     payment = payment_schedule_parser.payment_date_on_or_after(
-        adapter.payment_schedule, _date.fromisoformat(period.reporting_date)
+        adapter.payment_schedule, date.fromisoformat(period.reporting_date)
     )
     previous = previous_payment_date(adapter.payment_schedule, payment)
 
