@@ -229,3 +229,4 @@ vocabulary — Contego prints `B` and `B+`, so the check fires on real data.
 
 Refs: #564
 Refs: #563 — the injectivity check this reuses, applied to a second axis.
+Refs: #568 — same rule on a screen: refusals render first, uncollapsed, unclamped.

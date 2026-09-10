@@ -1060,3 +1060,68 @@ export function getCrossDealConcentration(
     `/cross-deal-concentration?axis=${encodeURIComponent(axis)}`,
   );
 }
+
+// ---------------------------------------------------------------------------
+// Investor due-diligence record  —  GET /deal/{id}/due-diligence  (#568, #561)
+//
+// Mirrors `loanwhiz.primitives.due_diligence.DueDiligenceRecord`. Two lists,
+// deliberately NOT one list with an outcome flag: an empty graded collection
+// satisfies every aggregate over it, so "verified nothing" and "had nothing to
+// verify" would render identically and the unestablished fraction would read
+// as free green (#513). The split is the contract — keep it in the types so a
+// consumer cannot flatten it back by accident.
+//
+// The vocabulary is `verified` / `not-established`, NOT the capability
+// matrix's `validated` / `ran` / `not-applicable`. Those answer "did the
+// primitive run, and was its output reconciled?" — a question about this
+// platform. These answer "is the regulatory fact established?" — a question
+// about the deal's documents. Sharing the words would invite reading one as
+// the other.
+// ---------------------------------------------------------------------------
+
+/** The outcomes a due-diligence check can reach. Closed, mirroring the backend. */
+export type CheckOutcome = "verified" | "not-established";
+
+/**
+ * The document a check was answered from, and the two dates that differ.
+ *
+ * `read_at` is when LoanWhiz read the document. `document_date` is when the
+ * document itself is dated — a different fact, and one no registry field
+ * carries today, so it arrives `null` with `document_date_reason` saying why.
+ * Rendering the first where the second belongs is the mistake the reason field
+ * exists to prevent; the UI must show the reason, never substitute `read_at`.
+ */
+export interface DueDiligenceSource {
+  registry_slot: string;
+  url: string;
+  read_at: string | null;
+  document_date: string | null;
+  document_date_reason: string;
+  /** The registry's `registration_note`, where the entry carries one. */
+  registry_note: string | null;
+}
+
+/** One regulatory question asked of one deal, and the answer or the refusal. */
+export interface DueDiligenceCheck {
+  check: string;
+  outcome: CheckOutcome;
+  /** Mandatory and non-empty on BOTH outcomes — the backend refuses a blank. */
+  reason: string;
+  source: DueDiligenceSource | null;
+  citations: Citation[];
+  detail: Record<string, unknown>;
+}
+
+/** One deal's record: what was established, and what was not, as two kinds. */
+export interface DueDiligenceRecord {
+  deal_id: string;
+  deal_name: string;
+  verified: DueDiligenceCheck[];
+  not_established: DueDiligenceCheck[];
+}
+
+export function getDueDiligence(dealId: string): Promise<DueDiligenceRecord> {
+  return request<DueDiligenceRecord>(
+    `/deal/${encodeURIComponent(dealId)}/due-diligence`,
+  );
+}

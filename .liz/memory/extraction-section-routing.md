@@ -16,6 +16,18 @@ the dotted heading number (`3.4.7.2.2` under `3.4.7.2`) when headings carry one.
 
 Refs: #438
 
+## 2026-09-09 · pattern · #566
+
+An offering document describes a regulation before stating the deal's own
+commitment to it, repeating the same threshold figure. Locate a regulatory
+undertaking by its specific sub-paragraph citation plus a named party — never by
+the figure or the method's name in words: "five per cent." spans four
+retainer-less pages of Cairn CLO XVII while `Article 6(3)` appears on one page of
+420. Wording varies where the citation does not; three committed deals write it
+`Article 6(3)(d)`, `first loss tranche ... pursuant to Article 6(3)(d)`, and
+`option 3 (a) of article 6`. Stated both ways they must agree.
+
+Refs: #566
 ## 2026-09-09 · pitfall · #532
 
 A short-but-plausible extraction and a budget-truncated one present identically

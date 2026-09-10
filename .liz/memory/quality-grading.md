@@ -221,3 +221,15 @@ mutant reaches has never been observed to fail.
 
 Refs: #565
 Refs: #562 — the same silence one layer down: a checker nothing calls.
+## 2026-09-09 · pitfall · #567
+
+What an extractor *can* read and what the committed data *carries* are two
+facts, and a consumer built over the registry sees only the second. #566's
+fixtures prove its parser reads both CLOs' retention undertakings, yet only
+Cairn's seed carries the parsed block — so a record over the registry verifies
+one deal and must refuse the other by name. Grep the committed artefacts for
+the key before building on "the extractor handles X": a brief summarising an
+extractor's reach describes the parser, not the corpus.
+
+Refs: #567
+Refs: #535 — the per-deal form of the same gap.

@@ -21,12 +21,15 @@ triage by opening the entry, not by reading the line.
   - [2026-09-09 · pitfall · #525](#2026-09-09--pitfall--525) — keywords: control subject, blank cell count, StructuralCell.value, comparable scalar, defect premise, schema not deal, compare panel
   - [2026-09-09 · pitfall · #535](#2026-09-09--pitfall--535) — keywords: verified on one deal, re-measure per subject, second specimen, premise transfer, stopping point, 422 per deal, verification issue
   - [2026-09-10 · pitfall · #565](#2026-09-10--pitfall--565) — keywords: source ban, surviving mutant, Badge slice, literal condition, decorative check, web guard, no JS runner
+  - [2026-09-09 · pitfall · #567](#2026-09-09--pitfall--567) — keywords: extractor reach vs committed data, seed carries no block, due-diligence record, refuse by name, fixture proves the parser, registry consumer
 - [Extraction guards & false-positive filters](extraction-guards.md)
   - [2026-09-02 · pitfall · #439](#2026-09-02--pitfall--439) — keywords: _CLASS_LETTERS, tranche, note class, Class J, Class O, false positive, guard, proxy range
   - [2026-09-05 · pitfall · #456](#2026-09-05--pitfall--456) — keywords: widening a guard, newly visible input, N/A cell, scavenged rating, Subordinated Notes, untested downstream
   - [2026-09-09 · pitfall · #531](#2026-09-09--pitfall--531) — keywords: per-family tables, registration-time validation, fixture asymmetry, vacuous reconciliation, section title list, coverage does not transfer, new family has no fixtures
   - [2026-09-09 · pattern · #548](#2026-09-09--pattern--548) — keywords: output plausibility, glossary_coverage, implausible, max_chars, section orphaning, alphabetical cliff, cause-agnostic guard
+  - [2026-09-09 · pitfall · #566](#2026-09-09--pitfall--566) — keywords: multi-limb fact, borrowed limb, span binding, retention capacity, rarest limb anchor, greedy backtracking, does not terminate
 - [Extraction: locating the right section](extraction-section-routing.md) — keywords: descendant span, heading level, section number, Docling, has_payment_list, LLM router, empty result
+  - [2026-09-09 · pattern · #566](#2026-09-09--pattern--566) — keywords: Article 6(3), sub-paragraph citation, retention undertaking, generic description, surface form, threshold figure, named party
   - [2026-09-09 · pitfall · #532](#2026-09-09--pitfall--532) — keywords: max_chars, route_sections, definitions stub, alphabetical cliff, Docling heading per term, measure the section sent, same symptom different mechanism
 - [Published figures & doc drift](published-figures.md) — keywords: stale tally, completeness_score, capability matrix, re-derive, stored metric, published figure
   - [2026-09-06 · pattern · #469](#2026-09-06--pattern--469) — keywords: reconcile to stated aggregates, self-describing report, per-bucket distribution, refuse on divergence, document contradicts itself, source defect
@@ -89,3 +92,4 @@ triage by opening the entry, not by reading the line.
   - [2026-09-09 · pitfall · #533](#2026-09-09--pitfall--533) — keywords: row geometry, reflowed row, column-major stack, per-line row, identifier position, family registration, refusal names what is missing
   - [2026-09-09 · pitfall · #555](#2026-09-09--pitfall--555) — keywords: per-page geometry, row-major line, wrapped row, join page lines, declared geometry, skipped page
   - [2026-09-09 · pitfall · #534](#2026-09-09--pitfall--534) — keywords: prior outcome column, three like-typed columns, cross-period chain, named groups, row grammar, ColumnOrder, coverage test
+- [Guarding a UI surface from a suite with no JS runner](ui-surface-guards.md) — keywords: region marker, vacuous ban list, slice of a file, tsx guard, no JS test runner, pass by deletion

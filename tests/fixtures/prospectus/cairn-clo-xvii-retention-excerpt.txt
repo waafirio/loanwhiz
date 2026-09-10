@@ -1,0 +1,46 @@
+--- page 43 ---
+The Retention Requirements impose a direct obligation on the originator, sponsor or original lender of a 
+securitisation to retain on an ongoing basi s a material net economic interest in the securitisation of not 
+less than five per cent. 
+With respect to the commitment of the Retention Holder under the Risk Retention Letter to retain a 
+material net economic interest in the securitisation, please see the  statements set out in "The Retention 
+Holder and the Securitisation Regulations" below. 
+A failure by the Retention Holder to comply with the EU Retenti on Requirement may result in 
+administrative and/or criminal penalties being imposed on the Retention Holder including, in the case of 
+a legal person, pecuniary sanctions of at least EUR 5,000,000 (or its equivalent) or of up to 10  per cent. 
+of total annual net turnover. Similarly, a failure by the Retention Holder to comply with the UK Retention 
+Requirement may result in administrative penalties being imposed on the Retention Holder. Any 
+penalties imposed on the Retention Holder may materially adversely aff ect its ability to perform its 
+obligations under the Transaction Documents. 
+Any costs incurred by any Person (including the Investment Manager) in connection with the satisfaction 
+of the Retention Requirements shall be paid as an Administrative Expense.
+--- page 282 ---
+Description of the Retention Holder 
+The Investment Manager shall act as Retention Holder for the purposes of the Retention Require ments.  The 
+address of the Retention Holder is 62 Buckingham Gate, London SW1E 6AJ, United Kingdom.   The Retention 
+Holder anticipates that, as of the date of this Offering Circular and the Issue Date, it qualifies as an "originator" 
+for the purposes of the Retention Requirements for this transaction. 
+The Retention 
+On the Issue Date, the Retention Holder, acting for its own account, will sign the Risk Retention Letter addressed 
+to the Issuer, the Trustee (for the benefit of the Noteholders), the Collateral A dministrator and J.P. Morgan 
+Securities plc in its capacity as Placement Agent. 
+The Retention Holder will hold the Retention Notes in its capacity as originator for the purposes of the Retention 
+Requirements.  
+Under the Risk Retention Letter, the Retention Holder will for so long as any Class of Notes remains Outstanding: 
+(a) undertake to subscribe for and retain, on an ongoing basis for so long as a Class  of Notes remains 
+Outstanding, a material net economic interest in the Subordinated Notes with a Principal Amount 
+Outstanding equal to not less than five (5)  per cent. of the Aggregate Collateral Balance in accordance 
+with Article 6(3)(d) of the Securitisation Regulations as in effect on the Issue Date (the "Retention" and 
+such Notes required to be held the "Retention Notes"); 
+(b) agree that it and its Affiliates will not sell, hedge or otherwise mitigate its credit risk under or associated 
+with the Retention or the underlying portfolio of Collateral Debt Obligations for so long as any such sale, 
+hedge or mitigation is prohibited by the Retention Requirements; 
+(c) subject to any overriding legal or regulatory requirements or constraints (including those relating to 
+confidentiality), (x) take such further action, (y) provide such information (at the cost and expense of the 
+party seeking such information) including confirmation of its compliance with paragraphs  (a) and (b) 
+above, and (z) enter into such other agreements, as may reasonably be required to satisfy the Retention 
+Requirements as of: (i) the Issue Date; and (ii) solely  as regards the provision of information in the 
+possession of the Retention Holder, at any time prior to the maturity of the Notes;  
+(d) agree to confirm its continued compliance with the covenants set out at paragraphs  (a) and (b) above on 
+a monthly basis to the Issuer, the Trustee, the Collateral Administrator and the Placeme nt Agent in 
+writing (which may be by way of email);
