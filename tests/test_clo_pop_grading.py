@@ -1021,26 +1021,29 @@ def test_the_reconciliation_labels_the_computed_steps_engine(
     assertion red-on-landing by design; #514 routed both readers through one
     ``step_source_classifier.is_engine_computed``.
 
-    **All three engine-claimed steps now reconcile to the cent**, from the deal
-    model alone: Class A, Class B and Class C, each from the seed's own tranche
-    sizes, #512's published applied rates, #528's measured accrual period and
-    — for Class B's two strips — #539's per-class day-count bases. No report
-    figure is among the inputs to any of them.
+    **All six engine-claimed steps now reconcile to the cent**, from the deal
+    model alone: every interest-bearing class Cairn issues, each from the seed's
+    own tranche sizes, #512's published applied rates, #528's measured accrual
+    period and — for Class B's two strips — #539's per-class day-count bases. No
+    report figure is among the inputs to any of them.
 
     That number is the epic's actual claim: before #511 it was 0 because nothing
     was computed, after #511 still 0 because nothing was *labelled* computed,
-    then 2 while Class B had no computable need. Only now does it mean what it
-    says for every step that claims it.
+    then 2 while Class B had no computable need, then 3. It reached 6 in #598,
+    where membership stopped being an authored list of eight spellings that
+    ended at ``class_c_interest`` and started being derived from the need
+    contract — the deal never changed, the declaration did.
+
+    ``test_each_credited_class_reproduces_its_published_figure_to_the_cent``
+    below is the per-class half; this one pins the roster and the tally.
     """
     revenue, redemption = recon.periods[0].revenue, recon.periods[0].redemption
 
     assert {step.source for step in revenue.steps} == {"engine", "report-supplied"}
     assert [s.recipient for s in revenue.steps if s.source == "engine"] == [
-        "class_a_notes_interest",
-        "class_b_notes_interest",
-        "class_c_notes_interest",
+        f"class_{letter}_notes_interest" for letter in "abcdef"
     ]
-    assert revenue.engine_computed_passed == 3
+    assert revenue.engine_computed_passed == 6
     assert [
         s.recipient for s in revenue.steps if s.source == "engine" and not s.passed
     ] == []
@@ -1097,8 +1100,13 @@ def test_the_finding_survives_the_adapter_choice(
     engine on the pre-#538 total below, and the equality of *that* number with the
     old headline is the tell.
 
-    It keeps its original job too: it reds if a further change makes a
-    D-through-F step engine-computed without revisiting the seeding.
+    It kept its original job too — "it reds if a further change makes a
+    D-through-F step engine-computed without revisiting the seeding" — and #598
+    is that change, so the refusal list is now four names rather than one. The
+    seeding was revisited and found already correct: ``from_deal_model`` reads
+    the deal's own eight classes since #520, and it is only *this* deliberately
+    narrowed adapter that starves D through F. The widened list is therefore the
+    coupling holding one class deeper, not a regression.
     """
     narrowed_adapter = ReportAdapter.from_deal_model(
         clo_model, tranche_classes=DEFAULT_TRANCHE_CLASSES
@@ -1115,16 +1123,26 @@ def test_the_finding_survives_the_adapter_choice(
     assert seeded == list(DEFAULT_TRANCHE_CLASSES)
     assert "class_b_1" not in seeded and "class_b_2" not in seeded
     execution = series.period_results[0].revenue_execution
-    assert [s.recipient for s in execution.steps if s.not_evaluable] == [
+    unseeded = [s.recipient for s in execution.steps if s.not_evaluable]
+    assert unseeded == [
         "class_b_notes_interest",
+        "class_d_notes_interest",
+        "class_e_notes_interest",
+        "class_f_notes_interest",
     ]
 
-    # And the grade falls back by exactly Class B's published figure: the whole
-    # class goes unplaced again, rather than the EUR 14,312.50 #539 still owes.
+    # And the grade falls back by exactly what those four classes are published
+    # to be owed — the whole of each goes unplaced again, rather than the
+    # EUR 14,312.50 #539 still owes on Class B's second strip. Derived from the
+    # report rather than transcribed, so it tracks the document.
+    published = {s.recipient: s.report_amount for s in revenue.steps}
     assert revenue.engine_total == pytest.approx(
-        ENGINE_DISTRIBUTED_REVENUE - CLASS_B_PUBLISHED_INTEREST, abs=0.01
+        ENGINE_DISTRIBUTED_REVENUE - sum(published[r] for r in unseeded), abs=0.01
     )
     assert revenue.engine_total < ENGINE_DISTRIBUTED_REVENUE
+    assert published["class_b_notes_interest"] == pytest.approx(
+        CLASS_B_PUBLISHED_INTEREST, abs=0.01
+    )
 
     # Unchanged either way: the fold is a property of the report and the cascade,
     # not of how many classes the adapter seeds.
@@ -1235,11 +1253,23 @@ RETRACTED_CLAIMS: tuple[tuple[str, tuple[str, ...]], ...] = (
             # steps agree. The ban names the tense, not the history.
             "grade anyway and it does not reconcile",
             "so the failure is the tie-out, not a delta",
+            # Retracted by #598: the count bounded an authored list, and the
+            # card said so in the present tense. The row still narrates that
+            # history ("that count was three until #598"), so the ban names the
+            # whole standing assertion rather than the numeral.
+            "three of the 29 lines are genuinely engine-computed",
+            "figure 3 bounds a declaration this repo authored",
+            "widening it is a change to the engine",
+            "26 of the 29 steps arrive carrying the report's figure",
         ),
     ),
     (
         "README.md",
-        ("no answer key is authored, so no cell of it is",),
+        (
+            "no answer key is authored, so no cell of it is",
+            # Retracted by #598.
+            "3 of those 29 lines are engine-computed and 26 are report-supplied",
+        ),
     ),
     (
         "src/loanwhiz/data/deals/answer_keys/README.md",
@@ -1254,6 +1284,11 @@ RETRACTED_CLAIMS: tuple[tuple[str, tuple[str, ...]], ...] = (
             # Retracted by #514/#538/#539, measured by #515: the row reconciles.
             "and the interest row, run, does not reconcile",
             "so not one line is",
+            # Retracted by #598: membership is derived, so no declaration
+            # bounds the count and no class is named as the stopping point.
+            "3 of the 29 lines are engine-computed",
+            "only `class_{a,b,c}_interest` are in",
+            "so the count of 3 bounds that declaration",
         ),
     ),
     # #515 added this file to the ban-list. Its Limitation 1 was the last
@@ -1269,6 +1304,9 @@ RETRACTED_CLAIMS: tuple[tuple[str, tuple[str, ...]], ...] = (
             # #492 brought Green Lion 2023-1's grade onto the matrix, so a
             # transcribed "exactly one" has been false since.
             "exactly one cell is validated",
+            # Retracted by #598.
+            "3 of those 29 lines are engine-computed and 26 are report-supplied",
+            "3 of those 29\nlines are engine-computed while 26 are report-supplied",
         ),
     ),
 )
@@ -1417,80 +1455,128 @@ def test_the_cards_state_the_split_as_a_figure_this_run_re_derives(
     assert len(redemption.steps) == len([s for s in vacuous if s in redemption.steps])
 
 
-#: The note classes the classifier does NOT count, paired with the cascade
-#: recipient each is issued under. Cairn has seven interest-bearing classes and
-#: ``ENGINE_COMPUTED_RECIPIENTS`` reaches three, so these are the remainder.
-UNCOUNTED_NOTE_CLASSES: tuple[tuple[str, str], ...] = (
-    ("class_d", "class_d_notes_interest"),
-    ("class_e", "class_e_notes_interest"),
-    ("class_f", "class_f_notes_interest"),
+#: The interest-bearing classes Cairn issues, paired with the cascade recipient
+#: each is paid under. Every one is engine-computed since #598; before it the
+#: declaration stopped at ``class_c_interest`` and the last three graded
+#: ``report-supplied`` — compared against the report's own figure.
+CREDITED_NOTE_CLASSES: tuple[tuple[str, str], ...] = tuple(
+    (f"class_{letter}", f"class_{letter}_notes_interest") for letter in "abcdef"
+)
+
+#: Steps whose recipient has a registered calculator that the platform supplies
+#: no input for, paired with what the report publishes against them. Crediting
+#: either family is the over-crediting #598 had to avoid, and the two published
+#: figures are what makes each one's cost concrete rather than theoretical.
+UNSUPPLIED_INPUT_STEPS: tuple[str, ...] = (
+    "investment_manager_senior_fee",
+    "investment_manager_subordinated_fee",
+    "class_c_notes_deferred_interest",
+    "class_d_notes_deferred_interest",
+    "class_e_notes_deferred_interest",
+    "class_f_notes_deferred_interest",
 )
 
 
-def test_the_uncounted_classes_would_compute_too_so_three_bounds_the_declaration(
-    clo_model: DealModel, nvr_report: NotesCashReport, recon: ReconciliationReport
+def test_each_credited_class_reproduces_its_published_figure_to_the_cent(
+    recon: ReconciliationReport,
 ) -> None:
-    """``engine_computed_passed`` of 3 is a fact about a list, not about Cairn.
+    """Per class, the engine's own number against the report's, to the cent.
 
-    #515's verdict rests on this, and it is the half a reader is most likely to
-    take on trust, so it is measured rather than asserted. The classifier counts
-    a note-interest line only when its recipient is in
-    ``ENGINE_COMPUTED_RECIPIENTS``, a set authored for a three-tranche RMBS
-    stack that ends at ``class_c_interest``. Classes D, E and F arrive at the
-    fold holding *exactly* what Classes A and C hold — a seeded balance, an
-    applied rate in the report's own ``Rate Current`` column, and a day count
-    parsed from Condition 6(e)(ii) — and each reproduces its published interest
-    to the cent from them. They grade ``report-supplied`` anyway.
+    This is the assertion #598 exists to make, and its shape is the point.
+    ``engine_computed_passed == 6`` passes on *any* six credited steps, so a
+    class that silently stopped being computed would leave the tally intact as
+    long as something else took its place. Here each class is named and checked
+    on its own: drop one from the derivation and this reds on that class, quoting
+    it, while the rest stay green.
 
-    So the count bounds the declaration, not the deal, and the cards say so.
-    **Do not make this test pass by widening the set**: that would change the
-    engine to raise the number #515 was sent to measure, which is the one thing
-    the issue forbids. If a later issue widens it deliberately, this test reds
-    and the cards' published figures red with it — they are re-derived from the
-    same run — which is the intended way for that decision to surface.
+    **The engine's figure really is the engine's.** A step graded ``engine``
+    carries no ``need_override`` — ``build_step_specs`` records one only for the
+    report-supplied branch — so ``engine_amount`` is what the registry computed
+    from the seeded balance, the published applied rate and the parsed day count.
+    That is what makes the comparison independent rather than the report checked
+    against itself (#496), and asserting ``source == "engine"`` beside the delta
+    is what keeps it that way: were the step to fall back to report-supplied, the
+    amounts would still match to the cent and only the source would tell.
     """
-    seed, inputs = ReportAdapter.from_deal_model(clo_model).to_inputs(nvr_report)
-    balances = {tranche.name: tranche.balance for tranche in seed.tranches}
-    days = inputs[0].tranche_days_in_period
-    rates = published_rate_inputs(
-        {
-            balance.note_class: balance.interest_rate_applied
-            for balance in nvr_report.periods[0].note_balances
-        }
+    revenue = recon.periods[0].revenue
+    by_recipient = {step.recipient: step for step in revenue.steps}
+
+    for tranche, recipient in CREDITED_NOTE_CLASSES:
+        step = by_recipient[recipient]
+        assert step.source == "engine", (tranche, step.source)
+        assert step.engine_amount > 0.0, tranche
+        assert abs(step.engine_amount - step.report_amount) <= recon.tolerance_eur, (
+            tranche,
+            step.engine_amount,
+            step.report_amount,
+        )
+        assert step.passed, tranche
+
+    # The roster is exactly these — no seventh class quietly making up a tally.
+    assert [s.recipient for s in revenue.steps if s.source == "engine"] == [
+        recipient for _, recipient in CREDITED_NOTE_CLASSES
+    ]
+
+
+def test_a_calculator_whose_input_is_unsupplied_is_not_credited(
+    recon: ReconciliationReport,
+) -> None:
+    """The other half of #598: what the derivation must keep OUT, and its cost.
+
+    ``NeedSource.calculator`` alone is not the property. Six more of Cairn's
+    steps name a recipient with a registered calculator, and the engine can
+    compute none of them because nothing ever writes the field each one reads —
+    ``fee_rates_pct`` for the two management fees, ``deferred_interest_balance``
+    for the four deferred-interest lines. They fail differently, and both ways
+    of crediting them are worse than the under-crediting #598 fixed:
+
+    - the fees **refuse** (``input_unavailable``). Credited, they would also lose
+      the report figure they are funded from, and the cascade would distribute
+      EUR 518,193.09 less than the pot while every per-step delta stayed green.
+    - the deferred-interest lines do **not** refuse. They return a confident
+      ``0.00`` against a published ``0.00``, so crediting them would raise the
+      headline by four on money nobody computed — the vacuous tie #496 names.
+
+    Both are asserted from the graded run rather than described, so a derivation
+    that admits either family reds here with the family named.
+    """
+    revenue = recon.periods[0].revenue
+    by_recipient = {step.recipient: step for step in revenue.steps}
+
+    for recipient in UNSUPPLIED_INPUT_STEPS:
+        assert by_recipient[recipient].source == "report-supplied", recipient
+
+    # The fees carry real money, so crediting them is not a labelling nicety.
+    forgone = sum(by_recipient[r].report_amount for r in UNSUPPLIED_INPUT_STEPS[:2])
+    assert forgone == pytest.approx(518_193.09, abs=0.01), forgone
+    assert revenue.engine_total + revenue.unapplied_rounding == pytest.approx(
+        revenue.available_funds, abs=recon.tolerance_eur
     )
+
+    # The deferred lines carry none, so crediting them would have been vacuous.
+    for recipient in UNSUPPLIED_INPUT_STEPS[2:]:
+        assert by_recipient[recipient].report_amount == pytest.approx(0.0, abs=0.01)
+
+
+def test_the_data_card_quotes_this_runs_credited_figures(
+    recon: ReconciliationReport,
+) -> None:
+    """The published per-class figures, re-derived from the run that produced them.
+
+    #574 quoted a stale demo server and was wrong by four, so the card's numbers
+    are never transcribed: they are regenerated here and grepped for. A card
+    carrying a superseded figure reds rather than misinforming a reader.
+    """
     published = {
         step.recipient: step.report_amount for step in recon.periods[0].revenue.steps
     }
-
-    for tranche, recipient in UNCOUNTED_NOTE_CLASSES:
-        # Every input the counted classes use is present for this one too, so
-        # its absence from the count cannot be laid at the document's door.
-        accrued = balances[tranche] * rates[f"{tranche}_rate_pct"] / 100 / 360 * days[tranche]
-        assert abs(accrued - published[recipient]) <= recon.tolerance_eur, (
-            recipient,
-            accrued,
-            published[recipient],
-        )
-        # And yet the classifier does not count it — which is the finding.
-        assert not is_engine_computed(recipient), recipient
-
-    # The contrast is the point: the counted classes differ only by membership.
-    assert is_engine_computed("class_a_notes_interest")
-    assert is_engine_computed("class_c_notes_interest")
-
-    # The data card publishes these three figures. Re-derive them, so a card
-    # quoting a stale one reds here rather than misinforming a reader.
     data_card = _collapsed(
         (Path(__file__).resolve().parents[1] / "docs/data-card.md").read_text(
             encoding="utf-8"
         )
     )
-    head = ", ".join(
-        f"EUR {published[recipient]:,.2f}"
-        for _, recipient in UNCOUNTED_NOTE_CLASSES[:-1]
-    )
-    tail = f"EUR {published[UNCOUNTED_NOTE_CLASSES[-1][1]]:,.2f}"
-    assert f"{head} and {tail}" in data_card, (head, tail)
+    for _tranche, recipient in CREDITED_NOTE_CLASSES:
+        assert f"EUR {published[recipient]:,.2f}" in data_card, recipient
 
 
 def test_both_sides_of_the_comparison_fold_the_report_the_same_way(

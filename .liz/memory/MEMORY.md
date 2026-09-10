@@ -63,6 +63,7 @@ triage by opening the entry, not by reading the line.
   - [2026-09-06 · decision · #470](#2026-09-06--decision--470) — keywords: field identity, value conformance, NACE, NUTS-3, market price vs value, unit mismatch, obligor identifier, RTS vocabulary, derived tape
   - [2026-09-04 · pitfall · #451](#2026-09-04--pitfall--451) — keywords: AnnexField(code=None, ...)
 - [Engine contracts (closed enums, registries, need calculators)](engine-contracts.md)
+  - [2026-09-10 · pitfall · #598](#2026-09-10--pitfall--598) — keywords: registered calculator, unsupplied input, fee_rates_pct, deferred_interest_balance, credited not computed, tautological guard, derived membership, probe the builder, wrong grain
   - [2026-09-05 · pattern · #453](#2026-09-05--pattern--453) — keywords: NEED_CALCULATORS, register_need, RecipientType, closed enum, registry coverage, import-time assert, silent default, generated calculators
   - [2026-09-08 · decision · #503](#2026-09-08--decision--503) — keywords: alias vs enum member, double-claim, step_override, funds_input, RECIPIENT_SPELLINGS, cascade, deferred interest, uncapped tier
   - [2026-09-08 · pitfall · #503](#2026-09-08--pitfall--503) — keywords: canonical value first, alias ladder, map_recipient, two readers disagree, _canonical_recipient, unmapped fall-through

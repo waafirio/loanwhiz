@@ -170,6 +170,7 @@ publishing the count, check what the *un*counted members lack; if the answer is
 "nothing" say so beside the figure, and never widen the set to raise it.
 
 Refs: #515
+Refs: #598 — the answer was "nothing"; the authored set was deleted, not widened.
 
 
 ## 2026-09-09 · decision · #534
