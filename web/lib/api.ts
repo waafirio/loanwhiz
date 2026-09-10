@@ -648,6 +648,53 @@ export function getPrimitives(): Promise<PrimitiveCatalogueEntry[]> {
 }
 
 // ---------------------------------------------------------------------------
+// MCP tool surface  —  GET /mcp/surface  (#574)
+// (Which registered primitives the MCP server exposes as callable tools, each
+// tool's typed input schema, and the governance evidence a call's result
+// carries. The server's own `is_exposed_as_tool()` decides exposure, so the
+// described surface cannot drift from the dispatched one.)
+// ---------------------------------------------------------------------------
+
+/**
+ * One field of the `PrimitiveResult` evidence pack — mirrors
+ * `McpGovernanceField` in `src/loanwhiz/api/main.py`.
+ *
+ * The endpoint derives these by *difference* (everything on the envelope
+ * except `output`), so a fourth evidence field added to `PrimitiveResult`
+ * arrives here with no edit on either side. `fields` carries the sub-fields
+ * of a structured member (`citations`, `audit_entry`) and is empty otherwise.
+ */
+export interface McpGovernanceField {
+  name: string;
+  description: string;
+  fields: Record<string, string>;
+}
+
+/**
+ * One primitive on the MCP surface — mirrors `McpSurfaceEntry` in
+ * `src/loanwhiz/api/main.py`.
+ *
+ * `exposed_as_tool` is the server's own dispatch predicate, not a second
+ * opinion about it. An unexposed primitive keeps its typed contract and gains
+ * `not_exposed_reason`; it carries no `result_governance`, because it returns
+ * nothing.
+ */
+export interface McpSurfaceEntry {
+  name: string;
+  version: string;
+  description: string;
+  reachability?: "live" | "library-only";
+  exposed_as_tool: boolean;
+  not_exposed_reason: string | null;
+  input_schema: JsonSchema;
+  result_governance: McpGovernanceField[];
+}
+
+export function getMcpSurface(): Promise<McpSurfaceEntry[]> {
+  return request<McpSurfaceEntry[]>("/mcp/surface");
+}
+
+// ---------------------------------------------------------------------------
 // Engine validation  —  GET /deal/{deal_id}/validation  (#212, V6)
 // (engine_validation_harness → EngineValidationReport: the engine-vs-published
 // Notes & Cash Priority of Payments reconciliation, to the cent, with honest

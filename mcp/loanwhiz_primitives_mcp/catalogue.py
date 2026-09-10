@@ -18,33 +18,19 @@ Nothing is rewritten — this reads the same contracts ``GET /primitives`` reads
 
 from __future__ import annotations
 
-import importlib
 from typing import Any
 
-from loanwhiz_primitives_mcp.reachability import LIVE, reachability_of
+from loanwhiz.primitives.registry import ensure_all_registered
+from loanwhiz_primitives_mcp.reachability import is_exposed_as_tool, reachability_of
 
-# Importing each primitive module runs its ``@register_primitive`` decorator and
-# populates the global ``PRIMITIVE_REGISTRY`` — the same registration-by-import
-# pattern ``loanwhiz.api.main`` uses. We import the primitive modules directly
-# (not ``loanwhiz.api``) so the MCP server has no dependency on the REST app.
-_PRIMITIVE_MODULES = (
-    "audit_logger",
-    "collections_aggregator",
-    "covenant_monitor",
-    "esma_tape_normaliser",
-    "report_verifier",
-    "waterfall_runner",
-)
-
-
-def ensure_primitives_registered() -> None:
-    """Import every primitive module so the registry is fully populated.
-
-    Idempotent: re-importing an already-imported module is a no-op, and the
-    registry's own duplicate-name guard means a module can't double-register.
-    """
-    for module in _PRIMITIVE_MODULES:
-        importlib.import_module(f"loanwhiz.primitives.{module}")
+# Registration is an import side effect, so the registry holds whatever the
+# process imported. This module used to name the modules to import in a
+# ``_PRIMITIVE_MODULES`` tuple; the REST app had its own, different list, and
+# neither was complete — the two catalogues therefore described different sets
+# of primitives and both omitted some that were registered (#574). Both now
+# call ``ensure_all_registered()``, which walks the primitives package, so the
+# MCP catalogue and ``GET /primitives`` cover the same primitives by
+# construction rather than by two lists being maintained in step.
 
 
 def primitive_input_type(primitive_class: type) -> type | None:
@@ -70,15 +56,17 @@ def primitive_input_type(primitive_class: type) -> type | None:
 def build_catalogue() -> list[dict[str, Any]]:
     """Return the full primitive catalogue as a list of JSON-serialisable dicts.
 
-    One entry per registered primitive (all 8 — ``live`` and ``library-only``),
-    in the registry's insertion order. Each entry carries the registry metadata,
+    One entry per registered primitive — ``live`` and ``library-only`` alike, in
+    the registry's insertion order. Each entry carries the registry metadata,
     the typed input/output JSON schemas, the reachability, and the framework's
     confidence semantics so a consumer can introspect the whole framework, not
-    just the callable tools.
+    just the callable tools. The count is deliberately not stated here: it is
+    whatever the registry holds, and the two transcriptions of it that this
+    docstring and ``mcp/README.md`` used to carry had both gone stale.
     """
-    ensure_primitives_registered()
+    ensure_all_registered()
 
-    # Imported lazily so ``ensure_primitives_registered`` has run first and so
+    # Imported lazily so ``ensure_all_registered`` has run first and so
     # importing this module never fails if ``loanwhiz`` is not yet on the path.
     from loanwhiz.primitives.registry import PRIMITIVE_REGISTRY
 
@@ -118,8 +106,10 @@ def build_catalogue() -> list[dict[str, Any]]:
 def live_tool_names() -> list[str]:
     """Return the names of the primitives exposed as callable MCP tools.
 
-    These are the registered primitives whose reachability is ``live`` — the
-    intersection of "registered" and "reachable", so the server never advertises
-    a tool for a primitive that isn't actually in the registry.
+    The intersection of "registered" and "exposed", so the server never
+    advertises a tool for a primitive that isn't in the registry. Exposure is
+    asked of :func:`~loanwhiz.primitives.reachability.is_exposed_as_tool` — the
+    same predicate ``server.py`` filters its registrations through — so this
+    list and the server's ``tools/list`` cannot disagree.
     """
-    return [entry["name"] for entry in build_catalogue() if entry["reachability"] == LIVE]
+    return [entry["name"] for entry in build_catalogue() if is_exposed_as_tool(entry["name"])]
