@@ -570,6 +570,41 @@ def _ref(deal_id: str) -> cmp.DealRef:
     return cmp.DealRef(deal_id=deal_id, deal_name=deal_id.upper(), jurisdiction="NL")
 
 
+def _series(deal_id: str, *, points: int = 2) -> cmp.PerformanceSeries:
+    """A deal's performance evidence. ``points=0`` is the present-but-empty shell."""
+    return cmp.PerformanceSeries(
+        deal_id=deal_id,
+        points=[
+            cmp.PerformancePoint(
+                reporting_date=f"2025-0{n + 1}-01",
+                pool_factor=1.0,
+                reserve_balance=10.0,
+                reserve_target=10.0,
+                total_pdl=0.0,
+                cumulative_losses=0.0,
+                cumulative_loss_rate_pct=0.0,
+            )
+            for n in range(points)
+        ],
+    )
+
+
+def _risk(deal_id: str, *, latest_period: str | None = "2025-02-01", **kw) -> cmp.RiskSummary:
+    """A deal's risk evidence. ``latest_period=None`` is the bare shell
+    ``_deal_risk_summary`` returns for a deal with no states."""
+    return cmp.RiskSummary(deal_id=deal_id, latest_period=latest_period, **kw)
+
+
+#: A complete two-deal comparison set: both halves of evidence for both deals.
+#: Every verdict test states its evidence explicitly — the gate under test reads
+#: exactly this, so a helper that quietly supplied it would hide the axis (#615).
+def _complete_evidence(*deal_ids: str):
+    return (
+        [_series(d) for d in deal_ids],
+        [_risk(d) for d in deal_ids],
+    )
+
+
 def test_build_comparative_verdict_picks_clear_winner():
     """Two scored deals → a ranked verdict citing the winner's real CE."""
     card = _scorecard(
@@ -582,9 +617,10 @@ def test_build_comparative_verdict_picks_clear_winner():
         card,
         [_ref("a"), _ref("b")],
         [
-            cmp.RiskSummary(deal_id="a", tightest_trigger="PDL", tightest_proximity_pct=12.0),
-            cmp.RiskSummary(deal_id="b", tightest_trigger="PDL", tightest_proximity_pct=3.0),
+            _risk("a", tightest_trigger="PDL", tightest_proximity_pct=12.0),
+            _risk("b", tightest_trigger="PDL", tightest_proximity_pct=3.0),
         ],
+        [_series("a"), _series("b")],
     )
     assert verdict.confidence == "scored"
     assert verdict.winner_deal_id == "a"
@@ -615,7 +651,10 @@ def test_build_comparative_verdict_insufficient_data_when_under_two_score():
             ),
         ]
     )
-    verdict = cmp.build_comparative_verdict(card, [_ref("a"), _ref("b")], [])
+    # Evidence is complete for both deals, so this isolates the *structural*
+    # refusal — it cannot pass by way of #615's incomplete-set gate.
+    perf, risk = _complete_evidence("a", "b")
+    verdict = cmp.build_comparative_verdict(card, [_ref("a"), _ref("b")], risk, perf)
     assert verdict.confidence == "insufficient-data"
     assert verdict.winner_deal_id is None
     assert verdict.ranking == []
@@ -626,7 +665,8 @@ def test_build_comparative_verdict_insufficient_data_when_under_two_score():
 def test_build_comparative_verdict_surfaces_unavailable_caveats():
     """Live-only (unavailable) dimensions surface as caveats from real reasons."""
     card = _scorecard([_scored_tranche("a", "Class A", 90.0), _scored_tranche("b", "Class A", 50.0)])
-    verdict = cmp.build_comparative_verdict(card, [_ref("a"), _ref("b")], [])
+    perf, risk = _complete_evidence("a", "b")
+    verdict = cmp.build_comparative_verdict(card, [_ref("a"), _ref("b")], risk, perf)
     assert verdict.confidence == "scored"
     # The pool-quality factor was flagged unavailable → its reason is a caveat.
     assert any("ESMA tape" in c and DIM_POOL_QUALITY in c for c in verdict.caveats)
@@ -641,10 +681,17 @@ def test_compare_endpoint_returns_scorecard_and_verdict():
     assert screened <= {"green-lion-2024-1", "green-lion-2023-1", "leone-arancio-2023-1"}
     verdict = body["comparative_verdict"]
     assert verdict is not None
-    assert verdict["confidence"] in {"scored", "insufficient-data"}
+    assert verdict["confidence"] in {"scored", "insufficient-data", "incomplete-set"}
     if verdict["confidence"] == "scored":
         assert verdict["winner_deal_id"] in screened
         assert verdict["reasons"]
+    else:
+        # #549 — a refusal that keeps the value is not a refusal. Whichever
+        # refusal fired, nothing a reader could take a winner from survives.
+        assert verdict["winner_deal_id"] is None
+        assert verdict["winner_deal_name"] is None
+        assert verdict["ranking"] == []
+        assert verdict["reasons"] == []
 
 
 def test_compare_endpoint_verdict_is_honest_on_thin_set(monkeypatch):
@@ -657,3 +704,195 @@ def test_compare_endpoint_verdict_is_honest_on_thin_set(monkeypatch):
     verdict = body["comparative_verdict"]
     assert verdict["confidence"] == "insufficient-data"
     assert verdict["winner_deal_id"] is None
+
+
+# ---------------------------------------------------------------------------
+# #615 — the verdict must require its inputs, not merely decorate itself with
+# them. Every test below states each deal's evidence explicitly; the guard reads
+# exactly that, so a fixture that supplied it implicitly would hide the axis.
+# ---------------------------------------------------------------------------
+
+
+def _two_scored_deals():
+    """A card where BOTH deals score structurally.
+
+    Load-bearing for every test in this section: it holds `len(best) >= 2`
+    constant, so the incomplete-set gate is the only thing that can refuse. A
+    case where one deal failed to score would pass for the *old* reason
+    ("insufficient-data") and prove nothing about #615.
+    """
+    return _scorecard(
+        [
+            _scored_tranche("a", "Class A", 90.0, ce=0.20),
+            _scored_tranche("b", "Class A", 40.0, ce=0.05),
+        ]
+    )
+
+
+def test_verdict_refuses_when_a_deal_has_no_series():
+    """A deal contributing neither half is never ranked, and no winner is named."""
+    verdict = cmp.build_comparative_verdict(
+        _two_scored_deals(),
+        [_ref("a"), _ref("b")],
+        [_risk("a"), _risk("b", latest_period=None)],
+        [_series("a"), _series("b", points=0)],
+    )
+    assert verdict.confidence == "incomplete-set"
+    # #549 — all four value-bearing fields go together, or it is not a refusal.
+    assert verdict.winner_deal_id is None
+    assert verdict.winner_deal_name is None
+    assert verdict.ranking == []
+    assert verdict.reasons == []
+    # It names the deal and BOTH missing sections, not a bare "no data".
+    assert "B" in verdict.summary
+    assert "performance series" in verdict.summary
+    assert "risk summary" in verdict.summary
+    assert any("performance/risk" in c and "B" in c for c in verdict.caveats)
+
+
+def test_verdict_scores_when_the_missing_evidence_is_supplied():
+    """#493's other direction: supply only the missing evidence, and it flips.
+
+    Identical card and deal refs to the refusal above — the *only* difference is
+    that b now brings a series and a risk row. Without this pair, the refusal
+    test would keep passing with the guard reverted.
+    """
+    verdict = cmp.build_comparative_verdict(
+        _two_scored_deals(),
+        [_ref("a"), _ref("b")],
+        [_risk("a"), _risk("b")],
+        [_series("a"), _series("b")],
+    )
+    assert verdict.confidence == "scored"
+    assert verdict.winner_deal_id == "a"
+    assert verdict.ranking == ["a", "b"]
+
+
+def test_verdict_refuses_when_the_series_entry_is_present_but_empty():
+    """An entry with no points is ABSENT evidence, not thin evidence (#513).
+
+    The empty instance of the graded kind is how this class of bug keeps
+    recurring: a row exists, so a presence-by-row-count check reads it as data.
+    """
+    verdict = cmp.build_comparative_verdict(
+        _two_scored_deals(),
+        [_ref("a"), _ref("b")],
+        [_risk("a"), _risk("b")],  # risk row is real; only the series is hollow
+        [_series("a"), _series("b", points=0)],
+    )
+    assert verdict.confidence == "incomplete-set"
+    assert verdict.winner_deal_id is None
+    # Only the half that is actually missing is named.
+    assert "performance series" in verdict.summary
+    assert "risk summary" not in verdict.summary
+
+
+def test_verdict_names_only_the_missing_risk_half():
+    """A deal with a series but the bare risk shell is refused for risk alone."""
+    verdict = cmp.build_comparative_verdict(
+        _two_scored_deals(),
+        [_ref("a"), _ref("b")],
+        [_risk("a"), _risk("b", latest_period=None)],
+        [_series("a"), _series("b")],
+    )
+    assert verdict.confidence == "incomplete-set"
+    assert "risk summary" in verdict.summary
+    assert "performance series" not in verdict.summary
+
+
+def test_verdict_still_scores_a_risk_row_with_no_quantified_trigger():
+    """The gate must not over-fire: 'nothing is tight' is a finding, not a gap.
+
+    Cairn's real shape — a genuine series and a real latest period, but no
+    trigger quantified, so `tightest_proximity_pct` is None. Requiring proximity
+    instead of `latest_period` would refuse a deal that in fact reported.
+    """
+    verdict = cmp.build_comparative_verdict(
+        _two_scored_deals(),
+        [_ref("a"), _ref("b")],
+        [_risk("a", tightest_proximity_pct=None), _risk("b", tightest_proximity_pct=None)],
+        [_series("a"), _series("b")],
+    )
+    assert verdict.confidence == "scored"
+    assert verdict.winner_deal_id == "a"
+
+
+def test_verdict_refuses_when_no_deal_brought_evidence():
+    """Two structurally-scored deals and no live data at all still names nobody."""
+    verdict = cmp.build_comparative_verdict(
+        _two_scored_deals(),
+        [_ref("a"), _ref("b")],
+        [_risk("a", latest_period=None), _risk("b", latest_period=None)],
+        [_series("a", points=0), _series("b", points=0)],
+    )
+    assert verdict.confidence == "incomplete-set"
+    assert verdict.winner_deal_id is None
+    assert "A" in verdict.summary and "B" in verdict.summary
+
+
+# --- the same contract, through the real endpoint (#562) -------------------
+
+COMPLETE_PAIR = "green-lion-2024-1,leone-arancio-2023-1"
+
+
+def _blank_one_deals_series(monkeypatch, deal_id: str):
+    """Make exactly one deal of a set contribute no states, changing nothing else.
+
+    Constructed rather than inherited: this must keep reding for the next deal
+    without a series, so it must not depend on some particular deal in the
+    committed data staying broken.
+    """
+    import loanwhiz.api.main as main_mod
+    from fastapi import HTTPException
+
+    real_reconstruct = main_mod._reconstruct_series
+    real_projected = main_mod._projected_series_from_canonical
+
+    def _no_series(did, ctx):
+        if did == deal_id:
+            raise HTTPException(status_code=422, detail="test: no reconstructable series")
+        return real_reconstruct(did, ctx)
+
+    def _no_projection(did, ctx):
+        if did == deal_id:
+            return None
+        return real_projected(did, ctx)
+
+    monkeypatch.setattr(main_mod, "_reconstruct_series", _no_series)
+    monkeypatch.setattr(main_mod, "_projected_series_from_canonical", _no_projection)
+
+
+def test_compare_endpoint_still_names_a_winner_on_complete_set():
+    """The control: two fully-populated deals still get a ranked winner.
+
+    Paired with the refusal below — same two deals, same request; only the
+    series data differs. Without this, a gate that refused everything would pass.
+    """
+    body = client.get("/compare", params={"deals": COMPLETE_PAIR}).json()
+    assert [d["deal_id"] for d in body["deals"] if not d["has_performance"]] == []
+    verdict = body["comparative_verdict"]
+    assert verdict["confidence"] == "scored"
+    assert verdict["winner_deal_id"] is not None
+    assert len(verdict["ranking"]) == 2
+
+
+def test_compare_endpoint_refuses_verdict_on_incomplete_set(monkeypatch):
+    """Blank one deal's series on the real request path → no winner survives."""
+    _blank_one_deals_series(monkeypatch, "leone-arancio-2023-1")
+    body = client.get("/compare", params={"deals": COMPLETE_PAIR}).json()
+
+    # The set is genuinely incomplete, and the panel says so.
+    assert not [s for s in body["performance_series"] if s["deal_id"] == "leone-arancio-2023-1"]
+    assert any("leone-arancio-2023-1" in n for n in body["notes"])
+    # Both deals still score structurally, so the refusal cannot be the older
+    # "insufficient-data" one firing for a different reason.
+    scored = {t["deal_id"] for t in body["relative_value"]["tranches"] if t["composite_score"] is not None}
+    assert scored == {"green-lion-2024-1", "leone-arancio-2023-1"}
+
+    verdict = body["comparative_verdict"]
+    assert verdict["confidence"] == "incomplete-set"
+    assert verdict["winner_deal_id"] is None
+    assert verdict["winner_deal_name"] is None
+    assert verdict["ranking"] == []
+    assert verdict["reasons"] == []
+    assert "performance series" in verdict["summary"]

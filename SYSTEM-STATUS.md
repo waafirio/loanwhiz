@@ -53,10 +53,21 @@ in the #276 engine collapse.
   per-period series and a Class A WAL. `POST /deal/{deal_id}/stress-matrix`
   (`main.py:3917`) runs the same fold across a CPR × CDR × rate-shift grid,
   capped at `_MAX_MATRIX_CELLS = 64` (`main.py:3697`).
-- **Comparison that renders a judgement.** `GET /compare` (`main.py:1226`)
-  returns a `RelativeValueScorecard` and a `ComparativeVerdict` with a ranking
-  (`src/loanwhiz/api/compare.py:727`, `:801`); the screener is also directly
-  reachable at `GET /relative-value-screener` (`main.py:3097`).
+- **Comparison that renders a judgement — and refuses to when it cannot.**
+  `GET /compare` (`main.py:1226`) returns a `RelativeValueScorecard` and a
+  `ComparativeVerdict` (`src/loanwhiz/api/compare.py`,
+  `build_comparative_verdict`). The verdict **requires its inputs** (#615): it
+  names a winner only when two deals score structurally *and* every deal in the
+  set contributed a real performance series and a real risk row. Otherwise it
+  refuses — `confidence` is `insufficient-data` or `incomplete-set`, and
+  `winner_deal_id`, `winner_deal_name`, `ranking` and `reasons` are all empty
+  together, with the cause in `summary` (#549: a refusal that keeps the value is
+  not a refusal). The structural ranking is not lost — it stays in
+  `relative_value`, under a name that states its basis. Completeness is read
+  from the payload's own series and risk rows, never from a provenance or
+  routing flag: whether a deal has a series is a property of the path it took,
+  not of how complete its data is. The screener is also directly reachable at
+  `GET /relative-value-screener` (`main.py:3097`).
 - **Live governance threading.** Agent tools thread each primitive's *real*
   `confidence` / `citations` / audit entry into the FINOS evidence pack
   (`src/loanwhiz/governance/evidence_pack.py`); `finos_compliant` is derived in
