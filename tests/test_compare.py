@@ -830,6 +830,44 @@ def test_verdict_refuses_when_no_deal_brought_evidence():
     assert "A" in verdict.summary and "B" in verdict.summary
 
 
+def test_structural_refusal_still_records_the_performance_gap():
+    """A set failing BOTH ways names both causes, not just the first to fire.
+
+    `insufficient-data` wins on precedence, but the missing performance/risk
+    evidence must still be recorded — a cause nobody mentions reads exactly like
+    a cause that isn't there (#572), and an operator who fixed only the
+    structural half would walk straight into the second refusal.
+    """
+    card = _scorecard(
+        [
+            _scored_tranche("a", "Class A", 90.0),
+            TrancheScore(
+                deal_id="b",
+                deal_name="B",
+                tranche_name="Class A",
+                factors={
+                    DIM_SUBORDINATION_CE: _rv_factor(
+                        DIM_SUBORDINATION_CE, available=False,
+                        reason="No sized tranche structure extracted",
+                    )
+                },
+                composite_score=None,
+            ),
+        ]
+    )
+    verdict = cmp.build_comparative_verdict(
+        card,
+        [_ref("a"), _ref("b")],
+        [_risk("a"), _risk("b", latest_period=None)],
+        [_series("a"), _series("b", points=0)],
+    )
+    # The structural cause keeps precedence...
+    assert verdict.confidence == "insufficient-data"
+    assert verdict.winner_deal_id is None
+    # ...but the evidence gap is still on the record.
+    assert any("performance/risk" in c and "B" in c for c in verdict.caveats)
+
+
 # --- the same contract, through the real endpoint (#562) -------------------
 
 COMPLETE_PAIR = "green-lion-2024-1,leone-arancio-2023-1"

@@ -846,6 +846,21 @@ def build_comparative_verdict(
                 seen_caveats.add(caveat)
                 caveats.append(caveat)
 
+    # #615 — which deals brought no performance/risk evidence. Computed BEFORE
+    # either refusal so its caveats are recorded on both paths: a set that is
+    # also structurally unrankable would otherwise report only that cause, and a
+    # gap nobody mentions reads exactly like a gap that isn't there (#572).
+    incomplete = _deals_missing_evidence(deals, performance_series, risk_summary)
+    for did, gaps in incomplete:
+        caveat = (
+            f"{name_by_id.get(did, did)} · performance/risk: no "
+            + " and no ".join(gaps)
+            + " — this deal was not scored on performance or risk."
+        )
+        if caveat not in seen_caveats:
+            seen_caveats.add(caveat)
+            caveats.append(caveat)
+
     if len(best) < 2:
         missing = [
             name_by_id.get(d.deal_id, d.deal_id)
@@ -880,17 +895,7 @@ def build_comparative_verdict(
     # over it — is a claim about a deal nobody measured. Refuse the whole
     # verdict: dropping the dataless deal and ranking the rest would answer a
     # question nobody asked, a winner over a subset of the operator's set.
-    incomplete = _deals_missing_evidence(deals, performance_series, risk_summary)
     if incomplete:
-        for did, gaps in incomplete:
-            caveat = (
-                f"{name_by_id.get(did, did)} · performance/risk: no "
-                + " and no ".join(gaps)
-                + " — this deal was not scored on performance or risk."
-            )
-            if caveat not in seen_caveats:
-                seen_caveats.add(caveat)
-                caveats.append(caveat)
         phrases = [
             f"{name_by_id.get(did, did)} contributed no " + " and no ".join(gaps)
             for did, gaps in incomplete
