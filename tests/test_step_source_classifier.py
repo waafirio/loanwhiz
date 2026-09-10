@@ -584,6 +584,11 @@ def test_every_credited_recipient_computes_on_the_funds_the_engine_really_builds
         ],
     )
 
+    # Both loops below iterate a derived set, so an empty one would make this
+    # pass by finding nothing — the `all([])` free green (#513). Neither may be.
+    assert ENGINE_COMPUTED_RECIPIENTS, "nothing is credited at all"
+    assert _excluded_recipients(), "nothing is excluded — drop _UNSUPPLIED_BASES"
+
     # Every credited recipient answers with a figure derived from that context.
     for value in sorted(ENGINE_COMPUTED_RECIPIENTS):
         need, evaluable = compute_need(value, as_engine_builds_it)
