@@ -41,6 +41,17 @@ Ask of every marker: which of my own mutants edits this line?
 
 Refs: #599
 
+## 2026-09-10 · pitfall · #614
+
+"Every surface routes through one total table" claims only what someone
+**enumerated**, and the enumeration goes stale. A sixth surface hand-rolled
+`=== "projected"` — the construct #599's own rule banned — because it renders a
+*different* union and matched no grep for the guarded one. Enumerate consumers
+of the **union type**, not of the table, and keep the tables separate: one
+table over two vocabularies makes totality unenforceable for both.
+
+Refs: #614
+Refs: #599 — the five-surface table this extends.
 ## 2026-09-10 · pitfall · #617
 
 Bound a markup-stripping regex to a single line. Flattening prose before a

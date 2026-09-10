@@ -42,7 +42,7 @@ from fastapi import FastAPI, HTTPException, Query, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 
 from loanwhiz.agent.executor import execute_query
 from loanwhiz import config as _config
@@ -1358,25 +1358,57 @@ def compare_deals(
         if states:
             states_by_deal[deal_id] = states
 
+        # The coupon's provenance is a SEPARATE axis from the series' (#614).
+        # A projected series can rest on a stated rate or a generated one, and
+        # only the second needs marking; resolving it here keeps the marking on
+        # the same object the panel already reads.
+        #
+        # Guarded because resolving it can REFUSE: a malformed
+        # ``synthetic_index_fixing`` raises a labelled 422. Unguarded, one
+        # deal's bad config would 422 the whole comparison and take every other
+        # deal's panel with it — the blast radius #572 ruled against. The
+        # refusal belongs to this deal's column, so it degrades to this deal's
+        # note, exactly as every other per-deal failure in this loop does.
+        synthetic_fixing: SyntheticIndexFixing | None = None
+        fixing_error: str | None = None
+        try:
+            synthetic_fixing = _series_rests_on_synthetic_rate(deal_id, ctx)
+        except HTTPException as exc:
+            fixing_error = str(exc.detail)
+        rate_provenance: str | None = None
+        if states:
+            rate_provenance = "synthetic" if synthetic_fixing is not None else "stated"
+
         deal_name = (rules.deal_name if rules else ctx["deal_name"])
         jurisdiction = (
             rules.jurisdiction if rules and rules.jurisdiction else ctx.get("jurisdiction") or "Unknown"
         )
-        ref_note: str | None = None
+        # One note per deal, composed from the axes that actually apply. A deal
+        # can be BOTH projected and resting on a synthetic rate — Contego is —
+        # and dropping either half would leave the screen stating only one.
+        note_parts: list[str] = []
         if provenance == "projected":
             # A projected series is the load-bearing honesty flag — surface it
             # even when structural is also missing (#345), so the panel labels
             # the series projected-not-reported rather than just "unavailable".
-            ref_note = (
+            note_parts.append(
                 "Projected from the canonical model — not reported. No tape/report "
                 "series available for this deal."
             )
-            notes.append(f"{deal_id}: {ref_note}")
         elif not has_structural:
-            ref_note = "No cached model — structural diff unavailable for this deal."
-            notes.append(f"{deal_id}: {ref_note}")
+            note_parts.append(
+                "No cached model — structural diff unavailable for this deal."
+            )
         elif not has_performance:
-            ref_note = "No reconstructable series — performance/risk unavailable for this deal."
+            note_parts.append(
+                "No reconstructable series — performance/risk unavailable for this deal."
+            )
+        if synthetic_fixing is not None and rate_provenance == "synthetic":
+            note_parts.append(synthetic_fixing.disclosure)
+        if fixing_error is not None:
+            note_parts.append(fixing_error)
+        ref_note: str | None = " ".join(note_parts) if note_parts else None
+        if ref_note is not None:
             notes.append(f"{deal_id}: {ref_note}")
         deal_refs.append(
             _compare.DealRef(
@@ -1388,6 +1420,7 @@ def compare_deals(
                 has_structural=has_structural,
                 has_performance=has_performance,
                 performance_provenance=provenance,
+                rate_provenance=rate_provenance,
                 note=ref_note,
             )
         )
@@ -1553,8 +1586,152 @@ def _extracted_capital_structure(deal: dict) -> dict | None:
         return None
 
 
+class SyntheticIndexFixing(BaseModel):
+    """A committed, generated index fixing standing in for one a deal never published (#614).
+
+    Some deals quote every note as ``INDEX + margin`` and publish no fixing for
+    the index, so the senior coupon resolves to no number and
+    ``_with_senior_coupon`` rightly refuses (#493). Where the operator judges a
+    deal worth modelling anyway, this is the **only** sanctioned way to supply
+    the missing half: an explicit, committed value that says, in the data, that
+    it was generated.
+
+    It is ``synthetic``, not ``derived``. ``derived`` (``TapeSourceKind.
+    DERIVED_FROM_INVESTOR_REPORT``) means computed from a source document; there
+    is no source document for a fixing that does not appear in one. What is
+    synthetic is the **rate input only** — a deal carrying one of these still
+    folds its own real tapes, describing real obligors, so #484's tape-level
+    disclosure ("describes no real obligor") would be false here and is
+    deliberately *not* reused. ``disclosure`` states what is actually assumed.
+
+    Why the margin lives here too: the disclosure has to name the all-in rate a
+    reader will see on screen, and that is only meaningful beside the fixing it
+    was built from. Keeping the pair together is what lets one sentence say the
+    tenor, the value, the margin and the absence.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    index: str = Field(min_length=1, description='Reference index, e.g. "EURIBOR".')
+    tenor: str = Field(min_length=1, description='Fixing tenor, e.g. "3-month".')
+    value_pct: float = Field(description="The assumed index fixing, in percent.")
+    margin_pct: float = Field(
+        description="The margin the deal's own document states over that index."
+    )
+    as_of: str = Field(min_length=1, description="The date the fixing is assumed at.")
+    reason: str = Field(
+        min_length=1,
+        description="Why this value, and what makes it generated rather than read.",
+    )
+
+    @property
+    def all_in_rate_pct(self) -> float:
+        """The senior coupon this fixing resolves to, index + margin."""
+        return self.value_pct + self.margin_pct
+
+    @property
+    def disclosure(self) -> str:
+        """The one-line marking every surface carrying this deal's series shows.
+
+        Names the tenor, the value and the absence, in that order, because those
+        are the three facts a reader needs to tell a chosen number from a read
+        one (#614). The all-in rate follows so the figure on screen is traceable
+        to the assumption without arithmetic.
+        """
+        return (
+            f"SYNTHETIC RATE — no {self.tenor} {self.index} fixing is published in "
+            f"this deal's reports; {self.value_pct:.2f}% is assumed as of "
+            f"{self.as_of}, giving a {self.all_in_rate_pct:.2f}% senior coupon "
+            f"with the stated {self.margin_pct:.2f}% margin. Generated, not read."
+        )
+
+
+def _synthetic_index_fixing(deal_id: str, deal: dict) -> "SyntheticIndexFixing | None":
+    """This deal's declared synthetic fixing, or ``None`` when it declares none.
+
+    A malformed declaration raises rather than degrading to ``None``: falling
+    through would re-raise the *coupon* refusal, sending the reader to configure
+    a key that is already there and wrong. Naming the real fault is the whole
+    point of this family of 422s (#268/#478).
+    """
+    declared = deal.get("synthetic_index_fixing")
+    if declared is None:
+        return None
+    if not isinstance(declared, dict):
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                f"Deal '{deal_id}' declares a 'synthetic_index_fixing' that is a "
+                f"{type(declared).__name__}, not a mapping — it cannot be read as "
+                f"a fixing. Fix the entry in deals.json."
+            ),
+        )
+    try:
+        return SyntheticIndexFixing.model_validate(declared)
+    except ValidationError as exc:
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                f"Deal '{deal_id}' declares an incomplete 'synthetic_index_fixing': "
+                f"{exc.error_count()} field(s) invalid. A fixing states index, "
+                f"tenor, value_pct, margin_pct, as_of and reason, or it does not "
+                f"exist. Fix the entry in deals.json."
+            ),
+        ) from exc
+
+
+def _series_rests_on_synthetic_rate(
+    deal_id: str, deal: dict
+) -> "SyntheticIndexFixing | None":
+    """The synthetic fixing this deal's served series actually rests on, if any.
+
+    Declaring a fixing is not the same as *using* one, and only use makes a
+    figure synthetic. Two ways a declared fixing is not reached, each of which
+    would turn the marking into a false claim rather than an honest one:
+
+    * the deal takes the **report path** (``_reconstruct_series`` tier 2), which
+      seeds period 0 from the first report's own stated opening balances and
+      never asks for a modelled coupon. Cairn CLO XVII is exactly this shape,
+      which is why its series is reported and needs no fixing at all;
+    * the senior class already carries a **real** coupon — declared in
+      ``deals.json`` or extracted from the deal model — which outranks the
+      fixing inside :func:`_with_senior_coupon`.
+
+    Mirrors that resolution rather than re-deciding it, so the marking cannot
+    drift from the number it describes.
+
+    **Why this is not conditioned on the tape path.** The modelled coupon feeds
+    *both* remaining paths: the tape fold and ``_derived_projection_base``'s
+    forward projection. Contego reaches a series through the second — its
+    eight-class split-B stack is one ``_collections_tranche_args`` deliberately
+    refuses to fold (#527's open seam) — so a predicate written around the tape
+    path would mark nothing on the one deal this exists for.
+    """
+    fixing = _synthetic_index_fixing(deal_id, deal)
+    if fixing is None:
+        return None
+    takes_tape_path = bool(deal.get("tape_urls")) and not _tapes_yield_to_reports(deal)
+    if not takes_tape_path and deal.get("notes_cash_report_urls"):
+        return None
+    capital_structure = deal.get("capital_structure") or _extracted_capital_structure(
+        deal
+    )
+    if capital_structure is None:
+        return None
+    senior = senior_tranche_name(capital_structure)
+    if senior is None:
+        return None
+    if capital_structure.get(f"{senior}_rate_pct") is not None:
+        return None
+    return fixing
+
+
 def _with_senior_coupon(
-    deal_id: str, capital_structure: dict, *, is_green_lion: bool
+    deal_id: str,
+    capital_structure: dict,
+    *,
+    is_green_lion: bool,
+    synthetic_fixing: "SyntheticIndexFixing | None" = None,
 ) -> dict:
     """Ensure the resolved structure carries a coupon for its senior class.
 
@@ -1570,10 +1747,18 @@ def _with_senior_coupon(
     ``deals.json`` to hand-write a structure the seed already had.
 
     The tiering matches ``_resolve_structural_config``'s: an explicitly declared
-    rate wins, then the extracted one, then — for the Green Lion deal only — its
-    last-resort constant. Any other deal fails loudly and by name. There is no
-    zero default: a 0% coupon is a real modelling claim (an interest-free note)
-    and would understate the revenue waterfall's need rather than refuse.
+    rate wins, then the extracted one, then a **committed synthetic fixing**
+    where the deal declares one (#614), then — for the Green Lion deal only —
+    its last-resort constant. Any other deal fails loudly and by name. There is
+    no zero default: a 0% coupon is a real modelling claim (an interest-free
+    note) and would understate the revenue waterfall's need rather than refuse.
+
+    The synthetic tier sits **below** both real sources and **above** the
+    refusal, which is the only placement that keeps both properties: a deal with
+    a genuine published coupon never silently swaps it for a generated one, and
+    a deal with neither still refuses. Removing a deal's declared fixing must
+    restore the refusal — ``tests/test_compare_provenance.py`` pins that, because
+    a synthetic tier that quietly became a *default* would undo #493 entirely.
     """
     senior = senior_tranche_name(capital_structure)
     if senior is None:
@@ -1581,6 +1766,8 @@ def _with_senior_coupon(
     rate_key = f"{senior}_rate_pct"
     if capital_structure.get(rate_key) is not None:
         return capital_structure
+    if synthetic_fixing is not None:
+        return {**capital_structure, rate_key: synthetic_fixing.all_in_rate_pct}
     if is_green_lion:
         return {**capital_structure, rate_key: _GREEN_LION_CLASS_A_RATE_PCT}
     raise _misconfigured_deal(deal_id, rate_key, or_from="extract its deal model")
@@ -1620,7 +1807,10 @@ def _resolve_structural_config(deal_id: str, deal: dict) -> tuple[dict, float, f
     # state every class and still quote them as ``INDEX + margin``, and the
     # refusal must name the coupon rather than the structure it does have.
     capital_structure = _with_senior_coupon(
-        deal_id, capital_structure, is_green_lion=is_green_lion
+        deal_id,
+        capital_structure,
+        is_green_lion=is_green_lion,
+        synthetic_fixing=_synthetic_index_fixing(deal_id, deal),
     )
 
     reserve_target = deal.get("reserve_account_target")
@@ -1892,6 +2082,19 @@ def _latest_tape_amort_schedule(deal: dict, months: int) -> list[float] | None:
     return pool_scheduled_principal_schedule(df, months)
 
 
+#: What the tape-driven collections leg needs to fold a period. A module
+#: constant rather than a local so the capability matrix's mirror
+#: (``capability_matrix._COLLECTIONS_LEG_KEYS``) can be asserted equal to it —
+#: a mirror is only safe while something checks it, which is the same contract
+#: ``_missing_structural_config`` already lives under.
+_COLLECTIONS_LEG_REQUIRED_KEYS = (
+    "class_a_balance",
+    "class_a_rate_pct",
+    "class_b_balance",
+    "class_c_balance",
+)
+
+
 def _collections_tranche_args(deal_id: str, capital_structure: dict) -> dict:
     """The tranche arguments ``CollectionsInput`` takes, or a labelled 422.
 
@@ -1906,13 +2109,10 @@ def _collections_tranche_args(deal_id: str, capital_structure: dict) -> dict:
     saying so; it never gets three of its classes silently selected, which would
     publish a waterfall computed over part of the deal.
     """
-    required = (
-        "class_a_balance",
-        "class_a_rate_pct",
-        "class_b_balance",
-        "class_c_balance",
-    )
-    missing = [key for key in required if capital_structure.get(key) is None]
+    missing = [
+        key for key in _COLLECTIONS_LEG_REQUIRED_KEYS
+        if capital_structure.get(key) is None
+    ]
     if missing:
         raise HTTPException(
             status_code=422,
@@ -1925,7 +2125,10 @@ def _collections_tranche_args(deal_id: str, capital_structure: dict) -> dict:
                 f"a subset of the deal's classes."
             ),
         )
-    return {key: float(capital_structure[key]) for key in required}
+    return {
+        key: float(capital_structure[key])
+        for key in _COLLECTIONS_LEG_REQUIRED_KEYS
+    }
 
 
 def _misconfigured_deal(

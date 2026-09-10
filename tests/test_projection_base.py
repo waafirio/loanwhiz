@@ -354,6 +354,16 @@ class TestRefusalNotFallback:
         (#532 added Contego) joins the refusing side and never the resolving
         one: a registration states no capital structure, so the partition below
         is what stops a later change quietly promoting one.
+
+        **Contego crossed the line in #614, deliberately and once.** It is named
+        in ``resolved`` below rather than dropped from the assertion, because a
+        deal moving sides is exactly the event this partition exists to make
+        loud. What moved it was not a loosened resolver: its senior coupon comes
+        from a committed synthetic index fixing and its par from the Target Par
+        Amount its own Listing Particulars state, so it now satisfies the same
+        tiering every other resolving deal does. The guard still holds for
+        everyone else — a *second* registration appearing in ``resolved`` reds
+        this line, which is the property worth keeping.
         """
         resolved, refused = set(), set()
         for deal_id, ctx in DEAL_REGISTRY.items():
@@ -368,12 +378,12 @@ class TestRefusalNotFallback:
             "green-lion-2026-1",
             "leone-arancio-2023-1",
             "sol-lion-ii",
+            _CONTEGO_DEAL_ID,  # #614 — synthetic coupon + read Target Par
         }
         assert refused == {
             "green-lion-2023-1",
             "green-lion-2024-1",
             _CLO_DEAL_ID,
-            _CONTEGO_DEAL_ID,
         }
 
     def test_the_clo_refuses_by_its_coupon_rather_than_by_projection_base(self) -> None:
