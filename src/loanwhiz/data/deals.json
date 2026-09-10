@@ -161,6 +161,17 @@
     "asset_class": "CLO",
     "jurisdiction": "Ireland",
     "vintage": 2023,
+    "reserve_account_target": 0.0,
+    "original_pool_balance": 380139061.10,
+    "structural_config_note": "Two values the tape path needs that are REPORTED, not synthesised — only 'synthetic_index_fixing' below is generated. (1) reserve_account_target is 0.0 because this CLO has no reserve fund: its trigger set is four per-class coverage tests plus an IRR threshold and names no reserve-fund test, and the Accounts definition lists an Expense Reserve and a Supplemental Reserve but no funded reserve with a target. Cairn CLO XVII, the sibling CLO, likewise folds a 0.00 reserve target off its own report. (2) original_pool_balance is the EUR 380,139,061.10 aggregate collateral balance that Contego's own September-2024 BNY Mellon report states. This deal reaches a series only through the FORWARD PROJECTION (its eight-class split-B stack is one the tape fold deliberately refuses), and September is that projection's opening period, so the figure is the projection's own baseline and the pool factor opens at exactly 1.0. It is NOT a target par: Contego's Listing Particulars state none that has been extracted, so 'fraction of the projection-start pool remaining' is what this deal's pool factor means, and the projected-period-NN date labels are what stop it reading as origination-to-date amortisation. Both are stated here as explicit tier-1 config because neither has a second resolution tier; declaring them is what the 422 asks for, not a fallback.",
+    "synthetic_index_fixing": {
+      "index": "EURIBOR",
+      "tenor": "3-month",
+      "value_pct": 3.56,
+      "margin_pct": 1.85,
+      "as_of": "2024-08-30",
+      "reason": "No EURIBOR fixing is published anywhere in this deal's trustee reports or its 2023 Listing Particulars, so the Class A coupon ('3-month EURIBOR + 1.85%') resolves to no number on its own. 3.56% is the fixing implied by the 5.41% Class A coupon those August-2024 reports state, against the document's 1.85% margin. It is GENERATED, not read: it reproduces a reported coupon rather than being one, so no reconciliation may be graded as evidence against it (#511)."
+    },
     "prospectus_url": "https://ise-prodnr-eu-west-1-data-integration.s3-eu-west-1.amazonaws.com/202306/769c88dc-c38d-42af-b7d7-49cbe7c9bf4e.pdf",
     "registration_note": "Registered against the 29-Jun-2023 Listing Particulars, NOT the 19-Nov-2024 reset (202411/2c3fcac2-3b84-43e3-8000-15092934c4fa.pdf). Every trustee report published for this deal is Aug/Sep-2024 and therefore pre-reset: the 2023 document describes the Class A-F stack due 2035 that those reports report on, while the reset is a different stack (Class A-R EUR310m due 2038). Registering the reset against pre-reset reports would make every downstream figure confidently wrong rather than visibly broken. Before changing prospectus_url, check which side of a reset the document and the reports sit on.",
     "tape_urls": [

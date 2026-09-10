@@ -95,6 +95,21 @@ class DealRef(BaseModel):
             "(projected-not-reported), or None when no series is available."
         ),
     )
+    rate_provenance: Literal["stated", "synthetic"] | None = Field(
+        default=None,
+        description=(
+            "Provenance of the senior coupon this deal's Panel-2 series rests "
+            "on: 'stated' when it came from a published or operator-declared "
+            "rate, 'synthetic' when it came from a committed synthetic index "
+            "fixing (#614), or None when no series is available. Deliberately "
+            "SEPARATE from performance_provenance, which says how the series "
+            "was *built*: the two vary independently, and a deal can hold a "
+            "projected series resting on a stated rate or — as Contego CLO XI "
+            "does — a projected series resting on a generated one. Collapsing "
+            "them into one enum forces a false choice between naming the "
+            "construction and naming the assumption."
+        ),
+    )
     note: str | None = Field(
         default=None, description="One-line honesty note when a panel is unavailable."
     )
