@@ -80,14 +80,43 @@ EXPECTED_REPORT_PERIODS = ["August 2024", "September 2024"]
 #: deliberately NOT registered until #534 can keep the promise its key makes.
 WITHHELD_NVR_URL = EURONEXT_DOC_HOST + "202410/4457ecc3-3086-447d-b258-3e72f551ab2e.pdf"
 
-#: Per-deal STRUCTURAL config keys (config.py). Sourcing a deal does not license
-#: inventing its capital structure — these are derived from the documents.
-STRUCTURAL_KEYS = (
+#: Per-deal STRUCTURAL config keys that remain BANNED on this registration.
+#: Sourcing a deal does not license inventing its capital structure, and neither
+#: of these can be read off a document: a capital structure is the deal's whole
+#: shape, and a projection base is a modelling choice. Declaring either would be
+#: invention, which is what the original ban was for.
+INVENTED_STRUCTURAL_KEYS = (
     "capital_structure",
-    "reserve_account_target",
-    "original_pool_balance",
     "projection_base",
 )
+
+#: The structural keys this registration MAY carry — each paired with the value
+#: and **the document it is read from** (#614).
+#:
+#: The ban started as "no structural config at all", which was the right shape
+#: while nothing here had a source. #614 needed two of these to model the deal
+#: and found both in Contego's own documents, so the guard narrowed from
+#: *whether* a key is present to *whether its source is written down*. That is
+#: the property worth guarding: a key with a citation can be checked against the
+#: document, a key without one is indistinguishable from a guess. Widening this
+#: dict therefore costs a citation, not just a line — which is the point.
+SOURCED_STRUCTURAL_KEYS = {
+    "original_pool_balance": (
+        375000000.0,
+        'Target Par Amount — a defined term on page 173 of the registered '
+        '29-Jun-2023 Listing Particulars: "Target Par Amount" means '
+        "EUR 375,000,000. The genuine origination denominator, so this deal's "
+        "pool factor is a like-for-like against Cairn's.",
+    ),
+    "reserve_account_target": (
+        0.0,
+        "No reserve fund exists to have a target: the seed's trigger_names "
+        "carries four per-class coverage tests and an IRR threshold and names "
+        "no reserve-fund test, and the Accounts defined term lists an Expense "
+        "Reserve and a Supplemental Reserve but no funded reserve with a "
+        "target. Cairn CLO XVII folds a 0.00 reserve target off its own report.",
+    ),
+}
 
 #: Every registry key whose value carries document URLs. The reset-document scan
 #: below walks these rather than grepping the file's raw text, because the entry's
@@ -239,10 +268,55 @@ def test_contego_registers_its_derived_tape_over_the_existing_channel() -> None:
     ), "a second family must not bring a second provenance scheme"
 
 
-@pytest.mark.parametrize("key", STRUCTURAL_KEYS)
+@pytest.mark.parametrize("key", INVENTED_STRUCTURAL_KEYS)
 def test_contego_carries_no_invented_structural_config(key: str) -> None:
-    """Registering a deal is not licence to invent its capital structure."""
+    """Registering a deal is not licence to invent its capital structure.
+
+    Narrowed by #614 from "no structural key at all" to "no key that could only
+    be a guess". The two keys that moved out did not become unguarded — they
+    moved to :data:`SOURCED_STRUCTURAL_KEYS`, where the test below requires each
+    to name the document it is read from.
+    """
     assert key not in DEAL_REGISTRY[CONTEGO_DEAL_ID]
+
+
+@pytest.mark.parametrize("key", sorted(SOURCED_STRUCTURAL_KEYS))
+def test_a_permitted_structural_key_is_the_value_its_document_states(
+    key: str,
+) -> None:
+    """Each permitted key carries the value its cited document states, and says so.
+
+    Three assertions, because the interesting failure is not a missing key. A
+    key whose value drifts from the document is the thing a citation exists to
+    catch, and a citation that stops naming its source is how a sourced value
+    decays back into a guess without anyone editing the number.
+    """
+    expected, citation = SOURCED_STRUCTURAL_KEYS[key]
+    deal = DEAL_REGISTRY[CONTEGO_DEAL_ID]
+
+    assert key in deal, f"{key} is permitted but absent — the model cannot resolve"
+    assert deal[key] == expected, (
+        f"{key} is {deal[key]!r} but its cited source states {expected!r}: "
+        f"{citation}"
+    )
+    note = deal.get("structural_config_note", "")
+    assert len(citation) > 80, "a citation this short cannot name a document"
+    assert note, "a permitted structural key must be explained in the registry"
+
+
+def test_the_registry_note_cites_the_page_the_par_is_read_from() -> None:
+    """The registry itself, not only this test, names where the par comes from.
+
+    A reader meets ``deals.json`` first (the ``registration_note`` convention),
+    so the citation has to survive there rather than living only in a test file
+    they may never open. Pinning the page number is what makes the claim
+    checkable against a 415-page document in under a minute.
+    """
+    note = DEAL_REGISTRY[CONTEGO_DEAL_ID]["structural_config_note"]
+    assert "375,000,000" in note
+    assert "page 173" in note
+    assert "Target Par Amount" in note
+    assert "no reserve-fund test" in note
 
 
 def test_every_contego_document_url_is_distinct() -> None:
@@ -258,22 +332,24 @@ def test_every_contego_document_url_is_distinct() -> None:
     assert len(set(urls)) == 3
 
 
-def test_contego_is_registered_but_not_modelable() -> None:
-    """Registered != modelable: the engine degrades to a labelled 422.
+def test_the_tape_path_still_refuses_contegos_eight_class_stack() -> None:
+    """The ledger fold still refuses this deal, and by the reason that remains true.
 
-    ``_reconstruct_series`` raises rather than serving an empty cascade that
-    would read as a real, all-clear result. Offline — no network fetch is
-    attempted.
+    **Which refusal, not just that one fired (#535).** This assertion has now
+    tracked the deal through three of them, and naming the key each time is what
+    made every move visible instead of silent. It began as
+    ``_not_modelable_deal`` (no tape, no report); #555 registered the derived
+    tapes, moving it to ``_misconfigured_deal`` on the senior coupon; #614
+    sourced that coupon from a committed synthetic fixing, and the fold now
+    stops one seam later — at ``_collections_tranche_args``, which is shaped for
+    ``class_a``/``class_b``/``class_c`` and will not run a waterfall over a
+    subset of this deal's eight classes.
 
-    **Which refusal, not just that one fired (#535).** When this test was
-    written the deal had neither tape nor report, so the 422 came from
-    ``_not_modelable_deal``. #555 registered its derived tapes, so the deal now
-    takes the *tape* path and gets as far as ``_resolve_structural_config``
-    before stopping — a different refusal, ``_misconfigured_deal``, on a senior
-    coupon its extracted seed never carried. A bare ``422`` + deal-id assertion
-    is satisfied by both and so cannot tell them apart; it would have gone on
-    passing through that change without recording it. The key is named here so
-    that sourcing the coupon reds this line instead of sliding past it.
+    That last refusal is **architectural, not configuration**: no value in
+    ``deals.json`` resolves it, only #527's open seam does. It is deliberately
+    left standing — #614 routed Contego to the forward projection instead of
+    defeating it, because a cascade folded over three of eight classes would be
+    a wrong waterfall presented as this deal's.
     """
     from loanwhiz.api.main import _reconstruct_series
 
@@ -282,8 +358,12 @@ def test_contego_is_registered_but_not_modelable() -> None:
     assert exc.value.status_code == 422
     detail = str(exc.value.detail)
     assert CONTEGO_DEAL_ID in detail
-    assert "class_a_rate_pct" in detail, (
-        f"the refusal no longer names the missing senior coupon: {detail}"
+    assert "class_b_balance" in detail, (
+        f"the refusal no longer names the class the collections leg cannot "
+        f"represent: {detail}"
+    )
+    assert "subset" in detail, (
+        f"the refusal no longer says it is refusing a partial waterfall: {detail}"
     )
 
 

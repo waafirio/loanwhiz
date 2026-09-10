@@ -960,7 +960,14 @@ def test_missing_structural_config_agrees_with_the_api_resolver() -> None:
             )
             if senior is None:
                 expected.append(key)
-            elif structure.get(f"{senior}_rate_pct") is None:
+            elif (
+                structure.get(f"{senior}_rate_pct") is None
+                # #614: a committed synthetic fixing resolves the senior coupon,
+                # so the key is no longer missing. Mirrored here rather than
+                # dropped, because the mirror is what this test exists to check:
+                # the resolver gained a tier and the predicate has to gain it too.
+                and ctx.get("synthetic_index_fixing") is None
+            ):
                 expected.append(f"{senior}_rate_pct")
         assert missing == tuple(expected), (deal_id, missing, tuple(expected))
 

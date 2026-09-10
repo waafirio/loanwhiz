@@ -304,12 +304,48 @@ def _missing_structural_config(
                 missing.append(key)
                 continue
             coupon_key = _missing_senior_coupon_key(structure)
-            if coupon_key is not None:
+            if coupon_key is not None and not _declares_synthetic_fixing(deal_ctx):
                 missing.append(coupon_key)
             continue
         if declared is None:
             missing.append(key)
     return tuple(missing)
+
+
+def _declares_synthetic_fixing(deal_ctx: Mapping[str, Any]) -> bool:
+    """Whether this deal supplies its senior coupon from a synthetic fixing (#614).
+
+    Mirrors ``loanwhiz.api.main._synthetic_index_fixing``'s *presence* test only.
+    The matrix needs to know the coupon resolves, not what it resolves to, and
+    keeping the mirror this thin is what stops it drifting: a malformed fixing
+    is the resolver's 422 to raise, not a state this predicate re-derives.
+    """
+    return deal_ctx.get("synthetic_index_fixing") is not None
+
+
+#: What ``api.main._collections_tranche_args`` requires to fold a tape period.
+#: Mirrored here for the same reason ``_missing_structural_config`` mirrors the
+#: resolver — the endpoint's version raises, and lives a layer up.
+_COLLECTIONS_LEG_KEYS = (
+    "class_a_balance",
+    "class_a_rate_pct",
+    "class_b_balance",
+    "class_c_balance",
+)
+
+
+def _collections_leg_gaps(structure: Mapping[str, Any]) -> tuple[str, ...]:
+    """Classes the tape-driven collections leg cannot represent for this stack.
+
+    Structural *configuration* and the collections leg are different
+    preconditions, and #614 made the difference visible: sourcing Contego's
+    coupon emptied ``_missing_structural_config`` while the tape fold still
+    refuses, because the leg is shaped for ``class_a``/``class_b``/``class_c``
+    and this deal splits Class B into two strips. A matrix reading only the
+    first would have flipped the cell to ``ran`` for a reconstruction the
+    endpoint answers with a 422 — the #457 overclaim, arriving by a new route.
+    """
+    return tuple(key for key in _COLLECTIONS_LEG_KEYS if structure.get(key) is None)
 
 
 def _extracted_structure(model: DealModel | None) -> dict[str, float] | None:
@@ -360,6 +396,34 @@ def _tape_source_kinds(tapes: list) -> dict[str, int]:
         key = kind.value if kind is not None else "undeclared"
         counts[key] = counts.get(key, 0) + 1
     return counts
+
+
+def _synthesis_qualifier(deal_ctx: Mapping[str, Any]) -> str:
+    """A sentence naming the synthetic input a ``ran`` cell rests on, if any (#614).
+
+    ``ran`` is a claim the matrix publishes, and a reader has to be able to learn
+    from the cell itself what the run assumed — "ran" alone would be a **worse**
+    claim than the refusal it replaced, which at least named what was missing.
+    So the cell states the index, the tenor, the value and the fact that no
+    report of this deal publishes it, in the cell, without the reader leaving.
+
+    Silence when the deal declares no fixing: a deal that resolved its coupon
+    from a real source gets no sentence rather than a reassuring one, the same
+    one-directional discipline ``_provenance_qualifier`` follows.
+
+    Note this is about a synthetic **input**, not a synthetic tape. The rows this
+    deal folds describe real obligors; only the rate does not come from a
+    document, and #484's tape-level disclosure would be false here.
+    """
+    fixing = deal_ctx.get("synthetic_index_fixing")
+    if not isinstance(fixing, Mapping):
+        return ""
+    return (
+        f" Rests on a SYNTHETIC {fixing.get('tenor')} {fixing.get('index')} "
+        f"fixing of {fixing.get('value_pct')}%, generated rather than read: no "
+        f"fixing for that index appears in any report this deal publishes, so "
+        f"the senior coupon it resolves to is an assumption, not a disclosure."
+    )
 
 
 def _provenance_qualifier(tapes: list) -> str:
@@ -613,10 +677,39 @@ def _classify_collateral_reconciliation(
                 },
             ),
         )
+    # Green Lion resolves its structure from the resolver's last-resort constant
+    # rather than from the registry or the seed, so there is nothing here to read
+    # and nothing to judge — the same carve-out ``_missing_structural_config``
+    # opens with, for the same reason.
+    structure = deal_ctx.get("capital_structure") or _extracted_structure(model) or {}
+    leg_gaps = () if deal_id == _GREEN_LION_DEAL_ID else _collections_leg_gaps(structure)
+    if leg_gaps:
+        return (
+            STATE_NOT_APPLICABLE,
+            f"{len(tapes)} loan tape(s) are registered and this deal's structural "
+            f"configuration resolves, but the tape-driven collections leg is "
+            f"shaped for class_a/class_b/class_c and cannot represent this "
+            f"deal's stack: {', '.join(leg_gaps)} unresolved. The endpoint "
+            f"refuses rather than folding a waterfall over a subset of the "
+            f"deal's classes. That is a limit of the collections leg, not of "
+            f"this deal's configuration or its tape.",
+            CellEvidence(
+                confidence=None,
+                citation=(
+                    f"Deal registry context: {len(tapes)} tape(s) registered; "
+                    f"collections leg cannot represent {', '.join(leg_gaps)}."
+                ),
+                detail={
+                    "tape_count": len(tapes),
+                    "collections_leg_gaps": list(leg_gaps),
+                },
+            ),
+        )
     return (
         STATE_RAN,
         f"Pool state reconstructed across {len(tapes)} tape period(s) by "
-        f"net-reconciliation.{_provenance_qualifier(tapes)}",
+        f"net-reconciliation.{_synthesis_qualifier(deal_ctx)}"
+        f"{_provenance_qualifier(tapes)}",
         CellEvidence(
             confidence=1.0,
             citation=(
