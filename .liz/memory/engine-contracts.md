@@ -201,3 +201,16 @@ as health (#452). Filter the collection; never index a dict built from it.
 
 Refs: #571
 Refs: #492 — the same non-preservation, in the widening direction.
+
+## 2026-09-10 · pattern · #572
+
+Match a refusal's blast radius to what actually failed to resolve. A refusal
+written for one deal-level field is a whole-request 422; reused per item in a
+collection it denies the caller every item that *did* resolve. Moving a check
+into a loop means re-scoping it — refuse the cell, keep the record — leaving
+the request-level refusal for when no honest partial exists at all. Emit a
+cell for every field even when it refuses: a dropped field and a refused one
+render alike, so "I could not resolve this" reads as "nothing to report".
+
+Refs: #572
+Refs: #494 — the same conflation, between a missing section and a clean one.
