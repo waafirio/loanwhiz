@@ -40,3 +40,16 @@ pass nor a catch. Anchor on the declaration's **name**, which no rule tests.
 Ask of every marker: which of my own mutants edits this line?
 
 Refs: #599
+
+## 2026-09-10 · pitfall · #617
+
+Bound a markup-stripping regex to a single line. Flattening prose before a
+guard scans it is right — the false claim here breaks across two lines at a `*`
+comment leader, invisible to a byte-scan — but `<[^>]*>` does not stop at a
+newline: between a stray `<` in an ASCII diagram and the next `>` lines later
+it deletes everything between, claims included, and the guard then passes by
+having nothing left to read. Write `<[^>\n]*>`. Strip a `*` leader only where a
+single `*` is followed by whitespace, never `**bold**` — the docs mark section
+names with emphasis, and eating it takes the labels being checked with it.
+
+Refs: #617

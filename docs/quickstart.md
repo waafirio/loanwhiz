@@ -198,10 +198,17 @@ See `src/loanwhiz/api/README.md` for the full endpoint reference and curl exampl
 
 ### Demo UI views
 
-The Next.js dashboard (`./scripts/run-demo-v2.sh`, UI on :3000) groups its views into two sidebar sections (`NAV_GROUPS` in `web/lib/nav.ts`):
+The Next.js dashboard (`./scripts/run-demo-v2.sh`, UI on :3000) renders the rail declared by `NAV_GROUPS` in `web/lib/nav.ts`:
 
-- **Deal Analytics** — Overview, Pool & Performance, Waterfall, Compliance, Projection (the per-deal analyst views, one loaded deal at a time).
-- **Platform & Governance** — Showcase (the primitives × every-registered-deal capability matrix across Dutch / Italian / Spanish RMBS plus the registered-only Irish CLO), Validation (the Green Lion 2024-1 engine-vs-Notes-&-Cash proof, to the cent), Framework (the primitive-registry catalogue), MCP (the tool surface, and the evidence a tool call's result carries), and Governance (the FINOS evidence pack + per-tape `data_source` provenance — direct / derived / synthetic).
+<!-- nav-sections:start -->
+The sidebar groups the views into three sections (`NAV_GROUPS` in `web/lib/nav.ts`):
+
+- **Deal Analytics** — Overview · Pool & Performance · Waterfall · Compliance · Projection · Comparison
+- **Portfolio** — Book · Concentration · Due Diligence
+- **Platform & Governance** — Showcase · Validation · Framework · MCP · Governance
+<!-- nav-sections:end -->
+
+That grouping is generated from the declaration rather than transcribed, so it cannot drift from the rail a reader actually sees; the README describes what each view does. Note that Compliance and Due Diligence sit in different sections on purpose — Compliance asks whether the **deal** is inside its covenants, Due Diligence whether the **holder's** verification is documented.
 
 The capability matrix is the honest source of truth for what is validated vs ran vs not-applicable across the deal set — never read the cross-jurisdiction coverage as "validated everywhere".
 
