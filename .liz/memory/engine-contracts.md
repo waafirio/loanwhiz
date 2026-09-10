@@ -257,6 +257,18 @@ Refs: #564
 Refs: #563 — the injectivity check this reuses, applied to a second axis.
 Refs: #568 — same rule on a screen: refusals render first, uncollapsed, unclamped.
 
+## 2026-09-10 · pitfall · #598
+
+A registered calculator is **necessary and not sufficient** for "the engine
+computed this": ask whether it returns a figure on a funds context shaped as
+`_funds_from_state` shapes one, since one reading a field nothing writes either
+refuses or returns a confident `0.00` against a published `0.00`. Ask the engine
+rather than listing formulas to distrust — the formula is the wrong grain:
+`reserve_replenishment` and `liquidity_reserve_replenishment` share a basis and
+differ only in the reserve pair they read. Then guard the probe against the real
+builder: an expectation read off the code's own constant can never red.
+
+Refs: #598
 ## 2026-09-10 · pitfall · #601
 
 A hardcoded convention hides in a helper's **signature**, not its body.

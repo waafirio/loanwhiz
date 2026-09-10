@@ -171,13 +171,14 @@ generalised that fold, so every published row now reaches a step; #538 resolved
 Class B onto the two strips it was issued in, and #539 gave each strip the
 day-count basis its own Condition states. All 29 Interest steps now agree at
 this key's EUR 0.01 tolerance. The consequence still worth stating beside the
-key is the one the tie does not remove: **3 of the 29 lines are engine-computed
-and 26 are report-supplied**, so those 26 have each step's amount taken from the
-report and compared to itself. Only `class_{a,b,c}_interest` are in
-`ENGINE_COMPUTED_RECIPIENTS`; Classes D, E and F carry a published balance, a
-published applied rate and a parsed day count, and reproduce their published
-interest to the cent, so the count of 3 bounds that declaration rather than this
-document. 12 of the 29 steps carry money at all — the remaining 17 compare
+key is the one the tie does not remove: **6 of the 29 lines are engine-computed
+and 23 are report-supplied**, so those 23 have each step's amount taken from the
+report and compared to itself. The count read 3 until #598: Classes D, E and F
+carried a published balance, a published applied rate and a parsed day count and
+reproduced their published interest to the cent, yet graded `report-supplied`
+because `ENGINE_COMPUTED_RECIPIENTS` was an authored list that ended at
+`class_c_interest`. Membership is now derived from the need contract, so the
+count bounds this document rather than that declaration. 12 of the 29 steps carry money at all — the remaining 17 compare
 EUR 0.00 with EUR 0.00 and can distinguish nothing.
 
 **A fourth property of the union, found by grading it — and since #513 the
