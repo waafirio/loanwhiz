@@ -201,6 +201,7 @@ as health (#452). Filter the collection; never index a dict built from it.
 
 Refs: #571
 Refs: #492 — the same non-preservation, in the widening direction.
+Refs: #572 — filtering is not enough: compare multiplicity, not membership.
 
 ## 2026-09-10 · pattern · #572
 
