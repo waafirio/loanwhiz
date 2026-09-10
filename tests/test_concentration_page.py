@@ -42,6 +42,21 @@ _NAV = _REPO_ROOT / "web" / "lib" / "nav.ts"
 #: scan an empty string and pass — hence the vacuity assert in :func:`_region`.
 _REGION_MARKER = "Look-through concentration disclosure (#565"
 
+#: A top-level section banner in the shared sheet — a run of dashes alone on a
+#: comment line, in either comment style. The region ENDS at the next one after
+#: the marker, because this file is shared and keeps growing: #568 appended the
+#: due-diligence record after this region and #573 the book disclosure. A
+#: due-diligence check whose outcome is "Verified" is a correct statement about
+#: a document, not a grade over obligor identity — reading to end-of-file made
+#: this region swallow a sibling's section and fail on its vocabulary.
+_SECTION_BANNER = re.compile(r"^\s*(?://|/\*|\*)\s*-{20,}\s*$", re.M)
+
+#: Identifiers that must survive inside the sliced region. A boundary rule can
+#: shrink a region as silently as a missing marker deletes one, and either way
+#: every ban below would scan too little and pass. Same vacuity guard as the
+#: marker assert, pointed at the other end.
+_REGION_ANCHORS = ("BucketSplit", "BucketContributions", "ReportingDates")
+
 
 def _code_only(source: str) -> str:
     """Strip comments so a sentence *refusing* a claim does not trip its ban.
@@ -62,16 +77,48 @@ def _code_only(source: str) -> str:
 
 
 def _region(sheet: str) -> str:
-    """The look-through region of the sheet, marker to end of file.
+    """The look-through region of the sheet: its own section, comments balanced.
 
-    Deliberately a superset — a ban that over-reaches fails loudly, one that
-    under-reaches passes silently.
+    Still a superset of this issue's own code — a ban that over-reaches fails
+    loudly, one that under-reaches passes silently — but bounded at both ends,
+    for two reasons this file learned the hard way.
+
+    **Start at the enclosing comment, not at the marker.** The marker sits
+    inside a ``/* ... */`` banner, so slicing at it left an orphaned comment
+    body with no opening delimiter. :func:`_code_only` then paired the wrong
+    ``/*`` with the wrong ``*/`` and exposed an unrelated JSX comment as if it
+    were code — which is how a *comment* explaining that ``"1 of 7 verified"``
+    is a grade came to trip the ban on saying it.
+
+    **End at the next section banner.** The sheet is shared and keeps growing;
+    a sibling section's vocabulary is not this region's to police.
     """
     assert _REGION_MARKER in sheet, (
         "the look-through region marker is gone from evidence-pack-sheet.tsx; "
         "every check below would scan an empty string and pass vacuously"
     )
-    return _code_only(sheet[sheet.index(_REGION_MARKER) :])
+    marker = sheet.index(_REGION_MARKER)
+
+    # Back up to the comment block that opens this section, so the slice hands
+    # _code_only balanced delimiters. Only when nothing closes in between —
+    # an intervening "*/" means that "/*" belongs to an earlier block.
+    start = sheet.rfind("/*", 0, marker)
+    if start == -1 or "*/" in sheet[start:marker]:
+        start = sheet.rfind("\n", 0, marker) + 1
+
+    body = sheet[start:]
+    # Search for the terminating banner strictly after the marker, so the
+    # section's own opening banner cannot end it.
+    end = _SECTION_BANNER.search(body, marker - start + len(_REGION_MARKER))
+    if end is not None:
+        body = body[: end.start()]
+
+    missing = [anchor for anchor in _REGION_ANCHORS if anchor not in body]
+    assert not missing, (
+        f"the look-through region no longer contains {missing} — the section "
+        "boundary shrank it, so every ban below would scan too little and pass"
+    )
+    return _code_only(body)
 
 
 def _sources() -> dict[str, str]:

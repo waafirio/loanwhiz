@@ -975,6 +975,97 @@ export function getCompare(
 }
 
 // ---------------------------------------------------------------------------
+// Holder's book  —  GET /book   (#573, epic #569)
+// (a holder's positions joined to facts the platform already has. Mirrors
+// `loanwhiz.api.main.BookResponse`. Nothing here is computed client-side:
+// seniority, balance and coupon each arrive as a cell that either ran or
+// refused, and the refusal's cause arrives with it.)
+// ---------------------------------------------------------------------------
+
+/**
+ * What a holding IS — mirrors `loanwhiz.domain.position.PositionProvenance`.
+ *
+ * Deliberately a **separate** union from `DataSource`. That one says where a
+ * *tape* was read from; this one says whether anybody actually holds the
+ * position. Merging them would let "read from a published file" answer the
+ * question "is this somebody's exposure", which is the claim #484 got wrong in
+ * the other direction — a synthetic pool that rendered like a real one.
+ */
+export type PositionProvenance = "illustrative" | "client_stated";
+
+/** A fact the platform resolved — mirrors a `ran` `PositionFieldModel`. */
+export interface PositionFieldRan {
+  field: string;
+  /**
+   * Drawn from `CapabilityCellState` rather than re-spelled, so the backend's
+   * `CellState` stays the one vocabulary. `validated` is unreachable on this
+   * endpoint — nothing here is checked against an answer key — so it lives on
+   * the refusing half of the union, where it carries no value either.
+   */
+  state: Extract<CapabilityCellState, "ran">;
+  value: number;
+  /** Where the figure came from. Never empty. */
+  reason: string;
+}
+
+/** A fact the platform could not resolve — mirrors a refusing `PositionFieldModel`. */
+export interface PositionFieldRefused {
+  field: string;
+  state: Exclude<CapabilityCellState, "ran">;
+  value: null;
+  /** Why it could not be resolved. Never empty. */
+  reason: string;
+}
+
+/**
+ * One fact about one position — mirrors `PositionFieldModel`.
+ *
+ * A **discriminated** union, not one interface with a nullable value, so a
+ * refusal that keeps its value does not typecheck. #549's rule — "a refusal
+ * that keeps the value is not a refusal", because a number rendered beside
+ * "could not resolve" is read as the measurement — is therefore enforced by
+ * the compiler here rather than by a renderer remembering it. Narrowing on
+ * `state === "ran"` is what gives a caller a `number` at all; there is no
+ * `?? 0` anywhere downstream because there is nothing to coalesce.
+ */
+export type PositionField = PositionFieldRan | PositionFieldRefused;
+
+/** One position in the book — mirrors `BookPositionModel`. */
+export interface BookPosition {
+  deal_id: string;
+  deal_name: string;
+  tranche: string;
+  /** The stack's own strip names this class resolved to, senior → junior. */
+  strips: string[];
+  size: number;
+  as_of: string;
+  provenance: PositionProvenance;
+  describes_a_real_holding: boolean;
+  /** The backend's own sentence for this position's status. Rendered verbatim. */
+  disclosure: string;
+  /** A cell per reported field, always — a field is never dropped (#572). */
+  facts: PositionField[];
+}
+
+/**
+ * A holder's book — mirrors `BookResponse`.
+ *
+ * `describes_a_real_holding` is false when **any** position is illustrative: a
+ * total is only as real as its least real input.
+ */
+export interface BookResponse {
+  name: string;
+  describes_a_real_holding: boolean;
+  /** Every distinct disclosure the book's positions carry. Rendered verbatim. */
+  disclosures: string[];
+  positions: BookPosition[];
+}
+
+export function getBook(): Promise<BookResponse> {
+  return request<BookResponse>("/book");
+}
+
+// ---------------------------------------------------------------------------
 // Cross-deal look-through concentration  —  GET /cross-deal-concentration
 // ---------------------------------------------------------------------------
 
