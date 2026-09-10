@@ -128,9 +128,12 @@ function BookContent({ book }: { book: BookResponse }) {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {book.positions.map((position) => (
+                {book.positions.map((position, i) => (
                   <TableRow
-                    key={`${position.deal_id}::${position.tranche}`}
+                    // Nothing guarantees (deal_id, tranche) unique: `Book.positions`
+                    // is a plain tuple, so a holder may hold one class twice. The
+                    // index disambiguates rather than assuming the data cannot.
+                    key={`${position.deal_id}::${position.tranche}::${i}`}
                     className="align-top"
                   >
                     <TableCell>

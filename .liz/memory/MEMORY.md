@@ -65,6 +65,8 @@ triage by opening the entry, not by reading the line.
   - [2026-09-09 · pitfall · #549](#2026-09-09--pitfall--549) — keywords: refusal keeps the value, metric_value, not_evaluable, screen vs grade, numerator identity, exactly 100.00, notes over notes
   - [2026-09-10 · pitfall · #571](#2026-09-10--pitfall--571) — keywords: key by name, duplicate collapse, {name: obj} dict, behaviour-preserving refactor, strips summed, need under-stated, filter not index
   - [2026-09-10 · pattern · #572](#2026-09-10--pattern--572) — keywords: refusal blast radius, per-field not per-request, refuse the cell, 422 whole request, not-applicable cell, emit every field, partial record
+  - [2026-09-08 · pitfall · #478](#2026-09-08--pitfall--478) — keywords: capital_structure
+  - [2026-09-08 · pitfall · #481](#2026-09-08--pitfall--481) — keywords: covenant_monitor, taxonomy.coverage_metric_for, reinvestment_overcollateralisation_ratio, _is_triggered, threshold is None
 - [Extracting tables from PDFs](pdf-table-extraction.md) — keywords: visitor_text, text matrix, tm[4], rotated table, extraction_mode layout, row boundary, continuation line, column order, pypdf
   - [2026-09-06 · pitfall · #469](#2026-09-06--pitfall--469) — keywords: extract_text(), extraction_mode="layout", visitor_text=, tm[4]
   - [2026-09-08 · pitfall · #494](#2026-09-08--pitfall--494) — keywords: page furniture, banner prefix, data row first, footer eats a row, numeric tail, prefix filter ordering
@@ -75,6 +77,8 @@ triage by opening the entry, not by reading the line.
   - [2026-09-08 · pitfall · #478](#2026-09-08--pitfall--478) — keywords: untyped dict shape, divergent mappers, capital_structure, hand-copy drift, total-preservation guard, one builder
   - [2026-09-08 · pitfall · #481](#2026-09-08--pitfall--481) — keywords: classification table, coverage_metric_for, _COVERAGE_METRIC_RE, reinvestment_overcollateralisation, guard escapee, threshold None convention
 - [Guarding a guard: mutation tables over source assertions](guard-mutation-tables.md) — keywords: mutation table, mutant anchor, str.replace first match, substring of a deeper indent, surviving mutant, region slice, source-assertion guard
+  - [2026-09-10 · pitfall · #573](#2026-09-10--pitfall--573) — keywords: str.replace(old, new, 1), <Badge variant="destructive"
+  - [2026-09-10 · pitfall · #573](#2026-09-10--pitfall--573-1) — keywords: src[index("function Foo"):], Foo
 - [Extracting tables from PDFs](pdf-table-extraction.md)
   - [2026-09-06 · pitfall · #469](#2026-09-06--pitfall--469) — keywords: visitor_text, text matrix, tm[4], rotated table, extraction_mode layout, row boundary, continuation line, column order, pypdf
   - [2026-09-08 · pitfall · #480](#2026-09-08--pitfall--480) — keywords: column header, required level, guessed order, like-typed columns, stated twice, cross-check, coverage test, refuse unrecognised header

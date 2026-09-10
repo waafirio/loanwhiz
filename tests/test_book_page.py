@@ -134,7 +134,13 @@ _COALESCE_SHAPES = ("?? 0", '?? "', "?? '", "|| 0", "Number(fact.value)")
 #: #575/#568 family: the affordance is present, greppable and unreachable. A
 #: source guard cannot see paint (see the module docstring), but it can refuse
 #: the utility classes and elements whose whole purpose is to hide something.
-_HIDING_AFFORDANCES = ("sr-only", "hidden", "<details", "line-clamp", "truncate", "opacity-0")
+_HIDING_AFFORDANCES = ("sr-only", "<details", "line-clamp", "truncate", "opacity-0")
+
+#: ``hidden`` as its own class or JSX attribute — NOT as the tail of
+#: ``overflow-hidden``, which is ordinary layout CSS. The bare substring was in
+#: the first version of this list and flagged ``overflow-hidden rounded-lg``;
+#: a ban that reds a legitimate edit teaches the next worker to weaken it.
+_HIDDEN_ATTR = re.compile(r"(?<![-\w])hidden\b")
 
 #: Shapes that silently drop a row or a field. A ``.find()`` that misses renders
 #: an empty cell, and an empty cell and a refused one must not read alike
@@ -166,18 +172,32 @@ def _label_table(region: str) -> str:
     return region[start:] if end == -1 else region[start : end + 2]
 
 
-def _fact_cell(region: str) -> str:
-    """``PositionFactCell``'s body — the two branches, value and refusal.
+#: The start of the next top-level declaration — where one component ends.
+_NEXT_DECL = re.compile(r"\n(?:export )?(?:function|const|type|interface) ")
 
-    Sliced so the "renders its reason" and "renders no value" rules are scored
-    per branch. Returns an empty string when the component is gone; the
-    ``extends-the-sheet`` rule is what reports that, so this never raises and
-    turns a violation into a collection error.
+
+def _component(region: str, name: str) -> str:
+    """One component's source, its declaration to the next top-level one.
+
+    **Bounded, not run to end of file.** The first version of this helper
+    sliced ``PositionFactCell`` to EOF, which is the same source as the
+    component only because that component happens to be last. Append anything
+    after it and that sibling's ``{fact.reason}`` counts toward the refusal
+    cell's rule, satisfying it on behalf of a cell that stopped saying it —
+    #565's demotion hole with a different lever, the token still countable
+    while the component goes quiet. ``satisfy-the-refusal-rule-from-a-decoy``
+    in :data:`_MUTANTS` is the mutant that proves the bound is load-bearing.
+
+    Returns an empty string when the component is gone; ``extends-the-sheet``
+    is the rule that reports that, so this never raises and never turns a
+    violation into a collection error.
     """
-    marker = "export function PositionFactCell"
+    marker = f"function {name}("
     if marker not in region:
         return ""
-    return region[region.index(marker) :]
+    body = region[region.index(marker) + len(marker) :]
+    end = _NEXT_DECL.search(body)
+    return body[: end.start()] if end else body
 
 
 def _violations(*, region: str, page: str, nav: str, api: str) -> list[str]:
@@ -193,8 +213,12 @@ def _violations(*, region: str, page: str, nav: str, api: str) -> list[str]:
         if token not in where[target]:
             out.append(f"{check}: {target} no longer carries {token!r} — {why}")
 
-    badges = "\n".join(_BADGE.findall(region))
-    cell = _fact_cell(region)
+    # Each rule scores the badges of the component it is a rule ABOUT. The
+    # first version joined every badge in the region, so `BookDisclosure`'s
+    # badge could satisfy a rule about `PositionProvenanceBadge`.
+    provenance_badge = _component(region, "PositionProvenanceBadge")
+    disclosure = _component(region, "BookDisclosure")
+    cell = _component(region, "PositionFactCell")
 
     # 1. The components live in the shared sheet, not a forked parallel file.
     #    "Extend the existing vocabulary" is only true while there is one place
@@ -251,7 +275,9 @@ def _violations(*, region: str, page: str, nav: str, api: str) -> list[str]:
     # 4. The label renders inside a <Badge>, sliced — not merely somewhere in
     #    the file. #565's own caught hole: a mutant that demoted the headline
     #    into body prose left every identifier greppable and survived.
-    if "POSITION_PROVENANCE_LABELS[provenance]" not in badges:
+    if "POSITION_PROVENANCE_LABELS[provenance]" not in "\n".join(
+        _BADGE.findall(provenance_badge)
+    ):
         out.append(
             "badge-is-a-badge: the provenance label renders in no <Badge>; a "
             "qualifier a reader has to find in prose has lost to the figure"
@@ -282,7 +308,7 @@ def _violations(*, region: str, page: str, nav: str, api: str) -> list[str]:
         )
 
     # 7. …at the same weight as a value: in a Badge, in the figure's slot.
-    if "Not resolved" not in badges:
+    if "Not resolved" not in "\n".join(_BADGE.findall(cell)):
         out.append(
             "refusal-is-prominent: the refusal renders in no <Badge>; #549 — a "
             "refusal a reader scans past is one the figures beside it outran"
@@ -306,13 +332,12 @@ def _violations(*, region: str, page: str, nav: str, api: str) -> list[str]:
 
     # 10. Every distinct disclosure renders, quoted from the API. A book with
     #     two kinds of holding in it makes two different claims.
-    need(
-        "disclosure-renders-every",
-        "book.disclosures.map(",
-        "region",
-        "every disclosure must render, not the first",
-    )
-    if "disclosures[0]" in region:
+    if "book.disclosures.map(" not in disclosure:
+        out.append(
+            "disclosure-renders-every: BookDisclosure no longer maps "
+            "book.disclosures; every disclosure must render, not the first"
+        )
+    if "disclosures[0]" in disclosure:
         out.append(
             "disclosure-renders-every: only the first disclosure renders; a "
             "mixed book's second claim would never reach the screen"
@@ -337,13 +362,15 @@ def _violations(*, region: str, page: str, nav: str, api: str) -> list[str]:
             )
 
     # 12b. Nothing required is rendered into a hiding place.
-    for shape in _HIDING_AFFORDANCES:
-        if shape in both:
-            out.append(
-                f"no-hiding-affordance: {shape!r} renders a required element "
-                f"out of sight; present-and-unreachable is how #575 and #568 "
-                f"both passed while violated"
-            )
+    found_hiding = [shape for shape in _HIDING_AFFORDANCES if shape in both]
+    if _HIDDEN_ATTR.search(both):
+        found_hiding.append("hidden")
+    for shape in found_hiding:
+        out.append(
+            f"no-hiding-affordance: {shape!r} renders a required element out "
+            f"of sight; present-and-unreachable is how #575 and #568 both "
+            f"passed while violated"
+        )
 
     # 13. No block deleted behind a condition that cannot vary.
     if _LITERAL_CONDITION.search(both):
@@ -494,6 +521,29 @@ _MUTANTS: list[tuple[str, str, list[tuple[str, str]]]] = [
                 "        {fact.reason}\n"
                 "      </p>",
                 "        Not resolved\n      </Badge>",
+            )
+        ],
+    ),
+    (
+        "satisfy-the-refusal-rule-from-a-decoy",
+        "region",
+        [
+            (
+                '      <p className="text-xs leading-snug text-muted-foreground">\n'
+                "        {fact.reason}\n"
+                "      </p>\n"
+                "    </div>\n"
+                "  );\n"
+                "}",
+                '      <p className="text-xs leading-snug text-muted-foreground">\n'
+                "      </p>\n"
+                "    </div>\n"
+                "  );\n"
+                "}\n"
+                "\n"
+                "export function DecoyCell({ fact }: { fact: PositionField }) {\n"
+                "  return <p>{fact.reason}</p>;\n"
+                "}",
             )
         ],
     ),

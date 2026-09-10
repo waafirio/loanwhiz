@@ -15,3 +15,15 @@ hole in the surface; this one was a hole in the harness. Count the matches and
 refuse anything but exactly one.
 
 Refs: #573
+
+## 2026-09-10 · pitfall · #573
+
+Bound a source-guard's region at the **next declaration**, never at end of
+file. A rule scoped to `src[index("function Foo"):]` is satisfied by anything
+appended after `Foo`, so a sibling component's `{fact.reason}` counts toward
+the rule about `Foo` and the guard passes while `Foo` itself went quiet. It
+reads correct for exactly as long as `Foo` stays last in the file. The tell
+that a bound is real: write the mutant that strips the token from the
+component and re-supplies it from a decoy declared just after — it must red.
+
+Refs: #573
