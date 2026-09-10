@@ -41,6 +41,7 @@ triage by opening the entry, not by reading the line.
   - [2026-09-10 · pattern · #571](#2026-09-10--pattern--571) — keywords: provenance guard, declaration side, spec entry, false positive, narrowing the signature, self-describing input, qualifier on the record
   - [2026-09-10 · pitfall · #550](#2026-09-10--pitfall--550) — keywords: scarcity premise, document already folded, Par Value Tests Detail, overcollateralisation numerator, aggregate_principal_balance, stated total, components tie-out
   - [2026-09-10 · pitfall · #602](#2026-09-10--pitfall--602) — keywords: de-transcription convention, generated region, fence present, capability tally, rendered copy, spelled-out count, stale in three documents
+  - [2026-09-10 · pitfall · #617](#2026-09-10--pitfall--617) — keywords: measure the ban's reach, scope not drop, spelled-out count ban, one layer down, false positives, enumerated surfaces
   - [2026-09-09 · pitfall · #555](#2026-09-09--pitfall--555) — keywords: stated count population, count grain, accrual record, asset grain, aggregate table, two populations, cannot fail
 - [Registering a deal (deals.json)](deal-registration.md) — keywords: deals.json, notes_cash_report_urls, routing promise, registry key, asset_class, answer key invariant
   - [2026-09-05 · pitfall · #455](#2026-09-05--pitfall--455) — keywords: notes_cash_report_urls, _reconstruct_series
@@ -85,6 +86,8 @@ triage by opening the entry, not by reading the line.
   - [2026-09-10 · pitfall · #562](#2026-09-10--pitfall--562) — keywords: guard wiring, deletes its call, census, _assert_every_asset_placed, passes by finding nothing, lossy builder
   - [2026-09-10 · pitfall · #564](#2026-09-10--pitfall--564) — keywords: canonical_label, rating notch, per-axis fold, injective, published vocabulary, B+ collapse
   - [2026-09-10 · pitfall · #601](#2026-09-10--pitfall--601) — keywords: hardcoded convention in the signature, no basis argument, _days_between, accrual_days, unreachable code path, conformance input that differs today
+  - [2026-09-10 · pitfall · #614](#2026-09-10--pitfall--614) — keywords: first unmet precondition, masked refusal, drive the path to a result, collections leg, split-B stack, architectural not config
+  - [2026-09-10 · pitfall · #615](#2026-09-10--pitfall--615) — keywords: comparative verdict, winner_deal_id, incomplete-set, require its inputs, has_performance is a routing property, all-null risk shell, latest_period, series points, ranking[0] is a winner
 - [Extracting tables from PDFs](pdf-table-extraction.md) — keywords: visitor_text, text matrix, tm[4], rotated table, extraction_mode layout, row boundary, continuation line, column order, pypdf
   - [2026-09-06 · pitfall · #469](#2026-09-06--pitfall--469) — keywords: extract_text(), extraction_mode="layout", visitor_text=, tm[4]
   - [2026-09-08 · pitfall · #494](#2026-09-08--pitfall--494) — keywords: page furniture, banner prefix, data row first, footer eats a row, numeric tail, prefix filter ordering
@@ -99,6 +102,7 @@ triage by opening the entry, not by reading the line.
   - [2026-09-10 · pitfall · #573](#2026-09-10--pitfall--573-1) — keywords: src[index("function Foo"):], Foo
   - [2026-09-10 · pitfall · #599](#2026-09-10--pitfall--599) — keywords: widened API, className hidden, enabled false, escape hatch, re-sweep after the fix, pin the arguments not the call
   - [2026-09-10 · pitfall · #607](#2026-09-10--pitfall--607) — keywords: mutate the call site, fallback unreached, per-class override routes around, _days_in_period, 95 vs 93, green suite proves nothing
+  - [2026-09-10 · pitfall · #613](#2026-09-10--pitfall--613) — keywords: decorative check, shadowed rule, membership vs order axis, set not sequence, unreachable check, one mutant per check
 - [Extracting tables from PDFs](pdf-table-extraction.md)
   - [2026-09-06 · pitfall · #469](#2026-09-06--pitfall--469) — keywords: visitor_text, text matrix, tm[4], rotated table, extraction_mode layout, row boundary, continuation line, column order, pypdf
   - [2026-09-08 · pitfall · #480](#2026-09-08--pitfall--480) — keywords: column header, required level, guessed order, like-typed columns, stated twice, cross-check, coverage test, refuse unrecognised header
@@ -119,3 +123,5 @@ triage by opening the entry, not by reading the line.
 - [Guarding a UI surface from a suite with no JS runner](ui-surface-guards.md) — keywords: region marker, vacuous ban list, slice of a file, tsx guard, no JS test runner, pass by deletion
   - [2026-09-10 · pattern · #599](#2026-09-10--pattern--599) — keywords: region bounds by rule class, bounded slice, end anchor must be found, whole-file ban, narrow pattern, positive rule vs ban
   - [2026-09-10 · gotcha · #599](#2026-09-10--gotcha--599) — keywords: slicer anchor, sibling table answers, Record<DataSource, string>, marker deleted by mutant, guard raised not reported, anchor on the name
+  - [2026-09-10 · pitfall · #614](#2026-09-10--pitfall--614) — keywords: uncounted surface, enumerate the union not the table, second vocabulary, compare panel, sixth surface, keep tables separate
+  - [2026-09-10 · pitfall · #617](#2026-09-10--pitfall--617) — keywords: flatten before scanning, markup regex spans newlines, <[^>\n]*>, comment leader, bold emphasis eaten, guard passes with nothing to read

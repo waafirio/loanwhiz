@@ -81,11 +81,12 @@
     {
       "type": "cards",
       "kicker": "What we built — the dashboard",
-      "title": "Two layers, one product",
-      "columns": 2,
+      "title": "Three sections, one product",
+      "columns": 3,
       "cards": [
-        { "title": "Deal Analytics", "accent": "navy", "body": "Overview · Pool & Performance · Waterfall · Compliance · Projection — the per-deal analyst workflow over the extracted model." },
-        { "title": "Platform & Governance", "accent": "primary", "body": "Showcase · Validation · Framework · Governance — the cross-deal, trust & reusability layer that headlines the work." }
+        { "title": "Deal Analytics", "accent": "navy", "body": "Overview · Pool & Performance · Waterfall · Compliance · Projection · Comparison — the per-deal analyst workflow over the extracted model." },
+        { "title": "Portfolio", "accent": "accent", "body": "Book · Concentration · Due Diligence — what a holder owns, and what the platform can prove about it. Grouped by who is asking, not by what the surfaces are." },
+        { "title": "Platform & Governance", "accent": "primary", "body": "Showcase · Validation · Framework · MCP · Governance — the cross-deal, trust & reusability layer that headlines the work." }
       ]
     },
     {

@@ -914,6 +914,30 @@ def test_the_two_ground_truth_surfaces_agree_on_which_keys_carry_pop(
     assert harness_saw_pop is has_pop, error
 
 
+def test_the_collections_leg_mirror_agrees_with_the_api() -> None:
+    """The matrix's collections-leg keys and the endpoint's must not drift.
+
+    ``_collections_leg_gaps`` mirrors ``api.main._collections_tranche_args``
+    rather than importing it (the endpoint's version raises an
+    ``HTTPException`` and lives a layer up), and the sibling mirror beside it
+    has carried a cross-check since it was written for exactly this reason.
+
+    Without this, the leg growing a class would leave the matrix reporting
+    ``ran`` for a fold the endpoint answers with a 422 — the #457 overclaim
+    arriving *through* the check added to prevent it. Comparing the tuples
+    directly is the whole test: there is no behaviour to exercise, only two
+    lists that must stay identical.
+    """
+    from loanwhiz.api.main import _COLLECTIONS_LEG_REQUIRED_KEYS
+
+    from loanwhiz.primitives.capability_matrix import _COLLECTIONS_LEG_KEYS
+
+    assert _COLLECTIONS_LEG_KEYS == _COLLECTIONS_LEG_REQUIRED_KEYS, (
+        "the capability matrix's collections-leg mirror has drifted from the "
+        "endpoint it mirrors"
+    )
+
+
 def test_missing_structural_config_agrees_with_the_api_resolver() -> None:
     """The matrix's predicate and the endpoint's resolver must not drift.
 
@@ -960,7 +984,14 @@ def test_missing_structural_config_agrees_with_the_api_resolver() -> None:
             )
             if senior is None:
                 expected.append(key)
-            elif structure.get(f"{senior}_rate_pct") is None:
+            elif (
+                structure.get(f"{senior}_rate_pct") is None
+                # #614: a committed synthetic fixing resolves the senior coupon,
+                # so the key is no longer missing. Mirrored here rather than
+                # dropped, because the mirror is what this test exists to check:
+                # the resolver gained a tier and the predicate has to gain it too.
+                and ctx.get("synthetic_index_fixing") is None
+            ):
                 expected.append(f"{senior}_rate_pct")
         assert missing == tuple(expected), (deal_id, missing, tuple(expected))
 

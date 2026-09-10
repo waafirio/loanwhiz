@@ -28,6 +28,7 @@ conditional, never the bare construct. A ban needing a region is written too
 loosely, which is the actual failure #568 was working around.
 
 Refs: #599
+Refs: #613 — a near-edge-only bound survives a new sibling region inserted above it.
 
 ## 2026-09-10 · gotcha · #599
 
@@ -39,3 +40,27 @@ pass nor a catch. Anchor on the declaration's **name**, which no rule tests.
 Ask of every marker: which of my own mutants edits this line?
 
 Refs: #599
+
+## 2026-09-10 · pitfall · #614
+
+"Every surface routes through one total table" claims only what someone
+**enumerated**, and the enumeration goes stale. A sixth surface hand-rolled
+`=== "projected"` — the construct #599's own rule banned — because it renders a
+*different* union and matched no grep for the guarded one. Enumerate consumers
+of the **union type**, not of the table, and keep the tables separate: one
+table over two vocabularies makes totality unenforceable for both.
+
+Refs: #614
+Refs: #599 — the five-surface table this extends.
+## 2026-09-10 · pitfall · #617
+
+Bound a markup-stripping regex to a single line. Flattening prose before a
+guard scans it is right — the false claim here breaks across two lines at a `*`
+comment leader, invisible to a byte-scan — but `<[^>]*>` does not stop at a
+newline: between a stray `<` in an ASCII diagram and the next `>` lines later
+it deletes everything between, claims included, and the guard then passes by
+having nothing left to read. Write `<[^>\n]*>`. Strip a `*` leader only where a
+single `*` is followed by whitespace, never `**bold**` — the docs mark section
+names with emphasis, and eating it takes the labels being checked with it.
+
+Refs: #617

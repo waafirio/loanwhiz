@@ -144,3 +144,16 @@ rendered copy too, not just the documents an issue names: a count spelled out
 run against it") is the same defect, and no numeric grep finds it.
 
 Refs: #602
+
+## 2026-09-10 · pitfall · #617
+
+Measure a prose ban's whole-repo hit count before adopting it, then scope it
+rather than drop it. Banning a spelled-out count of the thing being guarded —
+`(one|two|…)\s+(sections?|layers?)` — matched 25+ innocent uses here: "one
+layer down" across a dozen memory entries, "three sections of a prospectus",
+"all 8 sections" in the demo runner. The ban was right; its reach was the
+defect. Scoped to the enumerated surfaces whose subject makes the word
+unambiguous it has no false positives and still catches the stale count. A ban
+you cannot scope that way is one whose claim you have not pinned down.
+
+Refs: #617
