@@ -281,3 +281,16 @@ the two differ on **today**; agreement where both already agree cannot fail.
 
 Refs: #601
 Refs: #539 — the same assumption one carrier out, in a deal-level field.
+
+## 2026-09-10 · pitfall · #614
+
+A resolver that refuses names **the first** unmet precondition, not the work.
+Contego's 422 named a senior coupon; sourcing it revealed a reserve target,
+then an original pool balance, then a collections leg that cannot represent an
+eight-class split-B stack at all — architectural, not configuration, and
+invisible until the three before it were fixed. Before scoping a fix off a
+refusal, drive the path to a **result** with the named value stubbed in: the
+question is not "does this key resolve" but "does this deal reach a series".
+
+Refs: #614
+Refs: #493 — the layered-refusal design this is the read-side consequence of.
