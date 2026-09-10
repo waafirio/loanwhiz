@@ -5,6 +5,7 @@ import { Database, FileText, ShieldCheck } from "lucide-react";
 
 import {
   ApiError,
+  DATA_SOURCES,
   citationDataSource,
   getGovernance,
   type Citation,
@@ -19,6 +20,10 @@ import {
   type ToolCallRecord,
 } from "@/lib/api";
 import { Badge } from "@/components/ui/badge";
+import {
+  ProvenanceBadge,
+  dataSourceLabel,
+} from "@/components/provenance-badge";
 import { Separator } from "@/components/ui/separator";
 import {
   Sheet,
@@ -118,26 +123,6 @@ export function PackSkeleton() {
 }
 
 /**
- * Map a data-source label to a human-readable provenance string.
- *
- * A total `Record`, not a conditional: the previous binary form said "direct
- * URL (HuggingFace / file)" for every non-deeploans channel, so a derived tape
- * — and, once it existed, a synthetic one — was labelled as a direct read of a
- * published file. Widening the union is now a compile error here until this
- * table answers for the new member, which is the point.
- */
-const DATA_SOURCE_LABELS: Record<DataSource, string> = {
-  deeploans: "deeploans ETL backend",
-  direct: "direct URL (HuggingFace / file)",
-  derived: "derived from a source document (not a published tape)",
-  synthetic: "SYNTHETIC — generated, describes no real obligor",
-};
-
-function dataSourceLabel(source: DataSource): string {
-  return DATA_SOURCE_LABELS[source];
-}
-
-/**
  * Pack-level data-provenance summary: which ingestion paths fed the tapes this
  * answer relied on, derived honestly from the tool-call citations (no field is
  * invented — the ESMA normaliser records provenance on each tape citation).
@@ -155,10 +140,9 @@ function packDataSources(pack: GovernanceEvidencePack): DataSource[] {
   // ["deeploans", "direct"], which silently dropped a derived tape from the
   // pack-level provenance summary — the one place a reader looks to see what
   // fed the answer. Omitting a channel here is indistinguishable from that
-  // channel not having been used.
-  return (
-    ["deeploans", "direct", "derived", "synthetic"] as DataSource[]
-  ).filter((s) => seen.has(s));
+  // channel not having been used, so the order comes off `DATA_SOURCES`
+  // rather than a literal that can fall behind the union again.
+  return DATA_SOURCES.filter((s) => seen.has(s));
 }
 
 /**
@@ -208,11 +192,14 @@ export function PackBody({ pack }: { pack: GovernanceEvidencePack }) {
               FINOS check failed
             </Badge>
           )}
+          {/* Badge text IS `dataSourceLabel(src)` — the same string the
+              disclosure sentence below renders. It used to be a binary on
+              `deeploans`, which badged a `derived` or `synthetic` tape
+              "direct ingestion" directly above a sentence saying otherwise
+              (#599). Never decide a provenance label with a conditional; the
+              table answers, or nothing does. */}
           {dataSources.map((src) => (
-            <Badge key={src} variant="outline" className="font-normal">
-              <Database className="mr-1 size-3" />
-              {src === "deeploans" ? "deeploans" : "direct"} ingestion
-            </Badge>
+            <ProvenanceBadge key={src} source={src} />
           ))}
         </div>
         {dataSources.length > 0 ? (
@@ -384,10 +371,11 @@ function formatTimestamp(ts: string): string {
  *   4. Every industry figure names its taxonomy, because the same book
  *      concentrates differently on S&P than on Fitch (#563).
  *
- * NOTE for anyone extending this: `PackBody` above renders a provenance badge
- * reading "direct ingestion" for a `derived` or `synthetic` source. That is a
- * known defect belonging to the provenance epic, not copied here — the
- * disclosure below reads its labels off the figure rather than off a binary.
+ * NOTE for anyone extending this: the disclosure below reads its labels off
+ * the figure rather than off a binary, which is now the rule everywhere.
+ * `PackBody` above used to badge a `derived` or `synthetic` source "direct
+ * ingestion"; #599 converged it onto `ProvenanceBadge`, so a provenance label
+ * is a total-table lookup on every surface. Keep it that way here.
  * ------------------------------------------------------------------------- */
 
 /** How each obligor-resolution tier names itself, and what it means. */
@@ -569,14 +557,14 @@ export function BucketContributions({ bucket }: { bucket: ConcentrationBucket })
 // already carries `CitationItem` and the badge vocabulary, and a parallel
 // component would be a second place for a citation to render differently.
 //
-// **The known gap this file still has, stated rather than built over.** #484
-// committed synthetic pools labelled correctly *in the data*, and the Pool and
-// Waterfall pages still render no synthetic badge; `PackBody` above still
-// resolves its provenance badge to "direct ingestion" for a `derived` or
-// `synthetic` source, because the badge text is a binary on `deeploans`. That
-// is not fixed here — it is #484's surface, not this one — and nothing below
-// depends on it. It is recorded so the next reader does not mistake this
-// component's correctness for the file's.
+// **The gap this file used to carry, and what closed it.** #484 committed
+// synthetic pools labelled correctly *in the data* while the Pool and
+// Waterfall pages rendered no synthetic badge, and `PackBody` above resolved
+// its provenance badge to "direct ingestion" for a `derived` or `synthetic`
+// source because the badge text was a binary on `deeploans`. #599 closed both:
+// all three surfaces now render `components/provenance-badge.tsx`, whose
+// tables are total. Nothing below depends on that, but a reader should not
+// re-derive the old caveat from a stale comment.
 //
 // **Refusals render at the same weight as verifications.** #549's rule is that
 // a refusal which keeps the value is not a refusal: `not_evaluable` protects

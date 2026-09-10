@@ -29,6 +29,11 @@ import {
   PageHeader,
   useDealHasTapes,
 } from "@/components/page-states";
+import {
+  ProvenanceBadge,
+  ProvenanceBadges,
+  distinctDataSources,
+} from "@/components/provenance-badge";
 import { TablePagination } from "@/components/table-pagination";
 import {
   Card,
@@ -133,6 +138,11 @@ function breakdownRows(
 }
 
 function PoolContent({ periods }: { periods: TapeAnalyticsPeriod[] }) {
+  // Provenance for the whole view, derived from the periods already in hand —
+  // no second fetch. It renders above the charts because #484's failure was
+  // that a reader who never reaches the table below sees generated collateral
+  // presented exactly like real collateral.
+  const dataSources = distinctDataSources(periods.map((p) => p.data_source));
   // One point per reporting period — the x-axis is a real time axis (period
   // date), so a ~48-period response reads as a trend line rather than 48
   // categorical bars. `minTickGap` lets recharts thin the date ticks so they
@@ -167,6 +177,15 @@ function PoolContent({ periods }: { periods: TapeAnalyticsPeriod[] }) {
 
   return (
     <div className="space-y-6">
+      {/* Ingestion provenance for the tapes every figure below is computed
+          from. It is a badge row rather than a footnote because a synthetic
+          pool describes no real obligor, and nothing further down this page
+          says so. */}
+      <div className="flex flex-wrap items-center gap-1.5">
+        <span className="text-xs text-muted-foreground">Ingested via</span>
+        <ProvenanceBadges sources={dataSources} />
+      </div>
+
       {/* Pool balance over time */}
       <Card>
         <CardHeader>
@@ -266,7 +285,15 @@ function PoolContent({ periods }: { periods: TapeAnalyticsPeriod[] }) {
             <TableBody>
               {pagination.pageItems.map((p) => (
                 <TableRow key={periodLabel(p)}>
-                  <TableCell className="font-medium">{periodLabel(p)}</TableCell>
+                  <TableCell className="font-medium">
+                    <span className="flex flex-wrap items-center gap-1.5">
+                      {periodLabel(p)}
+                      {/* Rendered from inside the loop, off this period's own
+                          `data_source` — a caveat written once beside the
+                          table survives only until someone adds a period. */}
+                      <ProvenanceBadge source={p.data_source ?? null} />
+                    </span>
+                  </TableCell>
                   <TableCell className="text-right tabular-nums">
                     {formatCurrency(p.pool_balance_eur)}
                   </TableCell>

@@ -26,6 +26,10 @@ import {
   useDealHasTapes,
 } from "@/components/page-states";
 import {
+  ProvenanceBadges,
+  useDealDataSources,
+} from "@/components/provenance-badge";
+import {
   Card,
   CardContent,
   CardHeader,
@@ -94,13 +98,25 @@ export default function WaterfallPage() {
       ) : !data ? (
         <LoadingState />
       ) : (
-        <WaterfallContent result={data} />
+        <WaterfallContent dealId={dealId} result={data} />
       )}
     </div>
   );
 }
 
-function WaterfallContent({ result }: { result: WaterfallResult }) {
+function WaterfallContent({
+  dealId,
+  result,
+}: {
+  dealId: string;
+  result: WaterfallResult;
+}) {
+  // `WaterfallResult` reports nothing about where its tapes came from, so the
+  // cascade would otherwise render generated collateral exactly like real
+  // collateral (#484). Read the deal's channels from the tape analytics the
+  // cascade is computed from; unresolved renders "not reported", never a
+  // default of "direct".
+  const dataSources = useDealDataSources(dealId);
   const cascade = result.revenue_waterfall ?? [];
   const chartData = cascade.map((step) => ({
     name: `${step.priority} ${step.recipient}`,
@@ -109,6 +125,11 @@ function WaterfallContent({ result }: { result: WaterfallResult }) {
 
   return (
     <div className="space-y-6">
+      <div className="flex flex-wrap items-center gap-1.5">
+        <span className="text-xs text-muted-foreground">Ingested via</span>
+        <ProvenanceBadges sources={dataSources} />
+      </div>
+
       {/* Headline cards */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <Card>
