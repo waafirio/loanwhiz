@@ -429,6 +429,18 @@ class ReportAdapter:
         are dates the prospectus names; no published amount is read, which is the
         whole point (#528, superseding #521).
 
+        **The basis is passed, not assumed (#607).** ``accrual_period_days`` used
+        to hardcode Act/360 inside itself; it now takes the basis and delegates to
+        the repo's one day-count implementation, so the convention this deal-wide
+        count applies is stated here, at the call site, where a reader can see it.
+        ``"act/360"`` is Condition 6(e)(ii)'s own basis — "the actual number of
+        days in the Accrual Period concerned, divided by 360" — which is the limb
+        governing every floating class, and this count is the fallback for
+        tranches that state no basis of their own. A class that *does* state one
+        never reaches here: :meth:`_tranche_days_in_period` routes it through
+        ``class_accrual_days`` instead, which is how Cairn's Class B accrues over
+        two different conventions within one class.
+
         Without a schedule the count stays :data:`DEFAULT_DAYS_IN_PERIOD`. That
         branch is what keeps every already-graded deal byte-identical: Green Lion
         states no schedule in its seed, so it takes the same 90 it always did.
@@ -442,7 +454,7 @@ class ReportAdapter:
             return DEFAULT_DAYS_IN_PERIOD
         reporting = date.fromisoformat(period.reporting_date)
         payment = payment_date_on_or_after(self.payment_schedule, reporting)
-        return accrual_period_days(self.payment_schedule, payment)
+        return accrual_period_days("act/360", self.payment_schedule, payment)
 
     def _tranche_days_in_period(self, period: NotesCashPeriod) -> dict[str, int]:
         """Per-tranche day counts for the classes stating their own basis (#539).

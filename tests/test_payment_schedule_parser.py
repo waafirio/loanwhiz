@@ -323,7 +323,7 @@ def test_the_march_report_states_a_payment_date_the_schedule_does_not_predict(
     assert payment_date_on_or_after(schedule, date(2025, 3, 1)) == date(2025, 4, 22)
 
     # Handed the stated date, the module still measures the real period.
-    assert accrual_period_days(schedule, unscheduled) == 66
+    assert accrual_period_days("act/360", schedule, unscheduled) == 66
     assert previous_payment_date(schedule, unscheduled) == date(2025, 1, 21)
 
 
@@ -353,8 +353,8 @@ def test_the_january_2025_accrual_period_is_measured_between_two_stated_dates(
     assert previous == date(2024, 10, 18)
     assert payment == date(2025, 1, 21)
     assert previous.weekday() == 4  # a Friday, so unadjusted
-    assert accrual_period_days(schedule, payment) == (payment - previous).days
-    assert accrual_period_days(schedule, payment) == 95
+    assert accrual_period_days("act/360", schedule, payment) == (payment - previous).days
+    assert accrual_period_days("act/360", schedule, payment) == 95
 
 
 def test_the_following_period_is_a_different_length(
@@ -369,7 +369,7 @@ def test_the_following_period_is_a_different_length(
     """
     april = payment_date_on_or_after(schedule, date(2025, 2, 18))
     assert april == date(2025, 4, 22)
-    assert accrual_period_days(schedule, april) == 91
+    assert accrual_period_days("act/360", schedule, april) == 91
 
 
 def test_the_first_accrual_period_refuses(schedule: PaymentDateSchedule) -> None:
@@ -381,7 +381,7 @@ def test_the_first_accrual_period_refuses(schedule: PaymentDateSchedule) -> None
     """
     first = payment_date_for(schedule, date(2024, 4, 18))
     with pytest.raises(UnresolvableBusinessDay, match="Issue Date"):
-        accrual_period_days(schedule, first)
+        accrual_period_days("act/360", schedule, first)
 
 
 # ---------------------------------------------------------------------------
@@ -478,6 +478,7 @@ def test_the_report_adapter_derives_cairns_day_count() -> None:
     adapter = ReportAdapter.from_deal_model(model)
     assert adapter.payment_schedule is not None
     assert accrual_period_days(
+        "act/360",
         adapter.payment_schedule,
         payment_date_on_or_after(adapter.payment_schedule, date(2025, 1, 8)),
     ) == 95

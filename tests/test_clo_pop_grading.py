@@ -259,7 +259,9 @@ _CAIRN_SCHEDULE = PaymentDateSchedule.from_dict(
     json.loads(SEED_PATH.read_text(encoding="utf-8"))["payment_schedule"]
 )
 _CAIRN_PAYMENT_DATE = payment_date_on_or_after(_CAIRN_SCHEDULE, NVR_REPORTING_DATE)
-CAIRN_ACCRUAL_DAYS = accrual_period_days(_CAIRN_SCHEDULE, _CAIRN_PAYMENT_DATE)
+CAIRN_ACCRUAL_DAYS = accrual_period_days(
+    "act/360", _CAIRN_SCHEDULE, _CAIRN_PAYMENT_DATE
+)
 
 #: Each class's own day-count basis, read from the seed the same way the schedule
 #: is — so these cannot drift from what the engine applies, and cannot be edited
