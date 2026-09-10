@@ -1,0 +1,72 @@
+{
+  "format_version": 1,
+  "name": "LoanWhiz illustrative demo book",
+  "describes_a_real_holding": false,
+  "disclosures": [
+    "Illustrative position constructed by LoanWhiz to demonstrate the platform. The deal and tranche are real and the size resolves against the real capital structure, but nobody holds it: no figure computed from this position is evidence of exposure."
+  ],
+  "positions": [
+    {
+      "deal_id": "cairn-clo-xvii",
+      "tranche": "class_b",
+      "strips": [
+        "class_b_1",
+        "class_b_2"
+      ],
+      "size": 5000000.0,
+      "as_of": "2026-04-30",
+      "provenance": "illustrative",
+      "disclosure": "Illustrative position constructed by LoanWhiz to demonstrate the platform. The deal and tranche are real and the size resolves against the real capital structure, but nobody holds it: no figure computed from this position is evidence of exposure."
+    },
+    {
+      "deal_id": "sol-lion-ii",
+      "tranche": "class_a",
+      "strips": [
+        "class_a1",
+        "class_a2",
+        "class_a3",
+        "class_a4",
+        "class_a5",
+        "class_a6"
+      ],
+      "size": 12500000.0,
+      "as_of": "2026-04-30",
+      "provenance": "illustrative",
+      "disclosure": "Illustrative position constructed by LoanWhiz to demonstrate the platform. The deal and tranche are real and the size resolves against the real capital structure, but nobody holds it: no figure computed from this position is evidence of exposure."
+    },
+    {
+      "deal_id": "leone-arancio-2023-1",
+      "tranche": "class_a",
+      "strips": [
+        "class_a1",
+        "class_a2"
+      ],
+      "size": 7250000.0,
+      "as_of": "2026-04-30",
+      "provenance": "illustrative",
+      "disclosure": "Illustrative position constructed by LoanWhiz to demonstrate the platform. The deal and tranche are real and the size resolves against the real capital structure, but nobody holds it: no figure computed from this position is evidence of exposure."
+    },
+    {
+      "deal_id": "green-lion-2023-1",
+      "tranche": "class_b",
+      "strips": [
+        "class_b"
+      ],
+      "size": 3000000.0,
+      "as_of": "2026-04-30",
+      "provenance": "illustrative",
+      "disclosure": "Illustrative position constructed by LoanWhiz to demonstrate the platform. The deal and tranche are real and the size resolves against the real capital structure, but nobody holds it: no figure computed from this position is evidence of exposure."
+    },
+    {
+      "deal_id": "green-lion-2024-1",
+      "tranche": "class_a",
+      "strips": [
+        "class_a"
+      ],
+      "size": 20000000.0,
+      "as_of": "2026-04-30",
+      "provenance": "illustrative",
+      "disclosure": "Illustrative position constructed by LoanWhiz to demonstrate the platform. The deal and tranche are real and the size resolves against the real capital structure, but nobody holds it: no figure computed from this position is evidence of exposure."
+    }
+  ]
+}

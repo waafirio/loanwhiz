@@ -113,6 +113,7 @@ Use the typed wrappers — never `fetch` the backend directly from a page.
 | `getDealModel(dealId?)` | `GET /deal/{id}/model` | `DealModel` |
 | `getCompliance(dealId?)` | `GET /deal/{id}/compliance` | `ComplianceResult` |
 | `postProjection({ scenarios?, months? }, dealId?)` | `POST /deal/{id}/project` | `ProjectionResult` |
+| `getBook()` | `GET /book` | `BookResponse` — a holder's positions, each with its provenance and a cell per field that either ran or refused |
 
 - `dealId` defaults to `DEFAULT_DEAL_ID` (`"green-lion-2026-1"`) — the only
   deal the backend serves.

@@ -38,6 +38,7 @@ triage by opening the entry, not by reading the line.
   - [2026-09-08 · pitfall · #484](#2026-09-08--pitfall--484) — keywords: balance share, count share, generated population, per-bucket draw, stratification, arrears bucket, rendered axis
   - [2026-09-02 · pitfall · #441](#2026-09-02--pitfall--441) — keywords: completeness_score
   - [2026-09-09 · pattern · #528](#2026-09-09--pattern--528) — keywords: back-solved input, read past the extractor, max_chars truncation, pypdf text layer, stated schedule, deterministic parser, cross-check against another document
+  - [2026-09-10 · pattern · #571](#2026-09-10--pattern--571) — keywords: provenance guard, declaration side, spec entry, false positive, narrowing the signature, self-describing input, qualifier on the record
   - [2026-09-10 · pitfall · #550](#2026-09-10--pitfall--550) — keywords: scarcity premise, document already folded, Par Value Tests Detail, overcollateralisation numerator, aggregate_principal_balance, stated total, components tie-out
   - [2026-09-09 · pitfall · #555](#2026-09-09--pitfall--555) — keywords: stated count population, count grain, accrual record, asset grain, aggregate table, two populations, cannot fail
 - [Registering a deal (deals.json)](deal-registration.md) — keywords: deals.json, notes_cash_report_urls, routing promise, registry key, asset_class, answer key invariant
@@ -75,6 +76,10 @@ triage by opening the entry, not by reading the line.
   - [2026-09-09 · pitfall · #511](#2026-09-09--pitfall--511) — keywords: tie proves nothing, amount-recovered coupon, back-solved rate, report agrees with itself, circular reconciliation, input provenance, expect green to turn red
   - [2026-09-09 · pattern · #539](#2026-09-09--pattern--539) — keywords: fact scope, per-class not per-deal, day-count basis, TrancheFunds override, parse the scope, limb boundary, block runs to end-of-text, deal-level field averages
   - [2026-09-09 · pitfall · #549](#2026-09-09--pitfall--549) — keywords: refusal keeps the value, metric_value, not_evaluable, screen vs grade, numerator identity, exactly 100.00, notes over notes
+  - [2026-09-10 · pitfall · #571](#2026-09-10--pitfall--571) — keywords: key by name, duplicate collapse, {name: obj} dict, behaviour-preserving refactor, strips summed, need under-stated, filter not index
+  - [2026-09-10 · pattern · #572](#2026-09-10--pattern--572) — keywords: refusal blast radius, per-field not per-request, refuse the cell, 422 whole request, not-applicable cell, emit every field, partial record
+  - [2026-09-08 · pitfall · #478](#2026-09-08--pitfall--478) — keywords: capital_structure
+  - [2026-09-08 · pitfall · #481](#2026-09-08--pitfall--481) — keywords: covenant_monitor, taxonomy.coverage_metric_for, reinvestment_overcollateralisation_ratio, _is_triggered, threshold is None
   - [2026-09-10 · decision · #563](#2026-09-10--decision--563) — keywords: candidate vocabularies, unjoined share, acceptance oracle, GICS vintage drift, orthographic fold, published table, injective
   - [2026-09-10 · pitfall · #562](#2026-09-10--pitfall--562) — keywords: guard wiring, deletes its call, census, _assert_every_asset_placed, passes by finding nothing, lossy builder
   - [2026-09-10 · pitfall · #564](#2026-09-10--pitfall--564) — keywords: canonical_label, rating notch, per-axis fold, injective, published vocabulary, B+ collapse
@@ -87,6 +92,9 @@ triage by opening the entry, not by reading the line.
   - [2026-09-08 · decision · #483](#2026-09-08--decision--483) — keywords: seam bypass, delegate to the seam, strip the scheme, derived+trustee-report, synthetic:, esma_tape_normaliser._load_tape, source document
   - [2026-09-08 · pitfall · #478](#2026-09-08--pitfall--478) — keywords: untyped dict shape, divergent mappers, capital_structure, hand-copy drift, total-preservation guard, one builder
   - [2026-09-08 · pitfall · #481](#2026-09-08--pitfall--481) — keywords: classification table, coverage_metric_for, _COVERAGE_METRIC_RE, reinvestment_overcollateralisation, guard escapee, threshold None convention
+- [Guarding a guard: mutation tables over source assertions](guard-mutation-tables.md) — keywords: mutation table, mutant anchor, str.replace first match, substring of a deeper indent, surviving mutant, region slice, source-assertion guard
+  - [2026-09-10 · pitfall · #573](#2026-09-10--pitfall--573) — keywords: str.replace(old, new, 1), <Badge variant="destructive"
+  - [2026-09-10 · pitfall · #573](#2026-09-10--pitfall--573-1) — keywords: src[index("function Foo"):], Foo
 - [Extracting tables from PDFs](pdf-table-extraction.md)
   - [2026-09-06 · pitfall · #469](#2026-09-06--pitfall--469) — keywords: visitor_text, text matrix, tm[4], rotated table, extraction_mode layout, row boundary, continuation line, column order, pypdf
   - [2026-09-08 · pitfall · #480](#2026-09-08--pitfall--480) — keywords: column header, required level, guessed order, like-typed columns, stated twice, cross-check, coverage test, refuse unrecognised header
