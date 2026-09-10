@@ -105,6 +105,7 @@ see the disagreement.
 
 Refs: #503
 Refs: #549 — a docstring claiming "mirrors X" was the unchecked half.
+Refs: #615 — same rule on a comparative verdict: `winner_deal_id` beside a note that the loser had no data.
 
 ## 2026-09-08 · pitfall · #511
 
@@ -294,3 +295,15 @@ question is not "does this key resolve" but "does this deal reach a series".
 
 Refs: #614
 Refs: #493 — the layered-refusal design this is the read-side consequence of.
+## 2026-09-10 · pitfall · #615
+
+A score that presents an **overall** judgement must require every input that
+would substantiate it, and test presence on the payload the reader sees. Two
+traps hid one unmeasured deal: its `risk_summary` row existed as an all-null
+shell, so a row-count check read it as present; and `has_performance` is a
+property of **which path** reconstruction took — a deal reaches `reported` by
+routing to the report path — not of how complete its data is. Gate on the
+series' own `points` and the risk row's `latest_period`, and empty winner,
+name, ranking and reasons together: `ranking[0]` is a winner by another name.
+
+Refs: #615

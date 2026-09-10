@@ -194,28 +194,48 @@ class ComparativeVerdict(BaseModel):
 
     Grounds the verdict in the relative-value scorecard's *available* (real,
     structural) factors and the latest-period covenant proximity — never a
-    fabricated winner. When fewer than two deals produced a scored tranche the
-    set cannot be ranked honestly, so ``confidence`` is ``"insufficient-data"``,
-    ``winner_deal_id`` is ``None``, and ``summary`` says what was missing.
+    fabricated winner. Two distinct refusals, because they have distinct causes
+    and distinct operator fixes:
+
+    * ``"insufficient-data"`` — fewer than two deals produced a scored tranche,
+      so there is nothing to rank at all.
+    * ``"incomplete-set"`` (#615) — the structure ranked, but some deal in the
+      set contributed **no performance series and/or no risk row**, so it was
+      never scored on performance or risk. Naming a winner over it would be a
+      claim about a deal that was never measured.
+
+    Under either refusal ``winner_deal_id``, ``winner_deal_name``, ``ranking``
+    and ``reasons`` are **all** empty and ``summary`` carries the cause: a
+    refusal that keeps the value is not a refusal (#549). The structural
+    ranking is not lost — it is published in its own right as
+    ``CompareResponse.relative_value``, under a name that states its basis.
     """
 
-    confidence: Literal["scored", "insufficient-data"] = Field(
+    confidence: Literal["scored", "insufficient-data", "incomplete-set"] = Field(
         ...,
         description=(
-            "'scored' when >=2 deals produced a ranked tranche; "
-            "'insufficient-data' when the structural inputs were too thin to rank."
+            "'scored' when >=2 deals produced a ranked tranche AND every deal "
+            "contributed performance/risk evidence; 'insufficient-data' when the "
+            "structural inputs were too thin to rank; 'incomplete-set' when a "
+            "deal in the set contributed no performance series and/or no risk row."
         ),
     )
     winner_deal_id: str | None = Field(
         default=None,
-        description="Deal with the best top-ranked tranche, or None when insufficient-data.",
+        description=(
+            "Deal with the best top-ranked tranche; None under either refusal "
+            "('insufficient-data', 'incomplete-set')."
+        ),
     )
     winner_deal_name: str | None = Field(
-        default=None, description="Human name of the winning deal, or None."
+        default=None, description="Human name of the winning deal, or None under a refusal."
     )
     ranking: list[str] = Field(
         default_factory=list,
-        description="Deal ids best->worst by their best tranche's composite (scored deals only).",
+        description=(
+            "Deal ids best->worst by their best tranche's composite; empty under "
+            "either refusal, so no reader can take a winner from ranking[0]."
+        ),
     )
     summary: str = Field(
         ..., description="One-line plain verdict, honest about the basis or the gap."
@@ -739,10 +759,58 @@ def _best_tranche_per_deal(scorecard: RelativeValueScorecard) -> dict[str, Any]:
     return best
 
 
+#: The two halves of evidence a deal must contribute before the verdict may
+#: rank it (#615). Named sections, so a refusal says *which* half is missing
+#: rather than a bare "no data".
+_EVIDENCE_PERFORMANCE = "performance series"
+_EVIDENCE_RISK = "risk summary"
+
+
+def _deals_missing_evidence(
+    deals: list[DealRef],
+    performance_series: list[PerformanceSeries],
+    risk_summary: list[RiskSummary],
+) -> list[tuple[str, list[str]]]:
+    """Which deals contributed no performance/risk evidence, and which half (#615).
+
+    Reads **the data the verdict would reason over**, never a provenance or
+    routing flag. Whether a deal ends up with a series is a property of which
+    path it took through reconstruction — a deal can reach ``reported`` because
+    ``_tapes_yield_to_reports`` routed it to the report path, which never needs a
+    modelled rate — so ``DealRef.has_performance`` would gate on the route, not
+    on the evidence. The test is therefore the payload itself:
+
+    * a ``PerformanceSeries`` with real ``points`` — an entry present but empty
+      is *absent* evidence, not thin evidence (#513);
+    * a ``RiskSummary`` that is not the bare shell ``_deal_risk_summary`` returns
+      when there are no states. ``latest_period`` is the presence test, not
+      ``tightest_proximity_pct``: a deal with a real series but no *quantified*
+      trigger has risk data that says "nothing is tight", which is a finding,
+      not a gap.
+
+    Returns ``(deal_id, [missing section, ...])`` per incomplete deal, in the
+    set's own order. Empty means every deal brought both halves.
+    """
+    points_by_id = {ps.deal_id: ps.points for ps in performance_series}
+    period_by_id = {rs.deal_id: rs.latest_period for rs in risk_summary}
+
+    missing: list[tuple[str, list[str]]] = []
+    for ref in deals:
+        gaps: list[str] = []
+        if not points_by_id.get(ref.deal_id):
+            gaps.append(_EVIDENCE_PERFORMANCE)
+        if period_by_id.get(ref.deal_id) is None:
+            gaps.append(_EVIDENCE_RISK)
+        if gaps:
+            missing.append((ref.deal_id, gaps))
+    return missing
+
+
 def build_comparative_verdict(
     scorecard: RelativeValueScorecard,
     deals: list[DealRef],
     risk_summary: list[RiskSummary],
+    performance_series: list[PerformanceSeries],
     target_deal_id: str | None = None,
 ) -> ComparativeVerdict:
     """Turn the relative-value scorecard into a reasoned, honest deal verdict (#400).
@@ -753,9 +821,19 @@ def build_comparative_verdict(
     each deal's latest-period covenant proximity, and collects ``caveats`` from
     every factor the screener honestly flagged ``available=False``.
 
-    When fewer than two deals produced a scored tranche the set cannot be ranked
-    honestly: ``confidence`` is ``"insufficient-data"``, ``winner_deal_id`` is
-    ``None``, and ``summary`` names what was missing — never a fabricated winner.
+    **The verdict requires its inputs (#615).** ``performance_series`` and
+    ``risk_summary`` are not decoration on the reasons — they are the evidence
+    that makes a *deal-level* verdict more than a structural one, so they are
+    required arguments and every deal in ``deals`` must appear in them with real
+    content. Two refusals, each suppressing winner, name, ranking and reasons
+    together (#549) and naming its own cause in ``summary``:
+
+    * fewer than two deals produced a scored tranche → ``"insufficient-data"``;
+    * some deal contributed no series and/or no risk row → ``"incomplete-set"``.
+
+    The second refuses the **whole** verdict rather than quietly dropping the
+    dataless deal and ranking the rest: that would answer a question nobody
+    asked — a winner over a subset of the set the operator selected.
     """
     name_by_id = {d.deal_id: d.deal_name for d in deals}
     proximity_by_id = {
@@ -783,6 +861,21 @@ def build_comparative_verdict(
                 seen_caveats.add(caveat)
                 caveats.append(caveat)
 
+    # #615 — which deals brought no performance/risk evidence. Computed BEFORE
+    # either refusal so its caveats are recorded on both paths: a set that is
+    # also structurally unrankable would otherwise report only that cause, and a
+    # gap nobody mentions reads exactly like a gap that isn't there (#572).
+    incomplete = _deals_missing_evidence(deals, performance_series, risk_summary)
+    for did, gaps in incomplete:
+        caveat = (
+            f"{name_by_id.get(did, did)} · performance/risk: no "
+            + " and no ".join(gaps)
+            + " — this deal was not scored on performance or risk."
+        )
+        if caveat not in seen_caveats:
+            seen_caveats.add(caveat)
+            caveats.append(caveat)
+
     if len(best) < 2:
         missing = [
             name_by_id.get(d.deal_id, d.deal_id)
@@ -803,6 +896,34 @@ def build_comparative_verdict(
             )
         return ComparativeVerdict(
             confidence="insufficient-data",
+            winner_deal_id=None,
+            winner_deal_name=None,
+            ranking=[],
+            summary=summary,
+            reasons=[],
+            caveats=caveats,
+        )
+
+    # #615 — the verdict must REQUIRE its inputs, not merely decorate itself with
+    # them. A deal that contributed no performance series and/or no risk row was
+    # never scored on performance or risk, so ranking it — or naming a winner
+    # over it — is a claim about a deal nobody measured. Refuse the whole
+    # verdict: dropping the dataless deal and ranking the rest would answer a
+    # question nobody asked, a winner over a subset of the operator's set.
+    if incomplete:
+        phrases = [
+            f"{name_by_id.get(did, did)} contributed no " + " and no ".join(gaps)
+            for did, gaps in incomplete
+        ]
+        summary = (
+            "No winner named: "
+            + "; ".join(phrases)
+            + ". A deal that was never scored on performance or risk cannot be "
+            "ranked against one that was. The structural comparison is unaffected "
+            "and stands on its own in `relative_value`."
+        )
+        return ComparativeVerdict(
+            confidence="incomplete-set",
             winner_deal_id=None,
             winner_deal_name=None,
             ranking=[],
