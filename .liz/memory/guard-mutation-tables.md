@@ -27,3 +27,17 @@ that a bound is real: write the mutant that strips the token from the
 component and re-supplies it from a decoy declared just after — it must red.
 
 Refs: #573
+Refs: #599 — re-derived independently; ui-surface-guards.md says when #568's opposite advice still holds.
+
+## 2026-09-10 · pitfall · #599
+
+Re-run the sweep against the API you just **widened**, not the one you swept
+before. Closing guard holes means giving a component escape hatches so callers
+can adopt it — a `className` for a caller's layout, an `enabled` flag to stop a
+hoisted hook firing — and each is a new one-word way to neutralise what the
+guard protects: `className="hidden"` renders the marking invisibly,
+`enabled={false}` shows "not reported" forever. Both passed every rule written
+minutes earlier. A rule pinning a call and not its arguments pins the half that
+cannot vary.
+
+Refs: #599

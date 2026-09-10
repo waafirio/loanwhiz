@@ -40,6 +40,7 @@ triage by opening the entry, not by reading the line.
   - [2026-09-09 · pattern · #528](#2026-09-09--pattern--528) — keywords: back-solved input, read past the extractor, max_chars truncation, pypdf text layer, stated schedule, deterministic parser, cross-check against another document
   - [2026-09-10 · pattern · #571](#2026-09-10--pattern--571) — keywords: provenance guard, declaration side, spec entry, false positive, narrowing the signature, self-describing input, qualifier on the record
   - [2026-09-10 · pitfall · #550](#2026-09-10--pitfall--550) — keywords: scarcity premise, document already folded, Par Value Tests Detail, overcollateralisation numerator, aggregate_principal_balance, stated total, components tie-out
+  - [2026-09-10 · pitfall · #602](#2026-09-10--pitfall--602) — keywords: de-transcription convention, generated region, fence present, capability tally, rendered copy, spelled-out count, stale in three documents
   - [2026-09-09 · pitfall · #555](#2026-09-09--pitfall--555) — keywords: stated count population, count grain, accrual record, asset grain, aggregate table, two populations, cannot fail
 - [Registering a deal (deals.json)](deal-registration.md) — keywords: deals.json, notes_cash_report_urls, routing promise, registry key, asset_class, answer key invariant
   - [2026-09-05 · pitfall · #455](#2026-09-05--pitfall--455) — keywords: notes_cash_report_urls, _reconstruct_series
@@ -63,6 +64,7 @@ triage by opening the entry, not by reading the line.
   - [2026-09-06 · decision · #470](#2026-09-06--decision--470) — keywords: field identity, value conformance, NACE, NUTS-3, market price vs value, unit mismatch, obligor identifier, RTS vocabulary, derived tape
   - [2026-09-04 · pitfall · #451](#2026-09-04--pitfall--451) — keywords: AnnexField(code=None, ...)
 - [Engine contracts (closed enums, registries, need calculators)](engine-contracts.md)
+  - [2026-09-10 · pitfall · #598](#2026-09-10--pitfall--598) — keywords: registered calculator, unsupplied input, fee_rates_pct, deferred_interest_balance, credited not computed, tautological guard, derived membership, probe the builder, wrong grain
   - [2026-09-05 · pattern · #453](#2026-09-05--pattern--453) — keywords: NEED_CALCULATORS, register_need, RecipientType, closed enum, registry coverage, import-time assert, silent default, generated calculators
   - [2026-09-08 · decision · #503](#2026-09-08--decision--503) — keywords: alias vs enum member, double-claim, step_override, funds_input, RECIPIENT_SPELLINGS, cascade, deferred interest, uncapped tier
   - [2026-09-08 · pitfall · #503](#2026-09-08--pitfall--503) — keywords: canonical value first, alias ladder, map_recipient, two readers disagree, _canonical_recipient, unmapped fall-through
@@ -82,6 +84,7 @@ triage by opening the entry, not by reading the line.
   - [2026-09-10 · decision · #563](#2026-09-10--decision--563) — keywords: candidate vocabularies, unjoined share, acceptance oracle, GICS vintage drift, orthographic fold, published table, injective
   - [2026-09-10 · pitfall · #562](#2026-09-10--pitfall--562) — keywords: guard wiring, deletes its call, census, _assert_every_asset_placed, passes by finding nothing, lossy builder
   - [2026-09-10 · pitfall · #564](#2026-09-10--pitfall--564) — keywords: canonical_label, rating notch, per-axis fold, injective, published vocabulary, B+ collapse
+  - [2026-09-10 · pitfall · #601](#2026-09-10--pitfall--601) — keywords: hardcoded convention in the signature, no basis argument, _days_between, accrual_days, unreachable code path, conformance input that differs today
 - [Extracting tables from PDFs](pdf-table-extraction.md) — keywords: visitor_text, text matrix, tm[4], rotated table, extraction_mode layout, row boundary, continuation line, column order, pypdf
   - [2026-09-06 · pitfall · #469](#2026-09-06--pitfall--469) — keywords: extract_text(), extraction_mode="layout", visitor_text=, tm[4]
   - [2026-09-08 · pitfall · #494](#2026-09-08--pitfall--494) — keywords: page furniture, banner prefix, data row first, footer eats a row, numeric tail, prefix filter ordering
@@ -94,9 +97,11 @@ triage by opening the entry, not by reading the line.
 - [Guarding a guard: mutation tables over source assertions](guard-mutation-tables.md) — keywords: mutation table, mutant anchor, str.replace first match, substring of a deeper indent, surviving mutant, region slice, source-assertion guard
   - [2026-09-10 · pitfall · #573](#2026-09-10--pitfall--573) — keywords: str.replace(old, new, 1), <Badge variant="destructive"
   - [2026-09-10 · pitfall · #573](#2026-09-10--pitfall--573-1) — keywords: src[index("function Foo"):], Foo
+  - [2026-09-10 · pitfall · #599](#2026-09-10--pitfall--599) — keywords: widened API, className hidden, enabled false, escape hatch, re-sweep after the fix, pin the arguments not the call
 - [Extracting tables from PDFs](pdf-table-extraction.md)
   - [2026-09-06 · pitfall · #469](#2026-09-06--pitfall--469) — keywords: visitor_text, text matrix, tm[4], rotated table, extraction_mode layout, row boundary, continuation line, column order, pypdf
   - [2026-09-08 · pitfall · #480](#2026-09-08--pitfall--480) — keywords: column header, required level, guessed order, like-typed columns, stated twice, cross-check, coverage test, refuse unrecognised header
+  - [2026-09-10 · pitfall · #600](#2026-09-10--pitfall--600) — keywords: row grouper, what closes a row, section total line, last row of a section, bare money line, wrapped remainder, par still ties
 - [Primitive registry population & catalogue surfaces](registry-population.md)
   - [2026-09-09 · pitfall · #574](#2026-09-09--pitfall--574) — keywords: import side effect, PRIMITIVE_MODULES, pkgutil.iter_modules, two importers, catalogue disagreement, ensure_all_registered
   - [2026-09-09 · gotcha · #574](#2026-09-09--gotcha--574) — keywords: process-global registry, in-process census, clean subprocess, backfilled gap, red-when survivor, surface before import
@@ -109,4 +114,7 @@ triage by opening the entry, not by reading the line.
   - [2026-09-09 · pitfall · #533](#2026-09-09--pitfall--533) — keywords: row geometry, reflowed row, column-major stack, per-line row, identifier position, family registration, refusal names what is missing
   - [2026-09-09 · pitfall · #555](#2026-09-09--pitfall--555) — keywords: per-page geometry, row-major line, wrapped row, join page lines, declared geometry, skipped page
   - [2026-09-09 · pitfall · #534](#2026-09-09--pitfall--534) — keywords: prior outcome column, three like-typed columns, cross-period chain, named groups, row grammar, ColumnOrder, coverage test
+  - [2026-09-10 · pitfall · #600](#2026-09-10--pitfall--600) — keywords: test pinning a bug, malformed input from another defect, synthetic fixture, fix reds an unrelated test, property under test
 - [Guarding a UI surface from a suite with no JS runner](ui-surface-guards.md) — keywords: region marker, vacuous ban list, slice of a file, tsx guard, no JS test runner, pass by deletion
+  - [2026-09-10 · pattern · #599](#2026-09-10--pattern--599) — keywords: region bounds by rule class, bounded slice, end anchor must be found, whole-file ban, narrow pattern, positive rule vs ban
+  - [2026-09-10 · gotcha · #599](#2026-09-10--gotcha--599) — keywords: slicer anchor, sibling table answers, Record<DataSource, string>, marker deleted by mutant, guard raised not reported, anchor on the name

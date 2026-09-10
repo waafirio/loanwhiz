@@ -53,14 +53,21 @@ PUBLISHED_AVAILABLE_REVENUE = 7_255_062.35
 #: The key's own tolerance for a to-the-cent comparison.
 TOLERANCE_EUR = 0.01
 
-#: The three revenue steps the fold computes from the deal model itself, and the
-#: figure each reproduces from the published report with no report input on the
-#: engine's side (#511/#512/#528/#538/#539). These are the only non-circular
+#: The revenue steps the fold computes from the deal model itself, and the figure
+#: each reproduces from the published report with no report input on the engine's
+#: side (#511/#512/#528/#538/#539/#598). These are the only non-circular
 #: comparisons the waterfall screen supports.
+#:
+#: Six since #598 — every interest-bearing class the deal issues. The last three
+#: were computing all along and grading ``report-supplied`` because membership was
+#: an authored list that ended at ``class_c_interest``.
 ENGINE_COMPUTED_STEPS = {
     "(G)": ("class_a_notes_interest", 3_277_457.78),
     "(H)": ("class_b_notes_interest", 644_398.50),
     "(J)": ("class_c_notes_interest", 415_004.33),
+    "(M)": ("class_d_notes_interest", 594_969.17),
+    "(P)": ("class_e_notes_interest", 484_208.67),
+    "(S)": ("class_f_notes_interest", 495_004.89),
 }
 
 
@@ -203,21 +210,22 @@ def test_source_split(
     rendered_waterfall: dict,
     live_step_sources: tuple[dict[str, str], dict[str, float]],
 ) -> None:
-    """3 of the 29 rendered revenue steps are computed; 26 are report-supplied.
+    """6 of the 29 rendered revenue steps are computed; 23 are report-supplied.
 
     The override map is the evidence. A ``reported`` step arrives with the
     document's own figure attached, so the engine returns what it was given; an
     ``engine`` step arrives with none and the fold must derive the amount from
     tranche size, applied rate and a day count. Asserting the *absence* of an
-    override on the three is what makes this a claim about the engine rather
+    override on the six is what makes this a claim about the engine rather
     than about a naming table.
 
     The tally is asserted both ways round on purpose. A check that only looked
     for missing overrides would read the same on an empty input as on a correct
     one — "nothing to find" and "I cannot see" would be one output (#494).
 
-    **If this count moves, that is the event, not the breakage.** 3 rising is
-    real progress and 3 falling is a regression to the circularity this guards;
+    **If this count moves, that is the event, not the breakage.** It rose from 3
+    to 6 in #598 — real progress, the declaration catching up with what the engine
+    already computed — and a fall is a regression to the circularity this guards;
     either way the figure is published in ``docs/data-card.md``'s Cairn row and
     in ``README.md``, so move those with it rather than bumping the number here
     to restore green.
@@ -232,8 +240,8 @@ def test_source_split(
     # a non-empty set that is exactly what the screen renders.
     assert sources, "the live path supplied no step sources at all"
     assert engine | reported == rendered
-    assert len(engine) == 3
-    assert len(reported) == 26
+    assert len(engine) == 6
+    assert len(reported) == 23
 
     # Report-supplied steps carry the document's figure; computed steps do not.
     assert engine == set(ENGINE_COMPUTED_STEPS)
@@ -246,18 +254,18 @@ def test_source_split(
         assert label in overrides
 
 
-def test_the_three_computed_steps_reproduce_their_published_figures(
+def test_the_computed_steps_reproduce_their_published_figures(
     rendered_waterfall: dict,
     live_step_sources: tuple[dict[str, str], dict[str, float]],
     published_revenue: dict[str, float],
 ) -> None:
     """The only non-circular comparison the waterfall screen supports.
 
-    These three are derived from the deal model — each class's size, its
-    published applied rate (#512) and a day count measured between two stated
-    Payment Dates on the basis its own Condition states (#528/#539) — with no
-    report figure on the engine's side. That they land on the document's
-    published amounts is therefore evidence; the other 26 agreements are not.
+    These six are derived from the deal model — each class's size, its published
+    applied rate (#512) and a day count measured between two stated Payment Dates
+    on the basis its own Condition states (#528/#539) — with no report figure on
+    the engine's side. That they land on the document's published amounts is
+    therefore evidence; the other 23 agreements are not.
     """
     _, overrides = live_step_sources
     rendered = {s["priority"]: s for s in rendered_waterfall["revenue_waterfall"]}
