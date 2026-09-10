@@ -86,3 +86,4 @@ triage by opening the entry, not by reading the line.
   - [2026-09-09 · pitfall · #533](#2026-09-09--pitfall--533) — keywords: row geometry, reflowed row, column-major stack, per-line row, identifier position, family registration, refusal names what is missing
   - [2026-09-09 · pitfall · #555](#2026-09-09--pitfall--555) — keywords: per-page geometry, row-major line, wrapped row, join page lines, declared geometry, skipped page
   - [2026-09-09 · pitfall · #534](#2026-09-09--pitfall--534) — keywords: prior outcome column, three like-typed columns, cross-period chain, named groups, row grammar, ColumnOrder, coverage test
+- [Guarding a UI surface from a suite with no JS runner](ui-surface-guards.md) — keywords: region marker, vacuous ban list, slice of a file, tsx guard, no JS test runner, pass by deletion

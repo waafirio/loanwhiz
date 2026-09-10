@@ -189,3 +189,4 @@ arithmetically over the values in hand rather than by provenance — it needs no
 plumbing, and it is a proof rather than a heuristic.
 
 Refs: #549
+Refs: #568 — same rule on a screen: refusals render first, uncollapsed, unclamped.

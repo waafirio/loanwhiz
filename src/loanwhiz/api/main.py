@@ -60,6 +60,10 @@ from loanwhiz.primitives.collections_aggregator import (
     CollectionsInput,
 )
 from loanwhiz.primitives.base import Citation
+from loanwhiz.primitives.due_diligence import (
+    DueDiligenceRecord,
+    assemble_due_diligence,
+)
 from loanwhiz.primitives.capital_structure import (
     CapitalStructure,
     UnresolvableCapitalStructure,
@@ -4529,3 +4533,41 @@ def governance_pack(pack_id: str) -> GovernanceEvidencePackResponse:
             status_code=404, detail=f"Evidence pack {pack_id} not found"
         )
     return GovernanceEvidencePackResponse(**pack.model_dump())
+
+
+# ---------------------------------------------------------------------------
+# Investor due-diligence record (#568, epic #561)
+#
+# Beside governance, NOT beside compliance. ``/deal/{id}/compliance`` answers
+# whether the *deal* sits inside its structural covenants; this answers whether
+# the *holder's* retention verification is documented. A deal can pass every
+# covenant with its retention unestablished, and the reverse — so the two
+# surfaces stay separate and share no vocabulary (see
+# ``primitives/due_diligence.py``'s module docstring).
+# ---------------------------------------------------------------------------
+
+
+@app.get("/deal/{deal_id}/due-diligence", response_model=DueDiligenceRecord)
+def deal_due_diligence(deal_id: str) -> DueDiligenceRecord:
+    """Return one deal's due-diligence record — what was verified, and what was not.
+
+    Reads the deal's registry entry and its **cached** extracted model, exactly
+    as ``/deal/{id}/model`` does, and never triggers a cold extraction (that
+    runs Docling for ~10min). A deal with no committed model is not an error
+    here: :func:`~loanwhiz.primitives.due_diligence.assemble_due_diligence`
+    answers it with a ``not-established`` check naming the document that was
+    *not* read, which is the honest answer and the one this surface exists to
+    render. Returning 500 or an empty body would turn a documented refusal into
+    a broken screen.
+
+    The response is the record itself rather than the wrapping
+    ``PrimitiveResult``: the record's ``confidence`` is always 1.0 (a
+    deterministic read of committed data — "a refusal is a certain refusal"),
+    so surfacing it beside a refusal would be the #549 failure this whole
+    screen is built to avoid, a number rendered next to "could not establish"
+    and read as the measurement.
+    """
+    deal = _require_deal(deal_id)
+    model = _load_cached_deal_model(deal)
+    result = assemble_due_diligence(deal_id, deal, model=model)
+    return result.output
