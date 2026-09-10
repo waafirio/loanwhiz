@@ -9,6 +9,7 @@ contract is that the adapter's output feeds the *generalised* ``run_period``
 
 from __future__ import annotations
 
+import dataclasses
 import json
 import re
 from pathlib import Path
@@ -483,3 +484,77 @@ def test_a_stated_but_unplaceable_structure_refuses_rather_than_truncating() -> 
 
     with pytest.raises(UnresolvableCapitalStructure, match="Class A"):
         ReportAdapter.from_deal_model(_UnsizedClass())
+
+
+# ---------------------------------------------------------------------------
+# seed — the pool balance is an ASSET figure when the report states one (#550)
+# ---------------------------------------------------------------------------
+
+
+def test_seed_pool_balance_falls_back_to_the_liability_total(
+    adapter: ReportAdapter, period: NotesCashPeriod
+) -> None:
+    """With no stated collateral figure the seed keeps the liability proxy.
+
+    This is not a good numerator and is not meant to be: ``covenant_monitor``
+    refuses to build a coverage ratio on it precisely because it is the note
+    total (#549). Pinned so the fallback stays the *refusable* value rather than
+    quietly becoming something that looks like an asset balance.
+    """
+    seed = adapter.seed(period)
+    assert adapter.collateral_principal_amount is None
+    assert seed.pool_balance == pytest.approx(sum(t.balance for t in seed.tranches))
+
+
+def test_seed_prefers_a_stated_collateral_amount_over_the_liability_total(
+    adapter: ReportAdapter, period: NotesCashPeriod
+) -> None:
+    """A resolved Adjusted Collateral Principal Amount becomes the pool balance."""
+    stated = 1_234_567_890.12
+    with_collateral = dataclasses.replace(adapter, collateral_principal_amount=stated)
+    seed = with_collateral.seed(period)
+    liability_total = sum(t.balance for t in seed.tranches)
+
+    assert seed.pool_balance == pytest.approx(stated)
+    assert seed.pool_balance != pytest.approx(liability_total)
+
+
+def test_the_seeded_pool_factor_stays_at_par_whichever_figure_is_used(
+    adapter: ReportAdapter, period: NotesCashPeriod
+) -> None:
+    """The factor's denominator must be the same kind of quantity as its numerator.
+
+    ``pool_factor`` is ``pool_balance / original_pool_balance`` and is documented
+    as 1.0 at par. Seeding an asset-side collateral figure against the liability
+    total put Cairn above par — a pool larger than at closing, rendered on
+    ``/compare`` — because only one side of the comparison moved (#514). Both
+    seeds must sit at par, so the factor keeps meaning whichever figure resolved.
+    """
+    without = adapter.seed(period)
+    assert without.pool_balance == pytest.approx(without.original_pool_balance)
+
+    with_collateral = dataclasses.replace(
+        adapter, collateral_principal_amount=1_234_567_890.12
+    ).seed(period)
+    assert with_collateral.pool_balance == pytest.approx(
+        with_collateral.original_pool_balance
+    )
+
+
+def test_an_explicit_original_pool_balance_still_wins(
+    adapter: ReportAdapter, period: NotesCashPeriod
+) -> None:
+    """A caller holding the true closing balance overrides both fallbacks."""
+    seed = dataclasses.replace(
+        adapter, collateral_principal_amount=500.0, original_pool_balance=900.0
+    ).seed(period)
+    assert seed.pool_balance == pytest.approx(500.0)
+    assert seed.original_pool_balance == pytest.approx(900.0)
+
+
+def test_from_deal_model_carries_the_collateral_amount_onto_the_adapter(
+    deal_model,
+) -> None:
+    """The constructor the live path uses must actually pass it through."""
+    built = ReportAdapter.from_deal_model(deal_model, collateral_principal_amount=999.0)
+    assert built.collateral_principal_amount == 999.0

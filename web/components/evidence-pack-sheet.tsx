@@ -9,6 +9,9 @@ import {
   getGovernance,
   type Citation,
   type DataSource,
+  type DueDiligenceCheck,
+  type DueDiligenceRecord,
+  type DueDiligenceSource,
   type GovernanceEvidencePack,
   type ToolCallRecord,
 } from "@/lib/api";
@@ -350,4 +353,185 @@ function CitationItem({ citation }: { citation: Citation }) {
 function formatTimestamp(ts: string): string {
   const d = new Date(ts);
   return Number.isNaN(d.getTime()) ? ts : d.toLocaleString();
+}
+
+// ---------------------------------------------------------------------------
+// Investor due-diligence record (#568, epic #561)
+//
+// Extends this file rather than standing beside it: the evidence-pack surface
+// already carries `CitationItem` and the badge vocabulary, and a parallel
+// component would be a second place for a citation to render differently.
+//
+// **The known gap this file still has, stated rather than built over.** #484
+// committed synthetic pools labelled correctly *in the data*, and the Pool and
+// Waterfall pages still render no synthetic badge; `PackBody` above still
+// resolves its provenance badge to "direct ingestion" for a `derived` or
+// `synthetic` source, because the badge text is a binary on `deeploans`. That
+// is not fixed here — it is #484's surface, not this one — and nothing below
+// depends on it. It is recorded so the next reader does not mistake this
+// component's correctness for the file's.
+//
+// **Refusals render at the same weight as verifications.** #549's rule is that
+// a refusal which keeps the value is not a refusal: `not_evaluable` protects
+// the *grade*, not the screen. Applied here, that means the not-established
+// section renders FIRST, in the same card, at the same heading level, with its
+// full reason — never collapsed, never truncated, never behind a disclosure
+// widget, and never reduced to a ratio. An evidence file showing five green
+// items and hiding two unestablished ones is worse than one showing nothing,
+// because a compliance officer will sign it.
+//
+// Guarded by `tests/test_due_diligence_surface.py`, which asserts this file's
+// SOURCE — `web/` has no JS test runner, so the guard cannot assert rendered
+// output. That is the same trade `tests/test_capability_matrix.py` already
+// makes to reach `page-states.tsx`, and it is a real limit: a guard over source
+// cannot see what a browser paints.
+// ---------------------------------------------------------------------------
+
+/**
+ * One deal's due-diligence record.
+ *
+ * Counting is per-kind and never a ratio. "1 of 7 verified" is a grade, and a
+ * grade is what invites a reader to treat the remainder as rounding error;
+ * "Not established (6)" and "Verified (1)" are two facts, and the first is on
+ * screen first.
+ */
+export function DueDiligenceBody({ record }: { record: DueDiligenceRecord }) {
+  return (
+    <div className="space-y-5">
+      <section className="space-y-1">
+        <h2 className="text-sm font-medium">{record.deal_name}</h2>
+        <p className="text-xs text-muted-foreground">
+          What UK Securitisation Regulation risk-retention verification this
+          platform could establish for this deal from the documents it holds,
+          and what it could not. This is not the deal&rsquo;s covenant
+          compliance, which is a different question for a different reader.
+        </p>
+      </section>
+
+      {/* Not established FIRST and unconditionally — see the header note. The
+          empty case still renders its heading, so "nothing was refused" and
+          "the section is missing" cannot look the same. */}
+      <section className="space-y-2">
+        <h3 className="text-sm font-medium">
+          Not established{" "}
+          <span className="text-muted-foreground">
+            ({record.not_established.length})
+          </span>
+        </h3>
+        {record.not_established.length === 0 ? (
+          <p className="text-sm text-muted-foreground">
+            Every check below was established from a registered document.
+          </p>
+        ) : (
+          <ul className="space-y-2">
+            {record.not_established.map((check) => (
+              <CheckItem key={check.check} check={check} />
+            ))}
+          </ul>
+        )}
+      </section>
+
+      <Separator />
+
+      <section className="space-y-2">
+        <h3 className="text-sm font-medium">
+          Verified{" "}
+          <span className="text-muted-foreground">
+            ({record.verified.length})
+          </span>
+        </h3>
+        {record.verified.length === 0 ? (
+          <p className="text-sm text-muted-foreground">
+            No check on this deal established its fact.
+          </p>
+        ) : (
+          <ul className="space-y-2">
+            {record.verified.map((check) => (
+              <CheckItem key={check.check} check={check} />
+            ))}
+          </ul>
+        )}
+      </section>
+    </div>
+  );
+}
+
+/** Human labels for the check keys. Falls back to the raw key — an unlabelled
+ *  check must still render, because a check that renders as nothing is
+ *  indistinguishable from one that was never asked. */
+const CHECK_LABELS: Record<string, string> = {
+  risk_retention: "Risk retention (UK SR Article 6)",
+};
+
+/**
+ * One check, whichever outcome it reached — the SAME component for both, so
+ * the two sections cannot drift into different weights. Only the badge differs.
+ */
+function CheckItem({ check }: { check: DueDiligenceCheck }) {
+  const established = check.outcome === "verified";
+  return (
+    <li className="rounded-lg border bg-background px-3 py-2">
+      <div className="flex items-start justify-between gap-2">
+        <p className="text-sm font-medium">
+          {CHECK_LABELS[check.check] ?? check.check}
+        </p>
+        <Badge
+          variant={established ? "secondary" : "destructive"}
+          className="shrink-0 font-normal"
+        >
+          {established ? "Verified" : "Not established"}
+        </Badge>
+      </div>
+      {/* The reason renders in full on BOTH outcomes. On a refusal it names the
+          document that was looked in, which is what makes the limitation
+          re-askable of a document this reading did not reach. Clamping it would
+          hide exactly that. */}
+      <p className="mt-1 text-xs text-muted-foreground">{check.reason}</p>
+      {check.source ? <SourceLine source={check.source} /> : null}
+      {check.citations.length > 0 ? (
+        <ul className="mt-2 space-y-2">
+          {check.citations.map((c, i) => (
+            <CitationItem key={i} citation={c} />
+          ))}
+        </ul>
+      ) : null}
+    </li>
+  );
+}
+
+/**
+ * The document a check was answered from.
+ *
+ * `read_at` and `document_date` are two different facts and are labelled as
+ * two different facts. `read_at` is LoanWhiz's own clock — the label says so —
+ * and it is NEVER rendered in the document-date row: no registry field carries
+ * a publication date, so that row shows `document_date_reason` instead. Passing
+ * our read time off as the document's date would be confident wrongness of
+ * exactly the kind this record exists to avoid.
+ */
+function SourceLine({ source }: { source: DueDiligenceSource }) {
+  return (
+    <dl className="mt-2 grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 text-[11px] text-muted-foreground">
+      <dt>Document read</dt>
+      <dd className="font-mono break-all text-foreground">{source.url}</dd>
+      <dt>Registry field</dt>
+      <dd className="font-mono text-foreground">{source.registry_slot}</dd>
+      <dt>Read by LoanWhiz</dt>
+      <dd className="text-foreground">
+        {source.read_at ? formatTimestamp(source.read_at) : "not read"}
+      </dd>
+      <dt>Document date</dt>
+      <dd className="text-foreground">
+        {source.document_date ?? (
+          <span className="italic">{source.document_date_reason}</span>
+        )}
+      </dd>
+      {source.registry_note ? (
+        <>
+          <dt>Registry note</dt>
+          <dd className="text-foreground">{source.registry_note}</dd>
+        </>
+      ) : null}
+    </dl>
+  );
 }

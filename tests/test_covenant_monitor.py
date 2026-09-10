@@ -1802,6 +1802,59 @@ class TestCoverageNumeratorMustBeCollateral:
         )
         assert value == round(1_100_000_000.0 / 800_000_000.0 * 100.0, 4)
 
+    def test_a_collateral_balance_from_another_reporting_date_is_refused(self) -> None:
+        """An asset balance is an as-of-date fact, and this guard keeps it one.
+
+        ``CovenantMonitor.execute`` used to hand period ``idx`` the state at
+        ``idx``, which is the same reporting date only while a deal's states and
+        periods come from one series. Cairn's did not — #524 set three tape
+        periods aside against a report-folded series overlapping them on no date
+        at all — so a real numerator was divided by another date's notes and
+        reported under that date's label.
+
+        #583 fixed the pairing, so ``execute`` no longer reaches this branch.
+        The guard stays and stays tested: it is the assertion that a coverage
+        ratio is never computed across two dates, and it holds for every caller
+        that builds a ``CovenantInput`` directly rather than through the
+        monitor's own join.
+        """
+        from loanwhiz.primitives.covenant_monitor import _evaluate_one
+
+        state = self._state(1_100_000_000.0)  # a real numerator, not the identity
+        input = CovenantInput(
+            periods=[{"reporting_date": "2026-01-31"}], period_states=[state]
+        )
+        status = _evaluate_one(
+            _coverage_trigger("class_b_oc_ratio"),
+            {"reporting_date": "2026-01-31"},
+            input,
+            state,
+            None,
+            "2026-01-31",
+        )
+        assert status.evaluable is False
+        assert status.metric_value is None, "a wrong-dated number is still a wrong number"
+        reason = status.not_evaluable_reason or ""
+        assert "2026-04-30" in reason and "2026-01-31" in reason
+
+    def test_the_same_numerator_resolves_for_its_own_period(self) -> None:
+        """The other direction (#493): the guard is keyed on the date, not on everything."""
+        from loanwhiz.primitives.covenant_monitor import _evaluate_one
+
+        state = self._state(1_100_000_000.0)
+        input = CovenantInput(
+            periods=[{"reporting_date": "2026-04-30"}], period_states=[state]
+        )
+        status = _evaluate_one(
+            _coverage_trigger("class_b_oc_ratio"),
+            {"reporting_date": "2026-04-30"},
+            input,
+            state,
+            None,
+            "2026-04-30",
+        )
+        assert status.metric_value == round(1_100_000_000.0 / 800_000_000.0 * 100.0, 4)
+
     def test_the_identity_is_exactly_100_at_the_junior_most_point(self) -> None:
         """Why the equality is a proof and not a coincidence heuristic.
 
@@ -2025,3 +2078,122 @@ class TestUnquantifiedCoverageThreshold:
         result = _evaluate_one(pdl, {}, input, state, None, "2026-04-30")
         assert result.evaluable is True
         assert result.is_triggered is True
+
+
+# ---------------------------------------------------------------------------
+# #583 — a period reads the state stated as of ITS date, never the one at its
+# index. ``/compliance`` sourced its periods and its states from two different
+# documents, and #524 ranked those two knowing they overlap on no period.
+# ---------------------------------------------------------------------------
+
+
+def _reserve_trigger() -> TriggerDefinition:
+    """The one default trigger whose metric is read off the paired DealState."""
+    return next(
+        t for t in CovenantMonitor.DEFAULT_TRIGGERS if t.name == "reserve_fund_trigger"
+    )
+
+
+class TestPeriodStatePairsByStatedDate:
+    """Pairing is on the date each side states itself as of."""
+
+    def test_each_period_reads_the_state_of_its_own_date_whatever_the_order(
+        self,
+    ) -> None:
+        """The falsifier: the states are listed in the reverse order of the periods.
+
+        Under the positional pairing this replaces, January would have been
+        handed April's state and April January's — each figure real, each under
+        the wrong date. Order is the cleanest way to say that, because nothing
+        about the *values* changes between the two readings.
+        """
+        january = _deal_state("2026-01-31", reserve_balance=10_000_000.0)
+        april = _deal_state("2026-04-30", reserve_balance=5_000_000.0)
+        inp = CovenantInput(
+            periods=[_clean_period("2026-01-31"), _clean_period("2026-04-30")],
+            period_states=[april, january],  # reversed on purpose
+            triggers=[_reserve_trigger()],
+        )
+
+        out = CovenantMonitor().execute(inp).output
+        by_period = {s.period: s.metric_value for s in out.trigger_statuses}
+
+        assert by_period["2026-01-31"] == 100.0, "January read another date's reserve"
+        assert by_period["2026-04-30"] == 50.0, "April read another date's reserve"
+
+    def test_a_period_with_no_state_of_its_date_is_refused_not_given_a_neighbour(
+        self,
+    ) -> None:
+        """The two sources overlap on no date at all — Cairn's live shape.
+
+        The honest answer is a named refusal for that period, never the nearest
+        state: a neighbour's collateral balance is not a measurement of this
+        period, however close its date sits.
+        """
+        inp = CovenantInput(
+            periods=[_clean_period("2026-01-31")],
+            period_states=[_deal_state("2026-04-30", reserve_balance=5_000_000.0)],
+            triggers=[_reserve_trigger()],
+        )
+
+        out = CovenantMonitor().execute(inp).output
+        status = out.trigger_statuses[0]
+
+        assert status.evaluable is False
+        assert status.metric_value != 50.0, "took the neighbouring date's reserve"
+        assert status.not_evaluable_reason, "a refusal must say why"
+
+    def test_an_unpaired_period_never_reads_as_a_pass(self) -> None:
+        """#513's rule on this join: a skipped period must not read as compliant.
+
+        ``CovenantOutput`` keeps ``unevaluable_triggers`` apart from
+        ``active_triggers`` precisely so "couldn't measure" and "measured, fine"
+        stay two different answers.
+        """
+        inp = CovenantInput(
+            periods=[_clean_period("2026-01-31")],
+            period_states=[_deal_state("2026-04-30", reserve_balance=0.0)],
+            triggers=[_reserve_trigger()],
+        )
+
+        out = CovenantMonitor().execute(inp).output
+
+        assert "reserve_fund_trigger" in out.unevaluable_triggers
+        assert "reserve_fund_trigger" not in out.active_triggers
+        assert "reserve_fund_trigger" not in out.near_miss_triggers
+
+    def test_two_states_on_one_date_yield_one_period_on_the_closing_state(self) -> None:
+        """The seed shares its date with the first closing state on every folded series.
+
+        Emitting both put one date on the screen twice; the collision resolves
+        to the state that recorded collections, which is the position at the end
+        of the period rather than the seed's position before it ran. Same rule,
+        same reason, as ``quality_harness`` and ``pool_pipeline_harness``.
+        """
+        seed = _deal_state("2026-04-30", reserve_balance=10_000_000.0)
+        closing = _deal_state("2026-04-30", reserve_balance=2_000_000.0).model_copy(
+            update={"collections": PeriodCollections(interest=1_000_000.0)}
+        )
+
+        inp = CovenantInput.from_deal_states([seed, closing], triggers=[_reserve_trigger()])
+
+        assert len(inp.periods) == 1, "one date, one period"
+        out = CovenantMonitor().execute(inp).output
+        assert len(out.trigger_statuses) == 1, "one date, one row per trigger"
+        assert out.trigger_statuses[0].metric_value == 20.0, "read the seed, not the closing state"
+
+    def test_a_series_of_distinct_dates_keeps_every_period(self) -> None:
+        """The counter-direction: de-duplication must not shorten an ordinary series."""
+        states = [
+            _deal_state("2026-01-31", reserve_balance=10_000_000.0),
+            _deal_state("2026-02-28", reserve_balance=9_000_000.0),
+            _deal_state("2026-03-31", reserve_balance=8_000_000.0),
+        ]
+
+        inp = CovenantInput.from_deal_states(states, triggers=[_reserve_trigger()])
+
+        assert [p["reporting_date"] for p in inp.periods] == [
+            "2026-01-31",
+            "2026-02-28",
+            "2026-03-31",
+        ]

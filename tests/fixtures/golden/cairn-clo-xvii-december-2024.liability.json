@@ -1,0 +1,201 @@
+{
+  "coverage_tests": [
+    {
+      "current_pct": "139.20",
+      "name": "Class A/B Par Value Test",
+      "required_pct": "130.08",
+      "result": "Passed",
+      "stated_in": "Par Value Tests Detail"
+    },
+    {
+      "current_pct": "128.85",
+      "name": "Class C Par Value Test",
+      "required_pct": "121.74",
+      "result": "Passed",
+      "stated_in": "Par Value Tests Detail"
+    },
+    {
+      "current_pct": "118.72",
+      "name": "Class D Par Value Test",
+      "required_pct": "112.62",
+      "result": "Passed",
+      "stated_in": "Par Value Tests Detail"
+    },
+    {
+      "current_pct": "112.96",
+      "name": "Class E Par Value Test",
+      "required_pct": "107.87",
+      "result": "Passed",
+      "stated_in": "Par Value Tests Detail"
+    },
+    {
+      "current_pct": "108.49",
+      "name": "Class F Par Value Test",
+      "required_pct": "103.90",
+      "result": "N/A",
+      "stated_in": "Par Value Tests Detail"
+    },
+    {
+      "current_pct": "108.49",
+      "name": "Reinvestment Overcollateralisation Test",
+      "required_pct": "104.40",
+      "result": "Passed",
+      "stated_in": "Par Value Tests Detail"
+    },
+    {
+      "current_pct": "180.24",
+      "name": "Class A/B Interest Coverage Test",
+      "required_pct": "120.00",
+      "result": "Passed",
+      "stated_in": "Interest Coverage Tests Detail"
+    },
+    {
+      "current_pct": "162.99",
+      "name": "Class C Interest Coverage Test",
+      "required_pct": "110.00",
+      "result": "Passed",
+      "stated_in": "Interest Coverage Tests Detail"
+    },
+    {
+      "current_pct": "143.33",
+      "name": "Class D Interest Coverage Test",
+      "required_pct": "105.00",
+      "result": "Passed",
+      "stated_in": "Interest Coverage Tests Detail"
+    }
+  ],
+  "deal_name": "Cairn CLO XVII DAC",
+  "note_classes": [
+    {
+      "coupon_pct": "5.00800",
+      "note_class": "A",
+      "periodic_interest": "3277457.78",
+      "principal_balance": "248000000.00"
+    },
+    {
+      "coupon_pct": "5.95800",
+      "note_class": "B-1",
+      "periodic_interest": "386773.50",
+      "principal_balance": "24600000.00"
+    },
+    {
+      "coupon_pct": "6.87000",
+      "note_class": "B-2",
+      "periodic_interest": "257625.00",
+      "principal_balance": "15000000.00"
+    },
+    {
+      "coupon_pct": "6.80800",
+      "note_class": "C",
+      "periodic_interest": "415004.33",
+      "principal_balance": "23100000.00"
+    },
+    {
+      "coupon_pct": "8.50800",
+      "note_class": "D",
+      "periodic_interest": "594969.17",
+      "principal_balance": "26500000.00"
+    },
+    {
+      "coupon_pct": "10.66800",
+      "note_class": "E",
+      "periodic_interest": "484208.67",
+      "principal_balance": "17200000.00"
+    },
+    {
+      "coupon_pct": "12.84800",
+      "note_class": "F",
+      "periodic_interest": "495004.89",
+      "principal_balance": "14600000.00"
+    },
+    {
+      "coupon_pct": null,
+      "note_class": "Subordinated",
+      "periodic_interest": null,
+      "principal_balance": "35100000.00"
+    }
+  ],
+  "par_value_numerator": {
+    "components": [
+      "407181748.22",
+      "-5747614.46",
+      "0.00",
+      "-1000000.00",
+      "200000.00",
+      "-1000000.00",
+      "700000.00",
+      "0.00"
+    ],
+    "stated_total": "400334133.76"
+  },
+  "period_label": "December 2024",
+  "reconciled": true,
+  "reporting_date": "16/12/2024",
+  "stated_total_balance": "404100000.00",
+  "stated_total_periodic_interest": "5911043.34",
+  "summary_coverage_tests": [
+    {
+      "current_pct": "139.20",
+      "name": "Class A/B Par Value Test",
+      "required_pct": "130.08",
+      "result": "Passed",
+      "stated_in": "Executive Summary"
+    },
+    {
+      "current_pct": "128.85",
+      "name": "Class C Par Value Test",
+      "required_pct": "121.74",
+      "result": "Passed",
+      "stated_in": "Executive Summary"
+    },
+    {
+      "current_pct": "118.72",
+      "name": "Class D Par Value Test",
+      "required_pct": "112.62",
+      "result": "Passed",
+      "stated_in": "Executive Summary"
+    },
+    {
+      "current_pct": "112.96",
+      "name": "Class E Par Value Test",
+      "required_pct": "107.87",
+      "result": "Passed",
+      "stated_in": "Executive Summary"
+    },
+    {
+      "current_pct": "108.49",
+      "name": "Class F Par Value Test",
+      "required_pct": "103.90",
+      "result": "N/A",
+      "stated_in": "Executive Summary"
+    },
+    {
+      "current_pct": "108.49",
+      "name": "Reinvestment Overcollateralisation Test",
+      "required_pct": "104.40",
+      "result": "Passed",
+      "stated_in": "Executive Summary"
+    },
+    {
+      "current_pct": "180.24",
+      "name": "Class A/B Interest Coverage Test",
+      "required_pct": "120.00",
+      "result": "Passed",
+      "stated_in": "Executive Summary"
+    },
+    {
+      "current_pct": "162.99",
+      "name": "Class C Interest Coverage Test",
+      "required_pct": "110.00",
+      "result": "Passed",
+      "stated_in": "Executive Summary"
+    },
+    {
+      "current_pct": "143.33",
+      "name": "Class D Interest Coverage Test",
+      "required_pct": "105.00",
+      "result": "Passed",
+      "stated_in": "Executive Summary"
+    }
+  ]
+}

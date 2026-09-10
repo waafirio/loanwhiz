@@ -43,6 +43,35 @@ deal therefore earns a key through the **sibling constructor**
 | key | source | issue |
 |---|---|---|
 | `cairn-clo-xvii-dac.json` (its covenant periods) | Cairn CLO XVII's 3 published monthly trustee reports | #481 |
+| `contego-clo-xi-dac.json` | Contego CLO XI's published monthly COMPLIANCE REPORTs | #534 |
+
+**Contego is what makes this a route rather than a one-off**, and what it cost is
+worth stating. Nothing about `from_trustee_liability_summaries` changed to accept
+a second deal. What had to change was underneath it: Cairn is U.S. Bank and
+Contego is BNY Mellon, and the parser still read one administrator's
+coverage-test row as a module constant — a test name, then two like-typed
+percentage columns. BNY interposes the ratio's numerator and denominator, prints
+a **third** like-typed column, separates the required level from its comparison
+operator, and calls the reinvestment covenant a `Reinvestment Par Value Test`
+where U.S. Bank calls it a `Reinvestment Overcollateralisation Test`. That
+pattern matched **zero** BNY rows. So the row is now a grammar the *family*
+declares, beside the row geometry and count grain it already declared; a third
+administrator is a registration, and #481's rule is unchanged — the columns are
+read off the table's own header, never off which section it sits in.
+
+Two further things the second family made visible, both of which would have been
+silent:
+
+- **BNY restates its coverage tests somewhere else.** Its Compliance Summary
+  states only the note classes; the second rendering the parse is cross-checked
+  against lives in its Compliance Tests table. The section is now declared per
+  family, because naming the wrong one does not fail — it finds no tests, and the
+  cross-rendering check then agrees that both renderings name the same empty set.
+- **A report's deal name and date are family-shaped too.** Page 1's first line is
+  the deal name for U.S. Bank and `LEI :` for BNY. A report parsed under the wrong
+  deal name still reconciles, because every oracle in that parser asks only
+  whether the document agrees with itself.
+
 
 Two properties of those periods are deliberate and are asserted as tests, because
 each is a place an overclaim could hide:
@@ -56,11 +85,43 @@ each is a place an overclaim could hide:
   `bool` and cannot express "did not apply", so Class F — stated `N/A` in every
   period — is absent rather than recorded as a pass the trustee never stated.
 
-**What the resulting graded cell does *not* prove.** Every outcome these reports
-decide is `Passed`, so a monitor that reported nothing as breached would match
-all of them. The row catches a wrong direction, a dropped or disagreeing
-threshold, an unresolvable metric and a unit error; it cannot catch a
-permanently non-firing monitor. `docs/data-card.md` carries the full statement.
+**What the resulting graded cell does *not* prove — and Contego does not improve
+it.** Every outcome *both* deals' reports decide is `Passed`, so a monitor that
+reported nothing as breached would match all of them. The row catches a wrong
+direction, a dropped or disagreeing threshold, an unresolvable metric and a unit
+error; it cannot catch a permanently non-firing monitor. A second deal adds
+nothing to that bound, and the honest reading of two all-passing keys is that the
+gap is now attested twice rather than closed once. `docs/data-card.md` carries the
+full statement.
+
+Contego's reports *do* state a `Failed` outcome and several `N/A`s — but not
+among the tests either key carries. They sit in BNY's wide Compliance Tests
+table, over collateral-quality and portfolio-profile rows that the Par Value and
+Interest Coverage detail sections do not restate, so they have no second
+rendering to be checked against; and the Class F figure there is labelled a
+*Ratio* rather than a Test. Keying that population would genuinely close the gap
+above and is worth doing, but it is a different population and it needs its own
+oracle — recording an outcome whose row name cannot be attributed across the
+PDF's reflow would put a fabricated `Failed` into ground truth, which is worse
+than recording none.
+
+**So the `N/A` rule's only live witness is still Cairn.** Contego decides every
+test it states *as a test*, so nothing in its key is excluded and the second deal
+does not re-prove the exclusion.
+`test_contego_publishes_no_undecided_coverage_test` pins that, and reds if a
+later Contego filing publishes an undecided test — at which point the paragraph
+above is understated and must be revised before the test is made green again.
+
+**Contego is keyed but not graded, which is not the same as ungraded for want of
+ground truth.** Its `covenants` cell is `not-applicable` because no name
+BNY prints matches a trigger its extracted seed carries —
+the #481 taxonomy gap met again, on every test of the deal rather than on one.
+The key resolved and every one of its tests was offered to the engine; the mismatch is
+named in the cell's `unmatched_covenant_names` rather than left to the grade, and
+`test_live_registry_reflects_the_backfilled_answer_keys_honestly` asserts the
+names rather than the grade so that a future fix reds it. Epic #530 onboards this
+deal and promises its published ground truth; it explicitly does not promise that
+the engine reconciles against it.
 
 ### The third route — a CLO's Note Valuation Report
 

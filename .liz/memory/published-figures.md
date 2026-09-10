@@ -90,3 +90,31 @@ Then check the result against a value another document states independently.
 
 Refs: #528
 Refs: #539 — same route, one Condition further out: the day-count fraction.
+
+
+## 2026-09-09 · pitfall · #555
+
+Establish which population a stated count describes before reconciling against
+it — the balance beside it in the same table need not describe the same one.
+Contego's aggregate tables state 212 against a euro total its asset sections
+carry 177 identifiers for: the balance is at asset grain, the count is the
+interest-accrual row count, one per rate contract. Find the count's population
+by looking for a section whose row count equals it, and reconcile each figure
+against its own. A count checked against the wrong population cannot fail —
+worse than none, since par alone cannot see a dropped row worth zero (#468).
+
+Refs: #555
+
+
+## 2026-09-10 · pitfall · #550
+
+Before accepting that a figure lives only in documents your path excludes, look
+in the one your path already reads. A CLO's overcollateralisation numerator was
+filed as unreachable — stated only in trustee reports #524 routed off the live
+series — yet the Note Valuation Report that series folds prints it on its own
+Par Value Tests Detail page. A scarcity premise is a claim about the whole
+registered document set; check it against that set, not the documents the issue
+names. Then read the total the report states and tie it to the components above
+it: the adjacent aggregate is the near-miss, one line away and three points high.
+
+Refs: #550

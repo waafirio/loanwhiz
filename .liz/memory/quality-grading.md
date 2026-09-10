@@ -170,6 +170,19 @@ publishing the count, check what the *un*counted members lack; if the answer is
 
 Refs: #515
 
+
+## 2026-09-09 · decision · #534
+
+Keep "carries a committed answer key" and "whose graded cell passes" as two
+sets, never one. Committing genuine ground truth for a deal the engine cannot
+yet grade reds any tally asserting key-count == pass-count, and the cheap fix is
+to withhold the key — suppressing real ground truth to protect a green number.
+Split the sets, and assert the *reason* the unmatched deal is not-applicable —
+its unmatched names, not its grade — so the cell says why it did not grade and a
+later fix reds the line instead of passing quietly.
+
+Refs: #534
+
 ## 2026-09-09 · pitfall · #525
 
 Before treating a per-subject count as evidence of a defect, compute the same
@@ -182,3 +195,28 @@ for no deal. A count with no control subject measures the schema, not the deal.
 The control is one query, and it runs before the fix, not after it fails.
 
 Refs: #525
+
+## 2026-09-09 · pitfall · #535
+
+A capability verified on one deal is a claim about that deal, not the asset
+class — and the general form reaches you through epic body, issue and dispatch
+alike. Probe every screen per deal id before asserting against it: "the CLO
+screens now serve 200" was true of the first CLO and false of the second, which
+still 422s on an input its extraction never read. Where the second subject
+stops is the finding; a test pinning that stopping point by name beats one
+asserting the symmetry that was expected.
+
+Refs: #535
+
+## 2026-09-09 · pitfall · #567
+
+What an extractor *can* read and what the committed data *carries* are two
+facts, and a consumer built over the registry sees only the second. #566's
+fixtures prove its parser reads both CLOs' retention undertakings, yet only
+Cairn's seed carries the parsed block — so a record over the registry verifies
+one deal and must refuse the other by name. Grep the committed artefacts for
+the key before building on "the extractor handles X": a brief summarising an
+extractor's reach describes the parser, not the corpus.
+
+Refs: #567
+Refs: #535 — the per-deal form of the same gap.

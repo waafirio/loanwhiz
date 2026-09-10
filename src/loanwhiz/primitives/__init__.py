@@ -34,6 +34,14 @@ from loanwhiz.primitives.capability_matrix import (
     build_capability_matrix,
     capability_rows,
 )
+from loanwhiz.primitives.due_diligence import (
+    CHECK_RISK_RETENTION,
+    DueDiligenceCheck,
+    DueDiligenceInput,
+    DueDiligenceRecord,
+    SourceDocument,
+    assemble_due_diligence,
+)
 from loanwhiz.primitives.esma_tape_normaliser import (
     EsmaTapeInput,
     EsmaTapeNormaliser,
@@ -70,6 +78,12 @@ __all__ = [
     "AuditEntry",
     "BaseInput",
     "build_capability_matrix",
+    "assemble_due_diligence",
+    "CHECK_RISK_RETENTION",
+    "DueDiligenceCheck",
+    "DueDiligenceInput",
+    "DueDiligenceRecord",
+    "SourceDocument",
     "capability_rows",
     "CapabilityCell",
     "CapabilityMatrix",

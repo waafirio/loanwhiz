@@ -3700,6 +3700,76 @@ def test_green_lion_2024_1_cold_start_compliance():
     assert "trigger_statuses" in body
 
 
+def test_green_lion_2024_1_compliance_runs_on_the_dates_its_states_carry():
+    """#583's measured effect on the externally-validated deal, pinned by name.
+
+    GL-2024-1 registers one tape covering 2026-04-30 and folds a report-driven
+    series stating 2025-10-23, 2026-01-23 and 2026-04-23 (the period-0 seed
+    shares the first). #524's precedence rule sets that tape aside — and its own
+    contract says the periods it sets aside "stop being the *ledger* /waterfall
+    and /compliance fold". They were still this screen's whole axis, so the one
+    tape period was paired to the seed and rendered eighteen months from the
+    date it was shown under.
+
+    **No figure moved when the pairing was corrected; the dates they are stated
+    under did.** That is the finding, and it is pinned here rather than absorbed:
+    the tape's date is off the axis, the report's three dates are on it, and
+    every trigger reads exactly what it read before.
+    """
+    api_main._RECONSTRUCTION_MEMO.clear()
+    with patch("loanwhiz.api.main.DEAL_MODEL_SEED_DIR", _REAL_SEED_DIR):
+        resp = client.get("/deal/green-lion-2024-1/compliance")
+    assert resp.status_code == 200, resp.json()
+    body = resp.json()
+
+    periods = {s["period"] for s in body["trigger_statuses"]}
+    assert periods == {"2025-10-23", "2026-01-23", "2026-04-23"}
+    assert "2026-04-30" not in periods, "the set-aside tape date is not the axis (#524)"
+
+    readings: dict[str, set] = {}
+    for status in body["trigger_statuses"]:
+        readings.setdefault(status["trigger_name"], set()).add(status["metric_value"])
+    assert readings["class_a_pdl_trigger"] == {0.0}
+    assert readings["class_b_pdl_trigger"] == {0.0}
+    assert readings["reserve_fund_shortfall_trigger"] == {100.0}
+    assert body["active_triggers"] == ["reserve_fund_shortfall_trigger"]
+
+
+def test_no_compliance_screen_folds_a_period_its_deal_set_aside():
+    """The set-aside filter must not silently match nothing (#583).
+
+    ``_set_aside_tape_periods`` reads each tape's date from the **registry**,
+    while the compliance axis carries the **normalised tape output's**
+    ``reporting_date``. Those agree on every registered deal today, but they are
+    two different sources: were one to drift, the filter would quietly match
+    nothing, every set-aside period would return to the axis, and the positional
+    defect would be back with no test noticing — a filter that finds nothing to
+    remove looks exactly like a deal that needed nothing removed.
+
+    So this asserts the invariant across every deal that serves, and asserts the
+    check is **not vacuous**: at least one serving deal must actually have
+    periods set aside, or the guard is passing on an empty set (#494).
+    """
+    from loanwhiz.api import main as api_main
+
+    exercised = 0
+    for deal_id, deal in api_main.DEALS.items():
+        set_aside = set(api_main._set_aside_tape_periods(deal))
+        api_main._RECONSTRUCTION_MEMO.clear()
+        with patch("loanwhiz.api.main.DEAL_MODEL_SEED_DIR", _REAL_SEED_DIR):
+            resp = client.get(f"/deal/{deal_id}/compliance")
+        if resp.status_code != 200:
+            continue  # a deal that cannot be modelled has no axis to check
+        periods = {s["period"] for s in resp.json()["trigger_statuses"]}
+        assert not (periods & set_aside), (
+            f"{deal_id} folds {sorted(periods & set_aside)}, which #524 set aside"
+        )
+        if set_aside:
+            exercised += 1
+
+    assert exercised, "no serving deal had periods set aside — the guard proved nothing"
+
+
 def test_green_lion_2024_1_cold_start_consults_no_green_lion_fallback():
     """The GL-2024-1 cold-start uses its own model, never the _GREEN_LION_* fallback.
 
@@ -4185,3 +4255,231 @@ def test_history_fold_green_lion_numbers_identical_trace_uses_own_cascade():
         s.recipient for s in extracted.period_results[-1].redemption_execution.steps
     }
     assert "class_a_notes_principal" in red_recipients
+
+
+# ---------------------------------------------------------------------------
+# Investor due-diligence record (#568, epic #561) — GET /deal/{id}/due-diligence
+#
+# These read the REAL committed seeds rather than a fixture, because the thing
+# under test is a property of the shipped registry: #567's record verifies one
+# deal and refuses the rest by name, and a fixture proving a parser works would
+# not catch the seed drifting out from under it (#567's own lesson — an
+# extractor's reach is not the committed data). The autouse fixture above blanks
+# ``DEAL_MODEL_SEED_DIR`` to an empty dir for cold-path tests, so each of these
+# points it back at ``_COMMITTED_DEAL_SEED_DIR`` and blanks the runtime cache,
+# leaving the committed seed as the single answer.
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def committed_seeds(tmp_path):
+    """Serve the package-committed deal models, and only those."""
+    from loanwhiz.api.main import _COMMITTED_DEAL_SEED_DIR
+
+    with patch("loanwhiz.api.main.DEAL_MODEL_SEED_DIR", str(_COMMITTED_DEAL_SEED_DIR)), patch(
+        "loanwhiz.api.main.DEAL_MODEL_CACHE_DIR", str(tmp_path)
+    ):
+        yield
+
+
+def _only_check(checks: list[dict]) -> dict:
+    """The single check in one of the record's two lists."""
+    assert len(checks) == 1, checks
+    return checks[0]
+
+
+def _committed_model(deal: dict):
+    """The deal's package-committed model, or ``None`` when it ships none.
+
+    Resolves through the FIXED ``_COMMITTED_DEAL_SEED_DIR`` rather than the
+    patchable ``DEAL_MODEL_SEED_DIR`` global, so the registry-wide assertions
+    below read what the repo actually ships regardless of the autouse
+    cold-path fixture's blanking.
+    """
+    from loanwhiz.api.main import _COMMITTED_DEAL_SEED_DIR, _slug
+    from loanwhiz.extraction.assembler import DealModel
+
+    path = _COMMITTED_DEAL_SEED_DIR / f"{_slug(deal['deal_name'])}.json"
+    if not path.exists():
+        return None
+    return DealModel.model_validate_json(path.read_text(encoding="utf-8"))
+
+
+def _record_for(deal_id: str, deal: dict):
+    """One deal's due-diligence record, assembled over its committed model."""
+    from loanwhiz.primitives.due_diligence import assemble_due_diligence
+
+    return assemble_due_diligence(deal_id, deal, model=_committed_model(deal)).output
+
+
+def test_due_diligence_verifies_cairn_from_its_offering_document(committed_seeds):
+    """The verification half of the asymmetry, cited to the document it read.
+
+    Cairn's committed seed carries the parsed Article 6(3)(d) undertaking, so
+    the record establishes it and grounds it in a citation. The figures are
+    asserted individually rather than against a rendered sentence: a reworded
+    reason must not red this, but a changed retention level must.
+    """
+    resp = client.get("/deal/cairn-clo-xvii/due-diligence")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["not_established"] == []
+
+    check = _only_check(body["verified"])
+    assert check["outcome"] == "verified"
+    assert check["detail"]["retainer"] == "The Investment Manager"
+    assert check["detail"]["retainer_capacity"] == "originator"
+    assert check["detail"]["level_pct"] == 5.0
+    assert check["detail"]["level_basis"] == "the Aggregate Collateral Balance"
+
+    # Grounded, and grounded in the registry's own document rather than a
+    # document kind the parser renders for every deal (#567 dropped that).
+    citation = _only_check(check["citations"])
+    assert citation["page_or_row"] == "Article 6(3)(d)"
+    assert citation["document"] == check["source"]["url"]
+    assert check["source"]["registry_slot"] == "prospectus_url"
+
+
+def test_due_diligence_refuses_contego_by_name_with_the_document_it_read(
+    committed_seeds,
+):
+    """The refusal half — and the reason it is worth more than a second tick.
+
+    #566's fixtures prove the parser reads *both* CLOs' undertakings, but only
+    Cairn's seed carries the parsed block. So Contego must be refused by name,
+    carrying the document that was actually read — its 29-Jun-2023 Listing
+    Particulars, not the 19-Nov-2024 reset — plus the registry's own note, so a
+    reader can see which of its two documents answered the question.
+    """
+    from loanwhiz.primitives.due_diligence import REFUSAL_VOCABULARY
+
+    resp = client.get("/deal/contego-clo-xi/due-diligence")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["verified"] == []
+
+    check = _only_check(body["not_established"])
+    assert check["outcome"] == "not-established"
+    # Asserted against the closed vocabulary, never a transcribed sentence, so
+    # a reworded refusal reds this rather than passing an outdated string.
+    assert any(check["reason"].startswith(r) for r in REFUSAL_VOCABULARY), check["reason"]
+
+    source = check["source"]
+    assert source["registry_slot"] == "prospectus_url"
+    assert "202306" in source["url"], (
+        "the refusal cites a document other than the registered 29-Jun-2023 "
+        "Listing Particulars the trustee reports are parsed against"
+    )
+    assert source["registry_note"], "the registration note did not travel with the refusal"
+    assert "reset" in source["registry_note"]
+
+
+def test_the_shipped_registry_produces_both_a_verification_and_a_refusal():
+    """The asymmetry itself, over the registry as shipped.
+
+    This is the property the screen exists to render, so it is asserted rather
+    than assumed: a change that made every deal verify — or every deal
+    refuse — would leave the surface technically correct and completely
+    uninformative, and nothing else in the suite would notice.
+    """
+    from loanwhiz.api.main import DEALS
+
+    verified_deals, refused_deals = [], []
+    for deal_id, deal in DEALS.items():
+        record = _record_for(deal_id, deal)
+        (verified_deals if record.verified else refused_deals).append(deal_id)
+
+    assert verified_deals, "no deal verifies — the record has nothing to show"
+    assert refused_deals, "no deal is refused — the refusal path renders untested"
+    assert "cairn-clo-xvii" in verified_deals
+    assert "contego-clo-xi" in refused_deals
+
+
+def test_due_diligence_refuses_a_document_date_for_every_registered_deal():
+    """No registry field carries a publication date, and the record says so.
+
+    This is a disclosure the surface must not quietly improve on: ``read_at``
+    is this platform's clock, and inferring a document date from it (or from an
+    S3 upload path) would manufacture exactly the confident wrongness the
+    record exists to avoid. Asserted across every deal so a per-deal exception
+    cannot creep in.
+    """
+    from loanwhiz.api.main import DEALS
+
+    seen = 0
+    for deal_id, deal in DEALS.items():
+        record = _record_for(deal_id, deal)
+        for check in [*record.verified, *record.not_established]:
+            if check.source is None:
+                continue
+            seen += 1
+            assert check.source.document_date is None
+            assert check.source.document_date_reason.strip()
+    assert seen, "no deal carried a source document — the assertion ran on nothing"
+
+
+def test_due_diligence_refuses_rather_than_500s_when_no_model_is_committed(tmp_path):
+    """A cold deal is a refusal with a named document, not a broken screen.
+
+    The autouse fixture already blanks the seed dir; blanking the runtime cache
+    too leaves no model anywhere. The endpoint must still answer 200 with a
+    reason naming the registered document that was *not* read — a 500 would
+    turn a documented limitation into an outage.
+    """
+    from loanwhiz.primitives.due_diligence import NO_COMMITTED_MODEL
+
+    with patch("loanwhiz.api.main.DEAL_MODEL_CACHE_DIR", str(tmp_path)):
+        resp = client.get("/deal/cairn-clo-xvii/due-diligence")
+
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["verified"] == []
+    check = _only_check(body["not_established"])
+    assert check["reason"].startswith(NO_COMMITTED_MODEL)
+    assert check["source"]["url"], "the refusal names no document to re-ask"
+
+
+def test_due_diligence_never_triggers_a_cold_extraction(tmp_path):
+    """A miss must not fan out to the ~10min Docling pipeline, as /model doesn't."""
+    with patch("loanwhiz.api.main.DEAL_MODEL_CACHE_DIR", str(tmp_path)), patch(
+        "loanwhiz.extraction.assembler.extract_deal_model"
+    ) as mock_extract:
+        resp = client.get("/deal/cairn-clo-xvii/due-diligence")
+    assert resp.status_code == 200
+    mock_extract.assert_not_called()
+
+
+def test_due_diligence_unknown_deal_404():
+    resp = client.get("/deal/unknown/due-diligence")
+    assert resp.status_code == 404
+    assert resp.json()["detail"] == "Deal unknown not found"
+
+
+def test_due_diligence_answers_every_registered_deal(committed_seeds):
+    """Every deal in the registry gets a record through the ROUTE, not the assembler.
+
+    The two registry-wide assertions above call ``assemble_due_diligence``
+    directly, which is the right level for a claim about the record — but it
+    bypasses the endpoint entirely, so neither of them would notice
+    ``/deal/{id}/due-diligence`` 500-ing on a deal whose registry entry has a
+    shape the route mishandles. The screen reads the route, so the route is
+    what has to answer for every deal.
+    """
+    from loanwhiz.api.main import DEALS
+
+    outcomes = {}
+    for deal_id in DEALS:
+        resp = client.get(f"/deal/{deal_id}/due-diligence")
+        assert resp.status_code == 200, (deal_id, resp.status_code, resp.text[:200])
+        body = resp.json()
+        assert body["deal_id"] == deal_id
+        assert body["deal_name"]
+        # Exactly one of the two kinds holds the retention check: a deal in
+        # neither list would render as a blank record, which reads as "nothing
+        # to ask" rather than "asked and not established" (#513).
+        assert len(body["verified"]) + len(body["not_established"]) == 1
+        outcomes[deal_id] = "verified" if body["verified"] else "not-established"
+
+    assert set(outcomes.values()) == {"verified", "not-established"}, (
+        f"the route returns a single outcome across the whole registry: {outcomes}"
+    )

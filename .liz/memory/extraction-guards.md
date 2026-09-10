@@ -29,6 +29,18 @@ used to drop are exactly the ones no fixture ever covered.
 
 Refs: #456
 
+## 2026-09-09 · pitfall · #531
+
+Before believing a parser's own oracle guards a section, delete that section from
+its title list and run the suite: the coverage is usually coming from unrelated
+downstream tests, not from the reconciliation, which passes vacuously on the zero
+rows it then finds. That coverage does not survive generalisation — turn one
+hardcoded layout into per-family tables and the *existing* family keeps its
+fixtures while a newly registered one has none. Put the completeness check where
+a family is registered, not where a document is parsed: it is the only point that
+can see a table for documents no test will ever hold.
+
+Refs: #531
 ## 2026-09-09 · pattern · #548
 
 Guard an extraction stage on **its own output's plausibility**, not on the cause
@@ -41,3 +53,16 @@ instead "is four terms from a 420-page prospectus plausibly a glossary?" — no
 theory of the cause needed, and it catches the mechanism nobody has seen yet.
 
 Refs: #548
+Refs: #566 — same rule, on the retention undertaking.
+
+## 2026-09-09 · pitfall · #566
+
+Read every limb of a multi-limb fact from the span that states it, never by
+searching the document for each independently. Searched separately over one
+offering circular, "The Issuer is an originator for some other purpose" became
+the Retention Holder's capacity — the limb that makes a retention bind, borrowed
+from another party's sentence. Anchor on the rarest limb, take the governing
+designation as the last one before it, and read the rest from that span. A
+backwards scan with a greedy `.*` needs the same bound to terminate at all.
+
+Refs: #566

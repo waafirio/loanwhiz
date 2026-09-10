@@ -1,0 +1,8 @@
+# The memory corpus is append-only: every worker adds its own entries to the
+# index and to its topic file as part of the DONE contract. Parallel appends
+# from sibling branches are not a conflict — keep both sides.
+#
+# Note GitHub's merge machinery ignores this driver, so a promotion PR can
+# still open CONFLICTING on a file that merges cleanly locally; the remedy is
+# a merge-based re-sync, never a rebase (see liz promote.md).
+.liz/memory/*.md merge=union
