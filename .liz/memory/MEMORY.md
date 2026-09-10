@@ -40,6 +40,7 @@ triage by opening the entry, not by reading the line.
   - [2026-09-09 · pattern · #528](#2026-09-09--pattern--528) — keywords: back-solved input, read past the extractor, max_chars truncation, pypdf text layer, stated schedule, deterministic parser, cross-check against another document
   - [2026-09-10 · pattern · #571](#2026-09-10--pattern--571) — keywords: provenance guard, declaration side, spec entry, false positive, narrowing the signature, self-describing input, qualifier on the record
   - [2026-09-10 · pitfall · #550](#2026-09-10--pitfall--550) — keywords: scarcity premise, document already folded, Par Value Tests Detail, overcollateralisation numerator, aggregate_principal_balance, stated total, components tie-out
+  - [2026-09-10 · pitfall · #602](#2026-09-10--pitfall--602) — keywords: de-transcription convention, generated region, fence present, capability tally, rendered copy, spelled-out count, stale in three documents
   - [2026-09-09 · pitfall · #555](#2026-09-09--pitfall--555) — keywords: stated count population, count grain, accrual record, asset grain, aggregate table, two populations, cannot fail
 - [Registering a deal (deals.json)](deal-registration.md) — keywords: deals.json, notes_cash_report_urls, routing promise, registry key, asset_class, answer key invariant
   - [2026-09-05 · pitfall · #455](#2026-09-05--pitfall--455) — keywords: notes_cash_report_urls, _reconstruct_series

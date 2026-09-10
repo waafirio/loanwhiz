@@ -27,9 +27,11 @@ import {
  * with every cell's real reason surfaced — `not-applicable` shown as a feature
  * (honest scope), never hidden, never faked green.
  *
- * Frames the 3-jurisdiction generality story (flag/label per deal column), links
- * the headline proof (Green Lion 2024-1's single `validated` cell → its
- * Validation view) and the governance/provenance surface.
+ * Frames the cross-jurisdiction generality story (flag/label per deal column),
+ * links each `validated` cell to its Validation view, and carries the
+ * governance/provenance surface. How many such cells there are is read from
+ * the tally this page renders — never named here, because a count written into
+ * a file goes stale the next time a deal or an answer key lands (#602).
  *
  * Follows web/CONTRACT.md: Client Component, useEffect/useState, three render
  * states (loading skeleton / error card / data), shadcn light theme, no new deps.
@@ -124,12 +126,16 @@ function ShowcaseContent({ matrix }: { matrix: CapabilityMatrix }) {
         <CardContent className="space-y-3 text-sm leading-relaxed text-muted-foreground">
           <p>{matrix.note}</p>
           <p>
-            Hover any cell for the honest reason behind its state. The single{" "}
-            <span className="font-medium text-emerald-700">validated</span> cell
-            links through to its proof — our waterfall engine reconciled against
-            the deal&apos;s own published Notes &amp; Cash Priority of Payments,
-            to the cent. The auditable trail behind every agent answer lives on
-            the{" "}
+            Hover any cell for the honest reason behind its state. The{" "}
+            {validated}{" "}
+            <span className="font-medium text-emerald-700">validated</span>{" "}
+            {validated === 1 ? "cell links" : "cells link"} through to their
+            proof — our waterfall engine reconciled against those deals&apos;
+            own published Notes &amp; Cash Priorities of Payments, to the cent.
+            That count is read from the tally rendered above rather than written
+            into this file; a transcribed one had gone stale in three documents
+            at once (#602). The auditable trail behind every agent answer lives
+            on the{" "}
             <Link
               href="/governance"
               className="text-primary underline-offset-4 hover:underline"

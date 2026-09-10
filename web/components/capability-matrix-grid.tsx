@@ -27,8 +27,9 @@ import { cn } from "@/lib/utils";
  *
  * Honesty discipline (epic #193): the real states + reasons are rendered as-is.
  * `not-applicable` is shown as a feature (honest scope), never hidden, never
- * faked green. The single `validated` cell links to its proof (the Validation
- * view for that deal).
+ * faked green. Every `validated` cell links to its proof (the Validation view
+ * for that deal); how many there are is whatever the matrix reports, and is
+ * deliberately not stated here (#602).
  */
 
 /** The one capability that can reach `validated` — its cell links to the proof. */

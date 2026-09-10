@@ -131,3 +131,16 @@ names. Then read the total the report states and tie it to the components above
 it: the adjacent aggregate is the near-miss, one line away and three points high.
 
 Refs: #550
+
+## 2026-09-10 · pitfall · #602
+
+A de-transcription convention stated *in prose* enforces nothing — write the
+guard. Three surfaces here already said "read the tally from the endpoint" while
+three others published three different stale ones, one rendered to users beside
+the live number it contradicted. Give the figure one generator, fence a region
+per document, and assert the fence is present before comparing it. Sweep
+rendered copy too, not just the documents an issue names: a count spelled out
+("the single validated cell"), split across JSX, or inverted ("nothing has been
+run against it") is the same defect, and no numeric grep finds it.
+
+Refs: #602
