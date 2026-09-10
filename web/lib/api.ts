@@ -921,3 +921,142 @@ export function getCompare(
   if (target) params.set("target", target);
   return request<CompareResponse>(`/compare?${params.toString()}`);
 }
+
+// ---------------------------------------------------------------------------
+// Cross-deal look-through concentration  —  GET /cross-deal-concentration
+// ---------------------------------------------------------------------------
+
+/**
+ * The axis a concentration figure is expressed on. `label` is what the figure
+ * calls itself ("Fitch industry") and is not optional anywhere it renders: the
+ * same book concentrates differently on S&P than on Fitch (#563), so a share
+ * quoted without its taxonomy is not comparable to anything.
+ */
+export interface ConcentrationAxis {
+  kind: string;
+  label: string;
+  taxonomy: string | null;
+  agency: string | null;
+}
+
+/**
+ * One deal's own stated reporting date. The two committed CLOs report as of
+ * different months, so this is per-deal rather than one figure-level as-of.
+ */
+export interface ConcentrationDealAsOf {
+  deal: string;
+  deal_name: string | null;
+  reporting_date: string | null;
+  period_label: string;
+  /** What the deal's own report stated — never a date the platform chose. */
+  stated: string;
+}
+
+/** What one deal contributed, as of that deal's own date. */
+export interface ConcentrationContribution {
+  deal: string;
+  as_of: string;
+  balance: number;
+  asset_count: number;
+}
+
+/**
+ * A bucket's balance by obligor-resolution tier (#562). The three are never
+ * blended and never summed into a single "identified" figure: the balance is
+ * exact whichever tier it sits in, but the number of distinct borrowers behind
+ * it is not.
+ */
+export interface ConcentrationSplit {
+  proven_shared: number;
+  candidate_proposed: number;
+  unresolved: number;
+}
+
+export interface ConcentrationBucket {
+  label: string;
+  published_spellings: string[];
+  balance: number;
+  asset_count: number;
+  share_pct: number;
+  split: ConcentrationSplit;
+  per_deal: ConcentrationContribution[];
+  reached_by_one_deal: boolean;
+  /** The backend's own sentence for this bucket — rendered, not paraphrased. */
+  disclosure: string;
+}
+
+/**
+ * Assets the axis cannot place, because the report never published the value.
+ * A distinct record kind, not a bucket — there is no "Other" row to absorb it
+ * (#496/#514), and nothing that loops over `buckets` can pick it up.
+ */
+export interface ConcentrationUnattributed {
+  reason: string;
+  balance: number;
+  asset_count: number;
+  share_pct: number;
+  per_deal: ConcentrationContribution[];
+}
+
+/** One obligor-resolution tier: how many names, and how much balance. */
+export interface ConcentrationTier {
+  tier: string;
+  name_count: number;
+  balance: number;
+  share_pct: number;
+}
+
+/**
+ * Distinct-obligor bounds. There is deliberately no single number: a point
+ * estimate has to assume something about what was not proved, and assuming
+ * every unresolved name is distinct is the assumption that makes a book look
+ * diversified.
+ */
+export interface ConcentrationBounds {
+  lower: number;
+  upper: number;
+  is_exact: boolean;
+}
+
+/** Look-through concentration across the committed CLOs, residuals included. */
+export interface CrossDealConcentration {
+  axis: ConcentrationAxis;
+  deals: string[];
+  as_of: ConcentrationDealAsOf[];
+  /** False on the committed pair — the two reports are months apart. */
+  dates_align: boolean;
+  currency: string | null;
+  total_balance: number;
+  asset_count: number;
+  obligor_bounds: ConcentrationBounds;
+  /** Names whose identity across the two books is NOT proven. */
+  unproven_name_count: number;
+  name_count: number;
+  not_proven_share_pct: number;
+  tiers: ConcentrationTier[];
+  proposal_count: number;
+  buckets: ConcentrationBucket[];
+  unattributed: ConcentrationUnattributed;
+  disclosure: string;
+  obligor_disclosure: string;
+}
+
+/** The axes the backend serves, in the order the screen offers them. */
+export const CONCENTRATION_AXES = [
+  "fitch-industry",
+  "sp-industry",
+  "country",
+  "fitch-rating",
+  "sp-rating",
+] as const;
+
+export type ConcentrationAxisKey = (typeof CONCENTRATION_AXES)[number];
+
+/** Fetch the look-through concentration figure on one axis. */
+export function getCrossDealConcentration(
+  axis: ConcentrationAxisKey,
+): Promise<CrossDealConcentration> {
+  return request<CrossDealConcentration>(
+    `/cross-deal-concentration?axis=${encodeURIComponent(axis)}`,
+  );
+}
