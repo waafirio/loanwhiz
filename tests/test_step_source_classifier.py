@@ -18,16 +18,27 @@ import pytest
 # primitives.base -> primitives/__init__ -> ... -> domain.rules) makes
 # `loanwhiz.domain` unimportable as the first loanwhiz import. Unrelated to
 # this change; the same skip is in `test_recipient_need_contract.py`.
+from loanwhiz.primitives.waterfall_interpreter import (  # isort: skip
+    NEED_CALCULATORS,
+    TrancheFunds,
+    WaterfallFunds,
+    compute_need,
+)
 from loanwhiz.primitives.step_source_classifier import (  # isort: skip
     _ENGINE_COMPUTED_CANONICAL,
+    _UNSUPPLIED_BASES,
     ENGINE_COMPUTED_RECIPIENTS,
     _canonical_view,
     build_step_specs,
+    is_engine_computed,
 )
 from loanwhiz.domain.rules import (  # isort: skip
     CLO_RECIPIENT_SPELLINGS,
+    RECIPIENT_NEED_SOURCE,
     RECOGNISED_UNEVALUABLE_RECIPIENTS,
+    NeedSource,
     RecipientType,
+    basis_for,
 )
 
 
@@ -414,3 +425,172 @@ def test_returned_dicts_stay_keyed_by_the_raw_extracted_recipient() -> None:
     assert set(source) == {"class_a_notes_interest", "hedge_payments"}
     assert set(overrides) == {"hedge_payments"}
     assert [s.recipient for s in specs] == ["class_a_notes_interest", "hedge_payments"]
+
+
+# ---------------------------------------------------------------------------
+# The declaration is DERIVED, not authored (#598)
+# ---------------------------------------------------------------------------
+
+
+def _supplied_bases_recipients() -> set[RecipientType]:
+    """Calculator-backed recipients whose basis the platform does supply."""
+    return {
+        r
+        for r, src in RECIPIENT_NEED_SOURCE.items()
+        if src is NeedSource.calculator and basis_for(r) not in _UNSUPPLIED_BASES
+    }
+
+
+def test_membership_is_a_property_of_the_need_contract_not_a_list() -> None:
+    """Every member earns its place by what the contract says about it.
+
+    The set this replaced was eight hand-written spellings, and the defect was
+    not that it held the wrong eight — it was that membership had no *reason*, so
+    it could only ever be as current as the last person to remember it. These
+    assert the reason instead: a member is calculator-backed, and its basis is one
+    the platform actually supplies an input for.
+    """
+    for value in ENGINE_COMPUTED_RECIPIENTS:
+        recipient = RecipientType(value)
+        assert RECIPIENT_NEED_SOURCE[recipient] is NeedSource.calculator, value
+        assert basis_for(recipient) not in _UNSUPPLIED_BASES, value
+
+
+def test_every_qualifying_recipient_is_credited_so_a_new_class_needs_no_edit() -> None:
+    """The anti-whack-a-mole half, and the one that actually fixes #598.
+
+    The previous set could satisfy the test above while still omitting Classes D,
+    E and F — being *sound* was never the problem. This is the completeness
+    direction: every recipient the contract says the engine computes IS a member,
+    so a class added to ``RecipientType`` with ``NeedSource.calculator`` is
+    credited the moment it exists and nobody has to remember this file.
+    """
+    assert {RecipientType(v) for v in ENGINE_COMPUTED_RECIPIENTS} == _supplied_bases_recipients()
+
+
+def test_the_deep_stack_classes_the_authored_set_stopped_short_of_are_members() -> None:
+    """#598's regression, named. The old set ended at ``class_c_interest``."""
+    for letter in "def":
+        assert f"class_{letter}_interest" in ENGINE_COMPUTED_RECIPIENTS, letter
+        # And through the document's own spelling, which is how a step arrives.
+        assert is_engine_computed(f"class_{letter}_notes_interest"), letter
+
+
+def test_the_declaration_is_canonical_so_the_two_sides_cannot_disagree() -> None:
+    """#511's failure mode, retired rather than worked around.
+
+    The authored set was mixed — it held ``class_a_pdl_replenishment`` while its
+    canonical form ``class_a_pdl_cure`` was absent — so resolving only the
+    incoming side would have reclassified those RMBS steps. Deriving off
+    ``RECIPIENT_NEED_SOURCE`` keys the declaration by ``RecipientType``, so there
+    is no second vocabulary left. The legacy spellings must still *resolve*.
+    """
+    assert all(v == RecipientType(v).value for v in ENGINE_COMPUTED_RECIPIENTS)
+    assert _ENGINE_COMPUTED_CANONICAL == _supplied_bases_recipients()
+    assert is_engine_computed("class_a_pdl_replenishment")
+    assert is_engine_computed("reserve_account_replenishment")
+
+
+# ---------------------------------------------------------------------------
+# The exclusion cannot outlive its reason (#598)
+# ---------------------------------------------------------------------------
+
+
+def _excluded_recipients() -> list[RecipientType]:
+    return sorted(
+        (
+            r
+            for r, src in RECIPIENT_NEED_SOURCE.items()
+            if src is NeedSource.calculator and basis_for(r) in _UNSUPPLIED_BASES
+        ),
+        key=lambda r: r.value,
+    )
+
+
+def test_each_excluded_basis_is_excluded_for_want_of_an_input_not_a_formula() -> None:
+    """Supply the missing input and every excluded recipient computes.
+
+    This is the paired half of the exclusion (#493): asserting only that these
+    refuse on the engine's real funds would not distinguish "the input is
+    unsupplied" from "the formula is broken" or from "this recipient has no
+    calculator at all" — and the first is the only one that justifies excluding
+    it rather than fixing it. Hand them what they read and they all produce a
+    real figure, so what ``_UNSUPPLIED_BASES`` names is a **supply** gap.
+
+    It also reds if a basis is ever added to the exclusion without cause: a
+    recipient whose calculator cannot be made to compute here does not belong.
+    """
+    excluded = _excluded_recipients()
+    assert excluded, "the exclusion is empty — delete it rather than testing it"
+
+    supplied = WaterfallFunds(
+        available_revenue_funds=50_000_000.0,
+        available_principal_funds=0.0,
+        days_in_period=90,
+        collateral_balance=400_000_000.0,
+        fee_rates_pct={r.value: 0.35 for r in excluded},
+        tranches=[
+            TrancheFunds(
+                name=f"class_{letter}",
+                balance=10_000_000.0,
+                rate_pct=5.0,
+                deferred_interest_balance=125_000.0,
+            )
+            for letter in "abcdef"
+        ],
+    )
+    for recipient in excluded:
+        assert recipient.value in NEED_CALCULATORS, recipient
+        need, evaluable = compute_need(recipient.value, supplied)
+        assert evaluable, recipient
+        assert need > 0.0, recipient
+
+
+def test_every_credited_recipient_computes_on_the_funds_the_engine_really_builds() -> None:
+    """The independent check on ``_UNSUPPLIED_BASES`` — and the one that can red.
+
+    Asserting the credited set equals "calculator-backed minus ``_UNSUPPLIED_BASES``"
+    proves nothing about whether that exclusion is *right*: both sides read the
+    same constant, so a wrong entry moves them together and the assertion is a
+    tautology. This asks the engine instead.
+
+    ``period_state_machine._funds_from_state`` is the one place ``WaterfallFunds``
+    is built for a real fold. It writes ``balance``, ``rate_pct``, ``pdl_balance``
+    and the per-tranche day count — and neither ``fee_rates_pct`` nor
+    ``deferred_interest_balance`` nor ``collateral_balance``. So on that shape a
+    credited recipient must produce a real, evaluable, non-zero need, and a
+    recipient whose input is unsupplied cannot.
+
+    Drop a line from ``_UNSUPPLIED_BASES`` and its family starts being credited
+    while still reading a default: the first loop reds. Add one that *is*
+    supplied and the second loop reds. Neither direction is free.
+    """
+    as_engine_builds_it = WaterfallFunds(
+        available_revenue_funds=50_000_000.0,
+        available_principal_funds=0.0,
+        days_in_period=90,
+        reserve_balance=0.0,
+        reserve_target=1_000_000.0,
+        liquidity_reserve_balance=0.0,
+        liquidity_reserve_target=1_000_000.0,
+        tranches=[
+            TrancheFunds(
+                name=f"class_{letter}",
+                balance=10_000_000.0,
+                rate_pct=5.0,
+                pdl_balance=250_000.0,
+            )
+            for letter in "abcdef"
+        ],
+    )
+
+    # Every credited recipient answers with a figure derived from that context.
+    for value in sorted(ENGINE_COMPUTED_RECIPIENTS):
+        need, evaluable = compute_need(value, as_engine_builds_it)
+        assert evaluable, value
+        assert need > 0.0, (value, "credited but reads an input nothing supplies")
+
+    # And every excluded one cannot — so the zeros above would be visible.
+    for recipient in _excluded_recipients():
+        need, _evaluable = compute_need(recipient.value, as_engine_builds_it)
+        assert need == 0.0, recipient
