@@ -15,6 +15,7 @@ disagreed with the output they themselves committed (0.93 vs 0.925). Hit the
 endpoint or recompute — authoritative once is not true now.
 
 Refs: #441
+Refs: #565 — an issue body's own count, off by an order of magnitude.
 
 ## 2026-09-06 · pattern · #469
 

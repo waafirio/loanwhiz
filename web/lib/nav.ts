@@ -9,6 +9,7 @@ import {
   Scale,
   Grid3x3,
   GitCompareArrows,
+  Layers3,
   type LucideIcon,
 } from "lucide-react";
 
@@ -64,6 +65,10 @@ export const NAV_GROUPS: NavGroup[] = [
       // Governance — the FINOS evidence-pack / audit-trail / confidence /
       // model-risk + data-provenance (deeploans vs direct) surface (#239).
       { title: "Governance", href: "/governance", icon: Scale },
+      // Look-through concentration — true single-name / sector exposure across
+      // the CLOs a holder owns, with the unresolved obligor set rendered
+      // rather than netted away (#565, epic #560).
+      { title: "Concentration", href: "/concentration", icon: Layers3 },
     ],
   },
 ];
