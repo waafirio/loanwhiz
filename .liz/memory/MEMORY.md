@@ -100,6 +100,7 @@ triage by opening the entry, not by reading the line.
   - [2026-09-10 · pitfall · #573](#2026-09-10--pitfall--573-1) — keywords: src[index("function Foo"):], Foo
   - [2026-09-10 · pitfall · #599](#2026-09-10--pitfall--599) — keywords: widened API, className hidden, enabled false, escape hatch, re-sweep after the fix, pin the arguments not the call
   - [2026-09-10 · pitfall · #607](#2026-09-10--pitfall--607) — keywords: mutate the call site, fallback unreached, per-class override routes around, _days_in_period, 95 vs 93, green suite proves nothing
+  - [2026-09-10 · pitfall · #613](#2026-09-10--pitfall--613) — keywords: decorative check, shadowed rule, membership vs order axis, set not sequence, unreachable check, one mutant per check
 - [Extracting tables from PDFs](pdf-table-extraction.md)
   - [2026-09-06 · pitfall · #469](#2026-09-06--pitfall--469) — keywords: visitor_text, text matrix, tm[4], rotated table, extraction_mode layout, row boundary, continuation line, column order, pypdf
   - [2026-09-08 · pitfall · #480](#2026-09-08--pitfall--480) — keywords: column header, required level, guessed order, like-typed columns, stated twice, cross-check, coverage test, refuse unrecognised header
