@@ -2125,7 +2125,10 @@ def _collections_tranche_args(deal_id: str, capital_structure: dict) -> dict:
                 f"a subset of the deal's classes."
             ),
         )
-    return {key: float(capital_structure[key]) for key in required}
+    return {
+        key: float(capital_structure[key])
+        for key in _COLLECTIONS_LEG_REQUIRED_KEYS
+    }
 
 
 def _misconfigured_deal(
