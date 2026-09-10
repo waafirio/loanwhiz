@@ -41,3 +41,16 @@ minutes earlier. A rule pinning a call and not its arguments pins the half that
 cannot vary.
 
 Refs: #599
+
+## 2026-09-10 · pitfall · #607
+
+Mutate the **call site you changed**, not only the function. Where every
+committed subject overrides a fallback, that call site is pinned by nothing and
+a green suite says so in no way: flipping `_days_in_period`'s basis to 30/360
+moved the deal-wide count 95 -> 93 and passed all 51 report-path tests, because
+each of Cairn's six interest classes states its own basis and takes the
+per-class path. Pin the fallback where the two bases **differ** — a number
+identifying which convention was passed is the only assertion able to fail.
+
+Refs: #607
+Refs: #539 — the per-class override that leaves the deal-wide path unreached.
