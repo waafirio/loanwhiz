@@ -97,6 +97,7 @@ triage by opening the entry, not by reading the line.
 - [Guarding a guard: mutation tables over source assertions](guard-mutation-tables.md) — keywords: mutation table, mutant anchor, str.replace first match, substring of a deeper indent, surviving mutant, region slice, source-assertion guard
   - [2026-09-10 · pitfall · #573](#2026-09-10--pitfall--573) — keywords: str.replace(old, new, 1), <Badge variant="destructive"
   - [2026-09-10 · pitfall · #573](#2026-09-10--pitfall--573-1) — keywords: src[index("function Foo"):], Foo
+  - [2026-09-10 · pitfall · #599](#2026-09-10--pitfall--599) — keywords: widened API, className hidden, enabled false, escape hatch, re-sweep after the fix, pin the arguments not the call
 - [Extracting tables from PDFs](pdf-table-extraction.md)
   - [2026-09-06 · pitfall · #469](#2026-09-06--pitfall--469) — keywords: visitor_text, text matrix, tm[4], rotated table, extraction_mode layout, row boundary, continuation line, column order, pypdf
   - [2026-09-08 · pitfall · #480](#2026-09-08--pitfall--480) — keywords: column header, required level, guessed order, like-typed columns, stated twice, cross-check, coverage test, refuse unrecognised header

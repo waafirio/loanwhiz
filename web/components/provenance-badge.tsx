@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { Database } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
+import { cn } from "@/lib/utils";
 import { DATA_SOURCES, getTapeAnalytics, type DataSource } from "@/lib/api";
 
 /* ---------------------------------------------------------------------------
@@ -97,10 +98,19 @@ const PROVENANCE_VARIANTS: Record<ProvenanceKey, "outline" | "destructive"> = {
  * than to a default channel, because defaulting an unknown to `direct` is the
  * mislabelling this whole module exists to prevent.
  */
-export function ProvenanceBadge({ source }: { source: DataSource | null }) {
+export function ProvenanceBadge({
+  source,
+  className,
+}: {
+  source: DataSource | null;
+  className?: string;
+}) {
   const key: ProvenanceKey = source ?? "unresolved";
   return (
-    <Badge variant={PROVENANCE_VARIANTS[key]} className="font-normal">
+    <Badge
+      variant={PROVENANCE_VARIANTS[key]}
+      className={cn("font-normal", className)}
+    >
       <Database className="mr-1 size-3" />
       {PROVENANCE_LABELS[key]}
     </Badge>
@@ -116,7 +126,11 @@ export function ProvenanceBadge({ source }: { source: DataSource | null }) {
  * happened to come back empty.
  */
 export function ProvenanceBadges({ sources }: { sources: DataSource[] | null }) {
-  const resolved = sources ?? [];
+  // Deduped here rather than trusted from the caller: `key` below is the
+  // channel, so a repeated member would collide. Both callers happen to dedupe
+  // already; the prop type does not require it, and a component that renders a
+  // list should not depend on a promise its signature never made.
+  const resolved = distinctDataSources(sources ?? []);
   if (resolved.length === 0) {
     return <ProvenanceBadge source={null} />;
   }
@@ -153,17 +167,28 @@ export function distinctDataSources(
  * payload carries no provenance (the waterfall cascade is computed from the
  * tapes, but `WaterfallResult` reports nothing about where they came from).
  *
- * Returns `null` until resolved — in flight, failed, or a deal switch not yet
- * caught up. Callers pass that straight to `ProvenanceBadges`, which renders
- * the unresolved badge; a failure here must never quietly become "real".
+ * Returns `null` until resolved — in flight, failed, disabled, or a deal switch
+ * not yet caught up. Callers pass that straight to `ProvenanceBadges`, which
+ * renders the unresolved badge; a failure here must never quietly become
+ * "real".
+ *
+ * `enabled` mirrors how the tape-driven pages already gate their own fetch
+ * (`if (hasTapes === false) return;`): a deal with no published tape has no
+ * ingestion channel to report, and asking for one is a request that can only
+ * fail. Pass `hasTapes !== false`, not `hasTapes === true` — an unresolved
+ * `null` should still fetch, exactly as the pages do.
  */
-export function useDealDataSources(dealId: string): DataSource[] | null {
+export function useDealDataSources(
+  dealId: string,
+  enabled: boolean = true,
+): DataSource[] | null {
   const [state, setState] = useState<{
     dealId: string;
     sources: DataSource[] | null;
   }>({ dealId, sources: null });
 
   useEffect(() => {
+    if (!enabled) return;
     let cancelled = false;
     getTapeAnalytics(dealId)
       .then(
@@ -182,7 +207,7 @@ export function useDealDataSources(dealId: string): DataSource[] | null {
     return () => {
       cancelled = true;
     };
-  }, [dealId]);
+  }, [dealId, enabled]);
 
   // Until the tapes for the *current* deal resolve, report "unknown" (null).
   return state.dealId === dealId ? state.sources : null;

@@ -58,11 +58,21 @@ Both are right about different rule classes, so this file splits them:
 * a **ban** reads whole files, and is written narrowly enough (a quoted channel
   name inside a conditional) that over-reach cannot produce a false positive.
 
+**Every expectation here is an independent constant, never read from the code
+under test.** :data:`_CHANNEL_TOKENS` and :data:`_CHANNELS` are written out in
+this file rather than imported or parsed from the module, so a mutant that
+edits a label moves the code without moving the expectation and the rule reds.
+A guard deriving its expectation from the same source it checks passes by
+construction — the two move together — which is the `len(x) == len(x)` hole in
+subtler dress. The one place two values are compared, ``union-list-is-complete``,
+compares two *different* declarations against each other on purpose.
+
 **The blind spot, stated.** A ban list is only as good as the affordances it
 enumerates, and this one cannot see paint: nothing here would catch a badge
-rendered off-screen, styled invisible, or covered by a sibling element. What it
-can see is whether the code still *says* the thing, and whether the thing it
-says can still disagree with itself.
+rendered off-screen by CSS this file does not read, or covered by a sibling
+element. It also cannot see a channel renamed consistently everywhere at once.
+What it can see is whether the code still *says* the thing, and whether the
+thing it says can still disagree with itself.
 
 The ``_code_only`` / ``_BADGE`` / ``_MUTANTS`` scaffold is copied from
 ``tests/test_concentration_page.py`` (#565), which copied ``_code_only`` from
@@ -84,6 +94,7 @@ _SHEET = _REPO_ROOT / "web" / "components" / "evidence-pack-sheet.tsx"
 _POOL = _REPO_ROOT / "web" / "app" / "(routes)" / "pool" / "page.tsx"
 _WATERFALL = _REPO_ROOT / "web" / "app" / "(routes)" / "waterfall" / "page.tsx"
 _API = _REPO_ROOT / "web" / "lib" / "api.ts"
+_GOVERNANCE = _REPO_ROOT / "web" / "app" / "(routes)" / "governance" / "page.tsx"
 
 
 def _code_only(source: str) -> str:
@@ -112,6 +123,7 @@ def _sources() -> dict[str, str]:
         "pool": _POOL.read_text(encoding="utf-8"),
         "waterfall": _WATERFALL.read_text(encoding="utf-8"),
         "api": _API.read_text(encoding="utf-8"),
+        "governance": _GOVERNANCE.read_text(encoding="utf-8"),
     }
 
 
@@ -124,7 +136,11 @@ _PACK_START = "export function PackBody({"
 #: positive rule below asks whether *PackBody* renders something, and a slice
 #: running past its closing brace would let `ToolCall` or `CitationItem` answer
 #: for it — #573's hole, found before merge only because a mutant reached it.
-_TOP_LEVEL = re.compile(r"^(?:export )?function |^/\*\*|^// ---", re.M)
+_TOP_LEVEL = re.compile(
+    r"^(?:export )?(?:default )?(?:async )?"
+    r"(?:function|const|let|type|interface|class)\s|^/\*\*|^// ---",
+    re.M,
+)
 
 
 def _pack_body(sheet: str) -> str:
@@ -147,6 +163,7 @@ def _pack_body(sheet: str) -> str:
 #: rewrites `Record<DataSource, string>` must still be *scanned* and reported,
 #: not make the slice vanish and crash the run. A slicer whose marker is the
 #: thing a rule tests cannot report on that thing.
+_CLOSING_BRACE = re.compile(r"^\}", re.M)
 _TABLE_START = "export const DATA_SOURCE_LABELS"
 
 
@@ -164,12 +181,17 @@ def _label_table(module: str) -> str:
         "check would scan an empty string and pass vacuously"
     )
     start = module.index(_TABLE_START)
-    end = module.find("\n};", start)
-    assert end != -1, (
+    # `\n}` rather than `\n};`: the ordinary `} as const;` and `} satisfies X;`
+    # forms end the literal too, and anchoring on the semicolon let the slice
+    # slide silently to the NEXT table — which keys on the same channels and
+    # would answer for this one. `_code_only` because a commented-out entry is
+    # not an entry; this rule is about what the table returns, not what it says.
+    end = _CLOSING_BRACE.search(module, start)
+    assert end is not None, (
         "the label table literal is not closed, so this slice ran to end of "
         "file; the variant table could then answer for it (#573)"
     )
-    return module[start:end]
+    return _code_only(module[start : end.start()])
 
 
 _ROW_START = "{pagination.pageItems.map((p) => ("
@@ -206,7 +228,7 @@ def _row_loop(pool: str) -> str:
 #: mutant that moved it out of the badge into a paragraph passed it. ``\b`` so
 #: ``<BadgeGroup`` does not match; non-greedy with ``re.S`` so a multi-line
 #: badge is captured whole and two adjacent badges do not merge.
-_BADGE = re.compile(r"<Badge\b.*?</Badge>", re.S)
+_BADGE = re.compile(r"<Badge\b(?![^>]*/>)[^>]*>.*?</Badge>", re.S)
 
 _CHANNELS = ("deeploans", "direct", "derived", "synthetic")
 _CHANNEL_ALT = "|".join(_CHANNELS)
@@ -218,31 +240,91 @@ _CHANNEL_ALT = "|".join(_CHANNELS)
 #: above it. The first alternative is the original defect
 #: (``src === "deeploans" ? …``); the second is its branches
 #: (``? "direct" : "deeploans"``).
+#: ``re.S`` with bounded windows rather than ``[^\n]``: Prettier wraps a
+#: three-branch ternary across lines, and a line-bounded pattern reads the
+#: reformatted defect as clean.
 _PROVENANCE_TERNARY = (
-    re.compile(rf'"(?:{_CHANNEL_ALT})"[^\n]{{0,40}}\?[^\n]*:'),
-    re.compile(rf'\?[^\n?]{{0,40}}"(?:{_CHANNEL_ALT})"[^\n]{{0,40}}:'),
+    re.compile(rf'"(?:{_CHANNEL_ALT})"\s*.{{0,60}}?\?.{{0,160}}?:', re.S),
+    re.compile(rf'\?[^?]{{0,60}}?"(?:{_CHANNEL_ALT})"\s*.{{0,60}}?:', re.S),
 )
 
 #: A condition that cannot vary. ``{false ? (…) : null}`` deletes a rendered
 #: block while leaving every identifier in it greppable, so a guard that only
 #: looks for the identifiers reads the deleted block as rendered — #565's own
 #: caught hole, and the mutant that survived this file's first sweep.
-_LITERAL_CONDITION = re.compile(r"\{\s*(?:true|false)\s*\?")
+_LITERAL_CONDITION = re.compile(r"\{\s*(?:true|false)\s*(?:\?|&&|\|\|)")
 
 #: A marking rendered where nobody sees it. #573 found this exact hole in its
 #: own guard before merge: a required element moved into ``sr-only`` satisfies
 #: every text rule and shows a reader nothing. Scoped to the module and the row
 #: loop — the two places a provenance marking actually renders — because
 #: ``sr-only`` is legitimate elsewhere on these pages.
-_HIDDEN_MARKING = re.compile(r"sr-only|aria-hidden|hidden=|display:\s*none")
+#: ``aria-hidden`` is deliberately NOT here: the decorative `<Database>` icon
+#: inside the badge should carry it, and banning it would red the correct a11y
+#: treatment. The property guarded is that the marking is *visible*.
+#: ``(?<![-\w])hidden`` so Tailwind's ``overflow-hidden`` does not match while
+#: its ``hidden`` (display:none) and a bare JSX ``hidden`` attribute both do.
+_HIDDEN_MARKING = re.compile(
+    r"sr-only|(?<![-\w])hidden(?![-\w])|display:\s*none|invisible|opacity-0"
+)
+
+#: The neighbourhood of each rendered marking: the element that wraps it plus
+#: the call itself. Scoped this way rather than whole-file because `hidden` is
+#: legitimate elsewhere on these pages — and whole-file was not the first
+#: draft's bug: it scanned only two of the four places a marking renders.
+_MARKING_CALL = re.compile(r"<ProvenanceBadges?\b")
+
+
+def _marking_sites(text: str) -> str:
+    """Every rendered `ProvenanceBadge(s)` with the markup that wraps it."""
+    out = []
+    for m in _MARKING_CALL.finditer(text):
+        start = max(0, m.start() - 260)
+        end = text.find("\n", m.end())
+        out.append(text[start : len(text) if end == -1 else end])
+    return "\n".join(out)
 
 #: An unknown channel given a real one as its default. ``?? "direct"`` is the
 #: single most plausible regression here: it type-checks, reads as a harmless
 #: fallback, and reinstates exactly the claim #599 removed.
-_DEFAULTED_CHANNEL = re.compile(rf'(?:\?\?|\|\|)\s*"(?:{_CHANNEL_ALT})"')
+#: ``=`` for the default-parameter form and an optional ``(``/``[`` so a cast
+#: or a one-element array does not walk straight through it: `?? ("direct" as
+#: DataSource)` and `{ source = "direct" }` are the same claim as `?? "direct"`.
+_DEFAULTED_CHANNEL = re.compile(
+    rf'(?:\?\?|\|\||=)\s*[(\[]?\s*[(\[]?\s*"(?:{_CHANNEL_ALT})"'
+)
 
 #: The quoted members of a TS string-union alias or a string-array literal.
-_QUOTED = re.compile(r'"([a-z_]+)"')
+_QUOTED = re.compile(r'"([A-Za-z0-9_]+)"')
+
+#: What each channel's label must actually say. Without this the tables are
+#: total, every key is present, and the values can be swapped between channels
+#: — the highest-severity survivor of this guard's own first mutation sweep.
+#: Totality says a channel HAS an answer; only this says it is its OWN.
+_CHANNEL_TOKENS = {
+    "deeploans": "deeploans ETL",
+    "direct": "direct URL",
+    "derived": "derived from a source document",
+    "synthetic": "SYNTHETIC",
+}
+
+_TABLE_ENTRY = re.compile(r'^\s*([A-Za-z_][A-Za-z0-9_]*)\s*:\s*"([^"]*)"', re.M)
+
+#: A consumer declaring its own `ProvenanceBadge`. Aliasing the import
+#: (`ProvenanceBadge as Shared`) and declaring a local one of the same name
+#: restores the original ternary verbatim while `pack-badge-is-shared` still
+#: finds `<ProvenanceBadge key={src} source={src} />` and passes.
+_SHADOWED_BADGE = re.compile(
+    r"^(?:export )?(?:function|const|let|class)\s+ProvenanceBadges?\b", re.M
+)
+
+#: Prose that teaches a two-valued provenance scheme. The governance page hosts
+#: the evidence-pack sheet, so a reader met this sentence directly above a badge
+#: reading "derived from a source document".
+_BINARY_PROSE = (
+    "deeploans vs direct",
+    "or read directly from its source URL",
+)
 
 
 def _union_members(api: str) -> set[str] | None:
@@ -276,11 +358,25 @@ def _violations(sources: dict[str, str]) -> list[str]:
     out: list[str] = []
 
     module = _code_only(sources["module"])
+    sheet = _code_only(sources["sheet"])
+    governance = _code_only(sources["governance"])
     pack = _pack_body(sources["sheet"])
     pool = _code_only(sources["pool"])
     rows = _row_loop(sources["pool"])
     waterfall = _code_only(sources["waterfall"])
     api = sources["api"]
+
+    banned_files = (
+        ("module", module),
+        # The WHOLE sheet, not the PackBody slice: a ternary moved into a
+        # helper above the component — a local `function ProvenanceBadge` that
+        # shadows the import, say — is invisible to a slice-scoped ban, and
+        # scoping it to the slice is what made this file's own docstring false.
+        ("sheet", sheet),
+        ("pool", pool),
+        ("waterfall", waterfall),
+        ("governance", governance),
+    )
 
     # --- The vocabulary itself -------------------------------------------
     # 1. Total, so widening the union is a compile error until the table
@@ -299,6 +395,21 @@ def _violations(sources: dict[str, str]) -> list[str]:
             out.append(
                 f"every-channel-is-named: the label table has no {channel!r} "
                 f"entry; an unnamed channel is one a surface renders blank"
+            )
+            break
+
+    # 2b. …and each entry names the channel it is keyed by. Totality says a
+    #     channel HAS an answer; nothing above says it is its own, so the whole
+    #     table can be permuted with every rule green and every surface then
+    #     renders the wrong channel. This was the top survivor of this guard's
+    #     own mutation sweep, and it is the defect class #599 exists to prevent.
+    entries = dict(_TABLE_ENTRY.findall(table))
+    for channel, token in _CHANNEL_TOKENS.items():
+        if token not in entries.get(channel, ""):
+            out.append(
+                f"label-names-its-own-channel: the {channel!r} entry no longer "
+                f"says {token!r}; a total table whose values have been swapped "
+                f"between channels misnames every one of them"
             )
             break
 
@@ -373,8 +484,10 @@ def _violations(sources: dict[str, str]) -> list[str]:
         )
 
     # 10/11/11b. The bans, over whole files (see the docstring's slicing note).
-    for name, text in (("module", module), ("pool rows", rows)):
-        if _HIDDEN_MARKING.search(text):
+    # Every place a marking actually renders — the first draft scanned two of
+    # four, so both page-level rows could be made invisible with it green.
+    for name, text in banned_files:
+        if _HIDDEN_MARKING.search(_marking_sites(text)):
             out.append(
                 f"no-hidden-marking: {name} renders a provenance marking "
                 f"invisibly; a source guard cannot see paint, so hiding one is "
@@ -382,12 +495,7 @@ def _violations(sources: dict[str, str]) -> list[str]:
             )
             break
 
-    for name, text in (
-        ("module", module),
-        ("pack", pack),
-        ("pool", pool),
-        ("waterfall", waterfall),
-    ):
+    for name, text in banned_files:
         if _DEFAULTED_CHANNEL.search(text):
             out.append(
                 f"no-defaulted-channel: {name} defaults an unknown source to a "
@@ -395,12 +503,7 @@ def _violations(sources: dict[str, str]) -> list[str]:
                 f"harmless-looking fallback"
             )
             break
-    for name, text in (
-        ("module", module),
-        ("pack", pack),
-        ("pool", pool),
-        ("waterfall", waterfall),
-    ):
+    for name, text in banned_files:
         if _LITERAL_CONDITION.search(text):
             out.append(
                 f"no-literal-condition: {name} renders a provenance surface "
@@ -408,12 +511,7 @@ def _violations(sources: dict[str, str]) -> list[str]:
                 f"while every identifier in it stays greppable"
             )
             break
-    for name, text in (
-        ("module", module),
-        ("pack", pack),
-        ("pool", pool),
-        ("waterfall", waterfall),
-    ):
+    for name, text in banned_files:
         if any(p.search(text) for p in _PROVENANCE_TERNARY):
             out.append(
                 f"no-provenance-ternary: a conditional in {name} decides a "
@@ -447,6 +545,51 @@ def _violations(sources: dict[str, str]) -> list[str]:
             "vocabularies that merely happen to agree"
         )
 
+    # 13b. The fifth surface, on the same sheet: `CitationItem` rendered the
+    #      raw `DataSource` token in a neutral badge, so the summary said
+    #      "SYNTHETIC — generated, describes no real obligor" while every
+    #      citation under it said a quiet "synthetic". Two vocabularies on one
+    #      screen is the defect, not a smaller version of it.
+    if "<ProvenanceBadge source={source} className=" not in sheet:
+        out.append(
+            "citation-badge-is-shared: CitationItem no longer badges through "
+            "ProvenanceBadge, so the citation list can name a channel "
+            "differently from the summary directly above it"
+        )
+
+    # 13c. …and no consumer quietly points at a different module, or shadows
+    #      the shared component with a local one. Either leaves every rule
+    #      above green while the badge is somebody else's again.
+    for name, text in (("sheet", sheet), ("pool", pool), ("waterfall", waterfall)):
+        if 'from "@/components/provenance-badge"' not in text:
+            out.append(
+                f"consumers-import-the-module: {name} no longer imports the "
+                f"shared provenance module; a same-named local component "
+                f"satisfies every text rule here and renders anything"
+            )
+            break
+    for name, text in (("sheet", sheet), ("pool", pool), ("waterfall", waterfall)):
+        if _SHADOWED_BADGE.search(text):
+            out.append(
+                f"no-shadowed-badge: {name} declares its own ProvenanceBadge, "
+                f"shadowing the import; the rules above then read a local "
+                f"component's name and learn nothing about the shared one"
+            )
+            break
+
+    # 13d. The page that *explains* the badge must not teach an older
+    #      vocabulary than the badge renders. Prose saying provenance is
+    #      "deeploans vs direct" above a badge reading "derived from a source
+    #      document" is the same defect, relocated into the explanation.
+    for phrase in _BINARY_PROSE:
+        if phrase in governance:
+            out.append(
+                f"no-binary-prose: the governance page still describes "
+                f"provenance as two-valued ({phrase!r}) above badges that "
+                f"render four channels"
+            )
+            break
+
     # --- Pool: #484's surface --------------------------------------------
     # 14. Marked from inside the loop that renders the rows (#575).
     if "<ProvenanceBadge" not in rows:
@@ -473,7 +616,8 @@ def _violations(sources: dict[str, str]) -> list[str]:
     # --- Waterfall: the same surface, with no provenance of its own -------
     # 17. WaterfallResult carries none, so the page must go and read it.
     if (
-        "useDealDataSources(dealId)" not in waterfall
+        "const dataSources = useDealDataSources(dealId, hasTapes !== false)"
+        not in waterfall
         or "<ProvenanceBadges sources={dataSources} />" not in waterfall
     ):
         out.append(
@@ -512,6 +656,7 @@ def _check_ids(violations: list[str]) -> set[str]:
 _ALL_CHECKS = {
     "label-table-is-total",
     "every-channel-is-named",
+    "label-names-its-own-channel",
     "synthetic-names-its-consequence",
     "variants-are-total",
     "synthetic-is-loud",
@@ -526,6 +671,10 @@ _ALL_CHECKS = {
     "no-provenance-ternary",
     "pack-badge-is-shared",
     "pack-sentence-shares-the-table",
+    "citation-badge-is-shared",
+    "consumers-import-the-module",
+    "no-shadowed-badge",
+    "no-binary-prose",
     "pool-marks-every-period",
     "pool-badge-reads-its-row",
     "pool-marks-the-page",
@@ -636,16 +785,12 @@ _MUTANTS: list[tuple[str, str, list[tuple[str, str]]]] = [
         "module",
         [
             (
-                '    <Badge variant={PROVENANCE_VARIANTS[key]} className="font-normal">\n'
                 '      <Database className="mr-1 size-3" />\n'
                 "      {PROVENANCE_LABELS[key]}\n"
                 "    </Badge>",
-                "    <>\n"
-                '      <Badge variant={PROVENANCE_VARIANTS[key]} className="font-normal">\n'
-                '        <Database className="mr-1 size-3" />\n'
-                "      </Badge>\n"
-                "      <span>{PROVENANCE_LABELS[key]}</span>\n"
-                "    </>",
+                '      <Database className="mr-1 size-3" />\n'
+                "    </Badge>\n"
+                "      <span>{PROVENANCE_LABELS[key]}</span>",
             )
         ],
     ),
@@ -793,6 +938,204 @@ _MUTANTS: list[tuple[str, str, list[tuple[str, str]]]] = [
         "stop-the-waterfall-reading-its-deals-channels",
         "waterfall",
         [("        <ProvenanceBadges sources={dataSources} />\n", "")],
+    ),
+    (
+        "swap-two-channels-labels-inside-the-total-table",
+        "module",
+        [
+            (
+                '  deeploans: "deeploans ETL backend",\n'
+                '  direct: "direct URL (HuggingFace / file)",',
+                '  deeploans: "direct URL (HuggingFace / file)",\n'
+                '  direct: "deeploans ETL backend",',
+            )
+        ],
+    ),
+    (
+        "coalesce-an-unresolved-list-to-a-real-channel-through-a-cast",
+        "module",
+        [
+            (
+                "  const resolved = distinctDataSources(sources ?? []);",
+                '  const resolved = distinctDataSources(sources ?? (["direct"] as DataSource[]));',
+            )
+        ],
+    ),
+    (
+        "default-the-channel-in-the-parameter-list",
+        "module",
+        [
+            (
+                "  source,\n  className,\n}: {\n  source: DataSource | null;",
+                '  source = "direct",\n  className,\n}: {\n  source?: DataSource | null;',
+            )
+        ],
+    ),
+    (
+        "hide-the-pool-page-level-row-with-a-bare-attribute",
+        "pool",
+        [
+            (
+                '      <div className="flex flex-wrap items-center gap-1.5">\n'
+                '        <span className="text-xs text-muted-foreground">Ingested via</span>',
+                '      <div className="flex flex-wrap items-center gap-1.5" hidden>\n'
+                '        <span className="text-xs text-muted-foreground">Ingested via</span>',
+            )
+        ],
+    ),
+    (
+        "hide-the-waterfall-row-with-tailwinds-display-none",
+        "waterfall",
+        [
+            (
+                '      <div className="flex flex-wrap items-center gap-1.5">',
+                '      <div className="hidden flex-wrap items-center gap-1.5">',
+            )
+        ],
+    ),
+    (
+        "shadow-the-shared-badge-and-restore-the-binary",
+        "sheet",
+        [
+            (
+                'import {\n  ProvenanceBadge,\n  dataSourceLabel,\n} from "@/components/provenance-badge";',
+                'import {\n  ProvenanceBadge as SharedProvenanceBadge,\n  dataSourceLabel,\n} from "@/components/provenance-badge";\n'
+                "\nfunction ProvenanceBadge({ source }: { source: DataSource | null }) {\n"
+                '  return <Badge variant="outline">{source === "deeploans" ? "deeploans" : "direct"} ingestion</Badge>;\n'
+                "}",
+            )
+        ],
+    ),
+    (
+        "point-a-consumer-at-a-different-module",
+        "pool",
+        [
+            (
+                '} from "@/components/provenance-badge";',
+                '} from "@/components/pool-provenance-badge";',
+            )
+        ],
+    ),
+    (
+        "render-the-citation-token-raw-again",
+        "sheet",
+        [
+            (
+                '          <ProvenanceBadge source={source} className="ml-auto" />',
+                '          <Badge variant="outline" className="ml-auto font-normal">{source}</Badge>',
+            )
+        ],
+    ),
+    (
+        "teach-the-binary-vocabulary-in-the-governance-prose",
+        "governance",
+        [
+            (
+                "FINOS compliance, and the ingestion channel behind each tape.",
+                "FINOS compliance, and data provenance (deeploans vs direct).",
+            )
+        ],
+    ),
+    (
+        "delete-a-channel-behind-a-comment-marker",
+        "module",
+        [
+            (
+                '  derived: "derived from a source document (not a published tape)",',
+                '  //  derived: "derived from a source document (not a published tape)",',
+            )
+        ],
+    ),
+    (
+        "hide-the-pool-row-behind-a-dead-and-branch",
+        "pool",
+        [
+            (
+                "        <ProvenanceBadges sources={dataSources} />",
+                "        {false && <ProvenanceBadges sources={dataSources} />}",
+            )
+        ],
+    ),
+    (
+        "close-the-label-table-with-as-const-then-delete-a-channel",
+        "module",
+        [
+            (
+                '  synthetic: "SYNTHETIC — generated, describes no real obligor",\n};',
+                '  synthetic: "SYNTHETIC — generated, describes no real obligor",\n} as const;',
+            ),
+            ('  derived: "derived from a source document (not a published tape)",\n', ""),
+        ],
+    ),
+    (
+        "decide-the-label-with-a-ternary-prettier-wrapped-over-lines",
+        "module",
+        [
+            (
+                '  const key: ProvenanceKey = source ?? "unresolved";',
+                "  const key: ProvenanceKey =\n"
+                '    source === "deeploans"\n'
+                '      ? "deeploans"\n'
+                '      : "direct";',
+            )
+        ],
+    ),
+    (
+        "swallow-the-label-with-a-self-closing-badge",
+        "module",
+        [
+            (
+                '      <Database className="mr-1 size-3" />\n'
+                "      {PROVENANCE_LABELS[key]}\n"
+                "    </Badge>",
+                '      <Database className="mr-1 size-3" />\n'
+                "    </Badge>\n"
+                "      <span>{PROVENANCE_LABELS[key]}</span>\n"
+                '      <Badge variant="outline">x</Badge>',
+            )
+        ],
+    ),
+    (
+        "add-a-capitalised-union-member-the-list-never-gets",
+        "api",
+        [
+            (
+                'export type DataSource = "deeploans" | "direct" | "derived" | "synthetic";',
+                'export type DataSource = "deeploans" | "direct" | "derived" | "synthetic" | "esmaSR";',
+            )
+        ],
+    ),
+    (
+        "absorb-a-decoy-declaration-into-the-packbody-slice",
+        "sheet",
+        [
+            ("            <ProvenanceBadge key={src} source={src} />", "            <span />"),
+            (
+                "function ToolCall({ call }: { call: ToolCallRecord }) {",
+                "const decoy = `<ProvenanceBadge key={src} source={src} /> dataSourceLabel(`;\n"
+                "\nfunction ToolCall({ call }: { call: ToolCallRecord }) {",
+            ),
+        ],
+    ),
+    (
+        "hide-the-citation-badge-through-its-new-className-prop",
+        "sheet",
+        [
+            (
+                '<ProvenanceBadge source={source} className="ml-auto" />',
+                '<ProvenanceBadge source={source} className="hidden" />',
+            )
+        ],
+    ),
+    (
+        "disable-the-waterfall-read-through-its-enabled-flag",
+        "waterfall",
+        [
+            (
+                "useDealDataSources(dealId, hasTapes !== false)",
+                "useDealDataSources(dealId, false)",
+            )
+        ],
     ),
     (
         "unexport-the-union-list-entirely",

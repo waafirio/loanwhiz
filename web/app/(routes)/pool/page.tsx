@@ -142,7 +142,10 @@ function PoolContent({ periods }: { periods: TapeAnalyticsPeriod[] }) {
   // no second fetch. It renders above the charts because #484's failure was
   // that a reader who never reaches the table below sees generated collateral
   // presented exactly like real collateral.
-  const dataSources = distinctDataSources(periods.map((p) => p.data_source));
+  const dataSources = useMemo(
+    () => distinctDataSources(periods.map((p) => p.data_source)),
+    [periods],
+  );
   // One point per reporting period — the x-axis is a real time axis (period
   // date), so a ~48-period response reads as a trend line rather than 48
   // categorical bars. `minTickGap` lets recharts thin the date ticks so they

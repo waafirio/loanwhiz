@@ -1,7 +1,7 @@
 "use client";
 
 import { Fragment, useEffect, useState } from "react";
-import { Database, FileText, ShieldCheck } from "lucide-react";
+import { FileText, ShieldCheck } from "lucide-react";
 
 import {
   ApiError,
@@ -327,11 +327,16 @@ function CitationItem({ citation }: { citation: Citation }) {
             </span>
           ) : null}
         </span>
+        {/* Converged onto the same table as the pack row above (#599). This
+            rendered the raw `DataSource` token in a neutral badge, so one
+            screen carried two vocabularies: "SYNTHETIC — generated, describes
+            no real obligor" in the summary and a quiet "synthetic" on every
+            citation under it. Still conditional on `source`, because a
+            non-tape citation has no ingestion channel at all and "not
+            reported" would be noise on a prospectus page — the conditional
+            decides whether to render, never what the badge says. */}
         {source ? (
-          <Badge variant="outline" className="ml-auto shrink-0 font-normal">
-            <Database className="mr-1 size-3" />
-            {source}
-          </Badge>
+          <ProvenanceBadge source={source} className="ml-auto" />
         ) : null}
       </p>
       {excerpt ? (
@@ -352,27 +357,30 @@ function formatTimestamp(ts: string): string {
 // Holdings book (#573, epic #569) — what a position IS, and what the platform
 // could not resolve about it.
 //
-// This lives beside DATA_SOURCE_LABELS on purpose. That table is this file's
-// existing provenance vocabulary: a *total* Record mapping a provenance kind to
-// one human-readable sentence, in a voice that names the consequence rather
-// than the mechanism ("SYNTHETIC — generated, describes no real obligor").
+// This was written beside DATA_SOURCE_LABELS on purpose; #599 has since moved
+// that table to `components/provenance-badge.tsx`, and the reasoning carries
+// over unchanged. It is a *total* Record mapping a provenance kind to one
+// human-readable sentence, in a voice that names the consequence rather than
+// the mechanism ("SYNTHETIC — generated, describes no real obligor").
 // A holding's provenance is a different union — it answers "does anybody hold
 // this", not "where was this tape read from" — so it gets its own total Record
 // rather than new members in that one, but the same shape and the same voice.
 // Building a second vocabulary somewhere else is what this region refuses.
 //
-// #484 is the failure being designed against: its synthetic pools are
-// correctly labelled in the *data*, and the Pool and Waterfall pages render no
-// badge, so a viewer sees generated collateral presented exactly like real
-// collateral. A qualifier a surface has to remember is one it can forget.
+// #484 was the failure being designed against: its synthetic pools were
+// correctly labelled in the *data* while the Pool and Waterfall pages rendered
+// no badge, so a viewer saw generated collateral presented exactly like real
+// collateral. #599 closed that; a qualifier a surface has to remember is still
+// one it can forget, which is why both are guarded from pytest.
 // ---------------------------------------------------------------------------
 
 /**
  * What a holding IS, per provenance kind — a total `Record`, like
- * DATA_SOURCE_LABELS above and for the same reason: widening
- * `PositionProvenance` is a compile error here until this table answers for the
- * new member. A conditional would answer for it by accident, which is how the
- * "direct ingestion" label above came to speak for a derived tape.
+ * DATA_SOURCE_LABELS (now in `components/provenance-badge.tsx`) and for the
+ * same reason: widening `PositionProvenance` is a compile error here until this
+ * table answers for the new member. A conditional would answer for it by
+ * accident, which is how the "direct ingestion" label once came to speak for a
+ * derived tape — see #599 for how that was unwound.
  */
 const POSITION_PROVENANCE_LABELS: Record<PositionProvenance, string> = {
   illustrative: "ILLUSTRATIVE — generated, nobody holds this",

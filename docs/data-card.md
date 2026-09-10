@@ -1299,27 +1299,32 @@ prefix strips off before the file is fetched, so the pool figures are unchanged
 and nothing else. See [`tape-ingestion.md`](tape-ingestion.md).
 
 **That claim holds for the API surfaces; the web layer badges, which is less
-(#568, #599).** "Every provenance surface" above means the evidence pack, the
-capability matrix and the tape citation — the surfaces named in the paragraph
-before it, all of which read the tape's registered kind and render that kind's
-own disclosure sentence.
+(#568, #599).** "Every provenance surface" above means the *API* surfaces — the
+evidence-pack payload, the capability matrix and the tape citation — all of
+which read the tape's registered kind and render that kind's own disclosure
+sentence. The web components sharing those names are a different layer and are
+described below.
 
 The Next.js layer no longer contradicts them, which is what #599 changed and
-all it changed. Every web surface that renders provenance now resolves its text
-through one total label table (`web/components/provenance-badge.tsx`), so a
-`derived` or `synthetic` tape can no longer be badged "direct ingestion" — the
-one label #483 exists to prevent — and the Pool and Waterfall pages, which
-previously rendered no badge at all (#484), now mark each period from that
-period's own source. A source the web layer cannot resolve renders as
-unreported rather than as nothing, because silence on those screens reads as an
-ordinary published tape.
+all it changed. Every web surface that renders an ingestion channel — the
+evidence pack's summary row and its per-citation badges, the Pool page and the
+Waterfall page — now resolves its text through one total label table
+(`web/components/provenance-badge.tsx`), so a `derived` or `synthetic` tape can
+no longer be badged "direct ingestion", the one label #483 exists to prevent.
+Pool and Waterfall previously rendered no badge at all (#484): Pool now marks
+each period from that period's own source, and Waterfall — whose payload
+carries no provenance — marks the cascade with the channels behind the deal's
+tapes. Where the channel cannot be resolved, and it often cannot (`data_source`
+is optional, and Waterfall's read is a second request that can fail), the badge
+says so rather than rendering nothing, because silence on those screens reads
+as an ordinary published tape.
 
 **What that is not.** A badge names how a tape *arrived*; the disclosure
 sentence — that the tape is not an Article 7(1)(a) filing, that nothing
 computed from it is evidence about a real pool — is quoted from the citation
 excerpt, and only the evidence pack renders it. A reader of the Pool or
-Waterfall screens is told the pool is synthetic; they are not shown that
-sentence. `tests/test_provenance_badges.py` asserts those components'
+Waterfall screens is told, when the channel resolves, that the pool is
+synthetic; they are never shown that sentence. `tests/test_provenance_badges.py` asserts those components'
 **source**, not their rendered output, so it is evidence about what the code
 says and never that a browser painted it.
 

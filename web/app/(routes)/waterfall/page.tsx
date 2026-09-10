@@ -14,6 +14,7 @@ import {
 import {
   ApiError,
   getWaterfall,
+  type DataSource,
   type WaterfallResult,
 } from "@/lib/api";
 import { useSelectedDeal } from "@/lib/deal-context";
@@ -50,6 +51,13 @@ export default function WaterfallPage() {
   // Seasoned deals have no published loan tapes — this view is tape-driven, so
   // we degrade to NoTapesNotice rather than render an empty cascade.
   const hasTapes = useDealHasTapes(dealId);
+  // Read here, not in WaterfallContent: that only mounts once getWaterfall has
+  // resolved, so the two round trips would serialize and a fully-rendered
+  // cascade would sit on screen reading "ingestion channel not reported"
+  // before flipping to the real label — a transient false negative aimed
+  // exactly at the reader who glances once and moves on. Gated the same way
+  // the cascade's own fetch is: a deal with no tape has no channel to report.
+  const dataSources = useDealDataSources(dealId, hasTapes !== false);
   // Tag the result with its deal so a deal switch falls back to the loading
   // state without a synchronous setState in the effect (see Overview page).
   const [state, setState] = useState<{
@@ -98,25 +106,24 @@ export default function WaterfallPage() {
       ) : !data ? (
         <LoadingState />
       ) : (
-        <WaterfallContent dealId={dealId} result={data} />
+        <WaterfallContent dataSources={dataSources} result={data} />
       )}
     </div>
   );
 }
 
 function WaterfallContent({
-  dealId,
+  dataSources,
   result,
 }: {
-  dealId: string;
-  result: WaterfallResult;
-}) {
   // `WaterfallResult` reports nothing about where its tapes came from, so the
   // cascade would otherwise render generated collateral exactly like real
-  // collateral (#484). Read the deal's channels from the tape analytics the
-  // cascade is computed from; unresolved renders "not reported", never a
-  // default of "direct".
-  const dataSources = useDealDataSources(dealId);
+  // collateral (#484). The channels come from the tape analytics the cascade is
+  // computed from, read by the page above; unresolved renders "not reported",
+  // never a default of "direct".
+  dataSources: DataSource[] | null;
+  result: WaterfallResult;
+}) {
   const cascade = result.revenue_waterfall ?? [];
   const chartData = cascade.map((step) => ({
     name: `${step.priority} ${step.recipient}`,
