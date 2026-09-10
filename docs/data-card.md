@@ -1129,6 +1129,72 @@ before quoting one.
 
 ---
 
+### Where a look-through concentration is read, and what it must show (#565)
+
+**Read this before quoting a combined concentration to anyone.** `GET
+/cross-deal-concentration` and the `/concentration` screen add the committed
+collateral schedules together on one axis. They are not a summary of the two
+reports; they are a third figure, and three different things can move any
+number in it. All three render beside the figure rather than under it:
+
+- **the obligor residual.** #562 resolves identity into three tiers that are
+  never blended, and on the committed pair most of the book's names are *not*
+  proven. So the count of unproven names is the first thing the screen renders,
+  in the same badges as the shares — not a footnote below them. #549's rule is
+  the reason: a refusal that keeps the value is not a refusal, and a share read
+  before its qualifier is read as a measurement.
+- **the attribute residual.** An asset whose axis value the report never
+  published is returned as `unattributed`, a different record kind, and the
+  screen renders it as its own line. There is no "Other" row for it, here or
+  anywhere (#496/#514).
+- **the reporting date.** Each contribution carries its own deal's stated date
+  and the response says `dates_align: false`. The screen prints both dates and,
+  when they disagree, says in words that the figure reconciles to neither
+  source on its own.
+
+**The axis is named on every industry figure**, because #563's decision only
+holds if it is visible: the response carries `axis.taxonomy`, and the screen
+names the axis in the card title and again in the column head, so a share
+copied out of the table carries the taxonomy with it.
+
+**What the web-layer guard actually proves.** `web/` has no JS test runner, so
+`tests/test_concentration_page.py` asserts the components' **source**, not
+their rendered output — the same trade `tests/test_capability_matrix.py`
+already makes. It is worth stating what that is *not*: it is not evidence that
+a browser paints any of this. What the file adds over an ordinary source ban is
+a mutant table that rewrites the real source and requires the guard to reject
+each rewrite, plus a check that no rule in it is unreached by some mutant. Two
+sibling epics shipped bans whose acceptance criteria passed while the banned
+thing was on screen; the first sweep here found two of the same shape in this
+guard and both are now closed.
+
+**This is not a claim about every provenance surface.** The web layer as a
+whole does *not* yet render each source kind's own disclosure sentence: the
+Pool and Waterfall pages render no synthetic badge, and the evidence pack's
+ingestion badge still reads "direct ingestion" for a `derived` or `synthetic`
+source. The concentration surface renders the figure's own sentences; the rest
+of the web layer is unchanged by this issue.
+
+**Regenerating this, rather than trusting the prose.** Every count and share
+above is deliberately left unwritten — the unproven-name count in particular,
+because the issue that commissioned this screen carried a transcribed figure
+that was wrong by an order of magnitude, which is exactly how a number in prose
+goes stale in silence (#441). Read the live figures instead:
+
+```bash
+python -m pytest tests/test_cross_deal_concentration.py tests/test_concentration_page.py
+curl -s 'http://localhost:8000/cross-deal-concentration?axis=fitch-industry' \
+  | python -c 'import json,sys; d=json.load(sys.stdin); print(d["obligor_disclosure"]); print(d["disclosure"])'
+```
+
+**What a third deal changes.** Registering one is a line in
+`COMMITTED_SCHEDULE_FIXTURES` (`src/loanwhiz/api/main.py`), not new Python. A
+deal with no committed schedule is refused rather than omitted: a look-through
+figure over a subset of the registered deals understates every concentration in
+it while looking exactly like a complete one.
+
+---
+
 ## IMPORTANT: Synthetic vs Real Data
 
 > **The loan-level data (loan tapes) in this dataset is SYNTHETIC.**
