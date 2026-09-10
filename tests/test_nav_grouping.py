@@ -45,9 +45,17 @@ _NAV = _REPO_ROOT / "web" / "lib" / "nav.ts"
 #: sentences; matching one of those would slice from the wrong offset.
 _LABEL_RE = re.compile(r'^\s*label: "(?P<label>[^"]+)",$', re.MULTILINE)
 
-#: One nav entry, exactly as the file writes them.
+#: One nav entry. Tolerant of the whitespace between its fields, deliberately:
+#: the rules here are about which section an entry sits in, and an entry the
+#: parser cannot see is an entry missing from its section. Pinned to the exact
+#: single-line form, a cosmetic rewrap would red every rule in this file at
+#: once — and a guard a reformat can red is a guard someone deletes
+#: (`.liz/memory/ui-surface-guards.md`, #568). The mutation table below still
+#: anchors on the literal lines, where an exact match is the point (#573).
 _ENTRY_RE = re.compile(
-    r'\{ title: "(?P<title>[^"]+)", href: "(?P<href>[^"]+)", icon: (?P<icon>\w+) \}'
+    r'\{\s*title:\s*"(?P<title>[^"]+)",'
+    r'\s*href:\s*"(?P<href>[^"]+)",'
+    r'\s*icon:\s*(?P<icon>\w+),?\s*\}'
 )
 
 #: The sections, in the order a reader meets them: the deal, then what they
