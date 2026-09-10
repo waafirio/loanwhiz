@@ -83,6 +83,7 @@ triage by opening the entry, not by reading the line.
   - [2026-09-10 · decision · #563](#2026-09-10--decision--563) — keywords: candidate vocabularies, unjoined share, acceptance oracle, GICS vintage drift, orthographic fold, published table, injective
   - [2026-09-10 · pitfall · #562](#2026-09-10--pitfall--562) — keywords: guard wiring, deletes its call, census, _assert_every_asset_placed, passes by finding nothing, lossy builder
   - [2026-09-10 · pitfall · #564](#2026-09-10--pitfall--564) — keywords: canonical_label, rating notch, per-axis fold, injective, published vocabulary, B+ collapse
+  - [2026-09-10 · pitfall · #601](#2026-09-10--pitfall--601) — keywords: hardcoded convention in the signature, no basis argument, _days_between, accrual_days, unreachable code path, conformance input that differs today
 - [Extracting tables from PDFs](pdf-table-extraction.md) — keywords: visitor_text, text matrix, tm[4], rotated table, extraction_mode layout, row boundary, continuation line, column order, pypdf
   - [2026-09-06 · pitfall · #469](#2026-09-06--pitfall--469) — keywords: extract_text(), extraction_mode="layout", visitor_text=, tm[4]
   - [2026-09-08 · pitfall · #494](#2026-09-08--pitfall--494) — keywords: page furniture, banner prefix, data row first, footer eats a row, numeric tail, prefix filter ordering
@@ -98,6 +99,7 @@ triage by opening the entry, not by reading the line.
 - [Extracting tables from PDFs](pdf-table-extraction.md)
   - [2026-09-06 · pitfall · #469](#2026-09-06--pitfall--469) — keywords: visitor_text, text matrix, tm[4], rotated table, extraction_mode layout, row boundary, continuation line, column order, pypdf
   - [2026-09-08 · pitfall · #480](#2026-09-08--pitfall--480) — keywords: column header, required level, guessed order, like-typed columns, stated twice, cross-check, coverage test, refuse unrecognised header
+  - [2026-09-10 · pitfall · #600](#2026-09-10--pitfall--600) — keywords: row grouper, what closes a row, section total line, last row of a section, bare money line, wrapped remainder, par still ties
 - [Primitive registry population & catalogue surfaces](registry-population.md)
   - [2026-09-09 · pitfall · #574](#2026-09-09--pitfall--574) — keywords: import side effect, PRIMITIVE_MODULES, pkgutil.iter_modules, two importers, catalogue disagreement, ensure_all_registered
   - [2026-09-09 · gotcha · #574](#2026-09-09--gotcha--574) — keywords: process-global registry, in-process census, clean subprocess, backfilled gap, red-when survivor, surface before import
@@ -110,4 +112,5 @@ triage by opening the entry, not by reading the line.
   - [2026-09-09 · pitfall · #533](#2026-09-09--pitfall--533) — keywords: row geometry, reflowed row, column-major stack, per-line row, identifier position, family registration, refusal names what is missing
   - [2026-09-09 · pitfall · #555](#2026-09-09--pitfall--555) — keywords: per-page geometry, row-major line, wrapped row, join page lines, declared geometry, skipped page
   - [2026-09-09 · pitfall · #534](#2026-09-09--pitfall--534) — keywords: prior outcome column, three like-typed columns, cross-period chain, named groups, row grammar, ColumnOrder, coverage test
+  - [2026-09-10 · pitfall · #600](#2026-09-10--pitfall--600) — keywords: test pinning a bug, malformed input from another defect, synthetic fixture, fix reds an unrelated test, property under test
 - [Guarding a UI surface from a suite with no JS runner](ui-surface-guards.md) — keywords: region marker, vacuous ban list, slice of a file, tsx guard, no JS test runner, pass by deletion

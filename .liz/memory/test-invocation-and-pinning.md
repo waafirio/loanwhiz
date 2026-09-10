@@ -28,3 +28,16 @@ insertion is pytest's, not the conftest's. Read the **collected** count, not the
 failure count: collection errors contribute no test and so no failure.
 
 Refs: #577
+
+## 2026-09-10 · pitfall · #600
+
+When a fix reds a test elsewhere, ask whether that test was pinning the bug
+before assuming the fix is wrong. A cross-deal resolution test asserted "the
+identifier rescues a row whose name is unusable" and drew its unusable name
+from a *parser* defect — so repairing the parser broke a test about resolution,
+which had not changed, and the cheap-looking move was to revert the fix. Source
+a malformed input from a synthetic fixture, never from another component's
+defect, and pin the property actually under test: here, that two trustees
+really do spell one obligor differently.
+
+Refs: #600

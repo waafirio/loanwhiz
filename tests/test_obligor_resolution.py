@@ -486,12 +486,26 @@ def test_an_unusable_name_never_produces_a_candidate() -> None:
     assert len(resolution.unresolved_for(UnresolvedReason.name_unusable)) == 2
 
 
-def test_a_contaminated_name_still_resolves_when_the_identifier_matches() -> None:
-    """Identifier-first rescues the row the name cannot: LX183461 in both deals."""
+def test_a_name_that_cannot_join_still_resolves_when_the_identifier_matches() -> None:
+    """Identifier-first rescues the row the name cannot: LX183461 in both deals.
+
+    The two trustees spell this obligor differently enough that the *name* route
+    cannot join them — Cairn's ``Ziggo Secured Finance B.V.`` folds to
+    ``ZIGGO SECURED FINANCE`` and Contego's ``Ziggo BV`` to ``ZIGGO`` — so the
+    shared identifier is doing the work, which is the property under test.
+
+    This used to assert the same thing via a name the parser had *corrupted*
+    (#600 welded a portfolio subtotal onto the Cairn spelling). That made a
+    parse defect load-bearing for a resolution test: fixing the parser broke it,
+    though nothing about resolution had changed. The disagreement asserted here
+    is real and in the source documents, so it survives the parser being right.
+    """
     resolution = _resolution()
     group = _group_holding(resolution.proven_shared, "LX183461")
-    assert any(not name_is_usable(m.issuer_name) for m in group.members)
+
     assert group.deals == frozenset({CAIRN, CONTEGO})
+    folds = {candidate_fold(m.issuer_name) for m in group.members if m.issuer_name}
+    assert len(folds) > 1, "the names alone would not have joined these two rows"
 
 
 # ---------------------------------------------------------------------------
