@@ -62,11 +62,15 @@ from loanwhiz.primitives.collections_aggregator import (
 from loanwhiz.primitives.base import Citation
 from loanwhiz.primitives.capital_structure import (
     CapitalStructure,
+    TrancheSpec,
     UnresolvableCapitalStructure,
     senior_tranche_name,
 )
 from loanwhiz.primitives.capability_matrix import (
+    STATE_NOT_APPLICABLE,
+    STATE_RAN,
     CapabilityMatrix,
+    CellState,
     build_capability_matrix,
 )
 from loanwhiz.primitives.quality_harness import (
@@ -87,6 +91,8 @@ from loanwhiz.primitives.covenant_monitor import (
 )
 from loanwhiz.domain.state import DealState as DomainDealState
 from loanwhiz.domain.tape_provenance import source_kind_for
+from loanwhiz.domain.position import Book, Position, UnplaceablePosition
+from loanwhiz.data.demo_book import build_book, capital_structures
 from loanwhiz.primitives.deal_state import DealState as PrimitivesDealState
 from loanwhiz.primitives.reconciler import (
     ReconciliationReport,
@@ -4529,3 +4535,280 @@ def governance_pack(pack_id: str) -> GovernanceEvidencePackResponse:
             status_code=404, detail=f"Evidence pack {pack_id} not found"
         )
     return GovernanceEvidencePackResponse(**pack.model_dump())
+
+
+# ---------------------------------------------------------------------------
+# Book view (#572) — a holder's positions joined to facts the platform already
+# has. Nothing here computes a new number: seniority is a rank read off the
+# stack, balance is the strips' own balances summed, coupon is the strips' own
+# rate. The contract is that a fact the platform cannot resolve is refused
+# **per field**, with the cause named, so one unresolvable coupon on one
+# position never denies a holder the rest of their book.
+# ---------------------------------------------------------------------------
+
+_BOOK_FIELD_SENIORITY = "seniority"
+_BOOK_FIELD_BALANCE = "balance"
+_BOOK_FIELD_COUPON = "coupon"
+
+#: The fields this endpoint reports for every position, in render order.
+BOOK_POSITION_FIELDS = (
+    _BOOK_FIELD_SENIORITY,
+    _BOOK_FIELD_BALANCE,
+    _BOOK_FIELD_COUPON,
+)
+
+
+class PositionFieldModel(BaseModel):
+    """One fact about one position, in the capability matrix's own vocabulary.
+
+    ``state`` reuses :data:`~loanwhiz.primitives.capability_matrix.CellState`
+    rather than inventing a second refusal vocabulary (#241, wording corrected
+    by #457). Two of its three members are reachable here:
+
+    * ``ran`` — the platform resolved the figure from the deal's capital
+      structure. It is **not** ``validated``: nothing on this endpoint is
+      checked against an answer key, so that member is never emitted.
+    * ``not-applicable`` — the figure could not be resolved, and ``reason``
+      says why.
+
+    ``value`` is ``None`` on every refusal. A refusal that keeps its value is
+    not a refusal (#549): a number rendered beside "could not evaluate" is read
+    as the measurement.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    field: str = Field(..., description="Which fact this cell reports.")
+    state: CellState = Field(..., description="``ran`` or ``not-applicable``.")
+    value: float | None = Field(
+        default=None, description="The figure, or None whenever the cell refuses."
+    )
+    reason: str = Field(
+        ...,
+        min_length=1,
+        description="Where the figure came from, or why it could not be resolved.",
+    )
+
+
+class BookPositionModel(BaseModel):
+    """One position, with its per-field cells."""
+
+    model_config = ConfigDict(frozen=True)
+
+    deal_id: str
+    deal_name: str
+    tranche: str
+    strips: list[str]
+    size: float
+    as_of: str
+    provenance: str
+    describes_a_real_holding: bool
+    disclosure: str
+    facts: list[PositionFieldModel]
+
+
+class BookResponse(BaseModel):
+    """A holder's book: the positions, and what the book itself is.
+
+    ``describes_a_real_holding`` and ``disclosures`` are carried at this
+    surface deliberately. #484's committed gap was that a synthetic source was
+    labelled *in the data* and not *on the screen*; an endpoint is a surface
+    that renders the book, so it states the qualifier rather than leaving a
+    downstream client to remember it.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    name: str
+    describes_a_real_holding: bool
+    disclosures: list[str]
+    positions: list[BookPositionModel]
+
+
+def _refused_cell(field: str, reason: str) -> PositionFieldModel:
+    """A cell that resolved nothing, carrying no value and a stated cause."""
+    return PositionFieldModel(
+        field=field, state=STATE_NOT_APPLICABLE, value=None, reason=reason
+    )
+
+
+def _strips_present(
+    position: Position, structure: CapitalStructure
+) -> tuple[list[TrancheSpec], list[str]]:
+    """Resolve a position's declared strips against the stack.
+
+    Returns ``(specs, missing)`` — the stack's own specs for the strips the
+    position names, senior first, and the names the stack does not carry.
+
+    The collection is **filtered**, never indexed through a ``{name: spec}``
+    dict: a class issued in two strips under one name would collapse to one
+    (#571), and the strips are summed, so the holding would silently
+    under-state. A name the stack lacks is *reported*, never skipped — a
+    dropped strip makes a short book read as a complete one.
+    """
+    wanted = set(position.strips)
+    specs = [spec for spec in structure.tranches if spec.name in wanted]
+    present = {spec.name for spec in structure.tranches}
+    missing = [name for name in position.strips if name not in present]
+    return specs, missing
+
+
+def _seniority_cell(
+    position: Position, structure: CapitalStructure, specs: list[TrancheSpec]
+) -> PositionFieldModel:
+    """Rank of the position's most senior strip within the stack, 1-based."""
+    order = [spec.name for spec in structure.tranches]
+    rank = min(order.index(spec.name) for spec in specs) + 1
+    return PositionFieldModel(
+        field=_BOOK_FIELD_SENIORITY,
+        state=STATE_RAN,
+        value=float(rank),
+        reason=(
+            f"rank {rank} of {len(order)} in {position.deal_id}'s capital "
+            f"structure, senior to junior"
+        ),
+    )
+
+
+def _balance_cell(specs: list[TrancheSpec]) -> PositionFieldModel:
+    """The strips' own balances, summed — never one strip taken for the class."""
+    named = ", ".join(spec.name for spec in specs)
+    return PositionFieldModel(
+        field=_BOOK_FIELD_BALANCE,
+        state=STATE_RAN,
+        value=sum(spec.balance for spec in specs),
+        reason=f"sum of the capital structure's balances for {named}",
+    )
+
+
+def _coupon_cell(
+    position: Position, specs: list[TrancheSpec]
+) -> PositionFieldModel:
+    """The class's coupon, or a refusal naming which strips deny it.
+
+    Three outcomes, and only the first carries a number:
+
+    * every strip states a numeric rate and they agree — ``ran``;
+    * some strip states none — refused, naming those strips. The reason says
+      only what the input encodes (#457): the *capital structure* states no
+      numeric rate. It does not claim the deal pays no coupon, which is a
+      different and usually false assertion;
+    * every strip resolves but they differ — refused. Averaging them would
+      invent a figure the deal does not have (#538/#549).
+    """
+    unresolved = [spec.name for spec in specs if spec.rate_pct is None]
+    if unresolved:
+        named = ", ".join(unresolved)
+        return _refused_cell(
+            _BOOK_FIELD_COUPON,
+            f"{position.deal_id}'s capital structure states no numeric rate "
+            f"for {named}",
+        )
+    distinct = sorted({spec.rate_pct for spec in specs})
+    if len(distinct) > 1:
+        rates = ", ".join(f"{rate:g}%" for rate in distinct)
+        return _refused_cell(
+            _BOOK_FIELD_COUPON,
+            f"{position.tranche} is issued in {len(specs)} strips at differing "
+            f"rates ({rates}) — the class has no single coupon",
+        )
+    return PositionFieldModel(
+        field=_BOOK_FIELD_COUPON,
+        state=STATE_RAN,
+        value=distinct[0],
+        reason=(
+            f"stated by the capital structure for "
+            f"{', '.join(spec.name for spec in specs)}"
+        ),
+    )
+
+
+def _position_facts(
+    position: Position, structure: CapitalStructure | None
+) -> list[PositionFieldModel]:
+    """Every field this endpoint reports for one position.
+
+    Returns a cell per :data:`BOOK_POSITION_FIELDS`, always — a field is never
+    dropped from the list, because an absent field and a refused one would then
+    render identically and "I could not resolve this" would read as "there is
+    nothing to report" (#494).
+    """
+    if structure is None:
+        reason = (
+            f"no capital structure is registered for {position.deal_id}, so "
+            f"none of its tranche facts can be read"
+        )
+        return [_refused_cell(field, reason) for field in BOOK_POSITION_FIELDS]
+
+    specs, missing = _strips_present(position, structure)
+    if missing:
+        reason = (
+            f"{position.deal_id}'s capital structure carries no strip named "
+            f"{', '.join(missing)}, which {position.tranche} resolved to"
+        )
+        return [_refused_cell(field, reason) for field in BOOK_POSITION_FIELDS]
+
+    return [
+        _seniority_cell(position, structure, specs),
+        _balance_cell(specs),
+        _coupon_cell(position, specs),
+    ]
+
+
+def _load_book() -> Book:
+    """The committed illustrative book, re-placed against the live registry."""
+    return build_book()
+
+
+@app.get("/book", response_model=BookResponse)
+def book_view() -> BookResponse:
+    """Return the holder's book: every position, with per-field facts or refusals.
+
+    Every position the book holds is returned, and each carries a cell for
+    every field in :data:`BOOK_POSITION_FIELDS`. A field the platform cannot
+    resolve refuses *in place* — the position, and the rest of the book, are
+    served regardless. That is the whole point of the endpoint: on the
+    committed book three of five positions can resolve no coupon at all, and a
+    422 on any of them would deny the holder four positions they can have.
+
+    The one refusal that is per-request rather than per-field is a book that
+    cannot be *built*: a position naming a deal the registry cannot place has
+    no honest partial rendering, so it is a labelled 422 (#452 — an unplaceable
+    class is an error, not a zero).
+    """
+    try:
+        book = _load_book()
+    except UnplaceablePosition as exc:
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                f"The book cannot be placed against the deal registry: {exc}. "
+                f"Refusing to serve a partial book — a position whose deal or "
+                f"class the registry cannot place has no honest rendering."
+            ),
+        ) from exc
+
+    structures = capital_structures()
+    positions = [
+        BookPositionModel(
+            deal_id=position.deal_id,
+            deal_name=DEALS.get(position.deal_id, {}).get(
+                "deal_name", position.deal_id
+            ),
+            tranche=position.tranche,
+            strips=list(position.strips),
+            size=position.size,
+            as_of=position.as_of.isoformat(),
+            provenance=position.provenance.value,
+            describes_a_real_holding=position.provenance.describes_a_real_holding,
+            disclosure=position.provenance.disclosure,
+            facts=_position_facts(position, structures.get(position.deal_id)),
+        )
+        for position in book.positions
+    ]
+    return BookResponse(
+        name=book.name,
+        describes_a_real_holding=book.describes_a_real_holding,
+        disclosures=list(book.disclosures),
+        positions=positions,
+    )
