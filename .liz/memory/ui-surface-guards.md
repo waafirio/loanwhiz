@@ -28,6 +28,7 @@ conditional, never the bare construct. A ban needing a region is written too
 loosely, which is the actual failure #568 was working around.
 
 Refs: #599
+Refs: #613 — a near-edge-only bound survives a new sibling region inserted above it.
 
 ## 2026-09-10 · gotcha · #599
 

@@ -54,3 +54,16 @@ identifying which convention was passed is the only assertion able to fail.
 
 Refs: #607
 Refs: #539 — the per-class override that leaves the deal-wide path unreached.
+
+## 2026-09-10 · pitfall · #613
+
+Give each check its own comparison axis when several read one structure: a set
+for membership, a sequence for order, pairs for an attribute. Compare
+membership *positionally* and it subsumes the order rule — a reorder trips
+membership first, so the order check can never be the check that fires. It is
+unreachable, not merely redundant, and it reads as coverage. The mutation table
+is what surfaces this: `test_no_check_is_decorative` reds only because a mutant
+exists per check. Ask of every check you add: which mutant reaches THIS one and
+no other?
+
+Refs: #613
