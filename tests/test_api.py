@@ -4383,3 +4383,33 @@ def test_due_diligence_unknown_deal_404():
     resp = client.get("/deal/unknown/due-diligence")
     assert resp.status_code == 404
     assert resp.json()["detail"] == "Deal unknown not found"
+
+
+def test_due_diligence_answers_every_registered_deal(committed_seeds):
+    """Every deal in the registry gets a record through the ROUTE, not the assembler.
+
+    The two registry-wide assertions above call ``assemble_due_diligence``
+    directly, which is the right level for a claim about the record — but it
+    bypasses the endpoint entirely, so neither of them would notice
+    ``/deal/{id}/due-diligence`` 500-ing on a deal whose registry entry has a
+    shape the route mishandles. The screen reads the route, so the route is
+    what has to answer for every deal.
+    """
+    from loanwhiz.api.main import DEALS
+
+    outcomes = {}
+    for deal_id in DEALS:
+        resp = client.get(f"/deal/{deal_id}/due-diligence")
+        assert resp.status_code == 200, (deal_id, resp.status_code, resp.text[:200])
+        body = resp.json()
+        assert body["deal_id"] == deal_id
+        assert body["deal_name"]
+        # Exactly one of the two kinds holds the retention check: a deal in
+        # neither list would render as a blank record, which reads as "nothing
+        # to ask" rather than "asked and not established" (#513).
+        assert len(body["verified"]) + len(body["not_established"]) == 1
+        outcomes[deal_id] = "verified" if body["verified"] else "not-established"
+
+    assert set(outcomes.values()) == {"verified", "not-established"}, (
+        f"the route returns a single outcome across the whole registry: {outcomes}"
+    )
