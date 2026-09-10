@@ -74,6 +74,7 @@ triage by opening the entry, not by reading the line.
   - [2026-09-08 · decision · #483](#2026-09-08--decision--483) — keywords: seam bypass, delegate to the seam, strip the scheme, derived+trustee-report, synthetic:, esma_tape_normaliser._load_tape, source document
   - [2026-09-08 · pitfall · #478](#2026-09-08--pitfall--478) — keywords: untyped dict shape, divergent mappers, capital_structure, hand-copy drift, total-preservation guard, one builder
   - [2026-09-08 · pitfall · #481](#2026-09-08--pitfall--481) — keywords: classification table, coverage_metric_for, _COVERAGE_METRIC_RE, reinvestment_overcollateralisation, guard escapee, threshold None convention
+- [Guarding a guard: mutation tables over source assertions](guard-mutation-tables.md) — keywords: mutation table, mutant anchor, str.replace first match, substring of a deeper indent, surviving mutant, region slice, source-assertion guard
 - [Extracting tables from PDFs](pdf-table-extraction.md)
   - [2026-09-06 · pitfall · #469](#2026-09-06--pitfall--469) — keywords: visitor_text, text matrix, tm[4], rotated table, extraction_mode layout, row boundary, continuation line, column order, pypdf
   - [2026-09-08 · pitfall · #480](#2026-09-08--pitfall--480) — keywords: column header, required level, guessed order, like-typed columns, stated twice, cross-check, coverage test, refuse unrecognised header
