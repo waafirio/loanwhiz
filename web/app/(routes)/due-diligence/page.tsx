@@ -16,12 +16,17 @@ import { Card, CardContent } from "@/components/ui/card";
  * Investor due-diligence record (#568, epic #561) — the evidence file a
  * compliance reader can take away.
  *
- * **Beside governance, not beside compliance.** `/compliance` answers whether
- * the *deal* is inside its covenants; this answers whether the *holder's*
- * UK-SR risk-retention verification is documented. A deal can pass every
- * covenant with its retention unestablished, and the reverse — so this sits in
- * the sidebar's "Platform & Governance" group and shares no vocabulary with
- * the covenant screen.
+ * **Beside the holder's other surfaces, not beside compliance.** `/compliance`
+ * answers whether the *deal* is inside its covenants; this answers whether the
+ * *holder's* UK-SR risk-retention verification is documented. A deal can pass
+ * every covenant with its retention unestablished, and the reverse — so this
+ * page sits in the sidebar's
+ * "Portfolio" group and shares no vocabulary with the covenant screen.
+ *
+ * That placement is derived, not asserted: `tests/test_published_nav_sections.py`
+ * reads the group `NAV_GROUPS` actually files `/due-diligence` under and reds
+ * if this sentence names a different one. It said "Platform & Governance" for
+ * as long as that was true and then for a while after it was not (#617).
  *
  * The rendering itself lives in `DueDiligenceBody`, alongside the evidence-pack
  * components it reuses, and is guarded by `tests/test_due_diligence_surface.py`.

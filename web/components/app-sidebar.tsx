@@ -19,10 +19,16 @@ import {
 
 /**
  * Left navigation rail. Renders the labelled nav sections from NAV_GROUPS
- * ("Deal Analytics" — the core product views; "Platform & Governance" — the
- * reusable-framework / trust / demo-headline views) and highlights the active
- * route. Collapsible to icons on desktop, off-canvas sheet on mobile (both
- * behaviours come from shadcn's Sidebar defaults).
+ * ("Deal Analytics" — the per-deal analyst views; "Portfolio" — the holder's
+ * own surfaces, grouped by who is asking rather than by what they are;
+ * "Platform & Governance" — the reusable-framework / trust / demo-headline
+ * views) and highlights the active route. Collapsible to icons on desktop,
+ * off-canvas sheet on mobile (both behaviours come from shadcn's Sidebar
+ * defaults).
+ *
+ * Every section named above is checked against NAV_GROUPS by
+ * tests/test_published_nav_sections.py, so this comment cannot outlive a
+ * regrouping the way the two-section version it replaces did (#617).
  */
 export function AppSidebar() {
   const pathname = usePathname();

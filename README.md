@@ -91,22 +91,33 @@ The demo UI is a Next.js dashboard in `web/` served over the FastAPI REST API. O
 ./scripts/run-demo-v2.sh
 ```
 
-Then open http://localhost:3000. The sidebar groups the views into two sections (`NAV_GROUPS` in `web/lib/nav.ts`), plus a docked chat panel.
+Then open http://localhost:3000. A docked chat panel sits beside the views.
 
-**Deal Analytics** — the per-deal views an analyst works in (one loaded deal at a time):
+<!-- nav-sections:start -->
+The sidebar groups the views into three sections (`NAV_GROUPS` in `web/lib/nav.ts`):
 
-1. **Overview** — the extracted deal model (tranche structure, trigger names, completeness).
-2. **Pool & Performance** — 3-period pool analytics and arrears / EPC / geographic distributions.
-3. **Waterfall** — the revenue priority cascade and per-tranche distributions for the latest period.
-4. **Compliance** — the live covenant monitor across reporting periods.
-5. **Projection** — a **multi-period forward fold**: `POST /deal/{id}/project` takes a `months` horizon, generates a CPR / CDR / recovery / rate-shift stream per scenario, and folds it through the waterfall kernel one period at a time, returning a per-period series and Class A WAL. (The assumptions are *supplied* — from named presets or a caller override — not estimated from the deal's own tape history, so read it as "what the structure does under these assumptions", not as a forecast.)
+- **Deal Analytics** — Overview · Pool & Performance · Waterfall · Compliance · Projection · Comparison
+- **Portfolio** — Book · Concentration · Due Diligence
+- **Platform & Governance** — Showcase · Validation · Framework · MCP · Governance
+<!-- nav-sections:end -->
 
-**Platform & Governance** — the reusable-framework / trust / cross-deal layer:
+The grouping above is generated from `NAV_GROUPS`; `tests/test_published_nav_sections.py`
+reds if any document here drifts from it. What each view does:
 
-6. **Showcase** — the primitives × every-registered-deal **capability matrix** (Dutch / Italian / Spanish RMBS, plus the two extracted-but-unvalidated Irish CLOs), each cell `validated` / `ran` / `not-applicable` with the honest reason behind it. The endpoint reports its own tally; it is not transcribed here, because a tally written into a doc goes stale the next time a deal or a key lands.
-7. **Validation** — the seasoned-deal proof: the waterfall engine reproduced against **Green Lion 2024-1's own published Notes & Cash Priority of Payments, to the cent** (revenue 11/11, redemption 4/4; Class A interest engine-computed).
-8. **Framework** — the typed primitive-registry catalogue.
-9. **Governance** — the FINOS evidence pack (audit trail, confidence, citations, `finos_compliant`) plus per-tape direct-read `data_source` provenance.
+- **Overview** — the extracted deal model (tranche structure, trigger names, completeness).
+- **Pool & Performance** — 3-period pool analytics and arrears / EPC / geographic distributions.
+- **Waterfall** — the revenue priority cascade and per-tranche distributions for the latest period.
+- **Compliance** — the live covenant monitor across reporting periods: whether the **deal** is inside its covenants.
+- **Projection** — a **multi-period forward fold**: `POST /deal/{id}/project` takes a `months` horizon, generates a CPR / CDR / recovery / rate-shift stream per scenario, and folds it through the waterfall kernel one period at a time, returning a per-period series and Class A WAL. (The assumptions are *supplied* — from named presets or a caller override — not estimated from the deal's own tape history, so read it as "what the structure does under these assumptions", not as a forecast.)
+- **Comparison** — N-way risk screening and structural diff across deals.
+- **Book** — a holder's positions, each badged with what it is, carrying the platform's refusals in place of blank cells.
+- **Concentration** — look-through single-name and sector exposure across the CLOs a holder owns, with the unresolved obligor set rendered rather than netted away.
+- **Due Diligence** — the per-deal UK-SR risk-retention record: what was verified from which document, and what was not. It answers whether the **holder's** verification is documented — a different question from Compliance's, for a different reader, which is why the two sit apart.
+- **Showcase** — the primitives × every-registered-deal **capability matrix** (Dutch / Italian / Spanish RMBS, plus the two extracted-but-unvalidated Irish CLOs), each cell `validated` / `ran` / `not-applicable` with the honest reason behind it. The endpoint reports its own tally; it is not transcribed here, because a tally written into a doc goes stale the next time a deal or a key lands.
+- **Validation** — the seasoned-deal proof: the waterfall engine reproduced against **Green Lion 2024-1's own published Notes & Cash Priority of Payments, to the cent** (revenue 11/11, redemption 4/4; Class A interest engine-computed).
+- **Framework** — the typed primitive-registry catalogue.
+- **MCP** — the primitives as a governed MCP server: which are exposed as callable tools, and the evidence a tool call's result carries.
+- **Governance** — the FINOS evidence pack (audit trail, confidence, citations, `finos_compliant`) plus per-tape direct-read `data_source` provenance.
 
 The docked chat panel answers ad-hoc deal questions grounded in the loaded deal model and tapes.
 
