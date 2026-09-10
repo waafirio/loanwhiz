@@ -269,3 +269,15 @@ differ only in the reserve pair they read. Then guard the probe against the real
 builder: an expectation read off the code's own constant can never red.
 
 Refs: #598
+## 2026-09-10 · pitfall · #601
+
+A hardcoded convention hides in a helper's **signature**, not its body.
+`_days_between(prev, cur)` read as a date utility; the defect was that it took
+no basis, so no caller could ask for the second convention at all. Check what
+an entrypoint can be *asked* before what it answers — and expect no failing
+test, since such a helper is often unreachable on registered data (no deal
+reaches the tape loop here). Converging it, make the conformance test an input
+the two differ on **today**; agreement where both already agree cannot fail.
+
+Refs: #601
+Refs: #539 — the same assumption one carrier out, in a deal-level field.

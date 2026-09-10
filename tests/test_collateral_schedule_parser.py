@@ -23,6 +23,7 @@ import pytest
 from loanwhiz.primitives.base import PrimitiveResult
 from loanwhiz.domain.trustee_report_registry import CountGrain
 from loanwhiz.primitives.collateral_schedule_parser import (
+    BALANCE_IN_TEXT,
     PART_III_FLAGS,
     CollateralSchedule,
     LiabilitySummaryReconciliationError,
@@ -1089,3 +1090,141 @@ def test_a_numerator_whose_components_disagree_with_its_total_is_refused() -> No
         "par value numerator" in check.name and not check.ok
         for check in reconciliation.checks
     )
+
+
+# ---------------------------------------------------------------------------
+# #600 — a section's total must not be welded onto the last obligor's name
+# ---------------------------------------------------------------------------
+#
+# Par ties either way, which is why this survived: the arithmetic reconciles
+# against the report's own aggregates while the name is wrong (#468's lesson).
+# Every assertion below is therefore on the **name**, never on a total.
+
+
+_BALANCE_IN_A_NAME = re.compile(BALANCE_IN_TEXT)
+
+
+@pytest.mark.parametrize(("period", "filename", "assets", "_par", "_as_of"), PERIODS)
+def test_no_issuer_name_carries_a_balance(
+    period: str, filename: str, assets: int, _par: str, _as_of: str
+) -> None:
+    """No obligor name may carry a thousands-separated amount.
+
+    The shape is the money, not the digit: real borrowers here are named
+    ``Emerald 2 Ltd.`` and ``Techem Verwaltungsgesellschaft 675 MBH``, and a
+    guard keyed on "has a digit" would discard them (#439).
+
+    The floor below is load-bearing, not ceremony. This asserts an *absence*,
+    so "nothing to find" and "nothing was parsed" are the same green — the
+    period's own asset count is what makes the emptiness mean something.
+    """
+    schedule = parse_schedule_text(_text(filename), period_label=period)
+    assert len(schedule.assets) == assets, "an empty parse would pass the check below"
+
+    named = [a for a in schedule.assets if a.issuer_name]
+    assert named, "no names parsed at all — the check below would be vacuous"
+
+    carrying = {
+        asset.identifier: asset.issuer_name
+        for asset in named
+        if _BALANCE_IN_A_NAME.search(asset.issuer_name or "")
+    }
+    assert carrying == {}
+
+
+@pytest.mark.parametrize(("period", "filename", "_assets", "par", "_as_of"), PERIODS)
+def test_the_last_row_of_a_section_is_not_given_that_sections_total(
+    period: str, filename: str, _assets: int, par: str, _as_of: str
+) -> None:
+    """``LX183461`` sorts last in Part I, so the total line follows its row.
+
+    Read as a wrapped remainder it welded the **portfolio aggregate** — the very
+    figure this row's period states as its par — onto the obligor. The name is
+    pinned exactly, and the amount that used to be glued to it is named here so
+    the test says what went wrong, not merely that something did.
+    """
+    schedule = parse_schedule_text(_text(filename), period_label=period)
+    (ziggo,) = [a for a in schedule.assets if a.identifier == "LX183461"]
+
+    assert ziggo.issuer_name == "Ziggo Secured Finance B.V."
+    # The figure that used to be appended was this period's stated aggregate,
+    # not anything belonging to this asset — whose own balance is a rounding
+    # error beside it.
+    assert schedule.aggregates.aggregate_principal_balance == Decimal(par)
+    assert ziggo.principal_balance == Decimal("1000000.00")
+
+
+def test_a_genuinely_wrapped_row_is_still_joined() -> None:
+    """The guard must refuse a total line without eating a real continuation.
+
+    ``XS2431015655``'s facility name wraps across two rendered lines
+    (``VZ Secured`` / ``Financing BV``). If the total-line test were widened
+    past "nothing but an amount" this row would lose its remainder, so it is
+    the falsifier for an over-broad guard.
+    """
+    schedule = _schedule("December 2024", "cairn-clo-xvii-december-2024.txt")
+    (wrapped,) = [a for a in schedule.assets if a.identifier == "XS2431015655"]
+
+    assert wrapped.facility_name == "VZ Secured Financing BV"
+
+
+def test_a_name_that_still_carries_a_balance_is_refused_not_returned() -> None:
+    """Contaminated by another route, the name is refused — and par still ties.
+
+    The row's amount is spliced into the issuer cell *on the row's own line*, so
+    the row-grouper's total-line test cannot see it. That is the point: the
+    guard is on the output's plausibility, not on the geometry that was fixed
+    (#548), so it still fires on a mis-read nobody has seen yet.
+
+    Note what reds and what does not — the defect count and the name move; the
+    reconciliation does not. An arithmetic oracle cannot catch this class.
+    """
+    clean = _text("cairn-clo-xvii-march-2025.txt")
+    contaminated = clean.replace(
+        "LX202330CEP V Investment 23 S.a.r.l",
+        "LX202330CEP V Investment 999,888,777.66 23 S.a.r.l",
+        1,
+    )
+    assert contaminated != clean, "fixture line moved — update this test's anchor"
+
+    schedule = parse_schedule_text(contaminated, period_label="March 2025", strict=False)
+    (row,) = [a for a in schedule.assets if a.identifier == "LX202330"]
+
+    assert row.issuer_name is None, "a name carrying a balance is not a name"
+    assert schedule.defects.unresolved_issuer_name == 1
+    # The arithmetic is untouched: this is exactly why the defect survived.
+    assert schedule.total_principal_balance == Decimal("411342140.14")
+
+
+def test_a_bny_description_carrying_a_subtotal_reports_no_obligor() -> None:
+    """The second family reaches the same contract by its own route.
+
+    Contego's pages are re-cut out of one row-major line, so a group's
+    ``Subtotal:`` trailer lands on the front of the next group's first row and
+    the ``" - "`` separator is still present — the split alone cannot catch it.
+    The obligor is refused and counted; the facility half is readable and is
+    still returned, because a guard should withhold only what it cannot read.
+    """
+    schedule = parse_schedule_text(
+        _text("contego-clo-xi-august-2024.txt"), period_label="August 2024", strict=False
+    )
+    (row,) = [a for a in schedule.assets if a.identifier == "XS2342057143"]
+
+    assert row.issuer_name is None
+    assert row.facility_name == "Allied Universal Hold 3.625 01Jun28"
+    assert schedule.defects.descriptions_without_an_obligor == 1
+
+
+def test_a_legitimate_digit_bearing_name_is_not_collateral_damage() -> None:
+    """The guard's excluded set, checked against real input rather than assumed.
+
+    #439's rule: write down what the guard excludes and test it. These three are
+    real borrowers on this book whose names carry digits, and none carries the
+    thousands separator that makes an amount an amount.
+    """
+    schedule = _schedule("March 2025", "cairn-clo-xvii-march-2025.txt")
+    names = {a.issuer_name for a in schedule.assets}
+
+    assert "Emerald 2 Ltd." in names
+    assert "Techem Verwaltungsgesellschaft 675 MBH" in names
+    assert "Spa Holdings 3 Oy" in names

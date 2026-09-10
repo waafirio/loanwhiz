@@ -289,6 +289,22 @@ _EMBEDDED_IDENTIFIER_RE = re.compile(rf"(?<![A-Z0-9])({_IDENTIFIER})(?=\D|$)")
 SIGNED_MONEY = rf"-?{MONEY}"
 _MONEY_RE = re.compile(MONEY)
 
+#: A money amount recognised *inside free text* — deliberately stricter than
+#: :data:`MONEY`, requiring at least one ``,ddd`` group.
+#:
+#: The looser :data:`MONEY` also matches a bare decimal, so it would flag a
+#: spread (``3.00``) or a price (``98.80``) sitting legitimately in a name. The
+#: property that actually separates the two cases is the **thousands
+#: separator**: a legal-entity name never carries one, and real borrowers whose
+#: names do carry digits — ``Techem Verwaltungsgesellschaft 675 MBH``,
+#: ``Emerald 2 Ltd.``, ``Blitz 20-487 GmbH`` — stay readable (#439).
+#:
+#: This is the same shape as the downstream match-key guard
+#: ``obligor_resolution.name_is_usable``; that module imports from this one, so
+#: the constant lives here, one stage earlier in the pipeline.
+BALANCE_IN_TEXT = r"\d{1,3}(?:,\d{3})+\.\d{2}"
+_BALANCE_IN_TEXT_RE = re.compile(BALANCE_IN_TEXT)
+
 #: The two renderings. The same trustee produces these reports two ways: some
 #: months the tables are drawn rotated, so cells arrive concatenated with no
 #: separator at all (``...3,000,000.00LoanFloating3.50...``); other months they
@@ -916,6 +932,26 @@ def _is_furniture(line: str, layout: DocumentLayout) -> bool:
     return any(title in line for title in layout.titles)
 
 
+#: A line that is *nothing but* a money amount. In these reports that is a
+#: section's **total** line — never a row, and never a wrapped remainder.
+#:
+#: The distinction is structural, not cosmetic. A continuation carries the
+#: overflow of a *free-text* cell (issuer name, facility name, country), so it
+#: always carries text; a lone amount carries none. It matters because a
+#: section's total sits directly beneath that section's **last** row — the
+#: alphabetically last obligor — which is exactly where the grouper would
+#: otherwise read it as that row's wrapped remainder and weld a portfolio
+#: subtotal onto a borrower's name.
+#:
+#: Built on :data:`MONEY`, which permits a **separator-less** amount, so a lone
+#: ``0.00`` closes a row too. That is deliberate and wider than the defect
+#: required: the claim being made is "a continuation always carries text", and a
+#: line holding only ``0.00`` carries none either. Contrast
+#: :data:`BALANCE_IN_TEXT`, which guards a *name* and so must be strict about the
+#: thousands separator — the two ask different questions of the same grammar.
+_SECTION_TOTAL_RE = re.compile(rf"^{_S}{MONEY}{_S}$")
+
+
 def _data_rows(pages: list[list[str]], layout: DocumentLayout) -> list[list[str]]:
     """Group a section's lines into rows: an identifier line plus continuations.
 
@@ -924,6 +960,11 @@ def _data_rows(pages: list[list[str]], layout: DocumentLayout) -> list[list[str]
     row's issuer name, facility name or country. This is the hazard the issue
     named, and it is handled structurally here rather than by heuristics
     downstream.
+
+    One line is neither: a section's **total** line (:data:`_SECTION_TOTAL_RE`)
+    *closes* the row above instead of continuing it. It is asked only of a line
+    that already failed the identifier test, so a data row is still classified
+    on its own shape first and this can never eat one (#494).
     """
     rows: list[list[str]] = []
     for lines in pages:
@@ -934,6 +975,8 @@ def _data_rows(pages: list[list[str]], layout: DocumentLayout) -> list[list[str]
             if IDENTIFIER_RE.match(line):
                 current = [line]
                 rows.append(current)
+            elif _SECTION_TOTAL_RE.match(line):
+                current = None
             elif current is not None:
                 current.append(line)
         # A continuation cannot cross a page boundary in these reports.
@@ -1242,6 +1285,18 @@ def _split_description(description: str) -> tuple[str | None, str]:
     A leading asset-type group label is removed first, and only when removing
     it leaves a separator behind: an obligor genuinely named ``Loan …`` keeps
     its name, because the strip has to earn itself on the row it is applied to.
+
+    The same refusal covers a second unreadable case: an obligor carrying a
+    **balance** (:data:`BALANCE_IN_TEXT`). This page's rows are re-cut out of one
+    row-major line, so a group's ``Subtotal:`` trailer lands on the front of the
+    row that follows it — the first row of the next group — and the separator is
+    still present, which is why the split alone cannot catch it. A legal-entity
+    name never carries a thousands-separated amount, so no obligor is reported.
+    Only that limb is refused: the separator is genuine and the facility half is
+    unaffected by a prefix, so it is still returned rather than discarded — a
+    guard should withhold what it cannot read, not what it can. The caller
+    records ``descriptions_without_an_obligor``, so the row is counted as
+    unreadable rather than joined on a name that is not one.
     """
     cleaned = _collapse(description)
     for label in _BNY_GROUP_LABELS:
@@ -1251,6 +1306,8 @@ def _split_description(description: str) -> tuple[str | None, str]:
     obligor, separator, facility = cleaned.partition(" - ")
     if not separator:
         return None, cleaned
+    if _BALANCE_IN_TEXT_RE.search(obligor):
+        return None, facility.strip()
     return obligor.strip() or None, facility.strip()
 
 
@@ -1870,6 +1927,19 @@ def _parse_part_i(
             issuer, resolved = _split_issuer_and_name(head, cont, facility_name)
         else:
             issuer, resolved = ((head + cont).strip() or None), False
+
+        # Refuse a name carrying a balance rather than return it. A legal-entity
+        # name never contains a thousands-separated amount, so such a string is
+        # not a name — and one cannot match its counterpart in another deal, so
+        # returning it manufactures an unresolved obligor out of a parse defect.
+        # Refusing is already this module's contract for a name it cannot read.
+        #
+        # This is deliberately a check on the *output's* plausibility rather
+        # than on the geometry that produced it (#548): it does not encode the
+        # mis-read it was written for, so it still fires on the next one.
+        if issuer is not None and _BALANCE_IN_TEXT_RE.search(issuer):
+            issuer, resolved = None, False
+
         if not resolved:
             defects.record("unresolved_issuer_name", f"{identifier}: {head[:48]!r}")
 
