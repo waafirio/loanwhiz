@@ -1123,7 +1123,23 @@ def deal_compliance(deal_id: str) -> dict:
     # (the same one /tape-analytics uses). Avoids re-normalising the deal's tapes
     # on every /compliance request — the returned dict shape is identical to
     # EsmaTapeOutput.model_dump().
-    periods = [_normalised_tape_output(tape["url"]) for tape in deal["tape_urls"]]
+    # #524 ranked a deal's sources; ``_set_aside_tape_periods`` names the periods
+    # that choice declines to fold, and its own contract already says what those
+    # periods stop being: "the *ledger* ``/waterfall`` and ``/compliance`` fold".
+    # They were still the axis this screen ran on — every period came from the
+    # tapes while every state came from the report those tapes yielded to, so no
+    # period had a state of its own date and every figure rendered under a date
+    # it is not stated as of. Dropping them here is the other half of #524, not a
+    # reversal of it: no precedence rank moves, and a deal that sets nothing
+    # aside keeps exactly the periods it had.
+    set_aside = set(_set_aside_tape_periods(deal))
+    periods = [
+        output
+        for output in (
+            _normalised_tape_output(tape["url"]) for tape in deal["tape_urls"]
+        )
+        if str(output.get("reporting_date")) not in set_aside
+    ]
     # Trigger set from the deal model's extracted triggers, falling back to the
     # monitor's defaults when the deal has no cached model or no extracted
     # triggers.
@@ -1134,9 +1150,10 @@ def deal_compliance(deal_id: str) -> dict:
     # reconstructed ``DealState`` carries that period's amortizing tranche
     # balances, PDLs, reserve, cumulative loss and pool factor — so the
     # proximity-across-periods series is a real, non-flat covenant curve rather
-    # than the flat one a constant scalar snapshot produced. The reconstructed
-    # ``states`` align one-to-one with the chronological tape ``periods``
-    # (period-0 seed + one closing state per transition).
+    # than the flat one a constant scalar snapshot produced. The monitor pairs
+    # each state to the period stating the same date; where the filter above
+    # leaves no tape period at all, ``periods=None`` makes the series supply its
+    # own dates, so the two sides are one series by construction.
     series = _reconstruct_series(deal_id, deal)
     covenant_input = CovenantInput.from_deal_states(
         series.states,
@@ -2426,15 +2443,27 @@ def _reconstruct_series_from_reports(deal_id: str, deal: dict) -> DealStateSerie
         raise _not_modelable_deal(deal_id, deal)
 
     try:
-        report = resolve_parsed_report(
+        parsed = resolve_parsed_report(
             deal_id, deal, cache_dir=REPORT_EXTRACTION_CACHE_DIR
-        ).to_notes_cash_report()
+        )
     except ReportUnavailable as exc:
         # No committed fixture, durable cache, or live report source resolved —
         # honest 422, not an empty cascade.
         raise _not_modelable_deal(deal_id, deal) from exc
+    report = parsed.to_notes_cash_report()
 
-    adapter = ReportAdapter.from_deal_model(model)
+    # The seed is period 0 (``ReportAdapter.to_inputs``), and periods are held
+    # oldest-first, so the seed's own reporting date is the one whose stated
+    # collateral numerator belongs on it. Taking any other period's would put a
+    # real figure against the wrong date, which is the failure this is meant to
+    # avoid, not a lesser version of it. ``None`` when the report states none —
+    # the adapter then seeds the liability proxy and the coverage tests refuse.
+    seed_collateral = (
+        parsed.periods[0].adjusted_collateral_principal_amount if parsed.periods else None
+    )
+    adapter = ReportAdapter.from_deal_model(
+        model, collateral_principal_amount=seed_collateral
+    )
     series = fold_report_series(model, report, adapter)
     _RECONSTRUCTION_MEMO[memo_key] = series
     return series

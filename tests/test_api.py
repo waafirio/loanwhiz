@@ -3700,6 +3700,76 @@ def test_green_lion_2024_1_cold_start_compliance():
     assert "trigger_statuses" in body
 
 
+def test_green_lion_2024_1_compliance_runs_on_the_dates_its_states_carry():
+    """#583's measured effect on the externally-validated deal, pinned by name.
+
+    GL-2024-1 registers one tape covering 2026-04-30 and folds a report-driven
+    series stating 2025-10-23, 2026-01-23 and 2026-04-23 (the period-0 seed
+    shares the first). #524's precedence rule sets that tape aside — and its own
+    contract says the periods it sets aside "stop being the *ledger* /waterfall
+    and /compliance fold". They were still this screen's whole axis, so the one
+    tape period was paired to the seed and rendered eighteen months from the
+    date it was shown under.
+
+    **No figure moved when the pairing was corrected; the dates they are stated
+    under did.** That is the finding, and it is pinned here rather than absorbed:
+    the tape's date is off the axis, the report's three dates are on it, and
+    every trigger reads exactly what it read before.
+    """
+    api_main._RECONSTRUCTION_MEMO.clear()
+    with patch("loanwhiz.api.main.DEAL_MODEL_SEED_DIR", _REAL_SEED_DIR):
+        resp = client.get("/deal/green-lion-2024-1/compliance")
+    assert resp.status_code == 200, resp.json()
+    body = resp.json()
+
+    periods = {s["period"] for s in body["trigger_statuses"]}
+    assert periods == {"2025-10-23", "2026-01-23", "2026-04-23"}
+    assert "2026-04-30" not in periods, "the set-aside tape date is not the axis (#524)"
+
+    readings: dict[str, set] = {}
+    for status in body["trigger_statuses"]:
+        readings.setdefault(status["trigger_name"], set()).add(status["metric_value"])
+    assert readings["class_a_pdl_trigger"] == {0.0}
+    assert readings["class_b_pdl_trigger"] == {0.0}
+    assert readings["reserve_fund_shortfall_trigger"] == {100.0}
+    assert body["active_triggers"] == ["reserve_fund_shortfall_trigger"]
+
+
+def test_no_compliance_screen_folds_a_period_its_deal_set_aside():
+    """The set-aside filter must not silently match nothing (#583).
+
+    ``_set_aside_tape_periods`` reads each tape's date from the **registry**,
+    while the compliance axis carries the **normalised tape output's**
+    ``reporting_date``. Those agree on every registered deal today, but they are
+    two different sources: were one to drift, the filter would quietly match
+    nothing, every set-aside period would return to the axis, and the positional
+    defect would be back with no test noticing — a filter that finds nothing to
+    remove looks exactly like a deal that needed nothing removed.
+
+    So this asserts the invariant across every deal that serves, and asserts the
+    check is **not vacuous**: at least one serving deal must actually have
+    periods set aside, or the guard is passing on an empty set (#494).
+    """
+    from loanwhiz.api import main as api_main
+
+    exercised = 0
+    for deal_id, deal in api_main.DEALS.items():
+        set_aside = set(api_main._set_aside_tape_periods(deal))
+        api_main._RECONSTRUCTION_MEMO.clear()
+        with patch("loanwhiz.api.main.DEAL_MODEL_SEED_DIR", _REAL_SEED_DIR):
+            resp = client.get(f"/deal/{deal_id}/compliance")
+        if resp.status_code != 200:
+            continue  # a deal that cannot be modelled has no axis to check
+        periods = {s["period"] for s in resp.json()["trigger_statuses"]}
+        assert not (periods & set_aside), (
+            f"{deal_id} folds {sorted(periods & set_aside)}, which #524 set aside"
+        )
+        if set_aside:
+            exercised += 1
+
+    assert exercised, "no serving deal had periods set aside — the guard proved nothing"
+
+
 def test_green_lion_2024_1_cold_start_consults_no_green_lion_fallback():
     """The GL-2024-1 cold-start uses its own model, never the _GREEN_LION_* fallback.
 
