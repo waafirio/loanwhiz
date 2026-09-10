@@ -11,6 +11,7 @@ callers (``ReportAdapter`` / the live fold) still route correctly.
 
 from __future__ import annotations
 
+
 import pytest
 
 # `loanwhiz.primitives` must be imported before `loanwhiz.domain` — a
@@ -24,10 +25,14 @@ from loanwhiz.primitives.waterfall_interpreter import (  # isort: skip
     WaterfallFunds,
     compute_need,
 )
+from loanwhiz.primitives.period_state_machine import (  # isort: skip
+    PeriodCollections,
+    _funds_from_state,
+)
 from loanwhiz.primitives.step_source_classifier import (  # isort: skip
     _ENGINE_COMPUTED_CANONICAL,
-    _UNSUPPLIED_BASES,
     ENGINE_COMPUTED_RECIPIENTS,
+    _builder_shaped_probe,
     _canonical_view,
     build_step_specs,
     is_engine_computed,
@@ -38,8 +43,8 @@ from loanwhiz.domain.rules import (  # isort: skip
     RECOGNISED_UNEVALUABLE_RECIPIENTS,
     NeedSource,
     RecipientType,
-    basis_for,
 )
+from loanwhiz.domain.state import DealState, TrancheState  # isort: skip
 
 
 def _step(priority: str, recipient: str, *, condition: str = "") -> dict:
@@ -432,40 +437,22 @@ def test_returned_dicts_stay_keyed_by_the_raw_extracted_recipient() -> None:
 # ---------------------------------------------------------------------------
 
 
-def _supplied_bases_recipients() -> set[RecipientType]:
-    """Calculator-backed recipients whose basis the platform does supply."""
+def _calculator_backed() -> set[RecipientType]:
     return {
-        r
-        for r, src in RECIPIENT_NEED_SOURCE.items()
-        if src is NeedSource.calculator and basis_for(r) not in _UNSUPPLIED_BASES
+        r for r, src in RECIPIENT_NEED_SOURCE.items() if src is NeedSource.calculator
     }
 
 
 def test_membership_is_a_property_of_the_need_contract_not_a_list() -> None:
-    """Every member earns its place by what the contract says about it.
+    """Every member earns its place; the set this replaced had no reason at all.
 
-    The set this replaced was eight hand-written spellings, and the defect was
-    not that it held the wrong eight — it was that membership had no *reason*, so
-    it could only ever be as current as the last person to remember it. These
-    assert the reason instead: a member is calculator-backed, and its basis is one
-    the platform actually supplies an input for.
+    The defect was not that the authored frozenset held the wrong eight names — it
+    was that membership had no *property*, so it could only ever be as current as
+    the last person to remember it.
     """
+    assert ENGINE_COMPUTED_RECIPIENTS, "nothing is credited at all"
     for value in ENGINE_COMPUTED_RECIPIENTS:
-        recipient = RecipientType(value)
-        assert RECIPIENT_NEED_SOURCE[recipient] is NeedSource.calculator, value
-        assert basis_for(recipient) not in _UNSUPPLIED_BASES, value
-
-
-def test_every_qualifying_recipient_is_credited_so_a_new_class_needs_no_edit() -> None:
-    """The anti-whack-a-mole half, and the one that actually fixes #598.
-
-    The previous set could satisfy the test above while still omitting Classes D,
-    E and F — being *sound* was never the problem. This is the completeness
-    direction: every recipient the contract says the engine computes IS a member,
-    so a class added to ``RecipientType`` with ``NeedSource.calculator`` is
-    credited the moment it exists and nobody has to remember this file.
-    """
-    assert {RecipientType(v) for v in ENGINE_COMPUTED_RECIPIENTS} == _supplied_bases_recipients()
+        assert RECIPIENT_NEED_SOURCE[RecipientType(value)] is NeedSource.calculator, value
 
 
 def test_the_deep_stack_classes_the_authored_set_stopped_short_of_are_members() -> None:
@@ -474,6 +461,25 @@ def test_the_deep_stack_classes_the_authored_set_stopped_short_of_are_members() 
         assert f"class_{letter}_interest" in ENGINE_COMPUTED_RECIPIENTS, letter
         # And through the document's own spelling, which is how a step arrives.
         assert is_engine_computed(f"class_{letter}_notes_interest"), letter
+
+
+def test_a_new_class_is_credited_without_an_edit_to_the_classifier() -> None:
+    """The anti-whack-a-mole property, stated over the enum rather than a list.
+
+    Every class the enum carries an interest member for is credited. That is the
+    direction the authored set failed: it was *sound* — every name in it was
+    genuinely computable — and still wrong, because it was incomplete and nothing
+    made incompleteness visible.
+    """
+    lettered = {
+        r.value
+        for r in RecipientType
+        if r.value.endswith("_interest") and not r.value.endswith("_deferred_interest")
+    }
+    assert lettered, "the enum carries no note-interest members at all"
+    assert lettered <= ENGINE_COMPUTED_RECIPIENTS, sorted(
+        lettered - ENGINE_COMPUTED_RECIPIENTS
+    )
 
 
 def test_the_declaration_is_canonical_so_the_two_sides_cannot_disagree() -> None:
@@ -486,49 +492,66 @@ def test_the_declaration_is_canonical_so_the_two_sides_cannot_disagree() -> None
     is no second vocabulary left. The legacy spellings must still *resolve*.
     """
     assert all(v == RecipientType(v).value for v in ENGINE_COMPUTED_RECIPIENTS)
-    assert _ENGINE_COMPUTED_CANONICAL == _supplied_bases_recipients()
+    assert _ENGINE_COMPUTED_CANONICAL == {
+        RecipientType(v) for v in ENGINE_COMPUTED_RECIPIENTS
+    }
     assert is_engine_computed("class_a_pdl_replenishment")
     assert is_engine_computed("reserve_account_replenishment")
 
 
 # ---------------------------------------------------------------------------
-# The exclusion cannot outlive its reason (#598)
+# A registered calculator is necessary and NOT sufficient (#598)
 # ---------------------------------------------------------------------------
 
 
-def _excluded_recipients() -> list[RecipientType]:
+def _uncredited_calculator_backed() -> list[RecipientType]:
     return sorted(
-        (
-            r
-            for r, src in RECIPIENT_NEED_SOURCE.items()
-            if src is NeedSource.calculator and basis_for(r) in _UNSUPPLIED_BASES
-        ),
+        _calculator_backed() - {RecipientType(v) for v in ENGINE_COMPUTED_RECIPIENTS},
         key=lambda r: r.value,
     )
 
 
-def test_each_excluded_basis_is_excluded_for_want_of_an_input_not_a_formula() -> None:
-    """Supply the missing input and every excluded recipient computes.
+def test_a_calculator_whose_input_nothing_supplies_is_not_credited() -> None:
+    """The families held out, and the two different ways they fail.
 
-    This is the paired half of the exclusion (#493): asserting only that these
-    refuse on the engine's real funds would not distinguish "the input is
-    unsupplied" from "the formula is broken" or from "this recipient has no
-    calculator at all" — and the first is the only one that justifies excluding
-    it rather than fixing it. Hand them what they read and they all produce a
-    real figure, so what ``_UNSUPPLIED_BASES`` names is a **supply** gap.
-
-    It also reds if a basis is ever added to the exclusion without cause: a
-    recipient whose calculator cannot be made to compute here does not belong.
+    Read together with the test below, which shows the formulas are fine: what
+    separates these from the credited members is **supply**, not correctness.
+    ``liquidity_reserve_replenishment`` is the one that shows why this cannot be
+    a table of bases — it shares ``target_shortfall`` with the credited
+    ``reserve_replenishment`` and differs only in which reserve pair it reads.
     """
-    excluded = _excluded_recipients()
-    assert excluded, "the exclusion is empty — delete it rather than testing it"
+    uncredited = {r.value for r in _uncredited_calculator_backed()}
+    assert uncredited == {
+        "senior_management_fee",
+        "subordinated_management_fee",
+        "class_c_deferred_interest",
+        "class_d_deferred_interest",
+        "class_e_deferred_interest",
+        "class_f_deferred_interest",
+        "liquidity_reserve_replenishment",
+    }
+
+
+def test_each_uncredited_recipient_is_held_out_for_want_of_an_input_not_a_formula(
+) -> None:
+    """Supply the missing input and every one of them computes.
+
+    The paired half (#493): asserting only that these produce nothing on the real
+    funds shape would not distinguish "the input is unsupplied" from "the formula
+    is broken" or "there is no calculator" — and only the first justifies holding
+    a recipient out rather than fixing it.
+    """
+    uncredited = _uncredited_calculator_backed()
+    assert uncredited, "nothing is held out — simplify the derivation"
 
     supplied = WaterfallFunds(
         available_revenue_funds=50_000_000.0,
         available_principal_funds=0.0,
         days_in_period=90,
         collateral_balance=400_000_000.0,
-        fee_rates_pct={r.value: 0.35 for r in excluded},
+        fee_rates_pct={r.value: 0.35 for r in uncredited},
+        liquidity_reserve_balance=0.0,
+        liquidity_reserve_target=750_000.0,
         tranches=[
             TrancheFunds(
                 name=f"class_{letter}",
@@ -539,63 +562,83 @@ def test_each_excluded_basis_is_excluded_for_want_of_an_input_not_a_formula() ->
             for letter in "abcdef"
         ],
     )
-    for recipient in excluded:
+    for recipient in uncredited:
         assert recipient.value in NEED_CALCULATORS, recipient
         need, evaluable = compute_need(recipient.value, supplied)
         assert evaluable, recipient
         assert need > 0.0, recipient
 
 
-def test_every_credited_recipient_computes_on_the_funds_the_engine_really_builds() -> None:
-    """The independent check on ``_UNSUPPLIED_BASES`` — and the one that can red.
+def test_the_probe_populates_nothing_the_engines_own_builder_leaves_alone() -> None:
+    """The derivation's one load-bearing assumption, checked against the builder.
 
-    Asserting the credited set equals "calculator-backed minus ``_UNSUPPLIED_BASES``"
-    proves nothing about whether that exclusion is *right*: both sides read the
-    same constant, so a wrong entry moves them together and the assertion is a
-    tautology. This asks the engine instead.
+    Membership is decided by asking the engine on ``_builder_shaped_probe()``, so
+    that probe is only honest while it mirrors what
+    ``period_state_machine._funds_from_state`` actually writes. Populate a field
+    there that the builder never writes and a calculator reading it starts being
+    credited on a value no deal will ever carry — which is exactly the bug this
+    replaced, one layer down.
 
-    ``period_state_machine._funds_from_state`` is the one place ``WaterfallFunds``
-    is built for a real fold. It writes ``balance``, ``rate_pct``, ``pdl_balance``
-    and the per-tranche day count — and neither ``fee_rates_pct`` nor
-    ``deferred_interest_balance`` nor ``collateral_balance``. So on that shape a
-    credited recipient must produce a real, evaluable, non-zero need, and a
-    recipient whose input is unsupplied cannot.
-
-    Drop a line from ``_UNSUPPLIED_BASES`` and its family starts being credited
-    while still reading a default: the first loop reds. Add one that *is*
-    supplied and the second loop reds. Neither direction is free.
+    So build a real one from a fully-populated ``DealState`` and compare. Any
+    scalar the builder leaves at its default must be at its default in the probe
+    too. **This is the assertion that is not a tautology**: it reads the builder,
+    not the constant the derivation reads.
     """
-    as_engine_builds_it = WaterfallFunds(
-        available_revenue_funds=50_000_000.0,
-        available_principal_funds=0.0,
-        days_in_period=90,
-        reserve_balance=0.0,
-        reserve_target=1_000_000.0,
-        liquidity_reserve_balance=0.0,
-        liquidity_reserve_target=1_000_000.0,
+    state = DealState(
+        reporting_date="2025-01-08",
         tranches=[
-            TrancheFunds(
-                name=f"class_{letter}",
-                balance=10_000_000.0,
-                rate_pct=5.0,
-                pdl_balance=250_000.0,
-            )
+            TrancheState(name=f"class_{letter}", balance=10_000_000.0, pdl_balance=1.0)
             for letter in "abcdef"
         ],
+        reserve_balance=1.0,
+        reserve_target=2.0,
+        pool_balance=400_000_000.0,
+        original_pool_balance=500_000_000.0,
+        cumulative_losses=1.0,
+        sequential_pay_active=True,
+    )
+    built = _funds_from_state(
+        state,
+        PeriodCollections(),
+        rates={f"class_{letter}_rate_pct": 5.0 for letter in "abcdef"},
+        days_in_period=90,
+        senior_fees=1.0,
+        swap_payment=1.0,
+        available_revenue=1.0,
+        available_principal=1.0,
+    )
+    probe = _builder_shaped_probe()
+
+    defaults = {
+        name: field.default
+        for name, field in WaterfallFunds.model_fields.items()
+        if name != "tranches"
+    }
+    over_populated = [
+        name
+        for name, default in defaults.items()
+        if getattr(built, name) == default and getattr(probe, name) != default
+    ]
+    assert over_populated == [], (
+        f"{over_populated} are populated in the probe but never written by "
+        "_funds_from_state — a calculator reading one would be credited on a "
+        "value no deal supplies"
     )
 
-    # Both loops below iterate a derived set, so an empty one would make this
-    # pass by finding nothing — the `all([])` free green (#513). Neither may be.
-    assert ENGINE_COMPUTED_RECIPIENTS, "nothing is credited at all"
-    assert _excluded_recipients(), "nothing is excluded — drop _UNSUPPLIED_BASES"
-
-    # Every credited recipient answers with a figure derived from that context.
-    for value in sorted(ENGINE_COMPUTED_RECIPIENTS):
-        need, evaluable = compute_need(value, as_engine_builds_it)
-        assert evaluable, value
-        assert need > 0.0, (value, "credited but reads an input nothing supplies")
-
-    # And every excluded one cannot — so the zeros above would be visible.
-    for recipient in _excluded_recipients():
-        need, _evaluable = compute_need(recipient.value, as_engine_builds_it)
-        assert need == 0.0, recipient
+    # And the reverse: the probe must not starve a field the builder does write,
+    # or a legitimately-computable recipient would be held out.
+    #
+    # ``reserve_balance`` is the one exemption and it is deliberate: the reserve
+    # need is ``max(0, target - balance)``, so the probe models a **drawn**
+    # reserve by leaving the balance at 0 against a non-zero target. Probing it
+    # non-zero-and-equal would answer 0 and hold out a recipient the builder
+    # supplies perfectly well.
+    starved = [
+        name
+        for name, default in defaults.items()
+        if name != "reserve_balance"
+        and getattr(built, name) != default
+        and getattr(probe, name) == default
+    ]
+    assert starved == [], f"{starved} are written by _funds_from_state but not probed"
+    assert probe.reserve_target > probe.reserve_balance, "reserve need would be 0"

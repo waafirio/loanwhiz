@@ -49,45 +49,68 @@ from __future__ import annotations
 
 from loanwhiz.domain.rules import (
     RECIPIENT_NEED_SOURCE,
-    AmountBasis,
     NeedSource,
     RecipientType,
-    basis_for,
 )
-from loanwhiz.primitives.waterfall_interpreter import StepSpec, _canonical_recipient
+from loanwhiz.primitives.waterfall_interpreter import (
+    StepSpec,
+    TrancheFunds,
+    WaterfallFunds,
+    _canonical_recipient,
+    compute_need,
+)
 
-#: Bases whose calculator is registered but whose **input no producer supplies**,
-#: so the step's figure is not something the engine derived from the deal.
+#: Enum-value suffixes the probe reads tranche names off.
+_INTEREST = "_interest"
+_DEFERRED = "_deferred_interest"
+
+#: A funds context shaped exactly as the engine's own builder shapes one.
 #:
-#: A registered calculator is necessary for "the engine computes this" and not
-#: sufficient. Both bases here read a field that exists on the funds and that
-#: nothing in the codebase ever writes, and they fail differently — which is why
-#: the property is stated as "the input is unsupplied" rather than as either
-#: symptom:
+#: ``period_state_machine._funds_from_state`` is the single place a
+#: :class:`~loanwhiz.primitives.waterfall_interpreter.WaterfallFunds` is built for
+#: a real fold, and it writes a **subset** of the model's fields: the tranche's
+#: ``balance`` / ``rate_pct`` / ``pdl_balance`` / day count, the plain reserve
+#: pair, the two pots and the period length. It never writes ``fee_rates_pct``,
+#: ``collateral_balance``, ``deferred_interest_balance`` or the *liquidity*
+#: reserve pair — so a calculator reading one of those reads a default on every
+#: deal, forever, and is not computing anything.
 #:
-#: - ``fee_accrual`` reads ``WaterfallFunds.fee_rates_pct``, an empty dict by
-#:   default. ``_make_collateral_fee_need`` returns ``None``, so ``compute_need``
-#:   records ``input_unavailable`` and the step **refuses** — loudly. Crediting it
-#:   would also drop the report figure the step needs and silently under-distribute
-#:   the cascade by the whole fee.
-#: - ``deferred_interest_balance`` reads ``TrancheFunds.deferred_interest_balance``,
-#:   ``0.0`` by default. It does **not** refuse: it returns a confident ``0.00``
-#:   that ties against a published ``0.00``. That is the more dangerous of the two,
-#:   because a step which agrees with the report only because both sides are the
-#:   default reads exactly like one the engine got right (#496).
-#:
-#: Neither is a judgement about the formula, which is correct and would compute the
-#: moment a deal seeded its input. ``test_step_source_classifier`` asserts each
-#: excluded basis really is unsupplied across the committed folds, so the day a
-#: producer starts writing one of these fields that test reds and its line here
-#: must go — the exclusion cannot outlive its reason.
-_UNSUPPLIED_BASES: frozenset[AmountBasis] = frozenset(
-    {"fee_accrual", "deferred_interest_balance"}
-)
+#: Every populated value here is deliberately non-zero, so that a need of ``0.00``
+#: from this context means "this calculator's input is one nothing supplies"
+#: rather than "the deal happens to owe nothing" (#493's paired shape). The
+#: tranche list is derived from the enum, not written out, so a class added to
+#: :class:`~loanwhiz.domain.rules.RecipientType` is probed without an edit here.
+def _builder_shaped_probe() -> WaterfallFunds:
+    """The funds shape :func:`_engine_computed_declaration` interrogates."""
+    classes = sorted(
+        {
+            r.value.removesuffix(_INTEREST)
+            for r in RecipientType
+            if r.value.endswith(_INTEREST) and not r.value.endswith(_DEFERRED)
+        }
+    )
+    return WaterfallFunds(
+        available_revenue_funds=50_000_000.0,
+        available_principal_funds=50_000_000.0,
+        senior_fees=100_000.0,
+        swap_payment=100_000.0,
+        days_in_period=90,
+        # The reserve pair is modelled as a DRAWN reserve, not an absent one:
+        # ``target_shortfall`` is ``max(0, target - balance)``, so an equal pair
+        # would answer 0 and read exactly like an unsupplied input.
+        reserve_balance=0.0,
+        reserve_target=1_000_000.0,
+        tranches=[
+            TrancheFunds(
+                name=name, balance=10_000_000.0, rate_pct=5.0, pdl_balance=250_000.0
+            )
+            for name in classes
+        ],
+    )
 
 
 def _engine_computed_declaration() -> frozenset[str]:
-    """The recipients the engine computes, derived from the need contract (#598).
+    """The recipients the engine computes, derived by asking the engine (#598).
 
     **Membership is derived, never authored.** This was a hand-written frozenset
     of eight spellings that stopped at ``class_c_interest``, so a deal with a
@@ -95,30 +118,39 @@ def _engine_computed_declaration() -> frozenset[str]:
     ``report-supplied`` — compared against the report's own figure — even though
     the registry computed each one to the cent from a seeded balance, a published
     applied rate and a parsed day count. The list did not describe the engine; it
-    described the three-tranche RMBS the list was written for, and every new class
-    was another name somebody had to remember to add.
+    described the three-tranche RMBS it was written for, and every new class was
+    another name somebody had to remember to add.
 
-    So ask what makes a recipient engine-computed and read the answer off the two
-    declarations that already state it:
+    Two conditions, and the second is the one a name list can never express:
 
-    - :data:`~loanwhiz.domain.rules.RECIPIENT_NEED_SOURCE` says where the need
-      comes from. :attr:`~loanwhiz.domain.rules.NeedSource.calculator` is exactly
-      "an engine formula over deal data" — which is the property. The other four
-      members are all report- or allocation-fed and must stay out:
-      ``funds_input`` is registry-backed but the *number* is the servicer's,
-      ``allocation`` is supplied by ``allocate_principal``, ``step_override``
-      has no formula at all, and ``residual`` is the terminal sweep.
-    - :func:`~loanwhiz.domain.rules.basis_for` says which formula, which is how
-      :data:`_UNSUPPLIED_BASES` removes the ones that cannot run.
+    1. :data:`~loanwhiz.domain.rules.RECIPIENT_NEED_SOURCE` says the need comes
+       from a :attr:`~loanwhiz.domain.rules.NeedSource.calculator` — "an engine
+       formula over deal data", which is the property. The other four members are
+       report- or allocation-fed and must stay out: ``funds_input`` is
+       registry-backed but the *number* is the servicer's, ``allocation`` is
+       supplied by ``allocate_principal``, ``step_override`` has no formula at
+       all, and ``residual`` is the terminal sweep.
+    2. That calculator actually **produces a figure** from what the engine's own
+       funds-builder supplies. A registered calculator is necessary and not
+       sufficient: three families read a field nothing ever writes, and they fail
+       in two different ways. The management fees (``fee_accrual``) refuse
+       ``input_unavailable`` — and crediting one would also drop the report figure
+       its step is funded from, under-distributing the cascade by the whole fee.
+       The deferred-interest lines and the *liquidity* reserve top-up do not
+       refuse: they return a confident ``0.00`` that ties against a published
+       ``0.00``, which reads exactly like a step the engine got right (#496).
 
-    Both are exhaustive over :class:`~loanwhiz.domain.rules.RecipientType` and
-    asserted total at import, so a class added to the enum is credited the moment
-    its need source says ``calculator`` — with no edit here.
+    Condition 2 is asked of the engine rather than encoded as a table of bases,
+    because the basis is the wrong grain: ``reserve_replenishment`` and
+    ``liquidity_reserve_replenishment`` share the basis ``target_shortfall`` and
+    differ only in which reserve pair they read — one the builder writes and one
+    it does not. Any list keyed by basis credits both or neither.
     """
+    probe = _builder_shaped_probe()
     return frozenset(
         r.value
         for r, src in RECIPIENT_NEED_SOURCE.items()
-        if src is NeedSource.calculator and basis_for(r) not in _UNSUPPLIED_BASES
+        if src is NeedSource.calculator and compute_need(r.value, probe)[0] > 0.0
     )
 
 

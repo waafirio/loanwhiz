@@ -778,9 +778,17 @@ populates. The fees at least refuse out loud; the deferred lines return a
 confident EUR 0.00 that ties against a published EUR 0.00, which is precisely
 the vacuous agreement the 40 zero-vs-zero comparisons above are counted to
 expose. Crediting them would have moved the headline from 3 to 10 without the
-engine computing one additional cent, so the derivation excludes any basis whose
-input nothing supplies — and `tests/test_step_source_classifier.py` asserts each
-exclusion against the engine, so it cannot outlive its reason.
+engine computing one additional cent.
+
+So the second condition is asked **of the engine**: a recipient is credited only
+if its calculator returns a figure on a funds context shaped exactly as
+`period_state_machine._funds_from_state` shapes one. That is deliberately not a
+table of which formulas to trust — the grain would be wrong. `reserve_replenishment`
+and `liquidity_reserve_replenishment` share the basis `target_shortfall` and
+differ only in which reserve pair they read; the builder writes one pair and not
+the other, so any rule keyed by formula credits both or neither. Cairn's cascade
+names neither, so this changes no figure on this page — it is the reason the
+figures above are a property of the engine rather than of a list.
 
 **The engine executes this deal (#457).** The committed seed folds through the
 existing `run_period` kernel — the same one the RMBS deals use — over the full
