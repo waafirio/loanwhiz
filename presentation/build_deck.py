@@ -457,7 +457,7 @@ card(s, Inches(0.7), by, Inches(5.95), Inches(1.9), "End-to-end, verified", bull
 card(s, Inches(6.85), by, Inches(5.75), Inches(1.9), "Data-driven by design", bullets([
     "Add a deal via data/deals.json — no code change; the interpreter executes its extracted model.",
     "Format-agnostic tapes: CSV or parquet (incl. a combined multi-month file).",
-    "Validated on Green Lion 2026-1; real multi-deal validation underway (#206).",
+    "Green Lion 2026-1 runs end-to-end; the validated deals are named by the capability matrix, not by this slide (#602).",
 ], size=12), accent=TEAL)
 
 # ===========================================================================
@@ -497,7 +497,7 @@ text(s, Inches(1.05), cy+Inches(0.85), Inches(11.2), Inches(1.4),
       [("▸  ", 13.5, TEAL, True), ("Trustworthy by construction", 13.5, WHITE, True),
        (" — citations, confidence and human-review routing on every output.", 13.5, RGBColor(0xC7,0xD3,0xE8), False)],
       [("▸  ", 13.5, TEAL, True), ("Data-driven & extensible", 13.5, WHITE, True),
-       (" — Apache-2.0; add a deal via data/deals.json (no code change), CSV or parquet tapes, add a primitive in a few lines. Demonstrated on Green Lion 2026-1; multi-deal validation underway.", 13.5, RGBColor(0xC7,0xD3,0xE8), False)]],
+       (" — Apache-2.0; add a deal via data/deals.json (no code change), CSV or parquet tapes, add a primitive in a few lines. Demonstrated on Green Lion 2026-1, which runs end-to-end but is validated against nothing; the capability matrix names what is.", 13.5, RGBColor(0xC7,0xD3,0xE8), False)]],
      line_spacing=1.12, space_after=6)
 
 import os

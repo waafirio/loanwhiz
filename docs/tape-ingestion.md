@@ -59,9 +59,14 @@ to a CSV or parquet tape works.
 
 ## Worked example: Green Lion 2026-1
 
-The validated tape-driven deal is **Green Lion 2026-1 B.V.** (a Dutch RMBS
-deal). Its monthly ESMA tapes are published on HuggingFace and loaded by
-`loanwhiz.data.green_lion`, which is the direct-read path for that deal:
+The worked example throughout this document is **Green Lion 2026-1 B.V.** (a
+Dutch RMBS deal). It is the reference deal for the *tape* path, not a validated
+one: it carries no committed ground-truth answer key, so its engine-validation
+cell in `GET /capability-matrix` reads `not-applicable`, with that as its
+reason. Calling it "the validated tape-driven deal" — as this document did
+until #602 — named the wrong deal for the wrong property. Its monthly ESMA tapes
+are published on HuggingFace and loaded by `loanwhiz.data.green_lion`, which is
+the direct-read path for that deal:
 
 ```python
 from loanwhiz.data import green_lion

@@ -51,7 +51,7 @@
       "type": "section",
       "kicker": "Reusability you can see",
       "title": "A capability matrix, not a claim",
-      "body": "GET /capability-matrix runs every primitive across every deal and renders it in the /showcase view: validated / ran / not-applicable, each cell carrying its real reason. Today: 1 validated, 9 ran, 15 not-applicable. N/A is shown as honest scope — never hidden, never coloured green."
+      "body": "GET /capability-matrix runs every primitive across every deal and renders it in the /showcase view: validated / ran / not-applicable, each cell carrying its real reason. The live tally is on the slide's screen, read from the endpoint — a deck that hard-codes one is stating last quarter's number to this quarter's room. N/A is shown as honest scope — never hidden, never coloured green."
     },
     {
       "type": "cards",

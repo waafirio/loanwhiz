@@ -317,6 +317,11 @@ The framework publishes **23 mitigation controls** (15 preventative
 `AIR-PREV-*` + 8 detective `AIR-DET-*`) addressing 23 risks. LoanWhiz's current
 mapping: **10 satisfied · 7 partial · 6 not applicable**.
 
+> This tally is checked against `finos_conformance_summary()` by
+> `tests/test_published_capability_tally.py`, so it cannot drift from the
+> catalogue in silence. It used to be read by nothing — the same defect that let
+> three different capability tallies stand in three documents at once (#602).
+
 ### Preventative controls (`AIR-PREV-*`)
 
 | Control | Title | Status | LoanWhiz evidence |

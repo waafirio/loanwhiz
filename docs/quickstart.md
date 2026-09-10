@@ -190,7 +190,7 @@ Endpoints:
 - `POST /deal/{id}/project` — multi-period forward fold over a `months` horizon under base/stress scenarios
 - `POST /deal/{id}/stress-matrix` — the same fold across a CPR × CDR × rate-shift grid (capped at 64 cells)
 - `GET /primitives` — the primitive catalogue with per-primitive reachability (`live` / `library-only`)
-- `GET /capability-matrix` — the primitives × 6 registered deals capability matrix: each cell `validated` / `ran` / `not-applicable` with a real reason, plus the current tally (read it from the response; a transcribed one goes stale)
+- `GET /capability-matrix` — the primitives × every-registered-deal capability matrix: each cell `validated` / `ran` / `not-applicable` with a real reason, plus the current tally (read it from the response; a transcribed one goes stale)
 - `GET /quality-matrix` — the *graded* extension: each (deal × check) cell reconciled against the deal's committed ground-truth answer key. Two deals have one — Green Lion 2024-1 and Green Lion 2023-1 — and both grade their revenue/redemption PoP to the cent
 - `GET /deal/{id}/validation` — the engine-validation report for a deal; `available=true` with the to-the-cent reconciliation for Green Lion 2024-1, `available=false` with an honest note otherwise. Note this understates Green Lion 2023-1: it has committed fixtures and an answer key and is graded by `/quality-matrix`, but no validation *builder* is registered, so this endpoint still reports `available=false`
 
@@ -201,7 +201,7 @@ See `src/loanwhiz/api/README.md` for the full endpoint reference and curl exampl
 The Next.js dashboard (`./scripts/run-demo-v2.sh`, UI on :3000) groups its views into two sidebar sections (`NAV_GROUPS` in `web/lib/nav.ts`):
 
 - **Deal Analytics** — Overview, Pool & Performance, Waterfall, Compliance, Projection (the per-deal analyst views, one loaded deal at a time).
-- **Platform & Governance** — Showcase (the primitives × 6 registered deals capability matrix across Dutch / Italian / Spanish RMBS plus the registered-only Irish CLO), Validation (the Green Lion 2024-1 engine-vs-Notes-&-Cash proof, to the cent), Framework (the primitive-registry catalogue), MCP (the tool surface, and the evidence a tool call's result carries), and Governance (the FINOS evidence pack + per-tape `data_source` provenance — direct / derived / synthetic).
+- **Platform & Governance** — Showcase (the primitives × every-registered-deal capability matrix across Dutch / Italian / Spanish RMBS plus the registered-only Irish CLO), Validation (the Green Lion 2024-1 engine-vs-Notes-&-Cash proof, to the cent), Framework (the primitive-registry catalogue), MCP (the tool surface, and the evidence a tool call's result carries), and Governance (the FINOS evidence pack + per-tape `data_source` provenance — direct / derived / synthetic).
 
 The capability matrix is the honest source of truth for what is validated vs ran vs not-applicable across the deal set — never read the cross-jurisdiction coverage as "validated everywhere".
 
