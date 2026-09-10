@@ -30,11 +30,20 @@ export interface NavGroup {
 }
 
 /**
- * The sidebar is split into two sections:
+ * The sidebar is split into three sections. Two of them split on what a
+ * surface IS; the third splits on WHO IS ASKING, which is why it exists at
+ * all (#613) — three holder-level views were scattered across the other two,
+ * each sitting in a group about something else.
  *
  *  - "Deal Analytics" — the generally-useful structured-finance product: the
  *    per-deal views an analyst actually works in (overview, pool, waterfall,
  *    compliance, projection).
+ *  - "Portfolio" — one reader's question: what do I hold, and what can this
+ *    platform prove about it? Named for that reader rather than for the
+ *    mechanism. Ordered so the holding comes before the analyses of it: the
+ *    Book, then concentration through it, then the diligence record behind
+ *    it. Nothing here is per-deal analytics and nothing here is about the
+ *    platform.
  *  - "Platform & Governance" — the reusable-framework / trust / cross-deal
  *    layer built to headline the hackathon: the cross-jurisdiction showcase,
  *    the engine-validation proof, the primitive-registry catalogue, and the
@@ -52,9 +61,30 @@ export const NAV_GROUPS: NavGroup[] = [
       // Deal Comparison — N-way risk screening + structural diff across deals
       // (#283, epic #262 analyst-facing tools).
       { title: "Comparison", href: "/compare", icon: GitCompareArrows },
+    ],
+  },
+  {
+    label: "Portfolio",
+    items: [
       // Book — a holder's positions, each badged with what it IS and carrying
       // the platform's refusals in place of blank cells (#573, epic #569).
+      // First in the section: the holding a reader meets before any analysis
+      // of it.
       { title: "Book", href: "/book", icon: BookOpen },
+      // Look-through concentration — true single-name / sector exposure across
+      // the CLOs a holder owns, with the unresolved obligor set rendered
+      // rather than netted away (#565, epic #560).
+      { title: "Concentration", href: "/concentration", icon: Layers3 },
+      // Due diligence — the per-deal UK-SR risk-retention record: what was
+      // verified from which document, and what was not (#568, epic #561).
+      // Beside the holder's other surfaces on purpose, and still deliberately
+      // NOT beside Compliance. "Compliance", in the Deal Analytics group
+      // above, answers whether the DEAL is inside its covenants; this answers
+      // whether the HOLDER's verification is documented. Two questions, two
+      // readers — the separation is the point, so do not merge the entries.
+      // Grouping by reader (#613) is what makes that separation legible; it
+      // was never an argument for filing a holder's surface under "Platform".
+      { title: "Due Diligence", href: "/due-diligence", icon: FileSearch },
     ],
   },
   {
@@ -74,17 +104,6 @@ export const NAV_GROUPS: NavGroup[] = [
       // Governance — the FINOS evidence-pack / audit-trail / confidence /
       // model-risk + data-provenance (deeploans vs direct) surface (#239).
       { title: "Governance", href: "/governance", icon: Scale },
-      // Look-through concentration — true single-name / sector exposure across
-      // the CLOs a holder owns, with the unresolved obligor set rendered
-      // rather than netted away (#565, epic #560).
-      { title: "Concentration", href: "/concentration", icon: Layers3 },
-      // Due diligence — the per-deal UK-SR risk-retention record: what was
-      // verified from which document, and what was not (#568, epic #561).
-      // Beside Governance on purpose. "Compliance", in the Deal Analytics
-      // group above, answers whether the DEAL is inside its covenants; this
-      // answers whether the HOLDER's verification is documented. Two questions,
-      // two readers — the separation is the point, so do not merge the entries.
-      { title: "Due Diligence", href: "/due-diligence", icon: FileSearch },
     ],
   },
 ];
