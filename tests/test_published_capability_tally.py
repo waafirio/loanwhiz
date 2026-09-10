@@ -103,6 +103,32 @@ def _read(relative_path: str) -> str:
     return (_REPO_ROOT / relative_path).read_text(encoding="utf-8")
 
 
+def _flatten(text: str) -> str:
+    """Prose with markup and JSX interpolations removed, whitespace collapsed.
+
+    The claim this guard bans was committed as::
+
+        The single{" "}
+        <span className="...">validated</span> cell
+
+    — one sentence broken by an interpolation, a tag and two newlines. A literal
+    ban over the raw file does not see it, and that is not hypothetical: it is
+    how the live page came to render "The single validated cell" beside a tally
+    reading 2, and the whole-repo sweep found it while a literal ban did not.
+    Flattening first makes the guard read the sentence a *viewer* sees rather
+    than the bytes the file holds.
+    """
+    text = re.sub(r"\{\s*[\"'][^\"']*[\"']\s*\}", " ", text)  # {" "} and friends
+    text = re.sub(r"<[^>]*>", " ", text)  # JSX/HTML tags, markdown comments
+    text = text.replace("&apos;", "'").replace("&amp;", "&")
+    return re.sub(r"\s+", " ", text)
+
+
+def _retracted_claims_in(text: str) -> list[str]:
+    """Every banned claim visible in *text* once it is read as prose."""
+    return [c for c in _RETRACTED_CLAIMS if c in _flatten(_strip_regions(text)).lower()]
+
+
 def _strip_regions(text: str) -> str:
     """Prose with the generated regions removed.
 
@@ -186,6 +212,21 @@ def test_no_validated_cell_renders_as_a_refusal_not_an_empty_sentence() -> None:
     assert "Deal A" not in out
 
 
+def test_a_backslash_in_a_deal_name_does_not_break_the_write(tmp_path: Path) -> None:
+    """`--write` must substitute the sentence literally, escapes and all.
+
+    Deal names are registry data an operator edits. Passed to `re.sub` as a
+    replacement *string*, a name containing `\\1` or `\\g` raises `re.error` and
+    the write fails — or worse, resolves to a group and writes something else.
+    """
+    from scripts.render_capability_tally import _fill
+
+    hostile = r"Deal \1 (a.k.a. C:\group) — 2 validated"
+    out = _fill(f"{MARKER_START}\nold\n{MARKER_END}", hostile)
+    assert hostile in out
+    assert out.startswith(MARKER_START) and out.rstrip().endswith(MARKER_END)
+
+
 def test_the_checker_reds_on_a_hand_edited_region(tmp_path: Path) -> None:
     """A number changed by hand is caught — the `red-when` for the whole fix.
 
@@ -225,7 +266,9 @@ def test_no_surface_transcribes_a_tally_outside_a_generated_region() -> None:
     """Numerals stating the tally live in one place or nowhere."""
     offenders: list[tuple[str, list[str]]] = []
     for relative_path in GUARDED_SURFACES:
-        hits = _TRANSCRIBED_TALLY.findall(_strip_regions(_read(relative_path)))
+        # Flattened for the same reason the prose ban is: `2{" "}validated`
+        # renders as a transcribed tally and would otherwise evade a raw scan.
+        hits = _TRANSCRIBED_TALLY.findall(_flatten(_strip_regions(_read(relative_path))))
         if hits:
             offenders.append((relative_path, hits))
     assert not offenders, f"a capability tally is transcribed: {offenders}"
@@ -233,13 +276,30 @@ def test_no_surface_transcribes_a_tally_outside_a_generated_region() -> None:
 
 def test_no_surface_states_a_validated_count_in_prose() -> None:
     """The prose form of the same defect — "the single validated cell"."""
-    offenders: list[tuple[str, str]] = []
-    for relative_path in GUARDED_SURFACES:
-        prose = _strip_regions(_read(relative_path)).lower()
-        offenders.extend(
-            (relative_path, claim) for claim in _RETRACTED_CLAIMS if claim in prose
-        )
+    offenders = [
+        (path, claim)
+        for path in GUARDED_SURFACES
+        for claim in _retracted_claims_in(_read(path))
+    ]
     assert not offenders, f"a retracted validated-count claim survives: {offenders}"
+
+
+def test_the_prose_guard_sees_a_claim_split_across_jsx() -> None:
+    """The guard must catch the exact shape the defect actually had.
+
+    This is the historical text from `web/app/(routes)/showcase/page.tsx`, byte
+    for byte. A ban that misses it is decorative: it would have passed on the
+    day the page rendered a false count to every viewer, which is the outcome
+    this whole issue is about.
+    """
+    historical = (
+        'Hover any cell for the honest reason behind its state. The single{" "}\n'
+        '            <span className="font-medium text-emerald-700">validated</span>'
+        " cell\n            links through to its proof"
+    )
+    assert _retracted_claims_in(historical) == ["the single validated cell"]
+    # And the flattener must not invent the claim out of unrelated prose.
+    assert _retracted_claims_in("The single deal below is validated by nobody") == []
 
 
 def test_any_registered_deal_count_matches_the_registry() -> None:
