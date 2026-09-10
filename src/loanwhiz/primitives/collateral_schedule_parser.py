@@ -942,6 +942,13 @@ def _is_furniture(line: str, layout: DocumentLayout) -> bool:
 #: alphabetically last obligor — which is exactly where the grouper would
 #: otherwise read it as that row's wrapped remainder and weld a portfolio
 #: subtotal onto a borrower's name.
+#:
+#: Built on :data:`MONEY`, which permits a **separator-less** amount, so a lone
+#: ``0.00`` closes a row too. That is deliberate and wider than the defect
+#: required: the claim being made is "a continuation always carries text", and a
+#: line holding only ``0.00`` carries none either. Contrast
+#: :data:`BALANCE_IN_TEXT`, which guards a *name* and so must be strict about the
+#: thousands separator — the two ask different questions of the same grammar.
 _SECTION_TOTAL_RE = re.compile(rf"^{_S}{MONEY}{_S}$")
 
 

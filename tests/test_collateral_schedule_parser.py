@@ -1104,21 +1104,30 @@ def test_a_numerator_whose_components_disagree_with_its_total_is_refused() -> No
 _BALANCE_IN_A_NAME = re.compile(BALANCE_IN_TEXT)
 
 
-@pytest.mark.parametrize(("period", "filename", "_assets", "_par", "_as_of"), PERIODS)
+@pytest.mark.parametrize(("period", "filename", "assets", "_par", "_as_of"), PERIODS)
 def test_no_issuer_name_carries_a_balance(
-    period: str, filename: str, _assets: int, _par: str, _as_of: str
+    period: str, filename: str, assets: int, _par: str, _as_of: str
 ) -> None:
     """No obligor name may carry a thousands-separated amount.
 
     The shape is the money, not the digit: real borrowers here are named
     ``Emerald 2 Ltd.`` and ``Techem Verwaltungsgesellschaft 675 MBH``, and a
     guard keyed on "has a digit" would discard them (#439).
+
+    The floor below is load-bearing, not ceremony. This asserts an *absence*,
+    so "nothing to find" and "nothing was parsed" are the same green — the
+    period's own asset count is what makes the emptiness mean something.
     """
     schedule = parse_schedule_text(_text(filename), period_label=period)
+    assert len(schedule.assets) == assets, "an empty parse would pass the check below"
+
+    named = [a for a in schedule.assets if a.issuer_name]
+    assert named, "no names parsed at all — the check below would be vacuous"
+
     carrying = {
         asset.identifier: asset.issuer_name
-        for asset in schedule.assets
-        if asset.issuer_name and _BALANCE_IN_A_NAME.search(asset.issuer_name)
+        for asset in named
+        if _BALANCE_IN_A_NAME.search(asset.issuer_name or "")
     }
     assert carrying == {}
 
