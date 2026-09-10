@@ -102,3 +102,5 @@ triage by opening the entry, not by reading the line.
   - [2026-09-09 · pitfall · #555](#2026-09-09--pitfall--555) — keywords: per-page geometry, row-major line, wrapped row, join page lines, declared geometry, skipped page
   - [2026-09-09 · pitfall · #534](#2026-09-09--pitfall--534) — keywords: prior outcome column, three like-typed columns, cross-period chain, named groups, row grammar, ColumnOrder, coverage test
 - [Guarding a UI surface from a suite with no JS runner](ui-surface-guards.md) — keywords: region marker, vacuous ban list, slice of a file, tsx guard, no JS test runner, pass by deletion
+  - [2026-09-10 · pattern · #599](#2026-09-10--pattern--599) — keywords: region bounds by rule class, bounded slice, end anchor must be found, whole-file ban, narrow pattern, positive rule vs ban
+  - [2026-09-10 · gotcha · #599](#2026-09-10--gotcha--599) — keywords: slicer anchor, sibling table answers, Record<DataSource, string>, marker deleted by mutant, guard raised not reported, anchor on the name
