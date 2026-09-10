@@ -9,6 +9,7 @@ import {
   Scale,
   Grid3x3,
   GitCompareArrows,
+  BookOpen,
   type LucideIcon,
 } from "lucide-react";
 
@@ -48,6 +49,9 @@ export const NAV_GROUPS: NavGroup[] = [
       // Deal Comparison — N-way risk screening + structural diff across deals
       // (#283, epic #262 analyst-facing tools).
       { title: "Comparison", href: "/compare", icon: GitCompareArrows },
+      // Book — a holder's positions, each badged with what it IS and carrying
+      // the platform's refusals in place of blank cells (#573, epic #569).
+      { title: "Book", href: "/book", icon: BookOpen },
     ],
   },
   {
