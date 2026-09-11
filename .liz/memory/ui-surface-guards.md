@@ -73,9 +73,8 @@ another port served the shell while every fetch failed: the page read "Could
 not load" and the overlap probe reported *clear* everywhere — a false green
 shaped like a fix. Assert a **content signal**, not the defect's absence:
 document height and cell count against the same page on the running server.
-CDP request interception — fulfil the app's API calls from a server-side
-fetch with the permissive header — gets that data without restarting a server
-someone else is using.
+CDP request interception (fulfil its API calls from a server-side fetch, with
+the permissive header) gets that data without restarting anyone's server.
 
 Refs: #623
 
