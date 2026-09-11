@@ -64,3 +64,28 @@ single `*` is followed by whitespace, never `**bold**` — the docs mark section
 names with emphasis, and eating it takes the labels being checked with it.
 
 Refs: #617
+
+## 2026-09-11 · pitfall · #623
+
+Verifying a UI fix on a second port can render an empty page, and then every
+visual check passes on nothing. The API allowlists `http://localhost:3000` for
+CORS, so a worktree dev server on another port served the shell while every
+fetch failed: the page read "Could not load", `elementsFromPoint` found no
+table, and the overlap probe reported *clear* on every surface — a false green
+shaped exactly like a fix. Take a **content signal**, not just the absence of
+the defect: the document height and rendered cell count, compared against the
+same page on the server already running the app, told the two runs apart.
+CDP request interception (fulfil the app's API calls from a server-side fetch,
+adding the permissive header) gets real data without touching a server someone
+else is demoing from.
+
+The same measurement decides the fix. A viewport-pinned control covers a
+*different* row at every scroll offset — probing four offsets returned four
+different balance cells — so "reserve clearance so the last row clears it"
+fixes only the offset you happened to screenshot. Either the content gets a
+reserved gutter or the control moves into chrome that is reserved layout width
+(the sidebar rail here; content starts where the rail ends, expanded or
+icon-collapsed).
+
+Refs: #623
+Refs: #565 — the source-guard trade this surface keeps making.
