@@ -116,6 +116,7 @@ triage by opening the entry, not by reading the line.
 - [Making a user-facing marking survive](user-facing-markings.md)
   - [2026-09-10 · pattern · #575](#2026-09-10--pattern--575) — keywords: marking inside the render loop, no JS test runner, guard tsx from pytest, positive assertion, synthetic badge, illustrative
   - [2026-09-10 · gotcha · #575](#2026-09-10--gotcha--575) — keywords: strip comments, banned construct, guard trips its own docstring, onSubmit ban, scan code not prose
+  - [2026-09-11 · pattern · #630](#2026-09-11--pattern--630) — keywords: not applicable vs absent, registry fact, asset_class, stated absence, section hides itself, parsed not filed
 - [What the default test invocation covers, and what dependency ranges promise](test-invocation-and-pinning.md)
   - [2026-09-09 · pitfall · #577](#2026-09-09--pitfall--577) — keywords: testpaths, default invocation, unbounded range, mcp>=1.0, Server.list_tools, declared vs working dependency, suite that never ran
   - [2026-09-09 · gotcha · #577](#2026-09-09--gotcha--577) — keywords: pytest prepend import mode, sys.path[0], __init__.py, shadowed tests package, collection error, collected count not failure count
