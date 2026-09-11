@@ -289,8 +289,10 @@ def test_the_computed_steps_reproduce_their_published_figures(
 # ---------------------------------------------------------------------------
 
 
-def test_compliance_screen_serves_but_evaluates_no_trigger(client: TestClient) -> None:
-    """The compliance screen renders its ratios but still evaluates no trigger.
+def test_compliance_screen_evaluates_the_coverage_tests_it_can_quantify(
+    client: TestClient,
+) -> None:
+    """The compliance screen evaluates every coverage test a report quantifies.
 
     The *cause* has moved twice. It was the numerator: the seed's pool balance
     was the note total, so every ratio was notes over notes (#549 refused the
@@ -299,24 +301,51 @@ def test_compliance_screen_serves_but_evaluates_no_trigger(client: TestClient) -
     from the January report, so no period had a state of its own date and the
     figure was withheld rather than rendered under a date it is not stated as of.
 
-    #583 fixed the pairing, and the five par value ratios now render. What is
-    left is the last honest gap: none of these coverage tests carries a
-    quantified threshold, so there is nothing to compare the ratio against. A
-    rendered metric beside ``evaluable: false`` and a stated cause is the right
-    shape for that — the ratio is a measurement, the verdict is not available.
+    #583 fixed the pairing, and the five par value ratios rendered — beside
+    ``threshold: null`` on every row, because a coverage test's required level
+    is set by the transaction's schedules and restated monthly by the trustee,
+    never by the offering circular the triggers were extracted from. #626
+    supplied the levels from the trustee report, so the section now evaluates.
+
+    What is left unevaluable is what no report quantifies: the Class F par value
+    test, which the trustee itself grades ``N/A``, and the incentive-fee IRR
+    threshold, which appears in no trustee report at all. Both keep a stated
+    cause. That — not a blank section — is the honest shape.
     """
     body = client.get(f"/deal/{CLO_DEAL_ID}/compliance").json()
     statuses = body["trigger_statuses"]
 
     assert statuses, "the compliance screen rendered no trigger statuses"
-    assert not [s for s in statuses if s["evaluable"]]
-    assert not [s for s in statuses if s["threshold"] is not None]
-    # The par value tests now carry a real, own-dated measurement.
-    assert [s for s in statuses if s["metric_value"] is not None]
-    # A refusal must say why; a silent null is the thing this guards against.
-    assert all(s["not_evaluable_reason"] for s in statuses)
-    assert not body["active_triggers"] and not body["near_miss_triggers"]
-    assert body["unevaluable_triggers"]
+    evaluable = [s for s in statuses if s["evaluable"]]
+    assert evaluable, "the coverage section evaluates again (#626)"
+    # Every evaluable row has both halves; neither is ever defaulted (#493).
+    for status in evaluable:
+        assert status["threshold"] is not None, status["trigger_name"]
+        assert status["metric_value"] is not None, status["trigger_name"]
+    # What still refuses, refuses for a reason it states.
+    refused = {s["trigger_name"] for s in statuses if not s["evaluable"]}
+    assert refused == {
+        "class_f_par_value_test",
+        "incentive_investment_management_fee_irr_threshold",
+    }, refused
+    assert all(
+        s["not_evaluable_reason"] for s in statuses if not s["evaluable"]
+    )
+    assert all(s["threshold"] is None for s in statuses if not s["evaluable"])
+    # Nothing is breached: every graded test clears its level.
+    assert not body["active_triggers"]
+    # The coverage tests do land in the monitor's near-miss band, because that
+    # band is `80 <= proximity < 100` and a coverage ratio's proximity is
+    # `threshold / ratio * 100` — 130.08/139.08 is 93.5, so a test with 9pp of
+    # headroom reads as "approaching". That band predates #626 and is not
+    # widened by it; what changed is that these triggers are evaluable at all,
+    # and an evaluable trigger is necessarily somewhere in the band. Recorded
+    # rather than corrected: re-cutting a covenant alarm threshold is a decision
+    # about risk appetite, not a parsing fix.
+    assert set(body["near_miss_triggers"]) <= {
+        s["trigger_name"] for s in evaluable
+    }
+    assert body["unevaluable_triggers"] == sorted(refused)
 
 
 def test_the_two_screens_now_report_on_the_same_period(
@@ -522,19 +551,30 @@ def test_the_compliance_refusal_names_the_threshold_it_does_not_have(
     period being evaluated — #583 pairs each period to the state stating the
     same date, and for this deal that leaves the one period the report covers.
 
-    What they lack now is a quantified threshold, and the reason has to say so.
-    A ratio against no required level is a measurement without a verdict, which
-    is why the metric renders while ``evaluable`` stays false.
+    They lacked a quantified threshold, and #626 supplied it from the trustee
+    report — so four of the five now evaluate against a real level. The fifth,
+    Class F, is the one the refusal must still explain: the report states its
+    level and its ratio and then grades the test ``N/A``, so this platform
+    declines to manufacture the verdict its own source withheld (#549).
+
+    The rule this pins is unchanged and is the reason the test exists: whatever
+    a par value test reports, it never reports a DEFAULTED threshold, and a
+    refusal names its real cause rather than a superseded one.
     """
     statuses = client.get(f"/deal/{CLO_DEAL_ID}/compliance").json()["trigger_statuses"]
     par_value = [s for s in statuses if "par_value" in s["trigger_name"]]
     assert par_value, "the deal's par value tests are on the screen"
 
     for status in par_value:
-        reason = status["not_evaluable_reason"] or ""
+        # The ratio is a real measurement on every row, evaluable or not.
         assert status["metric_value"] is not None, "the ratio is a real measurement"
+        if status["evaluable"]:
+            # A level that was read, never one that was defaulted (#493).
+            assert status["threshold"] is not None
+            assert status["threshold"] > 0
+            continue
+        reason = status["not_evaluable_reason"] or ""
         assert status["threshold"] is None
-        assert "threshold" in reason, f"the cause is the missing threshold: {reason}"
         # Each superseded cause would be the false cause all over again.
         assert "#550" not in reason and "notes over notes" not in reason
         assert "not a measurement of this one" not in reason
