@@ -60,6 +60,27 @@ const HEADROOM = 0.12;
 const RANGE_INSET = 10;
 
 /**
+ * Mantissas of a readable axis bound. recharts picks its own round numbers
+ * only while the domain is `'auto'`; the moment we hand it explicit endpoints
+ * it uses them verbatim and divides the span into four, so a raw padded bound
+ * puts `11912320` on the axis where `12000000` used to be. Every entry here
+ * stays round when divided by four, which is what keeps the intermediate
+ * ticks round too (1.6 gives 0.4/0.8/1.2; 1.5 would give 0.375).
+ */
+const NICE_MANTISSAS = [1, 1.2, 1.6, 2, 2.4, 2.8, 3.2, 4, 6, 8, 10];
+
+/** The nearest readable bound at or beyond `v`, away from zero. */
+function niceBound(v: number): number {
+  if (v === 0) return 0;
+  const magnitude = Math.abs(v);
+  const power = Math.pow(10, Math.floor(Math.log10(magnitude)));
+  const mantissa = magnitude / power;
+  // 1e-9 absorbs the float error that would otherwise round an exact 2 up to 2.4.
+  const nice = NICE_MANTISSAS.find((m) => mantissa <= m + 1e-9) ?? 10;
+  return Math.sign(v) * nice * power;
+}
+
+/**
  * The padded `[min, max]` y-domain for one metric's rows.
  *
  * `rows` is the chart's row-per-date shape, `dealIds` the plotted columns.
@@ -94,7 +115,11 @@ export function paddedDomain(
   // unit of range so the line has somewhere to sit that is not the frame.
   const pad =
     extent > 0 ? extent * HEADROOM : Math.max(Math.abs(hi) * HEADROOM, 1);
-  return [lo < 0 ? lo - pad : 0, hi + pad];
+  // Both steps are load-bearing. HEADROOM guarantees the gap: a value that is
+  // already on a round number (a reserve balance of exactly 12000000) would
+  // round to itself and land back on the frame. niceBound then buys back the
+  // readable axis labels that an explicit domain costs.
+  return [lo < 0 ? niceBound(lo - pad) : 0, niceBound(hi + pad)];
 }
 
 /** The Panel-2 metrics, one overlaid chart each (one line per deal). */

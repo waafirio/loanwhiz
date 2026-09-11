@@ -128,6 +128,14 @@ _CONSTANT = {
 #: still read as flat — lives in this expression.
 _ZERO_ANCHOR = re.compile(r"Math\.min\(\s*0\s*,")
 
+#: Both domain endpoints routed through :func:`niceBound`. recharts only picks
+#: round numbers while the domain is ``'auto'``; handed explicit endpoints it
+#: uses them verbatim, so the padded bound put ``11912320`` on the reserve axis
+#: where ``12000000`` had been. Reverting this is not a correctness bug — the
+#: line stays off the frame either way — which is exactly why nothing else here
+#: would catch it.
+_ROUNDED_BOUNDS = re.compile(r"niceBound\(\s*hi \+ pad\s*\)")
+
 
 def _violations(*, panel: str, diff: str) -> list[str]:
     """Every check, by id. Empty list means the surface as committed is fine.
@@ -152,6 +160,8 @@ def _violations(*, panel: str, diff: str) -> list[str]:
             bad.append(f"padding-constant-{name.lower()}-not-positive")
     if not _ZERO_ANCHOR.search(panel_code):
         bad.append("zero-anchor-dropped")
+    if not _ROUNDED_BOUNDS.search(panel_code):
+        bad.append("axis-bounds-not-rounded")
 
     # --- the row label ------------------------------------------------------
     if "whitespace-normal" not in label:
@@ -234,6 +244,13 @@ _MUTANTS: list[tuple[str, str, list[tuple[str, str]]]] = [
         ],
     ),
     (
+        # Reverts the rounding without touching the padding: the line stays off
+        # the frame, and only the axis labels regress.
+        "axis-bounds-left-unrounded",
+        "panel",
+        [("niceBound(hi + pad)", "hi + pad")],
+    ),
+    (
         "row-label-nowrap-restored",
         "diff",
         [('                        "whitespace-normal break-words align-top",\n', "")],
@@ -314,6 +331,7 @@ def test_no_check_is_decorative() -> None:
         "padding-constant-headroom-not-positive",
         "padding-constant-range_inset-not-positive",
         "zero-anchor-dropped",
+        "axis-bounds-not-rounded",
         "row-label-does-not-wrap",
         "row-label-clipped",
     }
