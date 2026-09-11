@@ -4688,3 +4688,60 @@ def test_classes_from_strips_inverts_resolve_strips():
 
     # The joined spelling is a series just as the hyphenated one is.
     assert classes_from_strips(["class_a1", "class_a2"]) == ["class_a"]
+
+
+def test_class_interest_sums_deferred_interest_and_rejects_unmapped():
+    """The deferred half of the roll-up, on a figure that is not zero.
+
+    Every deferred-interest step Cairn's cascade carries paid 0.00 this period,
+    so the live tie above cannot tell a working deferred leg from a missing one
+    — agreement where both answers are zero cannot fail (#601). This drives it
+    with a figure that differs.
+
+    (Housed here rather than beside the interpreter to stay inside this issue's
+    declared scope; it exercises the interpreter directly, not through the API.)
+    """
+    from loanwhiz.domain.rules import RecipientType
+    from loanwhiz.primitives.waterfall_interpreter import (
+        StepResult,
+        WaterfallExecution,
+        class_interest_distributed,
+    )
+
+    def step(priority, recipient, amount):
+        return StepResult(
+            priority=priority,
+            recipient=recipient,
+            amount_available=amount,
+            need=amount,
+            amount_distributed=amount,
+            shortfall=0.0,
+        )
+
+    execution = WaterfallExecution(
+        steps=[
+            # Both spelled the CLO's way, so the canonicalisation is load-bearing.
+            step("(J)", "class_c_notes_interest", 415_004.33),
+            step("(K)", "class_c_notes_deferred_interest", 12_000.00),
+            step("(G)", "class_a_notes_interest", 3_277_457.78),
+        ],
+        remaining=0.0,
+        total_distributed=3_704_462.11,
+        total_shortfall=0.0,
+    )
+
+    # Class C's coupon AND its deferred interest — neither alone is the answer.
+    assert class_interest_distributed(execution, "class_c") == pytest.approx(
+        427_004.33
+    )
+    # A class with no deferred member is its coupon alone.
+    assert class_interest_distributed(execution, "class_a") == pytest.approx(
+        3_277_457.78
+    )
+    # A class the enum models no interest recipient for is unknown, not nil.
+    assert class_interest_distributed(execution, "subordinated_notes") is None
+
+    # ``unmapped`` is every denied string's answer, so totalling it would sum
+    # unrelated steps into one figure.
+    with pytest.raises(ValueError, match="unmapped"):
+        execution.distributed_to_canonical(RecipientType.unmapped)
