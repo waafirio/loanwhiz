@@ -239,7 +239,7 @@ _MUTANTS: list[tuple[str, str, list[tuple[str, str]]]] = [
         "helper-renamed-out-of-use",
         "panel",
         [
-            ("export function paddedDomain(", "export function unusedDomain("),
+            ("function paddedDomain(", "function unusedDomain("),
             ("paddedDomain(rows, dealIds)", "unusedDomain(rows, dealIds)"),
         ],
     ),

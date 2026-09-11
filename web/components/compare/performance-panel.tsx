@@ -86,7 +86,7 @@ function niceBound(v: number): number {
  * `rows` is the chart's row-per-date shape, `dealIds` the plotted columns.
  * A missing point is `null` and is skipped - a gap is not a zero.
  */
-export function paddedDomain(
+function paddedDomain(
   rows: Record<string, number | string | null>[],
   dealIds: string[],
 ): [number, number] {
