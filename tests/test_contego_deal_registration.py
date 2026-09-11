@@ -341,15 +341,22 @@ def test_the_tape_path_still_refuses_contegos_eight_class_stack() -> None:
     ``_not_modelable_deal`` (no tape, no report); #555 registered the derived
     tapes, moving it to ``_misconfigured_deal`` on the senior coupon; #614
     sourced that coupon from a committed synthetic fixing, and the fold now
-    stops one seam later — at ``_collections_tranche_args``, which is shaped for
-    ``class_a``/``class_b``/``class_c`` and will not run a waterfall over a
-    subset of this deal's eight classes.
+    stops one seam later — at ``_collections_tranche_args``.
 
     That last refusal is **architectural, not configuration**: no value in
     ``deals.json`` resolves it, only #527's open seam does. It is deliberately
     left standing — #614 routed Contego to the forward projection instead of
-    defeating it, because a cascade folded over three of eight classes would be
-    a wrong waterfall presented as this deal's.
+    defeating it.
+
+    **What the refusal is protecting (#628, worded by #631).** Not the class
+    list: Cairn carries the same split-B stack and works, because
+    ``_tapes_yield_to_reports`` sends it down the report path. Contego's
+    report does not parse, so it takes the tape path — where neither tape
+    carries ``loan_id`` and the deal is revolving, leaving principal
+    collections derivable only as an estimate. The one run that lifted the
+    guard published EUR 392.81m of principal against a 380.14m pool, zero
+    revenue, Class A redeemed in full. So this test pins **both** halves: that
+    the refusal still fires, and that it still says why.
     """
     from loanwhiz.api.main import _reconstruct_series
 
@@ -359,11 +366,28 @@ def test_the_tape_path_still_refuses_contegos_eight_class_stack() -> None:
     detail = str(exc.value.detail)
     assert CONTEGO_DEAL_ID in detail
     assert "class_b_balance" in detail, (
-        f"the refusal no longer names the class the collections leg cannot "
-        f"represent: {detail}"
+        f"the refusal no longer names the key the collections leg leaves "
+        f"unresolved: {detail}"
     )
-    assert "subset" in detail, (
-        f"the refusal no longer says it is refusing a partial waterfall: {detail}"
+    # #631: and it names the missing *input* rather than the class list. #628
+    # established the class list is a red herring — Cairn carries the same
+    # split-B stack and works, because it takes the report path. What actually
+    # stops Contego is that no Priority-of-Payments schedule is available to
+    # this reconstruction and the tape route has no loan-level join, so
+    # principal could only be estimated.
+    assert "Priority-of-Payments" in detail, (
+        f"the refusal no longer names the report it lacks: {detail}"
+    )
+    assert "loan-level identifier" in detail, (
+        f"the refusal no longer names the tape input it lacks: {detail}"
+    )
+    assert "estimate" in detail, (
+        f"the refusal no longer says it declines to publish an estimate: {detail}"
+    )
+    lead = detail.split(". ")[0]
+    assert "class_" not in lead, (
+        f"the refusal headlines the class list again — the misdiagnosis #631 "
+        f"removed: {lead}"
     )
 
 

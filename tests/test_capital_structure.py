@@ -410,7 +410,39 @@ class TestTheCollectionsLegRefusesRatherThanKeyErrors:
         assert excinfo.value.status_code == 422
         assert _CLO_DEAL_ID in detail
         assert "class_b_1_balance" in detail  # the classes it actually has
-        assert "subset of the deal's classes" in detail
+        # #631: the refusal names the missing *input*, not the class list. The
+        # keys stay in the text for support, but they are no longer the claim.
+        assert "Priority-of-Payments" in detail
+        assert "loan-level identifier" in detail
+
+    def test_the_refusal_leads_with_a_plain_sentence_not_the_class_list(self) -> None:
+        """The first sentence is readable by someone who owns the deal, not the code.
+
+        #628's investigation was sent down a dead end by a refusal that
+        headlined ``class_a/class_b/class_c``: the class list is a red herring
+        — Cairn carries the same split-B stack and works, because it takes the
+        report path. The keys may follow, to keep support's identifiers; they
+        may not lead.
+
+        Asserting on the **first sentence** rather than banning ``class_``
+        outright is #471's lesson: the keys legitimately appear later in the
+        same string, so a global ban would flag the very text that fixed this.
+        """
+        structure = CapitalStructure.from_tranche_structure(
+            _cairn_tranche_structure()
+        ).to_engine_mapping()
+        structure["class_a_rate_pct"] = 4.544
+
+        with pytest.raises(HTTPException) as excinfo:
+            api_main._collections_tranche_args(_CLO_DEAL_ID, structure)
+
+        lead = str(excinfo.value.detail).split(". ")[0]
+        assert "class_" not in lead, (
+            f"the refusal headlines the class list again: {lead!r}"
+        )
+        assert "estimate" in lead, (
+            f"the refusal no longer leads with what it declines to publish: {lead!r}"
+        )
 
     def test_a_three_class_stack_passes_through_unchanged(self) -> None:
         """Green Lion's shape must still reach the aggregator untouched."""

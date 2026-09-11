@@ -687,17 +687,19 @@ def _classify_collateral_reconciliation(
         return (
             STATE_NOT_APPLICABLE,
             f"{len(tapes)} loan tape(s) are registered and this deal's structural "
-            f"configuration resolves, but the tape-driven collections leg is "
-            f"shaped for class_a/class_b/class_c and cannot represent this "
-            f"deal's stack: {', '.join(leg_gaps)} unresolved. The endpoint "
-            f"refuses rather than folding a waterfall over a subset of the "
-            f"deal's classes. That is a limit of the collections leg, not of "
-            f"this deal's configuration or its tape.",
+            f"configuration resolves, but rebuilding the waterfall from tapes "
+            f"alone can separate principal from revenue only by joining "
+            f"consecutive tapes on a loan-level identifier; without that join "
+            f"the principal figure is an estimate, and the endpoint refuses "
+            f"rather than publish one. Checked here: the tape-driven "
+            f"collections leg leaves {', '.join(leg_gaps)} unresolved. That is "
+            f"a limit of the reconstruction's inputs, not of this deal's "
+            f"configuration or its tape.",
             CellEvidence(
                 confidence=None,
                 citation=(
                     f"Deal registry context: {len(tapes)} tape(s) registered; "
-                    f"collections leg cannot represent {', '.join(leg_gaps)}."
+                    f"collections leg leaves {', '.join(leg_gaps)} unresolved."
                 ),
                 detail={
                     "tape_count": len(tapes),

@@ -2298,21 +2298,41 @@ def _collections_tranche_args(deal_id: str, capital_structure: dict) -> dict:
     precondition does. A deal whose stack this leg cannot represent gets a 422
     saying so; it never gets three of its classes silently selected, which would
     publish a waterfall computed over part of the deal.
+
+    **The 422 names the missing input, not the class list (#631).** #628
+    measured what this refusal actually protects: the class keys tested here
+    are very nearly dead, and the reason lifting the guard is unsafe is that
+    the tape route cannot derive principal collections honestly without a
+    loan-level join — the one run that tried published EUR 392.81m of
+    principal against a 380.14m pool, with zero revenue and Class A redeemed
+    in full. Wording the refusal around the class list sent a whole
+    investigation down a dead end, so the text leads with the missing input
+    and keeps the keys as a trailing "checked here" line for support.
     """
     missing = [
         key for key in _COLLECTIONS_LEG_REQUIRED_KEYS
         if capital_structure.get(key) is None
     ]
     if missing:
+        supplied = sorted(k for k in capital_structure if k.endswith("_balance"))
         raise HTTPException(
             status_code=422,
             detail=(
-                f"Deal '{deal_id}' has a capital structure the tape-driven "
-                f"reconstruction cannot represent: its collections leg is shaped "
-                f"for class_a/class_b/class_c and this deal supplies "
-                f"{sorted(k for k in capital_structure if k.endswith('_balance'))}, "
-                f"leaving {missing} unresolved. Refusing to run the waterfall over "
-                f"a subset of the deal's classes."
+                "This deal's waterfall cannot be produced from the data "
+                "registered for it, and Loanwhiz will not publish an estimate "
+                "in its place. A waterfall is either read from an investor "
+                "report that parses into a Priority-of-Payments schedule, or "
+                "rebuilt period by period from loan tapes. No Priority-of-"
+                "Payments schedule is available to this reconstruction, and "
+                "the tape route can separate principal from revenue only by "
+                "joining consecutive tapes on a loan-level identifier; without "
+                "that join the principal figure is an estimate, and an "
+                "estimate is not a distribution. What would change this: an "
+                "investor report carrying a Priority-of-Payments section, or "
+                "loan tapes carrying a stable per-loan identifier. "
+                f"Checked here — deal '{deal_id}': the tape-driven collections "
+                f"leg leaves {missing} unresolved against the balances this "
+                f"deal supplies ({supplied})."
             ),
         )
     return {
