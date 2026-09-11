@@ -164,8 +164,10 @@ export function PerformancePanel({
   // half, #614 for the rate half).
   const qualified = useMemo(() => deals.filter(hasQualifiedBasis), [deals]);
 
-  // Build per-metric chart data: one row per reporting date, one column per deal.
+  // The plotted columns, named once so the row builder and the domain agree.
   const dealIds = useMemo(() => series.map((s) => s.deal_id), [series]);
+
+  // Build per-metric chart data: one row per reporting date, one column per deal.
   const chartsByMetric = useMemo(() => {
     const allDates = Array.from(
       new Set(series.flatMap((s) => s.points.map((p) => p.reporting_date))),
