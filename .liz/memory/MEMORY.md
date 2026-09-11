@@ -129,3 +129,5 @@ triage by opening the entry, not by reading the line.
   - [2026-09-10 · pitfall · #617](#2026-09-10--pitfall--617) — keywords: flatten before scanning, markup regex spans newlines, <[^>\n]*>, comment leader, bold emphasis eaten, guard passes with nothing to read
   - [2026-09-09 · pitfall · #568](#2026-09-09--pitfall--568) — keywords: .tsx, assert x not in region, test_mcp_page.py
   - [2026-09-11 · pitfall · #622](#2026-09-11--pitfall--622) — keywords: /book, test_book_page.py, white-space, <p>, nowrap, TableCell
+  - [2026-09-11 · pitfall · #623](#2026-09-11--pitfall--623) — keywords: false green on an empty page, CORS allowlisted port, content signal, document height and cell count, CDP request interception
+  - [2026-09-11 · pattern · #623](#2026-09-11--pattern--623) — keywords: viewport-pinned control, different row per scroll offset, reserve clearance, z-index inverts the defect, reserved layout width, sidebar rail
