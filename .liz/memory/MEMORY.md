@@ -125,4 +125,5 @@ triage by opening the entry, not by reading the line.
   - [2026-09-10 · gotcha · #599](#2026-09-10--gotcha--599) — keywords: slicer anchor, sibling table answers, Record<DataSource, string>, marker deleted by mutant, guard raised not reported, anchor on the name
   - [2026-09-10 · pitfall · #614](#2026-09-10--pitfall--614) — keywords: uncounted surface, enumerate the union not the table, second vocabulary, compare panel, sixth surface, keep tables separate
   - [2026-09-10 · pitfall · #617](#2026-09-10--pitfall--617) — keywords: flatten before scanning, markup regex spans newlines, <[^>\n]*>, comment leader, bold emphasis eaten, guard passes with nothing to read
-  - [2026-09-11 · pitfall · #623](#2026-09-11--pitfall--623) — keywords: false green on an empty page, CORS allowlisted port, content signal, document height and cell count, CDP request interception, scroll offsets, viewport-pinned control, reserved layout width
+  - [2026-09-11 · pitfall · #623](#2026-09-11--pitfall--623) — keywords: false green on an empty page, CORS allowlisted port, content signal, document height and cell count, CDP request interception
+  - [2026-09-11 · pattern · #623](#2026-09-11--pattern--623) — keywords: viewport-pinned control, different row per scroll offset, reserve clearance, z-index inverts the defect, reserved layout width, sidebar rail
