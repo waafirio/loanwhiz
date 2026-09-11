@@ -93,3 +93,33 @@ free-text cell, so it always carries text. Ask that only after the identifier
 test, so a data row is still classified on its own shape first.
 
 Refs: #600
+
+## 2026-09-11 · pitfall · #626
+
+A blank extraction surface is not evidence the extractor is blank. Cairn's nine
+coverage tests had parsed correctly for months — thresholds, ratios, outcomes,
+pinned in a committed golden — while `/compliance` reported all ten triggers
+`threshold: None, evaluable: False`, because the trigger set is built from the
+*prospectus* extraction and nothing joined the trustee's table onto it. Measure
+the surface against the parser's own output before sizing parser work: the
+defect was a missing key join, and the fix registered a fixture rather than
+touching a regex. The blank surface had also been read as evidence the parser
+was the expensive part; it was already done and committed.
+
+Refs: #626
+
+## 2026-09-11 · pitfall · #626
+
+Split a table's columns by what they MEASURE before deciding which source wins.
+A coverage test's required level and its computed ratio are both percentages on
+one row, and it is tempting to take both from whichever source you trust more.
+They are not the same kind of fact: the level is a covenant, identical in three
+consecutive trustee reports, so a report from any month supplies it; the ratio
+measures one period, so the nearest report may state a DIFFERENT month's. Taking
+the pair together would have overwritten an engine ratio that reproduced the
+period's own report to the cent with a figure from the month before — #524's
+wrong-as-of-date failure, reached from the opposite direction and while trying to
+avoid it. Let the report fill only what the engine cannot compute, and put the
+borrowed figure's own date on the wire beside it.
+
+Refs: #626
