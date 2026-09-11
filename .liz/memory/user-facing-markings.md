@@ -26,3 +26,16 @@ assertion, not a fragment — and the fix is to scan the region the claim is
 about rather than the prose around it.
 
 Refs: #575
+
+## 2026-09-11 · pattern · #630
+
+A surface with nothing to show has two things to say, and one label for both
+teaches nothing. Split them on a **registry fact** — the tape's `asset_class`,
+never the map being empty: a concept the asset class lacks is *not applicable*
+and must name why; one it has that this tape lacks is merely *absent*. Word the
+absent case as what your pipeline parsed, never what the source filed — Contego
+publishes the rate in a section the parser skips. A section that hides itself
+when empty is the third failure: render from one list.
+
+Refs: #630
+Refs: #457 — the same "say only what the input encodes" rule, one layer down.
