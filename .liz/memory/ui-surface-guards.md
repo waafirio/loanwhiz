@@ -65,6 +65,18 @@ names with emphasis, and eating it takes the labels being checked with it.
 
 Refs: #617
 
+## 2026-09-11 · pitfall · #622
+
+Guarding an **inherited** CSS property: a ban on the bad value is vacuous. A
+reason `<p>` painted over the next column because `white-space: nowrap` reached
+it from the `TableCell` primitive two files away — the element carried no
+whitespace class of its own, so a ban on `whitespace-nowrap` here passes the
+broken code. Assert the **override** (`whitespace-normal`) instead, and detect
+it by painted extent (`scrollWidth > clientWidth` on leaf text nodes): the box
+stays inside its cell, so no box-model, DOM, a11y or source check sees it.
+
+Refs: #622
+Refs: #573 — the reasons whose legibility this is about.
 ## 2026-09-11 · pitfall · #623
 
 A visual check run on a port the API does not allowlist passes on an empty

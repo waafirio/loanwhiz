@@ -31,6 +31,7 @@ triage by opening the entry, not by reading the line.
 - [Extraction: locating the right section](extraction-section-routing.md) — keywords: descendant span, heading level, section number, Docling, has_payment_list, LLM router, empty result
   - [2026-09-09 · pattern · #566](#2026-09-09--pattern--566) — keywords: Article 6(3), sub-paragraph citation, retention undertaking, generic description, surface form, threshold figure, named party
   - [2026-09-09 · pitfall · #532](#2026-09-09--pitfall--532) — keywords: max_chars, route_sections, definitions stub, alphabetical cliff, Docling heading per term, measure the section sent, same symptom different mechanism
+  - [2026-09-02 · pitfall · #438](#2026-09-02--pitfall--438) — keywords: has_payment_list=false, 3.4.7.2.2, 3.4.7.2
 - [Published figures & doc drift](published-figures.md) — keywords: stale tally, completeness_score, capability matrix, re-derive, stored metric, published figure
   - [2026-09-06 · pattern · #469](#2026-09-06--pattern--469) — keywords: reconcile to stated aggregates, self-describing report, per-bucket distribution, refuse on divergence, document contradicts itself, source defect
   - [2026-09-02 · pitfall · #441](#2026-09-02--pitfall--441) — keywords: completeness_score
@@ -107,6 +108,7 @@ triage by opening the entry, not by reading the line.
   - [2026-09-06 · pitfall · #469](#2026-09-06--pitfall--469) — keywords: visitor_text, text matrix, tm[4], rotated table, extraction_mode layout, row boundary, continuation line, column order, pypdf
   - [2026-09-08 · pitfall · #480](#2026-09-08--pitfall--480) — keywords: column header, required level, guessed order, like-typed columns, stated twice, cross-check, coverage test, refuse unrecognised header
   - [2026-09-10 · pitfall · #600](#2026-09-10--pitfall--600) — keywords: row grouper, what closes a row, section total line, last row of a section, bare money line, wrapped remainder, par still ties
+  - [2026-09-09 · pitfall · #555](#2026-09-09--pitfall--555)
 - [Primitive registry population & catalogue surfaces](registry-population.md)
   - [2026-09-09 · pitfall · #574](#2026-09-09--pitfall--574) — keywords: import side effect, PRIMITIVE_MODULES, pkgutil.iter_modules, two importers, catalogue disagreement, ensure_all_registered
   - [2026-09-09 · gotcha · #574](#2026-09-09--gotcha--574) — keywords: process-global registry, in-process census, clean subprocess, backfilled gap, red-when survivor, surface before import
@@ -125,5 +127,7 @@ triage by opening the entry, not by reading the line.
   - [2026-09-10 · gotcha · #599](#2026-09-10--gotcha--599) — keywords: slicer anchor, sibling table answers, Record<DataSource, string>, marker deleted by mutant, guard raised not reported, anchor on the name
   - [2026-09-10 · pitfall · #614](#2026-09-10--pitfall--614) — keywords: uncounted surface, enumerate the union not the table, second vocabulary, compare panel, sixth surface, keep tables separate
   - [2026-09-10 · pitfall · #617](#2026-09-10--pitfall--617) — keywords: flatten before scanning, markup regex spans newlines, <[^>\n]*>, comment leader, bold emphasis eaten, guard passes with nothing to read
+  - [2026-09-09 · pitfall · #568](#2026-09-09--pitfall--568) — keywords: .tsx, assert x not in region, test_mcp_page.py
+  - [2026-09-11 · pitfall · #622](#2026-09-11--pitfall--622) — keywords: /book, test_book_page.py, white-space, <p>, nowrap, TableCell
   - [2026-09-11 · pitfall · #623](#2026-09-11--pitfall--623) — keywords: false green on an empty page, CORS allowlisted port, content signal, document height and cell count, CDP request interception
   - [2026-09-11 · pattern · #623](#2026-09-11--pattern--623) — keywords: viewport-pinned control, different row per scroll offset, reserve clearance, z-index inverts the defect, reserved layout width, sidebar rail

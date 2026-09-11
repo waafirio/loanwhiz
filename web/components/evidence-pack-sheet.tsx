@@ -475,6 +475,21 @@ function formatFactValue(field: string, value: number): string {
  * `fact.value` is only reachable inside the `ran` branch — `PositionField` is a
  * discriminated union, so the refusing half has `value: null` and there is
  * nothing to coalesce.
+ *
+ * The reason carries `whitespace-normal` because it is a SENTENCE, and because
+ * `white-space` is inherited (#622). `components/ui/table.tsx` sets
+ * `whitespace-nowrap` on every `TableCell`, and the book's cell caps the box at
+ * `max-w-56`: without the override here the sentence stays on one line and
+ * paints straight across the next column, while its own box stays obediently
+ * inside the cell. Every box-model assertion, the DOM order and the
+ * accessibility tree were all correct while three reasons rendered as
+ * overlapping mush — only a screenshot showed it. `break-words` is for the
+ * unbroken tokens these reasons carry (`cairn-clo-xvii`, `class_b_1`).
+ *
+ * Do not "fix" a long reason by truncating it: an ellipsis hides exactly the
+ * half carrying the evidence, and `title` is not a rendering — a reader
+ * scanning the screen never hovers. That is the same argument as the tooltip
+ * paragraph above, one layer down.
  */
 export function PositionFactCell({ fact }: { fact: PositionField }) {
   if (fact.state === "ran") {
@@ -483,7 +498,7 @@ export function PositionFactCell({ fact }: { fact: PositionField }) {
         <span className="text-sm font-medium tabular-nums text-foreground">
           {formatFactValue(fact.field, fact.value)}
         </span>
-        <p className="text-xs leading-snug text-muted-foreground">
+        <p className="text-xs leading-snug break-words whitespace-normal text-muted-foreground">
           {fact.reason}
         </p>
       </div>
@@ -494,7 +509,7 @@ export function PositionFactCell({ fact }: { fact: PositionField }) {
       <Badge variant="destructive" className="font-normal">
         Not resolved
       </Badge>
-      <p className="text-xs leading-snug text-muted-foreground">
+      <p className="text-xs leading-snug break-words whitespace-normal text-muted-foreground">
         {fact.reason}
       </p>
     </div>

@@ -8,8 +8,8 @@ implied, because a source guard proves the code *says* a thing, never that a
 browser paints it. This repo also has no ``.github/``, so nothing runs it on the
 PR — it is a local gate, and its value is entirely in being run.
 
-Two properties are guarded, and both are the point of #573 rather than
-decoration on it:
+Three properties are guarded. The first two are the point of #573 rather than
+decoration on it; the third is #622, and is the one this file could not see:
 
 * **Every position says what it is.** #484 committed synthetic pools correctly
   labelled *in the data* whose Pool and Waterfall pages render no badge at all,
@@ -20,6 +20,12 @@ decoration on it:
   resolve says so where the figure would have been and prints its cause; a
   blank in a numeric column is read as zero. On the committed book every
   position's coupon refuses, so this is the common case here, not the edge one.
+* **The printed cause is legible** (#622). The reasons are sentences, and
+  ``TableCell`` sets ``whitespace-nowrap``, which *inherits*: on a box capped at
+  ``max-w-56`` the sentence stayed on one line and painted across the next
+  column. Every rule above passed throughout — the boxes were inside their
+  cells, the DOM order was right, the a11y tree read cleanly, and the suite was
+  green while three reasons rendered as overlapping mush.
 
 Guarding by mutation, not by care
 ---------------------------------
@@ -32,10 +38,21 @@ block behind ``{false ? … : null}`` would have. So every rule here is scored
 against :data:`_MUTANTS`, and :func:`test_no_check_is_decorative` reds if any
 rule is never the one that catches something.
 
-**The blind spot, stated:** a ban list is only as good as the affordances it
-enumerates. Nothing here would catch a surface that renders every required
-token off-screen, or one whose badge is styled invisible — a source guard
-cannot see paint. What it can see is whether the code still *says* the thing.
+**The blind spot, stated — and since demonstrated.** A ban list is only as good
+as the affordances it enumerates. Nothing here would catch a surface that
+renders every required token off-screen, or one whose badge is styled invisible
+— a source guard cannot see paint. What it can see is whether the code still
+*says* the thing.
+
+#622 is that blind spot happening. It was found by screenshot, after this file
+was green, and the ``reason-wraps`` rule below is a source guard over the fix,
+not a check on the rendering: it asserts the un-inheriting class is *written*.
+Nothing in this repo can assert what a browser painted, so the rule is worth
+exactly that much — it stops the class being deleted, and it would not have
+found the defect in the first place. Note also which FORM the rule had to take:
+banning the literal ``whitespace-nowrap`` here is vacuous, because the broken
+code carried no whitespace class at all and inherited the nowrap from a
+primitive two files away.
 
 The ``_code_only`` / ``_region`` / ``_MUTANTS`` scaffold is copied from
 ``tests/test_concentration_page.py`` (#565), which copied ``_code_only`` from
@@ -111,6 +128,16 @@ def _sources() -> dict[str, str]:
 #: ``\b`` so ``<BadgeGroup`` does not match; non-greedy with ``re.S`` so a
 #: multi-line badge is captured whole and two adjacent badges do not merge.
 _BADGE = re.compile(r"<Badge\b.*?</Badge>", re.S)
+
+#: One reason paragraph in ``PositionFactCell`` — the ``<p>`` whose body is
+#: ``{fact.reason}``. The opening tag is bounded to ONE line (``[^>\n]*``, not
+#: ``[^>]*``): #617's lesson is that a markup pattern free to cross newlines
+#: swallows whatever lies between a stray ``<`` and the next ``>`` lines later,
+#: and then the guard passes by having nothing left to read. The bound is also
+#: what gives the count check in :func:`_violations` its teeth — move the
+#: className off the ``<p`` line and this stops matching, which reds rather
+#: than silently scanning nothing.
+_REASON_PARAGRAPH = re.compile(r"<p\b[^>\n]*>\s*\{fact\.reason\}\s*</p>", re.S)
 
 #: A condition that cannot vary. ``{false ? (…) : null}`` deletes a block while
 #: leaving every identifier in it greppable, so a guard that only looks for the
@@ -310,6 +337,39 @@ def _violations(*, region: str, page: str, nav: str, api: str) -> list[str]:
             "label on it"
         )
 
+    # 6b. …and that reason WRAPS, so a reader can actually read it (#622).
+    #     `TableCell` sets `whitespace-nowrap` and the book's cell caps the box
+    #     with `max-w-56`, so `white-space` INHERITS down here: the sentence
+    #     paints straight across the next column while its own box stays inside
+    #     the cell. Nothing already in this file could see that — the box model
+    #     is satisfied, the DOM order is right, the a11y tree reads cleanly, and
+    #     the whole suite was green while three reasons rendered as mush.
+    #
+    #     This is a POSITIVE rule, and it has to be. The obvious form — ban the
+    #     literal `whitespace-nowrap` here — is vacuous against the real defect:
+    #     the broken code carried no whitespace class AT ALL and inherited the
+    #     nowrap from a primitive two files away, so a ban would have passed it.
+    #     Only asserting the un-inheriting class is present catches it.
+    #
+    #     **What this cannot prove.** It reads source, so it says the class is
+    #     written, never that a browser wrapped the glyphs — the module
+    #     docstring's blind spot, and #622 is its proof by counterexample. A
+    #     screenshot found this; no source guard would have.
+    reason_paragraphs = _REASON_PARAGRAPH.findall(cell)
+    if len(reason_paragraphs) != cell.count("{fact.reason}"):
+        out.append(
+            "reason-wraps: a reason no longer renders as a <p> whose opening "
+            "tag fits one line, so the wrap check below scans fewer paragraphs "
+            "than there are reasons — it cannot see the shape it guards"
+        )
+    for paragraph in reason_paragraphs:
+        if "whitespace-normal" not in paragraph:
+            out.append(
+                "reason-wraps: a reason <p> carries no 'whitespace-normal', so "
+                "it inherits TableCell's nowrap and paints over the next "
+                "column while its box stays inside the cell (#622)"
+            )
+
     # 7. …at the same weight as a value: in a Badge, in the figure's slot.
     if "Not resolved" not in "\n".join(_BADGE.findall(cell)):
         out.append(
@@ -421,6 +481,7 @@ _ALL_CHECKS = {
     "badge-is-a-badge",
     "provenance-badge-per-row",
     "refusal-renders-its-reason",
+    "reason-wraps",
     "refusal-is-prominent",
     "no-value-coalescing",
     "value-in-ran-branch-only",
@@ -520,7 +581,7 @@ _MUTANTS: list[tuple[str, str, list[tuple[str, str]]]] = [
             (
                 "        Not resolved\n"
                 "      </Badge>\n"
-                '      <p className="text-xs leading-snug text-muted-foreground">\n'
+                '      <p className="text-xs leading-snug break-words whitespace-normal text-muted-foreground">\n'
                 "        {fact.reason}\n"
                 "      </p>",
                 "        Not resolved\n      </Badge>",
@@ -532,13 +593,13 @@ _MUTANTS: list[tuple[str, str, list[tuple[str, str]]]] = [
         "region",
         [
             (
-                '      <p className="text-xs leading-snug text-muted-foreground">\n'
+                '      <p className="text-xs leading-snug break-words whitespace-normal text-muted-foreground">\n'
                 "        {fact.reason}\n"
                 "      </p>\n"
                 "    </div>\n"
                 "  );\n"
                 "}",
-                '      <p className="text-xs leading-snug text-muted-foreground">\n'
+                '      <p className="text-xs leading-snug break-words whitespace-normal text-muted-foreground">\n'
                 "      </p>\n"
                 "    </div>\n"
                 "  );\n"
@@ -663,6 +724,37 @@ _MUTANTS: list[tuple[str, str, list[tuple[str, str]]]] = [
                 "};",
             ),
             ("  value: null;\n", "  value: number | null;\n"),
+        ],
+    ),
+    (
+        # The #622 defect, restored exactly: strip the un-inheriting class and
+        # the sentence goes back to painting across the neighbouring column.
+        # Anchored on the deeper-indented (`ran`-branch) paragraph because the
+        # shallower one is a SUBSTRING of it — `_mutate` would refuse the pair
+        # as ambiguous, which is the harness working as intended.
+        "restore-nowrap-on-the-reason",
+        "region",
+        [
+            (
+                '        <p className="text-xs leading-snug break-words whitespace-normal text-muted-foreground">',
+                '        <p className="text-xs leading-snug text-muted-foreground">',
+            )
+        ],
+    ),
+    (
+        # The vacuity lever (#568): keep the class, break the SHAPE the rule
+        # reads it out of. Wrapping the opening tag over three lines leaves
+        # `whitespace-normal` greppable while `_REASON_PARAGRAPH` stops
+        # matching this paragraph — so a rule that merely iterated its matches
+        # would pass on behalf of a paragraph it can no longer see. The count
+        # equality is what reds instead.
+        "hide-a-reason-from-the-wrap-rule-by-reflowing-its-tag",
+        "region",
+        [
+            (
+                '      <p className="text-xs leading-snug break-words whitespace-normal text-muted-foreground">\n        {fact.reason}\n      </p>',
+                '      <p\n        className="text-xs leading-snug break-words whitespace-normal text-muted-foreground"\n      >\n        {fact.reason}\n      </p>',
+            )
         ],
     ),
     (
