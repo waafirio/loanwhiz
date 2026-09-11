@@ -615,6 +615,21 @@ class TriggerStatus(BaseModel):
         not_evaluable_reason: One-line reason when ``evaluable`` is False
                        (e.g. ``"metric 'foo' not resolvable from period or
                        structural state"``); ``None`` otherwise.
+        value_source:  Where ``metric_value`` and ``threshold`` came from
+                       (#598's distinction, carried onto the wire rather than
+                       left to the reader): ``"report_supplied"`` when the
+                       trustee report states both the test's level and its
+                       computed ratio and this status repeats them, or
+                       ``"engine_computed"`` when the monitor derived the ratio
+                       itself. ``None`` when the status is not evaluable, since
+                       neither number exists to have a provenance.
+        value_as_of:   The date the *report* states a ``report_supplied`` figure
+                       as of, which need not be ``period``: a trustee publishes
+                       monthly and a compliance period may fall between two
+                       reports. Carried so a screen can say what the figure is
+                       as of instead of silently re-labelling it with the
+                       period's own date. ``None`` for engine-computed values,
+                       which are as of the period by construction.
     """
 
     trigger_name: str
@@ -626,6 +641,8 @@ class TriggerStatus(BaseModel):
     direction: str  # "improving" | "deteriorating" | "stable" | "n/a"
     evaluable: bool = True
     not_evaluable_reason: str | None = None
+    value_source: str | None = None
+    value_as_of: str | None = None
 
 
 class CovenantInput(BaseInput):
@@ -688,6 +705,30 @@ class CovenantInput(BaseInput):
     # would shrink the denominator and inflate the ratio.
     interest_due_by_tranche: dict[str, float] = Field(default_factory=dict)
 
+    # Coverage ratios the *trustee report* states, keyed by canonical metric
+    # name (``{"class_a_b_ic_ratio": 180.24, ...}``), in percent.
+    #
+    # A FALLBACK, never an override: consulted only where no resolver above
+    # produced a value. A ratio measures one period, and the engine computes it
+    # from that period's own state -- for Cairn it reproduces the ratios the
+    # period's own report publishes, to the cent. A trustee publishes monthly,
+    # so the nearest available report routinely states a DIFFERENT month's
+    # ratio; preferring it would replace a correctly-dated figure with a stale
+    # one. What this fills is the genuinely empty case -- an interest-coverage
+    # test whose per-tranche interest due (#452) this deal does not supply, so
+    # the engine has no denominator and the alternative is a blank row.
+    #
+    # Anything taken from here is marked ``value_source="report_supplied"`` and
+    # carries the report's own date in ``value_as_of``, so a borrowed month is
+    # never silently re-labelled as the period's. Empty by default: a deal whose
+    # report this platform cannot read keeps exactly the behaviour it had.
+    reported_coverage: dict[str, float] = Field(default_factory=dict)
+
+    # The date the report backing ``reported_coverage`` states itself as of.
+    # Reported onto every ``report_supplied`` status so a figure taken from a
+    # neighbouring month is never silently re-labelled with the period's date.
+    reported_coverage_as_of: str | None = None
+
     @classmethod
     def from_deal_states(
         cls,
@@ -695,6 +736,8 @@ class CovenantInput(BaseInput):
         *,
         periods: list[dict[str, Any]] | None = None,
         triggers: list[TriggerDefinition] | None = None,
+        reported_coverage: dict[str, float] | None = None,
+        reported_coverage_as_of: str | None = None,
     ) -> "CovenantInput":
         """Build a ``CovenantInput`` from a chain of canonical ``DealState``s.
 
@@ -712,8 +755,14 @@ class CovenantInput(BaseInput):
         twice. The ``original_pool_balance`` denominator is taken from the first
         state, which is that seed.
         """
+        reported = dict(reported_coverage or {})
         if not deal_states:
-            return cls(periods=periods or [], triggers=triggers or [])
+            return cls(
+                periods=periods or [],
+                triggers=triggers or [],
+                reported_coverage=reported,
+                reported_coverage_as_of=reported_coverage_as_of,
+            )
         # One synthesised period per DISTINCT state date. The seed shares its
         # date with the first closing state on every report-folded series, and
         # emitting both put the same date on the screen twice: every trigger
@@ -733,6 +782,8 @@ class CovenantInput(BaseInput):
             triggers=triggers or [],
             period_states=list(deal_states),
             original_pool_balance=deal_states[0].original_pool_balance,
+            reported_coverage=reported,
+            reported_coverage_as_of=reported_coverage_as_of,
         )
 
 
@@ -846,6 +897,25 @@ def _compute_direction(
     return "improving"
 
 
+def _reported_coverage(input: "CovenantInput", metric: str) -> float | None:
+    """The ratio the trustee report states for ``metric``, or ``None``.
+
+    Looked up under the canonical metric name and the raw extracted one, the
+    same two spellings the period-dict lookup tries, so a trigger naming
+    ``class_a_b_par_value_ratio`` and a report indexed under the canonical
+    ``class_a_b_oc_ratio`` still meet.
+
+    Returns ``None`` — never ``0.0`` — when the report states no figure for this
+    metric (#493). A test the report does not carry is not a test at zero.
+    """
+    if not input.reported_coverage:
+        return None
+    for name in (_canonical_metric(metric), metric):
+        if name in input.reported_coverage:
+            return float(input.reported_coverage[name])
+    return None
+
+
 def _extract_metric(
     period: dict[str, Any],
     metric: str,
@@ -921,13 +991,21 @@ def _extract_metric(
         # for the specific reason. With no ``DealState`` we fall through to the
         # period-dict lookup instead — a published report may carry the ratio
         # directly — and to an honest not-evaluable if it does not.
-        return _resolve_coverage(
+        resolved = _resolve_coverage(
             state,
             input,
             coverage.group(1),
             coverage.group(2),
             period.get("reporting_date"),
         )[0]
+        if resolved is not None:
+            return resolved
+        # Computed nothing. Fall through rather than returning None here, so a
+        # ratio the trustee publishes can still be reported for a test this
+        # engine has no inputs for — the interest-coverage tests, whose
+        # denominator is the per-tranche interest due (#452) and is empty for
+        # this deal. Falling through cannot displace a computed figure: it is
+        # only reached when there was none.
 
     # Generic tape metric — expected to live in the period dict directly
     # or nested under "arrears_breakdown" / "pool_stats". We look up BOTH the
@@ -942,7 +1020,21 @@ def _extract_metric(
         pool_stats = period.get("pool_stats", {})
         if name in pool_stats:
             return float(pool_stats[name])
-    return None
+
+    # Last resort: a coverage ratio the trustee states, for a test this engine
+    # cannot compute at all (an interest-coverage test with no per-tranche
+    # interest due, a reinvestment test with no formula here).
+    #
+    # Deliberately BELOW every resolver above, not above them. A ratio is a
+    # measurement of a period, and the engine's is computed from that period's
+    # own state — for Cairn it reproduces the ratios the period's own report
+    # publishes, to the cent. The trustee publishes monthly, so the nearest
+    # report may state a DIFFERENT month's ratio, and preferring it would
+    # overwrite a correctly-dated figure with a stale one: the #524 failure,
+    # entered from the other side. So the report fills only what the engine
+    # leaves empty, and says so (``value_source`` / ``value_as_of``) rather than
+    # passing a borrowed month off as this one's.
+    return _reported_coverage(input, metric)
 
 
 def _is_triggered(
@@ -1066,6 +1158,12 @@ def _evaluate_one(
     triggered = _is_triggered(metric_value, trigger.threshold, trigger.direction)
     prox = _compute_proximity(metric_value, trigger.threshold, trigger.direction)
     dir_label = _compute_direction(prox, prior_proximity)
+    # Report-supplied only when the reported figure is the one that was USED —
+    # i.e. no engine resolver produced a value and the fallback above supplied
+    # it. A metric the engine computed is engine-computed even where the report
+    # also happens to state it.
+    reported = _reported_coverage(input, trigger.metric)
+    from_report = reported is not None and metric_value == reported
     return TriggerStatus(
         trigger_name=trigger.name,
         period=label,
@@ -1076,6 +1174,8 @@ def _evaluate_one(
         direction=dir_label,
         evaluable=True,
         not_evaluable_reason=None,
+        value_source="report_supplied" if from_report else "engine_computed",
+        value_as_of=input.reported_coverage_as_of if from_report else None,
     )
 
 

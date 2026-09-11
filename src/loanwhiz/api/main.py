@@ -89,6 +89,15 @@ from loanwhiz.primitives.capability_matrix import (
 from loanwhiz.primitives.collateral_schedule_parser import (
     parse_schedule_text as _parse_schedule_text,
 )
+from loanwhiz.primitives.collateral_schedule_parser import (
+    CoverageTestOutcome as _CoverageTestOutcome,
+)
+from loanwhiz.primitives.collateral_schedule_parser import (
+    CoverageTestResult as _CoverageTestResult,
+)
+from loanwhiz.primitives.collateral_schedule_parser import (
+    parse_liability_summary_text as _parse_liability_summary_text,
+)
 from loanwhiz.primitives import cross_deal_exposure as _xde
 from loanwhiz.primitives import industry_taxonomy as _industry_taxonomy
 from loanwhiz.primitives.quality_harness import (
@@ -1036,7 +1045,145 @@ def ingest_report_status(deal_id: str) -> ExtractionJobResponse:
 # --- end self-service ingest API (#399) --------------------------------------
 
 
-def _map_extracted_trigger(raw: dict) -> TriggerDefinition:
+# ---------------------------------------------------------------------------
+# Report-supplied coverage tests (#626)
+#
+# A CLO's coverage tests (OC / "par value", and IC) are the section a buyer
+# reads first, and the prospectus extraction cannot fill them in: an offering
+# circular names each test and says what breaching it does, but the LEVEL each
+# must clear is set by the transaction's own schedules and restated every month
+# by the trustee. So every extracted CLO trigger arrives with
+# ``threshold=None``, and #493's rule (never a defaulted 0.0) correctly keeps it
+# that way -- which is why the screen was blank rather than wrong.
+#
+# The trustee report states both halves, and they are NOT taken the same way,
+# because they are not the same kind of fact:
+#
+#   * the LEVEL is a covenant. Cairn's Class A/B par value test requires 130.08%
+#     in December, February and March alike. Any report states it, and it is
+#     taken as reported -- this is what fills the `threshold: None` that made the
+#     whole section unevaluable.
+#   * the RATIO measures one period. The engine computes it from that period's
+#     own state and, for this deal, reproduces the ratios the period's own
+#     report publishes to the cent (pinned in `test_clo_live_screens.py`). A
+#     trustee publishes monthly, so the nearest report routinely states another
+#     month's ratio -- taking it would overwrite a correctly-dated figure with a
+#     stale one, which is #524's failure approached from the other side. So the
+#     report fills a ratio only where the engine computes none at all, and what
+#     it fills carries the report's own date (`value_as_of`) beside it.
+#
+# Cairn only, deliberately. Contego's trustee prints the same table COLUMN-major
+# -- test names in one block, numbers in another -- the reflowed-geometry family
+# `.liz/memory/pdf-table-extraction.md` records from #533/#555, where a single
+# blank cell desyncs every column after it. A deal absent from the map below
+# gets no enrichment and keeps precisely the honest refusal it has today; that
+# is a data edit away from changing, and deliberately not a code path.
+#: Committed trustee-report fixtures carrying a deal's coverage tests, keyed by
+#: canonical deal id, oldest first, as ``(filename, period_label)``. Pure data,
+#: the same seam ``COMMITTED_SCHEDULE_FIXTURES`` and
+#: ``report_extractor.COMMITTED_REPORT_FIXTURES`` already take.
+COMMITTED_COVERAGE_FIXTURES: dict[str, tuple[tuple[str, str], ...]] = {
+    "cairn-clo-xvii": (
+        ("cairn-clo-xvii-december-2024.txt", "December 2024"),
+        ("cairn-clo-xvii-february-2025.txt", "February 2025"),
+        ("cairn-clo-xvii-march-2025.txt", "March 2025"),
+    ),
+}
+
+
+def _report_as_of(stated: str | None) -> date | None:
+    """A trustee report's stated date as a ``date``, or ``None``.
+
+    U.S. Bank prints ``dd/mm/yyyy``. Returns ``None`` rather than guessing on
+    anything else, which makes the report unusable for period selection instead
+    of silently mis-ordering the series.
+    """
+    if not stated:
+        return None
+    try:
+        day, month, year = (int(part) for part in stated.split("/"))
+        return date(year, month, day)
+    except (ValueError, TypeError):
+        return None
+
+
+@lru_cache(maxsize=8)
+def _committed_coverage_reports(
+    deal_id: str,
+) -> tuple[tuple[date, str, tuple[_CoverageTestResult, ...]], ...]:
+    """Every committed coverage-test reading for a deal, oldest first.
+
+    Each entry is ``(as_of, stated_date_as_printed, tests)``. A fixture whose
+    date cannot be read is dropped: it cannot be placed in the series, and a
+    report of unknown date is not a report of the period in front of you.
+    """
+    entry = COMMITTED_COVERAGE_FIXTURES.get(deal_id)
+    if entry is None:
+        return ()
+    readings: list[tuple[date, str, tuple[_CoverageTestResult, ...]]] = []
+    for filename, label in entry:
+        path = _SCHEDULE_FIXTURE_DIR / filename
+        if not path.exists():
+            continue
+        summary = _parse_liability_summary_text(
+            path.read_text(encoding="utf-8"), period_label=label
+        )
+        as_of = _report_as_of(summary.reporting_date)
+        if as_of is None:
+            continue
+        readings.append((as_of, str(summary.reporting_date), tuple(summary.coverage_tests)))
+    return tuple(sorted(readings, key=lambda r: r[0]))
+
+
+def _coverage_as_reported(
+    deal_id: str, on_or_before: str | None
+) -> tuple[dict[str, _CoverageTestResult], str | None]:
+    """The coverage tests the trustee states for ``deal_id`` as of a period.
+
+    Selects the latest committed report dated at or before ``on_or_before`` --
+    never a later one. A report published after the period did not exist on that
+    date, and borrowing it forward would state a ratio under a date it is not
+    stated as of, which is the thing #524 was about. When no report precedes the
+    period, returns no tests: the deal keeps its existing not-evaluable statuses
+    rather than being graded against a figure from the future.
+
+    A test the trustee itself grades ``N/A`` is EXCLUDED. The report states its
+    level and its ratio, but declines to grade it -- for Cairn's Class F par
+    value test, which is not applicable during reinvestment. Repeating the two
+    numbers while manufacturing the Passed/Failed verdict the trustee withheld
+    would be this platform asserting something its own source does not (#549: a
+    refusal that keeps its value is not a refusal). It stays not-evaluable, with
+    the report's own N/A as the reason.
+
+    Returns ``({trigger_key: test}, stated_date)``. The dict is keyed by the
+    canonical trigger key, which is the extracted triggers' own ``name``.
+    """
+    readings = _committed_coverage_reports(deal_id)
+    if not readings:
+        return {}, None
+    cutoff = None
+    if on_or_before:
+        try:
+            cutoff = date.fromisoformat(str(on_or_before)[:10])
+        except ValueError:
+            cutoff = None
+    eligible = [r for r in readings if cutoff is None or r[0] <= cutoff]
+    if not eligible:
+        return {}, None
+    _as_of, stated, tests = eligible[-1]
+    return (
+        {
+            test.trigger_key: test
+            for test in tests
+            if test.result is not _CoverageTestOutcome.NOT_APPLICABLE
+        },
+        stated,
+    )
+
+
+def _map_extracted_trigger(
+    raw: dict, reported: _CoverageTestResult | None = None
+) -> TriggerDefinition:
     """Map one extracted-trigger dict onto a covenant_monitor ``TriggerDefinition``.
 
     ``raw`` is an ``ExtractedTrigger.model_dump()`` (from the cached deal
@@ -1084,6 +1231,13 @@ def _map_extracted_trigger(raw: dict) -> TriggerDefinition:
         excerpt=citation_raw.get("excerpt") or raw.get("display_name") or raw["name"],
     )
 
+    # A coverage test the trustee report quantifies: take the level as stated.
+    # Only ever FILLS a threshold the prospectus extraction left unquantified --
+    # it never overrides one the prospectus did state, because two sources
+    # disagreeing about a level is a fact to surface, not one to resolve here.
+    if threshold is None and reported is not None:
+        threshold = float(reported.required_pct)
+
     return TriggerDefinition(
         name=raw["name"],
         description=raw.get("description") or raw.get("display_name") or raw["name"],
@@ -1095,19 +1249,32 @@ def _map_extracted_trigger(raw: dict) -> TriggerDefinition:
     )
 
 
-def _extracted_triggers_to_definitions(deal: dict) -> list[TriggerDefinition]:
+def _extracted_triggers_to_definitions(
+    deal: dict,
+    *,
+    reported_coverage: dict[str, _CoverageTestResult] | None = None,
+) -> list[TriggerDefinition]:
     """Return the deal's extracted triggers as ``TriggerDefinition`` objects.
 
     Reads the cached deal model (never a live extraction) and maps each
     ``covenants.triggers`` entry onto a ``TriggerDefinition``. Returns an empty
     list when the deal has no cached model or its model carries no triggers —
     the caller then falls back to ``CovenantMonitor.DEFAULT_TRIGGERS``.
+
+    ``reported_coverage`` (from :func:`_coverage_as_reported`) supplies the
+    levels the trustee states, keyed by trigger name. Omitted, the mapping is
+    exactly what it was: a coverage trigger the prospectus left unquantified
+    keeps ``threshold=None`` and the monitor reports it not-evaluable.
     """
     model = _load_cached_deal_model(deal)
     if model is None:
         return []
     raw_triggers = model.covenants.get("triggers") or []
-    return [_map_extracted_trigger(raw) for raw in raw_triggers]
+    supplied = reported_coverage or {}
+    return [
+        _map_extracted_trigger(raw, supplied.get(raw.get("name", "")))
+        for raw in raw_triggers
+    ]
 
 
 @app.get("/deal/{deal_id}/compliance")
@@ -1154,7 +1321,29 @@ def deal_compliance(deal_id: str) -> dict:
     # Trigger set from the deal model's extracted triggers, falling back to the
     # monitor's defaults when the deal has no cached model or no extracted
     # triggers.
-    triggers = _extracted_triggers_to_definitions(deal) or CovenantMonitor.DEFAULT_TRIGGERS
+    #
+    # #626: a CLO's coverage tests are quantified by its trustee, not by its
+    # offering circular, so the extracted triggers arrive with no threshold and
+    # the whole OC/IC section reported not-evaluable. The committed report
+    # supplies both the level and the ratio, as stated. Selected against the
+    # LATEST period the series carries, and never a report published after it.
+    series = _reconstruct_series(deal_id, deal)
+    latest_period_date = (
+        series.states[-1].reporting_date if series.states else None
+    )
+    coverage, coverage_as_of = _coverage_as_reported(deal_id, latest_period_date)
+    triggers = (
+        _extracted_triggers_to_definitions(deal, reported_coverage=coverage)
+        or CovenantMonitor.DEFAULT_TRIGGERS
+    )
+    # Ratios keyed by each trigger's OWN metric name, so no metric vocabulary is
+    # guessed here: the trigger says what it measures, the report says what that
+    # measured, and the two are joined on the trigger's canonical name.
+    reported_ratios = {
+        trigger.metric: float(coverage[trigger.name].current_pct)
+        for trigger in triggers
+        if trigger.name in coverage
+    }
 
     # Feed the monitor the REAL per-period structural state from the one
     # reconstructed ledger (S6), not a single seeded period-0 snapshot. Each
@@ -1165,11 +1354,12 @@ def deal_compliance(deal_id: str) -> dict:
     # each state to the period stating the same date; where the filter above
     # leaves no tape period at all, ``periods=None`` makes the series supply its
     # own dates, so the two sides are one series by construction.
-    series = _reconstruct_series(deal_id, deal)
     covenant_input = CovenantInput.from_deal_states(
         series.states,
         periods=periods if periods else None,
         triggers=triggers,
+        reported_coverage=reported_ratios,
+        reported_coverage_as_of=coverage_as_of,
     )
 
     monitor = CovenantMonitor()
@@ -2108,21 +2298,41 @@ def _collections_tranche_args(deal_id: str, capital_structure: dict) -> dict:
     precondition does. A deal whose stack this leg cannot represent gets a 422
     saying so; it never gets three of its classes silently selected, which would
     publish a waterfall computed over part of the deal.
+
+    **The 422 names the missing input, not the class list (#631).** #628
+    measured what this refusal actually protects: the class keys tested here
+    are very nearly dead, and the reason lifting the guard is unsafe is that
+    the tape route cannot derive principal collections honestly without a
+    loan-level join — the one run that tried published EUR 392.81m of
+    principal against a 380.14m pool, with zero revenue and Class A redeemed
+    in full. Wording the refusal around the class list sent a whole
+    investigation down a dead end, so the text leads with the missing input
+    and keeps the keys as a trailing "checked here" line for support.
     """
     missing = [
         key for key in _COLLECTIONS_LEG_REQUIRED_KEYS
         if capital_structure.get(key) is None
     ]
     if missing:
+        supplied = sorted(k for k in capital_structure if k.endswith("_balance"))
         raise HTTPException(
             status_code=422,
             detail=(
-                f"Deal '{deal_id}' has a capital structure the tape-driven "
-                f"reconstruction cannot represent: its collections leg is shaped "
-                f"for class_a/class_b/class_c and this deal supplies "
-                f"{sorted(k for k in capital_structure if k.endswith('_balance'))}, "
-                f"leaving {missing} unresolved. Refusing to run the waterfall over "
-                f"a subset of the deal's classes."
+                "This deal's waterfall cannot be produced from the data "
+                "registered for it, and Loanwhiz will not publish an estimate "
+                "in its place. A waterfall is either read from an investor "
+                "report that parses into a Priority-of-Payments schedule, or "
+                "rebuilt period by period from loan tapes. No Priority-of-"
+                "Payments schedule is available to this reconstruction, and "
+                "the tape route can separate principal from revenue only by "
+                "joining consecutive tapes on a loan-level identifier; without "
+                "that join the principal figure is an estimate, and an "
+                "estimate is not a distribution. What would change this: an "
+                "investor report carrying a Priority-of-Payments section, or "
+                "loan tapes carrying a stable per-loan identifier. "
+                f"Checked here — deal '{deal_id}': the tape-driven collections "
+                f"leg leaves {missing} unresolved against the balances this "
+                f"deal supplies ({supplied})."
             ),
         )
     return {

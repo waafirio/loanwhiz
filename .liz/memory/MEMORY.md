@@ -66,6 +66,7 @@ triage by opening the entry, not by reading the line.
   - [2026-09-06 · decision · #470](#2026-09-06--decision--470) — keywords: field identity, value conformance, NACE, NUTS-3, market price vs value, unit mismatch, obligor identifier, RTS vocabulary, derived tape
   - [2026-09-04 · pitfall · #451](#2026-09-04--pitfall--451) — keywords: AnnexField(code=None, ...)
 - [Engine contracts (closed enums, registries, need calculators)](engine-contracts.md)
+  - [2026-09-11 · pitfall · #631](#2026-09-11--pitfall--631) — keywords: cache above guard, stale reconstruction cache, experiment output outlives revert, base floor red, RECONSTRUCTION_CACHE_DIR, refusal defeated, provenance mislabel
   - [2026-09-10 · pitfall · #598](#2026-09-10--pitfall--598) — keywords: registered calculator, unsupplied input, fee_rates_pct, deferred_interest_balance, credited not computed, tautological guard, derived membership, probe the builder, wrong grain
   - [2026-09-05 · pattern · #453](#2026-09-05--pattern--453) — keywords: NEED_CALCULATORS, register_need, RecipientType, closed enum, registry coverage, import-time assert, silent default, generated calculators
   - [2026-09-08 · decision · #503](#2026-09-08--decision--503) — keywords: alias vs enum member, double-claim, step_override, funds_input, RECIPIENT_SPELLINGS, cascade, deferred interest, uncapped tier
@@ -132,3 +133,4 @@ triage by opening the entry, not by reading the line.
   - [2026-09-11 · pitfall · #622](#2026-09-11--pitfall--622) — keywords: /book, test_book_page.py, white-space, <p>, nowrap, TableCell
   - [2026-09-11 · pitfall · #623](#2026-09-11--pitfall--623) — keywords: false green on an empty page, CORS allowlisted port, content signal, document height and cell count, CDP request interception
   - [2026-09-11 · pattern · #623](#2026-09-11--pattern--623) — keywords: viewport-pinned control, different row per scroll offset, reserve clearance, z-index inverts the defect, reserved layout width, sidebar rail
+  - [2026-09-11 · gotcha · #629](#2026-09-11--gotcha--629) — keywords: captureBeyondViewport, recharts entry animation, empty chart screenshot, stroke-dashoffset, YAxis padding, domain vs range, flat series on the frame

@@ -106,9 +106,22 @@ export function StructuralDiff({
                     key={row.key}
                     className={cn(row.differs && "bg-amber-50/50 dark:bg-amber-950/20")}
                   >
+                    {/* The row label wraps inside the sticky column (#629).
+                        `TableCell` is `whitespace-nowrap` by default, so a
+                        label wider than the 12rem column - "Unmapped steps
+                        (not comparable)" measured 225px against a 192px box -
+                        painted 49px and 64px past its own edge. In a *sticky*
+                        column that is not merely untidy: the cell is painted
+                        over the horizontally-scrolled value columns, so the
+                        spill lands on top of another deal's cells as garbled
+                        overlap. Clipping it (`truncate`) would hide the
+                        "(not comparable)" qualifier that is the whole point of
+                        the row, so the label wraps to a second line instead and
+                        the painted box matches the laid-out one. */}
                     <TableCell
                       className={cn(
                         "sticky left-0 z-10 w-48 min-w-48 max-w-48 bg-card font-medium",
+                        "whitespace-normal break-words align-top",
                         row.differs && "bg-amber-50 dark:bg-amber-950",
                       )}
                     >
