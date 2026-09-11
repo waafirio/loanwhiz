@@ -77,6 +77,8 @@ from loanwhiz.primitives.capital_structure import (
     CapitalStructure,
     TrancheSpec,
     UnresolvableCapitalStructure,
+    classes_from_strips,
+    resolve_strips,
     senior_tranche_name,
 )
 from loanwhiz.primitives.capability_matrix import (
@@ -148,7 +150,10 @@ from loanwhiz.primitives.scenario_generator import (
     ScenarioGenerator,
 )
 from loanwhiz.primitives.tape_adapter import TapeAdapter
-from loanwhiz.primitives.waterfall_interpreter import StepSpec
+from loanwhiz.primitives.waterfall_interpreter import (
+    StepSpec,
+    class_interest_distributed,
+)
 from loanwhiz.primitives.registry import PRIMITIVE_REGISTRY
 
 # ``waterfall_runner`` is imported for its ``@register_primitive`` side effect
@@ -3300,8 +3305,35 @@ class WaterfallStepModel(BaseModel):
     condition: str | None = None
 
 
+#: Why a class's ``interest_received`` is not the interest it was paid.
+#:
+#: A CLO pays its equity tier under a compound line — "subordinated notes
+#: interest AND the incentive fee" is one step with one amount — which the
+#: engine cannot split between the two payees. Reporting ``0.0`` there would say
+#: "paid nothing" about a class that was paid; this field says "not separately
+#: reported" instead, and keeps the unknown distinct from the zero (#493/#549).
+_UNATTRIBUTED_INTEREST_REASON = (
+    "the engine models no per-class interest recipient for this class, so any "
+    "interest it received is inside a compound cascade step that cannot be "
+    "split between its payees — read this as not separately reported, not as nil"
+)
+
+
 class TrancheDistributionModel(BaseModel):
-    """Per-tranche distribution summary (mirrors ``TrancheDistribution``)."""
+    """Per-class distribution summary (mirrors ``TrancheDistribution``).
+
+    ``tranche`` names a **class**, not a strip: a class sold in two — Cairn's
+    Class B-1 floating and B-2 fixed — is one row whose balances are the sum of
+    both strips, because that is the unit the cascade pays and the prospectus
+    reports.
+
+    ``unattributed_interest_reason`` is ``None`` on every row whose
+    ``interest_received`` is the cascade's own figure for that class. When it is
+    set, ``interest_received`` is ``0.0`` because the amount could not be
+    attributed — **not** because the class was paid nothing; see
+    :data:`_UNATTRIBUTED_INTEREST_REASON`. A reader that renders the number must
+    render this beside it.
+    """
 
     tranche: str
     interest_received: float
@@ -3309,13 +3341,15 @@ class TrancheDistributionModel(BaseModel):
     total_received: float
     opening_balance: float
     closing_balance: float
+    unattributed_interest_reason: str | None = None
 
 
 class WaterfallResponse(BaseModel):
     """Response body for ``GET /deal/{deal_id}/waterfall``.
 
-    Carries the 11-step Revenue Priority of Payments cascade and the
-    per-tranche (Class A / B / C) distributions for the latest reported period,
+    Carries the Revenue Priority of Payments cascade and the per-class
+    distributions — one row per class the deal's own stack has — for the
+    latest reported period,
     plus the Available Revenue / Principal Funds the waterfall ran on.
     """
 
@@ -3387,21 +3421,39 @@ def deal_waterfall(deal_id: str) -> WaterfallResponse:
     # opening from the transition's opening state, closing from its closing
     # state. Principal received is the balance redeemed this period; interest
     # received is the revenue distributed to that tranche's interest recipient.
-    tranche_keys = ("class_a", "class_b", "class_c")
+    # The classes come from the deal's OWN reconstructed stack, never a fixed
+    # triple. A hardcoded ``class_a/b/c`` read through accessors that answer 0.0
+    # for an absent class cannot be both short and failing (#478): on Cairn's
+    # 8-class stack it emitted three rows, two of them vacuous, and the missing
+    # five read as a smaller deal rather than as a bug.
+    strip_names = [t.name for t in opening.tranches]
     tranche_distributions: list[TrancheDistributionModel] = []
-    for key in tranche_keys:
-        open_bal = getattr(opening, f"{key}_balance")
-        close_bal = getattr(closing, f"{key}_balance")
+    for class_name in classes_from_strips(strip_names):
+        strips = set(resolve_strips(class_name, strip_names))
+        # Filter the tranche lists; never index a ``{name: tranche}`` dict.
+        # ``DealState`` does not enforce unique tranche names and these are
+        # SUMMED, so a collapsed duplicate under-states the class — an error
+        # that reads as health rather than as a bug (#571).
+        open_bal = sum(t.balance for t in opening.tranches if t.name in strips)
+        close_bal = sum(t.balance for t in closing.tranches if t.name in strips)
         principal_received = max(0.0, open_bal - close_bal)
-        interest_received = revenue.distributed_to(f"{key}_interest")
+        # Canonicalised on BOTH sides (#511): Cairn's cascade spells the step
+        # ``class_a_notes_interest`` and the enum says ``class_a_interest``. A
+        # raw string compare matched neither spelling against the other and
+        # reported 0.00 for every class the cascade had just paid in full.
+        attributed = class_interest_distributed(revenue, class_name)
+        interest_received = 0.0 if attributed is None else attributed
         tranche_distributions.append(
             TrancheDistributionModel(
-                tranche=key,
+                tranche=class_name,
                 interest_received=interest_received,
                 principal_received=principal_received,
                 total_received=interest_received + principal_received,
                 opening_balance=open_bal,
                 closing_balance=close_bal,
+                unattributed_interest_reason=(
+                    None if attributed is not None else _UNATTRIBUTED_INTEREST_REASON
+                ),
             )
         )
 
@@ -3575,7 +3627,10 @@ def _computed_waterfall_dict(deal_id: str, deal: dict) -> tuple[dict[str, Any], 
     open_bal = opening.class_a_balance
     close_bal = closing.class_a_balance
     class_a_principal = max(0.0, open_bal - close_bal)
-    class_a_interest = revenue.distributed_to("class_a_interest")
+    # Canonicalised, for the same reason as the /waterfall panel (#511): the raw
+    # key matched nothing on a CLO and reported a paid coupon as a 0.00 break.
+    attributed_a = class_interest_distributed(revenue, "class_a")
+    class_a_interest = 0.0 if attributed_a is None else attributed_a
 
     bare = {
         "tranche_distributions": [

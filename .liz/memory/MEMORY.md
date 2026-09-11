@@ -90,6 +90,7 @@ triage by opening the entry, not by reading the line.
   - [2026-09-10 · pitfall · #601](#2026-09-10--pitfall--601) — keywords: hardcoded convention in the signature, no basis argument, _days_between, accrual_days, unreachable code path, conformance input that differs today
   - [2026-09-10 · pitfall · #614](#2026-09-10--pitfall--614) — keywords: first unmet precondition, masked refusal, drive the path to a result, collections leg, split-B stack, architectural not config
   - [2026-09-10 · pitfall · #615](#2026-09-10--pitfall--615) — keywords: comparative verdict, winner_deal_id, incomplete-set, require its inputs, has_performance is a routing property, all-null risk shell, latest_period, series points, ranking[0] is a winner
+  - [2026-09-11 · pattern · #636](#2026-09-11--pattern--636) — keywords: one direction of a grammar, inverse of resolve_strips, classes_from_strips, strips to classes, fixed class_a/b/c list, define through the forward call, split-B panel
 - [Extracting tables from PDFs](pdf-table-extraction.md) — keywords: visitor_text, text matrix, tm[4], rotated table, extraction_mode layout, row boundary, continuation line, column order, pypdf
   - [2026-09-06 · pitfall · #469](#2026-09-06--pitfall--469) — keywords: extract_text(), extraction_mode="layout", visitor_text=, tm[4]
   - [2026-09-08 · pitfall · #494](#2026-09-08--pitfall--494) — keywords: page furniture, banner prefix, data row first, footer eats a row, numeric tail, prefix filter ordering

@@ -68,6 +68,7 @@ __all__ = [
     "CapitalStructure",
     "TrancheSpec",
     "UnresolvableCapitalStructure",
+    "classes_from_strips",
     "engine_tranche_name",
     "numeric_rate_pct",
     "resolve_strips",
@@ -135,6 +136,47 @@ def resolve_strips(class_name: str, names: Sequence[str]) -> list[str]:
         return [class_name]
     pattern = re.compile(rf"^{re.escape(class_name)}_?\d+$")
     return [name for name in names if pattern.match(name)]
+
+
+def classes_from_strips(names: Sequence[str]) -> list[str]:
+    """The classes the strip names in *names* make up, in stack order.
+
+    **The inverse of :func:`resolve_strips`, and the only one.** That function
+    answers "which strips make up this class"; a reader that must enumerate a
+    deal's classes — a per-class panel, a per-class roll-up — has the strips and
+    needs the question the other way round. Cairn sells Class B in two, so
+    ``["class_a", "class_b_1", "class_b_2", "class_c"]`` names three classes,
+    not four, and ``class_b`` is one of them even though no strip is spelled
+    that way.
+
+    It is written here, beside :func:`resolve_strips`, and **decides nothing on
+    its own**: a candidate class is proposed by stripping a trailing series
+    number, then accepted only if ``resolve_strips`` agrees the strip belongs to
+    it. So there is still exactly one grammar (#538) and the two directions
+    cannot drift (#549) — every rule ``resolve_strips`` states holds here by
+    construction rather than by a second copy of the regex agreeing today:
+
+    - **A lettered suffix is not a series.** ``class_a_r`` proposes itself (no
+      trailing number to strip) and stays its own class, so a refinanced class
+      is never swept into the one it replaced.
+    - **An exact match wins outright.** A stack carrying both an aggregate
+      ``class_a`` and its ``class_a_1`` components resolves ``class_a`` to the
+      aggregate alone, so ``class_a_1`` does not round-trip and is reported as
+      its own class rather than folded into a total that already counts it.
+
+    Order is the stack's own, senior → junior, and a class appears once — at the
+    position of its most senior strip.
+    """
+    classes: list[str] = []
+    for name in names:
+        candidate = re.sub(r"_?\d+$", "", name)
+        if candidate and candidate != name and name in resolve_strips(candidate, names):
+            resolved = candidate
+        else:
+            resolved = name
+        if resolved not in classes:
+            classes.append(resolved)
+    return classes
 
 
 def numeric_rate_pct(raw: Any) -> float | None:
