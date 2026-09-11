@@ -139,8 +139,8 @@ def _violations(raw: str) -> set[str]:
     # merely not parsed.
     if "{state.reason}" not in src:
         bad.add("reason-never-rendered")
-    if "Not applicable" not in src:
-        bad.add("not-applicable-never-labelled")
+    if '"Not applicable" : "Not in this tape"' not in src.replace("\n", " "):
+        bad.add("states-are-not-labelled-apart")
     if "does not claim the" not in src:
         bad.add("absent-wording-over-claims")
 
@@ -199,6 +199,24 @@ _MUTANTS: tuple[tuple[str, str, str, str], ...] = (
         "[].map(",
         "breakdowns-not-rendered-from-one-loop",
     ),
+    (
+        "hardcodes the asset class instead of reading the tape's",
+        "latest.asset_class",
+        '"Corporate"',
+        "asset-class-never-read",
+    ),
+    (
+        "drops property type from the Corporate arm",
+        "    property_type: (annex) =>",
+        "    property_type_unused: (annex) =>",
+        "corporate-arm-incomplete",
+    ),
+    (
+        "gives both stated absences the same label",
+        '{notApplicable ? "Not applicable" : "Not in this tape"}',
+        "{null}",
+        "states-are-not-labelled-apart",
+    ),
 )
 
 
@@ -256,5 +274,8 @@ def test_no_check_is_decorative() -> None:
         "over-claims-not-applicable",
         "reason-never-rendered",
         "absent-wording-over-claims",
+        "asset-class-never-read",
+        "corporate-arm-incomplete",
+        "states-are-not-labelled-apart",
     }
     assert all_checks <= reached, f"never observed to fail: {all_checks - reached}"
