@@ -50,6 +50,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { formatCurrency, formatPct, humanize } from "@/lib/format";
+import { cn } from "@/lib/utils";
 import { usePagination } from "@/lib/use-pagination";
 
 const BAR_COLORS = ["#2563eb", "#16a34a", "#d97706", "#9333ea", "#dc2626", "#0891b2"];
@@ -137,6 +138,120 @@ function breakdownRows(
     .sort((a, b) => b.pct - a.pct);
 }
 
+/** The distributions this page renders, in display order. */
+type BreakdownKey =
+  | "arrears"
+  | "rate_type"
+  | "epc"
+  | "property_type"
+  | "geographic";
+
+/**
+ * What a section shows. Three states, all of them visible.
+ *
+ * A distribution can be missing for two different reasons, and collapsing them
+ * is what made this page uninformative: a corporate loan pool HAS no energy
+ * rating, while it may well have a geography its tape simply does not carry.
+ * The first is a refusal with a reason; the second is a gap. Rendering neither
+ * — the prior behaviour for geography — teaches a reader nothing at all.
+ */
+type BreakdownState =
+  | { kind: "present"; rows: Array<{ name: string; pct: number }> }
+  | { kind: "not-applicable"; reason: string }
+  | { kind: "absent"; reason: string };
+
+/**
+ * Which distributions the asset class does not have, and why.
+ *
+ * Keyed on the tape's own `asset_class` — the annex the normaliser detected,
+ * not a guess read off an empty map. That distinction is the whole point: an
+ * empty breakdown never proves inapplicability on its own, so a reason claimed
+ * from emptiness would be false for the first tape that merely omits a column
+ * it does have. A not-applicable reason asserts something about the world, so
+ * it may say only what the input actually encodes.
+ *
+ * Deliberately narrow. Only the two genuinely mortgage-shaped concepts are
+ * here: arrears and geography apply perfectly well to a corporate loan pool,
+ * so when they are empty they read as absent, never as inapplicable.
+ */
+const NOT_APPLICABLE: Record<
+  string,
+  Partial<Record<BreakdownKey, (annex: string) => string>>
+> = {
+  Corporate: {
+    epc: (annex) =>
+      `Not applicable — this is a corporate loan pool. An EPC rating describes ` +
+      `the energy performance of a mortgaged property, and ${annex} reports no ` +
+      `such field for a corporate obligor.`,
+    property_type: (annex) =>
+      `Not applicable — this is a corporate loan pool. Property type describes ` +
+      `mortgage collateral, and ${annex} reports no property field for a ` +
+      `corporate obligor.`,
+  },
+};
+
+/**
+ * Resolve one distribution to the state the card renders.
+ *
+ * The absent wording is a statement about the tape LoanWhiz normalised, never
+ * about what the issuer filed — a report can publish a figure in a section this
+ * platform does not yet parse, and claiming the issuer reported none would then
+ * be a fabricated refusal.
+ */
+function breakdownState(
+  key: BreakdownKey,
+  breakdown: Record<string, number> | null,
+  assetClass: string,
+  annex: string,
+): BreakdownState {
+  const rows = breakdownRows(breakdown);
+  if (rows.length > 0) return { kind: "present", rows };
+  const reason = NOT_APPLICABLE[assetClass]?.[key];
+  if (reason) return { kind: "not-applicable", reason: reason(annex) };
+  return {
+    kind: "absent",
+    reason:
+      `Not in the normalised tape for this period (${annex}). That is a ` +
+      `statement about the columns LoanWhiz parsed — it does not claim the ` +
+      `issuer publishes no such figure in another form.`,
+  };
+}
+
+/**
+ * Every distribution, resolved from one list.
+ *
+ * One loop, so a sixth distribution cannot be added without giving it a state —
+ * the failure this replaces was two sections hand-written with an empty message
+ * and two more that the page fetched and never rendered at all.
+ */
+const BREAKDOWNS: Array<{
+  key: BreakdownKey;
+  title: string;
+  pick: (p: TapeAnalyticsPeriod) => Record<string, number> | null;
+}> = [
+  {
+    key: "arrears",
+    title: "Arrears breakdown",
+    pick: (p) => p.arrears_breakdown,
+  },
+  {
+    key: "rate_type",
+    title: "Rate type",
+    pick: (p) => p.rate_type_breakdown,
+  },
+  { key: "epc", title: "EPC distribution", pick: (p) => p.epc_breakdown },
+  {
+    key: "property_type",
+    title: "Property type",
+    pick: (p) => p.property_type_breakdown,
+  },
+  {
+    key: "geographic",
+    title: "Geographic distribution",
+    pick: (p) => p.geographic_breakdown,
+  },
+];
+
 function PoolContent({ periods }: { periods: TapeAnalyticsPeriod[] }) {
   // Provenance for the whole view, derived from the periods already in hand —
   // no second fetch. It renders above the charts because #484's failure was
@@ -174,9 +289,6 @@ function PoolContent({ periods }: { periods: TapeAnalyticsPeriod[] }) {
     return <EmptyState message="No per-period pool analytics available." />;
   }
 
-  const epcRows = breakdownRows(latest.epc_breakdown);
-  const arrearsRows = breakdownRows(latest.arrears_breakdown);
-  const geoRows = breakdownRows(latest.geographic_breakdown);
 
   return (
     <div className="space-y-6">
@@ -326,48 +438,81 @@ function PoolContent({ periods }: { periods: TapeAnalyticsPeriod[] }) {
         </CardContent>
       </Card>
 
-      {/* Distribution breakdowns (latest period) */}
+      {/* Distribution breakdowns (latest period). Every one renders, whatever
+          its state — a section that removes itself when empty is a refusal
+          that hides itself, and the reason is the part worth reading. */}
       <div className="grid gap-6 lg:grid-cols-2">
-        <BreakdownCard
-          title={`Arrears breakdown (${periodLabel(latest)})`}
-          rows={arrearsRows}
-          emptyMessage="No arrears breakdown in this tape."
-        />
-        <BreakdownCard
-          title={`EPC distribution (${periodLabel(latest)})`}
-          rows={epcRows}
-          emptyMessage="No EPC breakdown in this tape."
-        />
+        {BREAKDOWNS.map((b) => (
+          <BreakdownCard
+            key={b.key}
+            title={`${b.title} (${periodLabel(latest)})`}
+            state={breakdownState(
+              b.key,
+              b.pick(latest),
+              latest.asset_class,
+              latest.annex_detected,
+            )}
+          />
+        ))}
       </div>
+    </div>
+  );
+}
 
-      {geoRows.length > 0 ? (
-        <BreakdownCard
-          title={`Geographic distribution (${periodLabel(latest)})`}
-          rows={geoRows}
-          emptyMessage="No geographic breakdown in this tape."
+/**
+ * The stated-absence panel, in the capability matrix's not-applicable idiom.
+ *
+ * It borrows that surface's muted pill rather than importing it: the styles are
+ * module-private to `capability-matrix-grid.tsx` and lifting them into a shared
+ * component would pull `/showcase` into this diff. Same weight as a populated
+ * section by construction — the minimum height matches the shortest chart, so a
+ * refusal cannot read as a smaller thing than an answer.
+ */
+function BreakdownNotice({
+  state,
+}: {
+  state: Extract<BreakdownState, { kind: "not-applicable" | "absent" }>;
+}) {
+  const notApplicable = state.kind === "not-applicable";
+  return (
+    <div className="flex min-h-[220px] flex-col items-start justify-center gap-2.5">
+      <span
+        className={cn(
+          "inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-medium",
+          "bg-muted/60 text-muted-foreground ring-1 ring-inset ring-border",
+        )}
+      >
+        <span
+          className={cn(
+            "h-1.5 w-1.5 rounded-full",
+            notApplicable ? "bg-muted-foreground/50" : "bg-amber-500",
+          )}
         />
-      ) : null}
+        {notApplicable ? "Not applicable" : "Not in this tape"}
+      </span>
+      <p className="max-w-prose text-xs leading-relaxed text-muted-foreground">
+        {state.reason}
+      </p>
     </div>
   );
 }
 
 function BreakdownCard({
   title,
-  rows,
-  emptyMessage,
+  state,
 }: {
   title: string;
-  rows: Array<{ name: string; pct: number }>;
-  emptyMessage: string;
+  state: BreakdownState;
 }) {
+  const rows = state.kind === "present" ? state.rows : [];
   return (
     <Card>
       <CardHeader>
         <CardTitle className="text-base">{title}</CardTitle>
       </CardHeader>
       <CardContent>
-        {rows.length === 0 ? (
-          <EmptyState message={emptyMessage} />
+        {state.kind !== "present" ? (
+          <BreakdownNotice state={state} />
         ) : (
           <ResponsiveContainer width="100%" height={Math.max(220, rows.length * 36)}>
             <BarChart
