@@ -28,6 +28,100 @@ import { EmptyState } from "@/components/page-states";
 
 const LINE_COLORS = ["#2563eb", "#16a34a", "#d97706", "#9333ea", "#dc2626"];
 
+// ---------------------------------------------------------------------------
+// Y-axis bounds that keep a flat series off the chart frame (#629)
+// ---------------------------------------------------------------------------
+
+/**
+ * Fraction of the plotted extent added above the data as headroom, and the
+ * pixel inset held at both ends of the axis range.
+ *
+ * recharts' default y-domain is `[0, 'auto']`, which ends the axis *exactly*
+ * at the data maximum. A near-constant series is then drawn on the boundary
+ * and is indistinguishable from the frame: measured on `/compare`, a pool
+ * factor of 0.986 drew at y=8 on a plot spanning y=8-202 (the top frame), and
+ * a 0.00% cumulative loss rate drew at y=202 (the bottom axis). Both charts
+ * read as empty while they were plotting real data.
+ *
+ * Two ends, two mechanisms, because they fail for different reasons:
+ *
+ * - `HEADROOM` widens the *top* of the domain, which is what pins a non-zero
+ *   constant to the top frame. The zero anchor is kept, so the height of a
+ *   line still means what it meant before and two deals stay comparable.
+ * - `RANGE_INSET` insets the axis *range* in pixels, which is the only thing
+ *   that lifts an all-zero series off the bottom. Padding the domain cannot:
+ *   the floor is a true zero we will not draw below, so the value sits on it.
+ *
+ * Neither invents variation. A flat series is still drawn as a flat line and
+ * still reads flat against its axis labels - it just no longer hides inside
+ * the frame.
+ */
+const HEADROOM = 0.12;
+const RANGE_INSET = 10;
+
+/**
+ * Mantissas of a readable axis bound. recharts picks its own round numbers
+ * only while the domain is `'auto'`; the moment we hand it explicit endpoints
+ * it uses them verbatim and divides the span into four, so a raw padded bound
+ * puts `11912320` on the axis where `12000000` used to be. Every entry here
+ * stays round when divided by four, which is what keeps the intermediate
+ * ticks round too (1.6 gives 0.4/0.8/1.2; 1.5 would give 0.375).
+ */
+const NICE_MANTISSAS = [1, 1.2, 1.6, 2, 2.4, 2.8, 3.2, 4, 6, 8, 10];
+
+/** The nearest readable bound at or beyond `v`, away from zero. */
+function niceBound(v: number): number {
+  if (v === 0) return 0;
+  const magnitude = Math.abs(v);
+  const power = Math.pow(10, Math.floor(Math.log10(magnitude)));
+  const mantissa = magnitude / power;
+  // 1e-9 absorbs the float error that would otherwise round an exact 2 up to 2.4.
+  const nice = NICE_MANTISSAS.find((m) => mantissa <= m + 1e-9) ?? 10;
+  return Math.sign(v) * nice * power;
+}
+
+/**
+ * The padded `[min, max]` y-domain for one metric's rows.
+ *
+ * `rows` is the chart's row-per-date shape, `dealIds` the plotted columns.
+ * A missing point is `null` and is skipped - a gap is not a zero.
+ */
+function paddedDomain(
+  rows: Record<string, number | string | null>[],
+  dealIds: string[],
+): [number, number] {
+  let lo = 0;
+  let hi = 0;
+  let seen = false;
+  for (const row of rows) {
+    for (const id of dealIds) {
+      const v = row[id];
+      if (typeof v !== "number" || !Number.isFinite(v)) continue;
+      if (!seen) {
+        // Anchor at zero unless the data itself goes below it.
+        lo = Math.min(0, v);
+        hi = v;
+        seen = true;
+      } else {
+        lo = Math.min(lo, v);
+        hi = Math.max(hi, v);
+      }
+    }
+  }
+  // Nothing plottable: a trivial axis, not a fabricated one.
+  if (!seen) return [0, 1];
+  const extent = hi - lo;
+  // An all-equal series has no extent to take a fraction of. Give the axis one
+  // unit of range so the line has somewhere to sit that is not the frame.
+  const pad =
+    extent > 0 ? extent * HEADROOM : Math.max(Math.abs(hi) * HEADROOM, 1);
+  // Both steps are load-bearing. HEADROOM guarantees the gap: a value that is
+  // already on a round number (a reserve balance of exactly 12000000) would
+  // round to itself and land back on the frame. niceBound then buys back the
+  // readable axis labels that an explicit domain costs.
+  return [lo < 0 ? niceBound(lo - pad) : 0, niceBound(hi + pad)];
+}
+
 /** The Panel-2 metrics, one overlaid chart each (one line per deal). */
 const METRICS: {
   key: keyof PerformanceSeries["points"][number];
@@ -70,6 +164,9 @@ export function PerformancePanel({
   // half, #614 for the rate half).
   const qualified = useMemo(() => deals.filter(hasQualifiedBasis), [deals]);
 
+  // The plotted columns, named once so the row builder and the domain agree.
+  const dealIds = useMemo(() => series.map((s) => s.deal_id), [series]);
+
   // Build per-metric chart data: one row per reporting date, one column per deal.
   const chartsByMetric = useMemo(() => {
     const allDates = Array.from(
@@ -84,9 +181,9 @@ export function PerformancePanel({
         }
         return row;
       });
-      return { metric: m, rows };
+      return { metric: m, rows, domain: paddedDomain(rows, dealIds) };
     });
-  }, [series]);
+  }, [series, dealIds]);
 
   if (series.length === 0) {
     return (
@@ -131,7 +228,7 @@ export function PerformancePanel({
           </p>
         )}
         <div className="grid gap-8 lg:grid-cols-2">
-          {chartsByMetric.map(({ metric, rows }) => (
+          {chartsByMetric.map(({ metric, rows, domain }) => (
             <div key={String(metric.key)} className="space-y-2">
               <p className="text-sm font-medium">{metric.title}</p>
               <ResponsiveContainer width="100%" height={260}>
@@ -146,7 +243,13 @@ export function PerformancePanel({
                     minTickGap={24}
                     tickMargin={8}
                   />
-                  <YAxis fontSize={12} unit={metric.unit} width={64} />
+                  <YAxis
+                    fontSize={12}
+                    unit={metric.unit}
+                    width={64}
+                    domain={domain}
+                    padding={{ top: RANGE_INSET, bottom: RANGE_INSET }}
+                  />
                   <Tooltip
                     formatter={(v) =>
                       typeof v === "number"

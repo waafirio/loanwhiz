@@ -103,3 +103,25 @@ never does.
 
 Refs: #623
 Refs: #565 — the source-guard trade this surface keeps making.
+
+## 2026-09-11 · gotcha · #629
+
+`Page.captureScreenshot` with `captureBeyondViewport: true` re-runs recharts'
+entry animation and captures it at zero length, so **every chart on the page
+comes back empty whatever the data**. The DOM disagrees — the
+`.recharts-line-curve` path is present, `stroke-dashoffset: 0`, `opacity: 1`,
+with a real `getBBox()` — so it is the screenshot that is wrong, and it is
+wrong in the direction that *confirms* "the chart is broken". A fix verified
+this way shows no change from a fix that worked; I scanned the PNG for the
+line's colour and found zero matching pixels before and after. Scroll the
+target into the viewport and capture **without** `captureBeyondViewport`.
+
+What the bad screenshot was hiding is worth keeping too: padding a
+y-**domain** cannot lift a series off a boundary its value legitimately sits
+on. An all-zero series on a `[0, …]` axis is on the floor at every domain you
+can choose, so only a pixel inset of the axis **range**
+(`<YAxis padding={{ top, bottom }}>`) moves it; domain padding is what unpins
+a *non-zero* constant from the top. They are not interchangeable and a
+near-constant chart needs both.
+
+Refs: #629

@@ -132,3 +132,4 @@ triage by opening the entry, not by reading the line.
   - [2026-09-11 · pitfall · #622](#2026-09-11--pitfall--622) — keywords: /book, test_book_page.py, white-space, <p>, nowrap, TableCell
   - [2026-09-11 · pitfall · #623](#2026-09-11--pitfall--623) — keywords: false green on an empty page, CORS allowlisted port, content signal, document height and cell count, CDP request interception
   - [2026-09-11 · pattern · #623](#2026-09-11--pattern--623) — keywords: viewport-pinned control, different row per scroll offset, reserve clearance, z-index inverts the defect, reserved layout width, sidebar rail
+  - [2026-09-11 · gotcha · #629](#2026-09-11--gotcha--629) — keywords: captureBeyondViewport, recharts entry animation, empty chart screenshot, stroke-dashoffset, YAxis padding, domain vs range, flat series on the frame
