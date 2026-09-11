@@ -3,7 +3,6 @@ import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 
 import { AppSidebar } from "@/components/app-sidebar";
-import { ChatPanel } from "@/components/chat-panel";
 import { TopBar } from "@/components/top-bar";
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 import { DealProvider } from "@/lib/deal-context";
@@ -45,7 +44,6 @@ export default function RootLayout({
                 </div>
               </main>
             </SidebarInset>
-            <ChatPanel />
           </SidebarProvider>
         </DealProvider>
       </body>

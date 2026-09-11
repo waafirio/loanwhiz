@@ -64,3 +64,30 @@ single `*` is followed by whitespace, never `**bold**` — the docs mark section
 names with emphasis, and eating it takes the labels being checked with it.
 
 Refs: #617
+
+## 2026-09-11 · pitfall · #623
+
+A visual check run on a port the API does not allowlist passes on an empty
+page. The API allows `http://localhost:3000` for CORS, so a worktree server on
+another port served the shell while every fetch failed: the page read "Could
+not load" and the overlap probe reported *clear* everywhere — a false green
+shaped like a fix. Assert a **content signal**, not the defect's absence:
+document height and cell count against the same page on the running server.
+CDP request interception (fulfil its API calls from a server-side fetch, with
+the permissive header) gets that data without restarting anyone's server.
+
+Refs: #623
+
+## 2026-09-11 · pattern · #623
+
+A viewport-pinned control covers a *different* row at every scroll offset, so
+"reserve clearance under the last row" fixes only the offset that was
+screenshotted: four offsets over one table put four different balance cells
+under it. Lowering its z-index inverts the defect — the control hides behind
+the data. So either the content gets a reserved gutter, or the control moves
+into chrome that is **reserved layout width**: a sidebar rail qualifies
+(content starts where the rail ends, expanded or collapsed), a fixed corner
+never does.
+
+Refs: #623
+Refs: #565 — the source-guard trade this surface keeps making.

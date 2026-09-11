@@ -9,6 +9,11 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
+  SidebarMenu,
+  SidebarMenuButton,
+  SidebarMenuItem,
+} from "@/components/ui/sidebar";
+import {
   Sheet,
   SheetContent,
   SheetDescription,
@@ -38,11 +43,22 @@ function isError(
 /**
  * Omnipresent "Ask LoanWhiz" chat slide-over.
  *
- * Rendered once from the app shell (see app/layout.tsx) so it is reachable
- * from every route via a floating trigger button. Plain `useState` for the
- * transcript — no state library, no streaming. On send it awaits the typed
- * `postQuery` wrapper and appends the answer (the endpoint is request/reply,
- * not a stream; it can take several seconds while the agent runs live).
+ * Rendered once from the app shell — from the sidebar rail's footer (see
+ * app-sidebar.tsx), so the launcher is reachable from every route while
+ * sitting in chrome the page never paints into. It used to be a
+ * `fixed bottom-6 right-6` pill floating over the content, which pinned it to
+ * the viewport's bottom-right corner and so painted over whatever was there:
+ * on /concentration at 1440x900 that was a balance cell, half-hidden behind
+ * the pill (#623). A viewport-pinned control covers a *different* row at every
+ * scroll offset, so bottom padding cannot rescue it and a lower z-index only
+ * hides the control instead of the number. The rail is reserved layout width
+ * — content starts where the rail ends, expanded (256px) or icon-collapsed
+ * (48px) — so a launcher docked there cannot overlap data in any state.
+ *
+ * Plain `useState` for the transcript — no state library, no streaming. On
+ * send it awaits the typed `postQuery` wrapper and appends the answer (the
+ * endpoint is request/reply, not a stream; it can take several seconds while
+ * the agent runs live).
  */
 export function ChatPanel() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -96,18 +112,27 @@ export function ChatPanel() {
   return (
     <>
     <Sheet>
-      <SheetTrigger
-        render={
-          <Button
-            size="sm"
-            className="fixed bottom-6 right-6 z-50 gap-2 shadow-lg"
-            aria-label="Ask LoanWhiz"
-          />
-        }
-      >
-        <MessageSquare className="size-4" />
-        Ask LoanWhiz
-      </SheetTrigger>
+      {/* The launcher is a rail menu button, not a floating pill: it must
+          carry no fixed/absolute positioning, no corner offset and no
+          z-index, or it leaves the rail and lands back on the data (#623).
+          `tooltip` is what names it when the rail is icon-collapsed, the
+          same way app-sidebar.tsx labels its nav items. */}
+      <SidebarMenu>
+        <SidebarMenuItem>
+          <SheetTrigger
+            render={
+              <SidebarMenuButton
+                variant="outline"
+                tooltip="Ask LoanWhiz"
+                aria-label="Ask LoanWhiz"
+              />
+            }
+          >
+            <MessageSquare />
+            <span>Ask LoanWhiz</span>
+          </SheetTrigger>
+        </SidebarMenuItem>
+      </SidebarMenu>
       <SheetContent
         side="right"
         className="flex w-full flex-col gap-0 p-0 sm:max-w-md"
