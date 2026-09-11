@@ -307,3 +307,27 @@ series' own `points` and the risk row's `latest_period`, and empty winner,
 name, ranking and reasons together: `ranking[0]` is a winner by another name.
 
 Refs: #615
+
+## 2026-09-11 · pitfall · #631
+
+A cache read placed **above** a guard silently defeats it, and an experiment's
+output outlives the experiment. `_reconstruct_series_from_tapes` hoisted
+`_resolve_structural_config` above its disk-cache read on purpose (#268, "fails
+loudly even on a memo / disk-cache hit") but left the collections-leg guard
+below it. #628 relaxed that guard to measure what a Contego fold would print,
+reverted the code — and the run's `DealStateSeries` stayed in
+`/tmp/loanwhiz_cache/reconstruction/`, keyed only by tape URLs. With the code
+correct and the guard intact, Contego then served the fabricated fold (EUR
+392.81m principal, zero revenue, Class A redeemed in full) instead of its 422,
+and mislabelled its `/compare` provenance `reported`.
+
+Two things follow. **Measure the base floor before believing a red suite is
+yours**: three failures here were environment, not code, and the guard's own
+test was one of them. **Prove a refusal against a redirected cache dir**, never
+the shared one — pointing `RECONSTRUCTION_CACHE_DIR` at a temp path was what
+separated "the code stopped refusing" from "something answered before the code
+ran".
+
+Refs: #631
+Refs: #628 — the experiment whose cached output this describes.
+Refs: #268 — the hoist that got the config resolver right and this guard wrong.
