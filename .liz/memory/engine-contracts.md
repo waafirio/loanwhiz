@@ -119,6 +119,7 @@ computable set would classify every denied string computable at once. Check what
 a declared set is spelled in before trusting the name it is filed under.
 
 Refs: #511
+Refs: #636 — same rule, re-learned on the /waterfall per-class roll-up.
 ## 2026-09-08 · gotcha · #512
 
 Check what the **report path** actually seeds before wiring a per-class input
@@ -331,3 +332,16 @@ ran".
 Refs: #631
 Refs: #628 — the experiment whose cached output this describes.
 Refs: #268 — the hoist that got the config resolver right and this guard wrong.
+
+## 2026-09-11 · pattern · #636
+
+A shared grammar answers **one direction** — check which, before citing it as
+already-solved. `resolve_strips` maps a class to its strips, so a reader
+enumerating a deal's *classes* gets nothing from it and reaches for a fixed
+`class_a/b/c` list. Write the inverse beside it and define it *through* it —
+propose a candidate, accept only if the forward call agrees — so every rule the
+forward direction states holds by construction, not by a second regex.
+
+Refs: #636
+Refs: #538 — the forward direction this inverts.
+Refs: #571 — the shared resolver both directions now go through.

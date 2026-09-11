@@ -1130,10 +1130,94 @@ class WaterfallExecution(BaseModel):
     total_shortfall: float
 
     def distributed_to(self, recipient: str) -> float:
-        """Total distributed to a recipient kind across the trace."""
+        """Total distributed to a recipient kind across the trace.
+
+        Matches the recipient string the trace actually carries, **verbatim**.
+        That is the right answer for a reader asking "what did this cascade pay
+        under its own name" — and the wrong one for a reader asking "what did
+        this class receive", because a deal spells the same payee several ways.
+        Use :meth:`distributed_to_canonical` for the second question.
+        """
         return sum(
             s.amount_distributed for s in self.steps if s.recipient == recipient
         )
+
+    def distributed_to_canonical(self, recipient: RecipientType) -> float:
+        """Total distributed to the canonical ``recipient`` across the trace.
+
+        **Canonicalises both sides of the comparison (#511).** The argument is
+        canonical by its type; each step's own spelling is resolved through
+        :func:`_canonical_recipient`, the one resolver the registry and the
+        extraction taxonomy already share. So a CLO writing ``(G) Class A Notes
+        Interest`` and an RMBS writing ``class_a_interest`` both answer the
+        question "what did Class A receive" — without a third spelling being
+        declared anywhere to make them meet.
+
+        Resolving only the *incoming* name is the failure this exists to
+        prevent: it reads as canonical, silently matches nothing on the deals
+        that carry a legacy spelling, and reports ``0.0`` — a figure
+        indistinguishable from a class that was genuinely paid nothing.
+
+        :attr:`RecipientType.unmapped` is rejected rather than summed. It is the
+        "recognised but unplaceable" answer, which every denied string resolves
+        to, so accepting it would total unrelated steps into one figure (#503).
+        """
+        if recipient is RecipientType.unmapped:
+            raise ValueError(
+                "distributed_to_canonical does not accept RecipientType.unmapped: "
+                "it is the recognised-but-unplaceable answer shared by every "
+                "denied string, so it names no single payee to total."
+            )
+        return sum(
+            s.amount_distributed
+            for s in self.steps
+            if _canonical_recipient(s.recipient) is recipient
+        )
+
+
+def _recipient_member(value: str) -> RecipientType | None:
+    """``RecipientType`` whose **canonical value** is ``value``, else ``None``.
+
+    Deliberately not :func:`_canonical_recipient`: this asks whether the enum
+    *models* a recipient by that exact name, not what some deal's spelling
+    denotes. A caller composing a member name from a class ("does the engine
+    model Class D interest at all?") needs the first question; resolving through
+    the spelling tables would answer the second and quietly accept an alias.
+    """
+    try:
+        return RecipientType(value)
+    except ValueError:
+        return None
+
+
+def class_interest_distributed(
+    execution: WaterfallExecution, class_name: str
+) -> float | None:
+    """Interest the cascade paid class ``class_name``, or ``None`` if unanswerable.
+
+    The sum over the class's **current coupon and its deferred (PIK'd) interest**
+    — two distinct enum members on purpose (#503), and both are interest the
+    class received, so a panel reporting only the first under-states a class that
+    was paid its arrears.
+
+    ``None`` is the **unknown** answer and must stay distinct from ``0.0``
+    (#493): it means the enum models no per-class interest recipient by this
+    name, so the cascade may well have paid the class inside a compound step
+    this function cannot attribute — a CLO's equity tier is paid "subordinated
+    notes interest *and* the incentive fee" as one line. A caller must render
+    that as "not separately reported", never as a zero (#549).
+    """
+    recipients = [
+        member
+        for member in (
+            _recipient_member(f"{class_name}_interest"),
+            _recipient_member(f"{class_name}_deferred_interest"),
+        )
+        if member is not None
+    ]
+    if not recipients:
+        return None
+    return sum(execution.distributed_to_canonical(member) for member in recipients)
 
 
 # ---------------------------------------------------------------------------

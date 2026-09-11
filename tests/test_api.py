@@ -4483,3 +4483,208 @@ def test_due_diligence_answers_every_registered_deal(committed_seeds):
     assert set(outcomes.values()) == {"verified", "not-established"}, (
         f"the route returns a single outcome across the whole registry: {outcomes}"
     )
+
+
+# ---------------------------------------------------------------------------
+# #636 — the per-class distribution panel ties to the cascade
+#
+# The panel reported 0.00 for every class while the cascade paid each of them in
+# full: the roll-up compared recipient strings raw (`class_a_interest` against a
+# cascade spelling `class_a_notes_interest`), and enumerated a hardcoded
+# class_a/b/c triple that missed D/E/F and found no tranche named `class_b` for
+# a stack that splits it into B-1/B-2.
+#
+# A test asserting only that rows exist, or that some are non-zero, passes on
+# that broken output — so these assert the TIE: each row carries the amount the
+# cascade paid that class, and nothing the cascade paid a class is missing from
+# the panel.
+# ---------------------------------------------------------------------------
+
+#: Cairn CLO XVII's published class-interest figures for the reconstructed
+#: period, the operator's own reading of the cascade. Pinned literally so the
+#: tie below does not rest solely on the canonicaliser that both sides share: a
+#: resolver that broke identically on both halves would still satisfy a purely
+#: derived comparison (#511).
+_CAIRN_CLASS_INTEREST = {
+    "class_a": 3_277_457.78,
+    "class_b": 644_398.50,
+    "class_c": 415_004.33,
+    "class_d": 594_969.17,
+    "class_e": 484_208.67,
+    "class_f": 495_004.89,
+}
+
+
+def _cascade_interest_by_class(revenue_waterfall):
+    """What the published cascade paid each class, read off the trace itself.
+
+    Derived from the response's own ``revenue_waterfall`` — the raw trace, the
+    other half of the same payload — so it is an independent reading of the
+    figures the panel claims to summarise, not a restatement of them.
+    """
+    from loanwhiz.primitives.waterfall_interpreter import _canonical_recipient
+
+    by_class: dict[str, float] = {}
+    for step in revenue_waterfall:
+        recipient = _canonical_recipient(step["recipient"])
+        if recipient is None:
+            continue
+        # ``_deferred_interest`` first: it also ends in ``_interest``, and
+        # matching the shorter suffix would file Class C's deferred coupon under
+        # a class named "class_c_deferred" that no stack has.
+        for suffix in ("_deferred_interest", "_interest"):
+            if recipient.value.endswith(suffix):
+                class_name = recipient.value[: -len(suffix)]
+                by_class[class_name] = (
+                    by_class.get(class_name, 0.0) + step["amount_distributed"]
+                )
+                break
+    return by_class
+
+
+@pytest.fixture
+def cairn_waterfall():
+    """The live ``/waterfall`` body for Cairn, off the committed deal-model seed.
+
+    The autouse ``_isolate_deal_model_seed_dir`` fixture points the seed dir at
+    an empty directory, so without this override Cairn has no extracted model
+    and the endpoint refuses with a 422 "not modelable" — the tie below would
+    then be asserting the refusal, not the panel.
+    """
+    with patch("loanwhiz.api.main.DEAL_MODEL_SEED_DIR", _REAL_SEED_DIR):
+        response = client.get("/deal/cairn-clo-xvii/waterfall")
+    assert response.status_code == 200, response.text
+    return response.json()
+
+
+def test_waterfall_panel_ties_to_the_cascade_for_cairn(cairn_waterfall):
+    """Every class row carries the interest the cascade paid that class."""
+    body = cairn_waterfall
+    rows = {t["tranche"]: t for t in body["tranche_distributions"]}
+    paid = _cascade_interest_by_class(body["revenue_waterfall"])
+
+    # The cascade really does pay all eight classes' worth of interest here; a
+    # derived expectation that came back empty would make every tie below
+    # vacuously true.
+    assert set(paid) == set(_CAIRN_CLASS_INTEREST)
+
+    for class_name, amount in paid.items():
+        assert class_name in rows, f"{class_name} was paid but has no panel row"
+        assert rows[class_name]["interest_received"] == pytest.approx(
+            amount, abs=0.01
+        ), f"{class_name} row does not carry what the cascade paid it"
+
+    # Nothing the cascade paid a class is missing from the panel, and the panel
+    # invents nothing the cascade did not pay.
+    assert sum(r["interest_received"] for r in rows.values()) == pytest.approx(
+        sum(paid.values()), abs=0.01
+    )
+
+    # And the figures themselves are the published ones.
+    for class_name, amount in _CAIRN_CLASS_INTEREST.items():
+        assert rows[class_name]["interest_received"] == pytest.approx(amount, abs=0.01)
+
+
+def test_waterfall_panel_covers_every_class_and_sums_split_strips(cairn_waterfall):
+    """Every class the stack has gets a row; a split class sums its strips."""
+    from loanwhiz.api.main import _reconstruct_series, _require_deal
+    from loanwhiz.primitives.capital_structure import classes_from_strips
+
+    with patch("loanwhiz.api.main.DEAL_MODEL_SEED_DIR", _REAL_SEED_DIR):
+        deal = _require_deal("cairn-clo-xvii")
+        opening = _reconstruct_series("cairn-clo-xvii", deal).states[-2]
+    names = [t.name for t in opening.tranches]
+
+    body = cairn_waterfall
+    assert [t["tranche"] for t in body["tranche_distributions"]] == classes_from_strips(
+        names
+    )
+
+    # Cairn really does sell Class B in two strips — without that the balance
+    # assertion below would be testing a single-strip class and prove nothing.
+    strips = [t for t in opening.tranches if t.name in {"class_b_1", "class_b_2"}]
+    assert len(strips) == 2
+    assert "class_b" not in names
+
+    rows = {t["tranche"]: t for t in body["tranche_distributions"]}
+    assert rows["class_b"]["opening_balance"] == pytest.approx(
+        sum(t.balance for t in strips)
+    )
+    assert rows["class_b"]["opening_balance"] > 0.0
+
+
+def test_waterfall_panel_flags_an_unattributable_class_instead_of_zeroing_it(
+    cairn_waterfall,
+):
+    """A class paid inside a compound step reads as unreported, not as nil."""
+    body = cairn_waterfall
+    rows = {t["tranche"]: t for t in body["tranche_distributions"]}
+
+    # The equity tier is paid "subordinated notes interest AND the incentive
+    # fee" as one cascade line, which cannot be split between its two payees.
+    assert rows["subordinated_notes"]["interest_received"] == 0.0
+    assert rows["subordinated_notes"]["unattributed_interest_reason"]
+
+    # Every class the engine CAN attribute says so by carrying no reason — the
+    # flag must distinguish the two, not be set on everything.
+    for class_name in _CAIRN_CLASS_INTEREST:
+        assert rows[class_name]["unattributed_interest_reason"] is None
+
+
+def test_green_lion_panel_is_unchanged_by_the_class_enumeration():
+    """A three-class deal still reports exactly its three classes."""
+    body = client.get("/deal/green-lion-2026-1/waterfall").json()
+    rows = {t["tranche"]: t for t in body["tranche_distributions"]}
+    assert list(rows) == ["class_a", "class_b", "class_c"]
+    # Green Lion's cascade has a Class A interest step and no Class B/C one, so
+    # these zeros are genuine "paid nothing" — the reason field stays clear.
+    assert rows["class_a"]["interest_received"] > 0.0
+    assert all(r["unattributed_interest_reason"] is None for r in rows.values())
+
+
+def test_report_verification_reads_cairn_class_a_interest_canonically():
+    """The verifier's computed side uses the canonical roll-up, not a raw key."""
+    from loanwhiz.api.main import _computed_waterfall_dict, _require_deal
+
+    with patch("loanwhiz.api.main.DEAL_MODEL_SEED_DIR", _REAL_SEED_DIR):
+        computed, _ = _computed_waterfall_dict(
+            "cairn-clo-xvii", _require_deal("cairn-clo-xvii")
+        )
+    row = next(
+        t for t in computed["tranche_distributions"] if t["tranche"] == "class_a"
+    )
+    assert row["interest_received"] == pytest.approx(
+        _CAIRN_CLASS_INTEREST["class_a"], abs=0.01
+    )
+
+
+def test_classes_from_strips_inverts_resolve_strips():
+    """The class list is the inverse of the one class-to-strips grammar."""
+    from loanwhiz.primitives.capital_structure import (
+        classes_from_strips,
+        resolve_strips,
+    )
+
+    # A split class is one class; the whole-sold ones are themselves.
+    names = ["class_a", "class_b_1", "class_b_2", "class_c", "subordinated_notes"]
+    assert classes_from_strips(names) == [
+        "class_a",
+        "class_b",
+        "class_c",
+        "subordinated_notes",
+    ]
+    # …and it really is the inverse: every class resolves back to strips the
+    # stack has, and every strip is claimed by exactly one class.
+    claimed = [n for c in classes_from_strips(names) for n in resolve_strips(c, names)]
+    assert sorted(claimed) == sorted(names)
+
+    # A lettered suffix is not a series: a refinanced class stays its own, so it
+    # is never swept into the class it replaced.
+    assert classes_from_strips(["class_a", "class_a_r"]) == ["class_a", "class_a_r"]
+
+    # An exact match wins outright: an aggregate row beside its components is
+    # counted once, not roughly twice.
+    assert classes_from_strips(["class_a", "class_a_1"]) == ["class_a", "class_a_1"]
+
+    # The joined spelling is a series just as the hyphenated one is.
+    assert classes_from_strips(["class_a1", "class_a2"]) == ["class_a"]
