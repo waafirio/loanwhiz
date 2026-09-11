@@ -3,10 +3,12 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
+import { ChatPanel } from "@/components/chat-panel";
 import { NAV_GROUPS } from "@/lib/nav";
 import {
   Sidebar,
   SidebarContent,
+  SidebarFooter,
   SidebarGroup,
   SidebarGroupContent,
   SidebarGroupLabel,
@@ -76,6 +78,13 @@ export function AppSidebar() {
           </SidebarGroup>
         ))}
       </SidebarContent>
+      {/* The "Ask LoanWhiz" launcher. It lives here, in reserved rail width,
+          rather than floating over the page: a viewport-pinned control covers
+          whatever the page paints in that corner — on /concentration it was a
+          balance figure (#623). */}
+      <SidebarFooter>
+        <ChatPanel />
+      </SidebarFooter>
       <SidebarRail />
     </Sidebar>
   );
